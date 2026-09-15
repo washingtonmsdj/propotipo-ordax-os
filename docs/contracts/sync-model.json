@@ -1,0 +1,111 @@
+{
+  "$schema": "prototype-ordax.sync-model/1",
+  "status": "canonical-prototype-contract",
+  "authority": {
+    "domain_owner": "system/services/sync",
+    "platform_integration_owner": "system/adapters",
+    "server_authorization_required": true,
+    "storage_backend_is_protocol_authority": false,
+    "database_vendor_visible_to_clients": false
+  },
+  "identity": {
+    "one_account_across_modes": true,
+    "account_identity_is_plan_gated": false,
+    "device_and_session_identity_are_distinct": true,
+    "device_session_revocation_required": true,
+    "device_private_keys_are_account_sync_data": false
+  },
+  "object_protocol": {
+    "stable_object_id_required": true,
+    "data_class_required": true,
+    "object_schema_version_required": true,
+    "server_revision_required": true,
+    "client_wall_clock_is_conflict_authority": false,
+    "idempotency_key_required_for_mutations": true,
+    "deletion_uses_explicit_tombstone": true,
+    "opaque_incremental_cursor": true,
+    "full_resync_supported": true,
+    "paged_incremental_sync_supported": true,
+    "unknown_optional_fields": "ignore",
+    "unknown_required_object_schema": "fail-closed"
+  },
+  "conflicts": {
+    "universal_last_writer_wins_allowed": false,
+    "resolver_scope": "data-class-or-content-type",
+    "resolver_must_be_deterministic": true,
+    "resolver_must_be_versioned": true,
+    "server_revision_preferred_over_client_wall_clock": true,
+    "manual_resolution_may_be_used_when_domain_requires_it": true,
+    "new_data_class_requires_explicit_conflict_policy_before_production": true
+  },
+  "syncable_data_classes": [
+    {
+      "id": "appearance",
+      "owner": "system/services/sync",
+      "resolver_family": "versioned-domain-resolver"
+    },
+    {
+      "id": "preferences",
+      "owner": "system/services/sync",
+      "resolver_family": "versioned-domain-resolver"
+    },
+    {
+      "id": "workspace-metadata",
+      "owner": "system/services/sync",
+      "resolver_family": "versioned-domain-resolver"
+    },
+    {
+      "id": "app-state-metadata",
+      "owner": "system/services/sync",
+      "resolver_family": "versioned-app-domain-resolver"
+    },
+    {
+      "id": "user-selected-cloud-content",
+      "owner": "system/services/sync",
+      "resolver_family": "versioned-content-type-resolver"
+    }
+  ],
+  "never_sync_data_classes": [
+    "device-private-keys",
+    "machine-identity-secrets",
+    "hardware-drivers",
+    "raw-disk-state",
+    "ephemeral-cache",
+    "device-bound-credentials",
+    "local-privileged-recovery-material"
+  ],
+  "security": {
+    "encrypted_transport_required": true,
+    "authorization_per_user_scoped_object_required": true,
+    "bounded_session_tokens_required": true,
+    "secure_local_token_storage_delegated_to_adapter": true,
+    "tokens_inside_sync_objects_allowed": false,
+    "private_device_material_inside_sync_payload_allowed": false,
+    "client_claimed_entitlements_are_authoritative": false
+  },
+  "offline": {
+    "offline_local_work_allowed": true,
+    "mutation_queue_must_be_idempotent": true,
+    "reconnect_may_resume_from_opaque_cursor": true,
+    "server_may_require_safe_full_resync": true,
+    "known_local_data_must_not_be_destroyed_only_because_transport_is_unavailable": true
+  },
+  "plans_and_quota": {
+    "basic_cross_device_sync_is_plan_gated": false,
+    "plan_may_expand_quota": true,
+    "plan_may_expand_history": true,
+    "downgrade_may_silently_delete_data": false,
+    "over_quota_state_may_block_new_uploads": true,
+    "entitlements_are_server_authoritative": true
+  },
+  "compatibility": {
+    "data_class_ids_are_stable": true,
+    "additive_optional_object_field_is_backward_compatible": true,
+    "new_required_object_field_requires_new_object_schema_version": true,
+    "changing_data_class_meaning_requires_new_id_or_contract_major": true,
+    "changing_conflict_semantics_requires_new_resolver_version": true,
+    "removing_syncable_data_class_requires_explicit_migration": true,
+    "backend_provider_change_requires_client_migration": false,
+    "platform_adapter_change_may_change_domain_sync_semantics": false
+  }
+}
