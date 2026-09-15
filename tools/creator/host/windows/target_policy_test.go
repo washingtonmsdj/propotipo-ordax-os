@@ -134,6 +134,12 @@ func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 		t.Fatal("stale token must not confirm a changed physical-disk mapping")
 	}
 
+	tampered := target
+	tampered.DiskNumber++
+	if _, err := MatchConfirmedTarget([]Target{tampered}, target.ConfirmationToken); err == nil {
+		t.Fatal("stored token must not confirm a Target whose identity fields changed")
+	}
+
 	unsafeTarget := target
 	unsafeTarget.PrototypeSafe = false
 	if _, err := MatchConfirmedTarget([]Target{unsafeTarget}, target.ConfirmationToken); err == nil {
@@ -142,6 +148,9 @@ func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 
 	if _, err := MatchConfirmedTarget([]Target{target}, "not-a-token"); err == nil {
 		t.Fatal("malformed token must be rejected")
+	}
+	if _, err := MatchConfirmedTarget([]Target{target}, strings.ToUpper(target.ConfirmationToken)); err == nil {
+		t.Fatal("uppercase token must be rejected instead of silently normalized")
 	}
 }
 
