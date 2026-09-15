@@ -31,28 +31,14 @@ func callErrno(err error) syscall.Errno {
 	return 0
 }
 
-func queryVolumeDiskNumbersReadOnly(volumeName string) ([]uint32, error) {
-	openName, err := normalizeVolumeNameForOpen(volumeName)
-	if err != nil {
-		return nil, err
+// queryVolumeDiskNumbersHandle reads the physical disk extents from the exact
+// volume handle supplied by the caller. A future lock/dismount primitive uses
+// this to prove that the handle it actually locked still belongs exclusively to
+// the expected PhysicalDrive instead of trusting a separate re-opened handle.
+func queryVolumeDiskNumbersHandle(handle uintptr, volumeName string) ([]uint32, error) {
+	if handle == 0 || handle == ^uintptr(0) {
+		return nil, fmt.Errorf("invalid volume handle for %s", volumeName)
 	}
-	ptr, err := utf16Ptr(openName)
-	if err != nil {
-		return nil, err
-	}
-	handle, _, callErr := procCreateFileW.Call(
-		uintptr(unsafe.Pointer(ptr)),
-		0,
-		fileShareRead|fileShareWrite,
-		0,
-		openExisting,
-		0,
-		0,
-	)
-	if handle == ^uintptr(0) {
-		return nil, fmt.Errorf("open volume %s for read-only extent inventory: %v", volumeName, callErr)
-	}
-	defer procCloseHandle.Call(handle)
 
 	buffer := make([]byte, volumeDiskExtentsHeaderBytes+diskExtentBytes)
 	for attempt := 0; attempt < 2; attempt++ {
@@ -89,7 +75,38 @@ func queryVolumeDiskNumbersReadOnly(volumeName string) ([]uint32, error) {
 	return nil, fmt.Errorf("volume %s extent inventory remained unstable after resize", volumeName)
 }
 
-func enumerateAllPhysicalVolumesReadOnly() ([]physicalVolume, error) {
+func queryVolumeDiskNumbersReadOnly(volumeName string) ([]uint32, error) {
+	openName, err := normalizeVolumeNameForOpen(volumeName)
+	if err != nil {
+		return nil, err
+	}
+	ptr, err := utf16Ptr(openName)
+	if err != nil {
+		return nil, err
+	}
+	handle, _, callErr := procCreateFileW.Call(
+		uintptr(unsafe.Pointer(ptr)),
+		0,
+		fileShareRead|fileShareWrite,
+		0,
+		openExisting,
+		0,
+		0,
+	)
+	if handle == ^uintptr(0) {
+		return nil, fmt.Errorf("open volume %s for read-only extent inventory: %v", volumeName, callErr)
+	}
+	defer procCloseHandle.Call(handle)
+
+	return queryVolumeDiskNumbersHandle(handle, volumeName)
+}
+
+// enumerateWindowsVolumeNames returns only GUID volume identities and does not
+// open the volumes. This separation is important once target volumes are
+// locked: opening a second handle to an already locked volume is intentionally
+// forbidden by Windows, while name enumeration can still be used to detect a
+// newly appearing volume that was absent from the lock plan.
+func enumerateWindowsVolumeNames() ([]string, error) {
 	buffer := make([]uint16, 1024)
 	search, _, callErr := procFindFirstVolumeW.Call(
 		uintptr(unsafe.Pointer(&buffer[0])),
@@ -100,20 +117,16 @@ func enumerateAllPhysicalVolumesReadOnly() ([]physicalVolume, error) {
 	}
 	defer procFindVolumeClose.Call(search)
 
-	volumes := make([]physicalVolume, 0, 8)
+	names := make([]string, 0, 8)
 	for {
 		volumeName := syscall.UTF16ToString(buffer)
 		if strings.TrimSpace(volumeName) == "" {
 			return nil, fmt.Errorf("Windows volume enumeration returned an empty volume name")
 		}
-		disks, err := queryVolumeDiskNumbersReadOnly(volumeName)
-		if err != nil {
+		if _, err := normalizeVolumeNameForOpen(volumeName); err != nil {
 			return nil, err
 		}
-		volumes = append(volumes, physicalVolume{
-			VolumeName:  volumeName,
-			DiskNumbers: disks,
-		})
+		names = append(names, volumeName)
 
 		for index := range buffer {
 			buffer[index] = 0
@@ -130,6 +143,26 @@ func enumerateAllPhysicalVolumesReadOnly() ([]physicalVolume, error) {
 			break
 		}
 		return nil, fmt.Errorf("FindNextVolumeW failed: %v", nextErr)
+	}
+	return names, nil
+}
+
+func enumerateAllPhysicalVolumesReadOnly() ([]physicalVolume, error) {
+	names, err := enumerateWindowsVolumeNames()
+	if err != nil {
+		return nil, err
+	}
+
+	volumes := make([]physicalVolume, 0, len(names))
+	for _, volumeName := range names {
+		disks, err := queryVolumeDiskNumbersReadOnly(volumeName)
+		if err != nil {
+			return nil, err
+		}
+		volumes = append(volumes, physicalVolume{
+			VolumeName:  volumeName,
+			DiskNumbers: disks,
+		})
 	}
 	return volumes, nil
 }
