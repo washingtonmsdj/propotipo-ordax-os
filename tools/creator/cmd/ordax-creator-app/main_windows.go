@@ -5,9 +5,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -34,7 +36,7 @@ const (
 	wsDisabled         = 0x08000000
 	wsVScroll          = 0x00200000
 
-	bsPushButton = 0x00000000
+	bsPushButton    = 0x00000000
 	bsDefPushButton = 0x00000001
 	cbsDropDownList = 0x0003
 
@@ -48,12 +50,17 @@ const (
 	idVersion     = 1005
 	idHint        = 1006
 
-	cbAddString  = 0x0143
+	cbAddString    = 0x0143
 	cbResetContent = 0x014B
-	cbSetCurSel  = 0x014E
-	cbGetCurSel  = 0x0147
-	bnClicked    = 0
+	cbSetCurSel    = 0x014E
+	bnClicked      = 0
+
+	createNoWindow = 0x08000000
 )
+
+// buildCommit is injected by the release workflow. An unresolved developer
+// binary can still inspect devices, but it will not attempt to replace itself.
+var buildCommit = "UNRESOLVED"
 
 var (
 	user32   = syscall.NewLazyDLL("user32.dll")
@@ -76,15 +83,15 @@ var (
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procGetStockObject   = gdi32.NewProc("GetStockObject")
 
-	mainWindow uintptr
-	deviceCombo uintptr
+	mainWindow    uintptr
+	deviceCombo   uintptr
 	refreshButton uintptr
-	writeButton uintptr
-	statusLabel uintptr
-	versionLabel uintptr
-	hintLabel uintptr
+	writeButton   uintptr
+	statusLabel   uintptr
+	versionLabel  uintptr
+	hintLabel     uintptr
 
-	stateMu sync.Mutex
+	stateMu      sync.Mutex
 	refreshState appRefreshState
 )
 
@@ -209,6 +216,16 @@ func targetLabel(target physicalTarget) string {
 	return fmt.Sprintf("%s  —  %s  —  Disco %d  —  %s", target.DriveLetter, label, target.DiskNumber, formatBytes(target.PhysicalDiskBytes))
 }
 
+func appendError(current, next string) string {
+	if strings.TrimSpace(next) == "" {
+		return current
+	}
+	if current == "" {
+		return next
+	}
+	return current + "\n" + next
+}
+
 func loadTargets(directory string) ([]physicalTarget, bool, error) {
 	exe := filepath.Join(directory, "ordax-creator-physical-test.exe")
 	command := exec.Command(exe, "targets")
@@ -248,6 +265,29 @@ func loadTargets(directory string) ([]physicalTarget, bool, error) {
 	return document.Targets, status.Build.PhysicalWriteAuthorized && status.Build.Ready, nil
 }
 
+func scheduleApplicationReplacement(directory string, update creatorupdate.ApplicationUpdate) error {
+	currentExe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	helper := filepath.Join(directory, "ordax-creator-self-update.exe")
+	info, err := os.Stat(helper)
+	if err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("helper de atualização do Creator indisponível")
+	}
+	command := exec.Command(
+		helper,
+		"--parent-pid", strconv.Itoa(os.Getpid()),
+		"--source", update.StagedPath,
+		"--target", currentExe,
+		"--sha256", update.SHA256,
+		"--size", strconv.FormatInt(update.Size, 10),
+	)
+	command.Dir = directory
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	return command.Start()
+}
+
 func refreshAsync() {
 	go func() {
 		result := appRefreshState{}
@@ -265,13 +305,32 @@ func refreshAsync() {
 			result.Version = installed.Version
 			result.SourceCommit = installed.SourceCommit
 			result.Updated = changed
+
+			// The portable EXE updates itself only after the versioned payload is
+			// valid, because that payload carries the hidden replacement helper.
+			if len(buildCommit) == 40 {
+				currentExe, executableErr := os.Executable()
+				if executableErr != nil {
+					result.Error = appendError(result.Error, "Não foi possível localizar o executável atual para atualização automática.")
+				} else {
+					appUpdate, available, appErr := creatorupdate.StageApplicationUpdate(nil, "", buildCommit, currentExe)
+					if appErr != nil {
+						result.Error = appendError(result.Error, fmt.Sprintf("Não foi possível verificar a atualização do aplicativo: %v", appErr))
+					} else if available {
+						if replaceErr := scheduleApplicationReplacement(installed.Directory, appUpdate); replaceErr != nil {
+							result.Error = appendError(result.Error, fmt.Sprintf("Não foi possível preparar a troca automática do aplicativo: %v", replaceErr))
+						} else {
+							// The helper waits for this process, swaps the EXE atomically, keeps
+							// one .previous rollback copy and starts the new Creator.
+							procPostMessageW.Call(mainWindow, wmClose, 0, 0)
+							return
+						}
+					}
+			}
+
 			targets, ready, targetErr := loadTargets(installed.Directory)
 			if targetErr != nil {
-				if result.Error == "" {
-					result.Error = targetErr.Error()
-				} else {
-					result.Error += "\n" + targetErr.Error()
-				}
+				result.Error = appendError(result.Error, targetErr.Error())
 			} else {
 				result.Targets = targets
 				result.PhysicalReady = ready
@@ -318,7 +377,11 @@ func renderRefresh() {
 		setText(hintLabel, "Confira o dispositivo selecionado antes de iniciar. O conteúdo do pendrive será apagado.")
 	default:
 		setText(statusLabel, fmt.Sprintf("%d pendrive(s) detectado(s). Modo seguro de desenvolvimento.", len(state.Targets)))
-		setText(hintLabel, "A detecção está funcionando. A gravação física ainda está bloqueada nesta versão até a candidata assinada ser liberada.")
+		if state.Error != "" {
+			setText(hintLabel, state.Error)
+		} else {
+			setText(hintLabel, "A detecção está funcionando. A gravação física ainda está bloqueada nesta versão até a candidata assinada ser liberada.")
+		}
 	}
 
 	enable(refreshButton, true)
@@ -327,8 +390,8 @@ func renderRefresh() {
 }
 
 func beginRefresh() {
-	setText(statusLabel, "Verificando atualização e dispositivos USB…")
-	setText(hintLabel, "Isso não grava nem altera nenhum disco.")
+	setText(statusLabel, "Verificando atualizações e dispositivos USB…")
+	setText(hintLabel, "O Creator se atualiza sozinho. Esta verificação não grava nem altera nenhum disco.")
 	enable(refreshButton, false)
 	enable(writeButton, false)
 	enable(deviceCombo, false)
