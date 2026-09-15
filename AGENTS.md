@@ -4,7 +4,7 @@ Este arquivo e a entrada obrigatoria para qualquer IA, agente, Codex ou pessoa q
 
 ## 1. Identidade do repositorio
 
-`propotipo-ordax-os` e uma **clean-room experimental**. Ele existe para provar uma arquitetura OrdaX OS simplificada sem contaminar nem depender estruturalmente de `washingtonmsdj/novo-ordax-os`.
+`prototipo-ordax-os` e uma **clean-room experimental**. Ele existe para provar uma arquitetura OrdaX OS simplificada sem contaminar nem depender estruturalmente de `washingtonmsdj/novo-ordax-os`.
 
 Nao trate este repositorio como sucessor oficial enquanto `docs/PROMOTION-GATES.md` nao estiver integralmente aprovado.
 
@@ -23,13 +23,14 @@ Antes de alterar codigo, contratos ou midia:
 2. `docs/CURRENT-STATE.md`
 3. `docs/ARCHITECTURE.md`
 4. `docs/PRODUCT-MODES.md`
-5. `docs/HOST-INDEPENDENCE.md`
-6. `docs/REMOTE-CONTROL.md`
-7. `docs/PHYSICAL-MEDIA.md`
-8. `docs/DEVELOPMENT-WORKFLOW.md`
-9. `docs/SOURCE-MIGRATION.md`
-10. `docs/PROMOTION-GATES.md`
-11. `docs/DECISIONS.md`
+5. `docs/MINIMAL-USB-BOOTSTRAP.md`
+6. `docs/HOST-INDEPENDENCE.md`
+7. `docs/REMOTE-CONTROL.md`
+8. `docs/PHYSICAL-MEDIA.md`
+9. `docs/DEVELOPMENT-WORKFLOW.md`
+10. `docs/SOURCE-MIGRATION.md`
+11. `docs/PROMOTION-GATES.md`
+12. `docs/DECISIONS.md`
 
 ## 4. Arquitetura fisica alvo
 
@@ -56,24 +57,34 @@ A Surface, apps e logica compartilhada devem ter uma unica fonte em `system/`. D
 
 E proibido criar implementacoes visuais separadas para Web e dispositivo.
 
-## 6. Cadeia minima antes do Git
+## 6. Pendrive inicial minimo
 
-Somente o necessario para atingir uma release versionada pode existir como bootstrap persistente:
+O primeiro USB deve ser propositalmente pequeno. Ele existe somente para conseguir chegar com seguranca a uma release completa pela rede.
 
 ```text
 UEFI
  -> bootloader
  -> kernel/initramfs
- -> rede minima
- -> identidade do dispositivo
+ -> bootstrap minimo
+ -> rede
+ -> identidade
  -> OrdaX Remote Core
- -> Control Plane minimo
- -> cliente Git / aquisicao de release
- -> releases/<commit>
- -> current
+ -> Control Plane/trust minimo
+ -> aquisicao de release
+ -> recovery
 ```
 
-Desktop, UI completa, apps e servicos de alto nivel devem chegar por release, nao ser embutidos arbitrariamente no bootstrap.
+Nao colocar no primeiro pendrive, por conveniencia, aquilo que pode chegar depois por release:
+
+- Surface/desktop completo;
+- apps normais;
+- servicos de alto nivel;
+- checkout completo do source;
+- toolchain de build;
+- WSL/QEMU;
+- dump do repositorio antigo.
+
+Depois do primeiro boot, a release completa deve ser adquirida, verificada e materializada em `/ordax/releases/<commit>`. Depois de uma release conhecida ser ativada, ela deve continuar disponivel para boot offline e rollback.
 
 ## 7. Independencia do host
 
@@ -135,9 +146,10 @@ Antes de formatar ou escrever em pendrive/notebook:
 1. confirmar dispositivo por identidade/capacidade/serial quando disponivel;
 2. confirmar que o source da operacao esta na `main`;
 3. executar dry-run ou teste descartavel quando aplicavel;
-4. registrar o que sera apagado/criado;
-5. somente depois aplicar;
-6. verificar leitura/hashes/layout depois da escrita.
+4. registrar o payload minimo exato que sera gravado;
+5. registrar o que sera apagado/criado;
+6. somente depois aplicar;
+7. verificar leitura/hashes/layout depois da escrita.
 
 Nunca corrigir um layout antigo por impulso se a arquitetura alvo exige reprovisionamento limpo.
 
