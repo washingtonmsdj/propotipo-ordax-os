@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <linux/fs.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,9 +18,22 @@
 #define EXT4_SUPER_MAGIC 0xEF53
 #endif
 
+/*
+ * Keep the fixed initramfs self-contained: musl-gcc does not ship Linux UAPI
+ * headers on every builder. These are stable Linux UAPI request definitions:
+ *   BLKGETSIZE64       _IOR(0x12, 114, size_t)
+ *   EXT4_IOC_RESIZE_FS _IOW('f', 16, __u64)
+ * The argument storage remains an explicit uint64_t in both cases.
+ */
+#ifndef BLKGETSIZE64
+#define BLKGETSIZE64 _IOR(0x12, 114, size_t)
+#endif
+
 #ifndef EXT4_IOC_RESIZE_FS
 #define EXT4_IOC_RESIZE_FS _IOW('f', 16, uint64_t)
 #endif
+
+_Static_assert(sizeof(uint64_t) == 8, "uint64_t must be 64-bit");
 
 static void fail_errno(const char *message) {
     fprintf(stderr, "ordax-grow-ext4: %s: %s\n", message, strerror(errno));
@@ -60,7 +73,7 @@ int main(int argc, char **argv) {
         fail("mounted filesystem is not ext4");
     }
 
-    uint64_t block_size = before.f_frsize > 0 ? (uint64_t)before.f_frsize : (uint64_t)before.f_bsize;
+    uint64_t block_size = (uint64_t)before.f_bsize;
     if (block_size < 1024 || block_size > 65536 || (block_size & (block_size - 1)) != 0) {
         fail("ext4 block size is outside the supported range");
     }
