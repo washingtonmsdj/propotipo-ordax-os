@@ -1,14 +1,16 @@
-name: Kernel Pinned Environment Observation
+name: Kernel Pinned Environment Proof
 
 on:
   push:
     branches: [main]
     paths:
+      - 'bootstrap/kernel/**'
       - 'docs/contracts/kernel-build-environment.json'
       - 'tests/test_kernel_build_environment_contract.py'
       - '.github/workflows/kernel-pinned-environment.yml'
   pull_request:
     paths:
+      - 'bootstrap/kernel/**'
       - 'docs/contracts/kernel-build-environment.json'
       - 'tests/test_kernel_build_environment_contract.py'
       - '.github/workflows/kernel-pinned-environment.yml'
@@ -18,7 +20,7 @@ permissions:
   contents: read
 
 jobs:
-  observe-pinned-environment:
+  prove-pinned-environment:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -59,17 +61,18 @@ jobs:
           expected_digest="${IMAGE##*@}"
           grep -Fq "@$expected_digest" <<<"$repo_digests"
 
-      - name: Build kernel inside digest-pinned image and snapshot-pinned archive
+      - name: Build kernel inside pinned image and snapshot
         env:
           IMAGE: ${{ steps.env.outputs.image }}
           SNAPSHOT_ID: ${{ steps.env.outputs.snapshot }}
           PACKAGES: ${{ steps.env.outputs.packages }}
         run: |
           set -euo pipefail
-          rm -rf out/kernel-pinned out/kernel-work-pinned
+          rm -rf out/kernel-pinned out/kernel-work-pinned out/kernel-pinned-observation
           mkdir -p out/kernel-pinned-observation
           docker run --rm \
             -e GITHUB_SHA="$GITHUB_SHA" \
+            -e BASE_IMAGE="$IMAGE" \
             -e SNAPSHOT_ID="$SNAPSHOT_ID" \
             -e PACKAGES="$PACKAGES" \
             -e HOST_UID="$(id -u)" \
@@ -92,10 +95,9 @@ jobs:
                 "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" \
                 > /etc/apt/sources.list.d/ordax.sources
 
-              # The digest-pinned minimal Ubuntu image intentionally lacks the
-              # ca-certificates payload. Bootstrap only that package while
-              # apt-secure still authenticates signed Ubuntu Release metadata
-              # and package hashes with the image-bundled archive keyring.
+              # The digest-pinned minimal image lacks CA roots. Bootstrap only
+              # ca-certificates while apt-secure still authenticates signed
+              # Ubuntu metadata and package hashes with the bundled keyring.
               printf "%s\n" \
                 "Acquire::https::snapshot.ubuntu.com::Verify-Peer \"false\";" \
                 > /etc/apt/apt.conf.d/49ordax-ca-bootstrap
@@ -107,19 +109,33 @@ jobs:
               apt-get clean
               rm -rf /var/lib/apt/lists/*
 
-              # Every build dependency is now acquired again with normal TLS
-              # certificate verification plus the same signed snapshot archive.
+              # Every build dependency is reacquired with normal TLS
+              # verification from the exact same signed snapshot.
               apt-get update --error-on=any
               apt-get install -y --no-install-recommends $PACKAGES
               dpkg-query -W -f="\${Package}=\${Version}\\n" $PACKAGES | LC_ALL=C sort > /repo/out/kernel-pinned-observation/package-versions.txt
               apt-cache policy $PACKAGES > /repo/out/kernel-pinned-observation/package-policy.txt
               sha256sum /etc/ssl/certs/ca-certificates.crt > /repo/out/kernel-pinned-observation/ca-bundle.sha256
 
+              python3 bootstrap/kernel/verify_environment.py \
+                docs/contracts/kernel-build-environment.json \
+                --base-image "$BASE_IMAGE" \
+                --snapshot-id "$SNAPSHOT_ID" \
+                --out /repo/out/kernel-pinned-observation/environment-verification.json
+
               python3 bootstrap/kernel/build.py check
               python3 bootstrap/kernel/build.py build --jobs 4 --work-dir out/kernel-work-pinned --out-dir out/kernel-pinned
               python3 bootstrap/kernel/verify.py out/kernel-pinned
               chown -R "$HOST_UID:$HOST_GID" /repo/out/kernel-pinned /repo/out/kernel-work-pinned /repo/out/kernel-pinned-observation
             '
+
+      - name: Verify repeatability against pinned observation
+        run: |
+          python bootstrap/kernel/verify_reproducibility.py \
+            docs/contracts/kernel-build-environment.json \
+            out/kernel-pinned \
+            --ca-bundle-sha-file out/kernel-pinned-observation/ca-bundle.sha256 \
+            --out out/kernel-pinned-observation/reproducibility-verification.json
 
       - name: Emit measured environment observation
         env:
@@ -135,33 +151,45 @@ jobs:
           for line in versions_path.read_text(encoding='utf-8').splitlines():
               name, version = line.split('=', 1)
               versions[name] = version
-          kernel = root / 'kernel-pinned' / 'vmlinuz-6.6.52'
-          provenance = root / 'kernel-pinned' / 'kernel-provenance.json'
-          ca_line = (observation / 'ca-bundle.sha256').read_text(encoding='utf-8').strip()
-          ca_sha256 = ca_line.split()[0]
+
           def digest(path):
               return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          artifacts = {
+              name: digest(root / 'kernel-pinned' / name)
+              for name in (
+                  'kernel-6.6.52.config',
+                  'kernel-modules-6.6.52.tar',
+                  'vmlinuz-6.6.52',
+              )
+          }
+          provenance = root / 'kernel-pinned' / 'kernel-provenance.json'
+          ca_line = (observation / 'ca-bundle.sha256').read_text(encoding='utf-8').strip()
+          reproduction = json.loads(
+              (observation / 'reproducibility-verification.json').read_text(encoding='utf-8')
+          )
           data = {
               '$schema': 'prototype-ordax.kernel-build-environment-observation/1',
-              'status': 'measured-not-yet-promoted',
+              'status': 'repeat-proof-pass',
               'source_commit': os.environ['GITHUB_SHA'],
               'base_image': os.environ['IMAGE'],
               'apt_snapshot_id': os.environ['SNAPSHOT_ID'],
               'package_versions': dict(sorted(versions.items())),
-              'ca_bundle_sha256': ca_sha256,
-              'kernel_sha256': digest(kernel),
+              'ca_bundle_sha256': ca_line.split()[0],
+              'artifacts': artifacts,
               'kernel_provenance_sha256': digest(provenance),
-              'promotable_to_physical': False,
+              'repeat_build_digest_match': reproduction['repeat_build_digest_match'],
+              'promotable_environment_gate': reproduction['promotable_environment_gate'],
           }
           output = observation / 'observation.json'
           output.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           print(json.dumps(data, indent=2, sort_keys=True))
           PY
 
-      - name: Upload measured observation and candidate
+      - name: Upload proof and kernel candidate
         uses: actions/upload-artifact@v6
         with:
-          name: ordax-kernel-pinned-observation-${{ github.sha }}
+          name: ordax-kernel-pinned-proof-${{ github.sha }}
           path: |
             out/kernel-pinned/
             out/kernel-pinned-observation/
