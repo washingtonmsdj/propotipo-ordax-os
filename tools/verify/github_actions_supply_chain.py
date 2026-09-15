@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "docs" / "contracts" / "ci-supply-chain.json"
-USES_RE = re.compile(r"^\s*uses:\s*([^\s#]+)(?:\s+#.*)?$")
+USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)(?:\s+#.*)?$")
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 DOCKER_DIGEST_RE = re.compile(r"^docker://.+@sha256:[0-9a-f]{64}$")
 
