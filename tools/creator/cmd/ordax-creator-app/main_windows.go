@@ -326,6 +326,7 @@ func refreshAsync() {
 							return
 						}
 					}
+				}
 			}
 
 			targets, ready, targetErr := loadTargets(installed.Directory)
