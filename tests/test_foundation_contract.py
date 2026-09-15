@@ -32,6 +32,23 @@ class FoundationContractTest(unittest.TestCase):
         self.assertIn("ORDAX-HOME", media["forbidden_required_partitions"])
         self.assertIn("ORDAX-PLATFORM", media["forbidden_required_partitions"])
 
+    def test_initial_usb_is_minimum_network_first(self):
+        seed = self.contract["initial_media"]
+        self.assertEqual(seed["policy"], "minimum-network-first")
+        self.assertFalse(seed["full_system_preseeded"])
+        self.assertFalse(seed["surface_preseeded"])
+        self.assertFalse(seed["normal_apps_preseeded"])
+        self.assertFalse(seed["legacy_repository_dump_allowed"])
+        self.assertFalse(seed["build_toolchain_preseeded"])
+        self.assertFalse(seed["complete_source_checkout_preseeded"])
+        self.assertTrue(seed["first_full_release_acquired_after_boot"])
+        self.assertTrue(seed["bootstrap_manifest_required_before_physical_write"])
+        self.assertTrue(seed["known_good_release_persisted_after_first_activation"])
+        self.assertTrue(seed["known_good_offline_boot_required"])
+        self.assertFalse(seed["normal_system_changes_require_usb_reflash"])
+        self.assertIn("ordax-remote-core", seed["allowed_initial_payload_classes"])
+        self.assertIn("release-acquisition", seed["allowed_initial_payload_classes"])
+
     def test_user_data_is_logical_inside_main_partition(self):
         layout = self.contract["logical_main_layout"]
         self.assertEqual(layout["home"], "/ordax/home")
