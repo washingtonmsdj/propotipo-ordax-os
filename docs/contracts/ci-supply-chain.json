@@ -1,0 +1,57 @@
+{
+  "$schema": "prototype-ordax.ci-supply-chain/1",
+  "status": "canonical-prototype-contract",
+  "scope": {
+    "workflow_roots": [
+      ".github/workflows"
+    ],
+    "local_action_roots": [
+      ".github/actions"
+    ],
+    "github_actions_is_execution_provider_not_source_authority": true
+  },
+  "external_actions": {
+    "full_commit_sha_required": true,
+    "mutable_tag_allowed": false,
+    "mutable_branch_allowed": false,
+    "unknown_external_action_allowed": false,
+    "local_repository_action_allowed": true,
+    "docker_action_requires_sha256_digest": true,
+    "human_version_comment_recommended": true
+  },
+  "approved_external_actions": [
+    {
+      "uses": "actions/checkout",
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "version_label": "v7"
+    },
+    {
+      "uses": "actions/setup-python",
+      "sha": "ece7cb06caefa5fff74198d8649806c4678c61a1",
+      "version_label": "v6"
+    },
+    {
+      "uses": "actions/setup-go",
+      "sha": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+      "version_label": "v7"
+    },
+    {
+      "uses": "actions/upload-artifact",
+      "sha": "b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+      "version_label": "v6"
+    }
+  ],
+  "workflow_policy": {
+    "explicit_permissions_required": true,
+    "write_all_allowed": false,
+    "pull_request_target_allowed": false,
+    "external_reusable_workflow_requires_same_sha_policy": true
+  },
+  "evolution": {
+    "new_external_action_requires_explicit_contract_entry": true,
+    "action_sha_update_requires_reviewed_contract_change": true,
+    "removing_unused_approved_action_is_backward_compatible": true,
+    "adding_approved_action_is_additive": true,
+    "runner_provider_change_must_not_change_product_source_authority": true
+  }
+}
