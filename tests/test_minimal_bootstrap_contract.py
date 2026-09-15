@@ -14,8 +14,8 @@ class MinimalBootstrapContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
-    def test_media_policy_is_minimum_git_acquisition_first(self):
-        self.assertEqual(self.manifest["policy"], "minimum-git-acquisition-first")
+    def test_media_policy_is_minimum_release_acquisition_first(self):
+        self.assertEqual(self.manifest["policy"], "minimum-release-acquisition-first")
         self.assertEqual(
             [partition["name"] for partition in self.manifest["partitions"]],
             ["ORDAX-ESP", "ORDAX"],
@@ -70,6 +70,12 @@ class MinimalBootstrapContractTest(unittest.TestCase):
         self.assertNotIn("ordax-remote-core", capabilities)
         self.assertNotIn("minimal-control-plane-and-trust", capabilities)
         self.assertNotIn("stable-device-identity", capabilities)
+
+    def test_release_acquisition_has_one_clean_owner(self):
+        groups = {group["id"]: group for group in self.manifest["artifact_groups"]}
+        acquisition = groups["bootstrap-release-acquisition"]
+        self.assertEqual(acquisition["source_owner"], "bootstrap/release-acquisition")
+        self.assertEqual(acquisition["target_root"], "/ordax/bootstrap/release-acquisition")
 
     def test_remote_control_remains_optional_after_first_release(self):
         optional = set(self.manifest["optional_after_first_release"])
