@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
@@ -13,8 +13,9 @@ const genericWritePhysicalDrive uintptr = 0x40000000
 var _ rawDiskDevice = (*os.File)(nil)
 
 // openVerifiedPhysicalDriveWritableUnbound is the final native handle primitive
-// immediately before raw bytes could be written. It is intentionally unexported
-// and deliberately not connected to any rawDiskRuntime or public command.
+// immediately before raw bytes could be written. It is compiled only when the
+// explicit ordax_raw_backend build tag is selected, remains unexported, and is
+// not connected to any public command.
 //
 // The function refuses to call CreateFileW unless the Target remains current
 // and the caller supplies the exact active managed target-volume lease for the
