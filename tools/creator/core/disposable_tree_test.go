@@ -21,6 +21,17 @@ func makeStageableFixture(t *testing.T) (Manifest, string) {
 	return m, payloadRoot
 }
 
+func assertDirectoryEmpty(t *testing.T, root string) {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("directory %s is not empty after failed stage: %#v", root, entries)
+	}
+}
+
 func TestStageDisposableTreeMapsExactlyTwoFilesystemRoots(t *testing.T) {
 	m, payloadRoot := makeStageableFixture(t)
 	outputRoot := t.TempDir()
@@ -63,6 +74,77 @@ func TestStageDisposableTreeMapsExactlyTwoFilesystemRoots(t *testing.T) {
 	}
 	if _, err := BuildWritePlan(m); err == nil || !strings.Contains(err.Error(), "not authorized") {
 		t.Fatalf("physical plan must remain blocked after staging: %v", err)
+	}
+}
+
+func TestStageDisposableTreePublishesPreviouslyMissingOutputOnlyAfterSuccess(t *testing.T) {
+	m, payloadRoot := makeStageableFixture(t)
+	parent := t.TempDir()
+	outputRoot := filepath.Join(parent, "published-stage")
+	if _, err := os.Lstat(outputRoot); !os.IsNotExist(err) {
+		t.Fatalf("output unexpectedly exists before stage: %v", err)
+	}
+	if _, err := StageDisposableTree(m, payloadRoot, outputRoot); err != nil {
+		t.Fatalf("StageDisposableTree: %v", err)
+	}
+	entries, err := os.ReadDir(outputRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("published root count = %d, want 2", len(entries))
+	}
+}
+
+func TestStageDisposableTreeFailurePublishesNoPartialBytes(t *testing.T) {
+	m, payloadRoot := makeStageableFixture(t)
+	ordaxGroups := make([]int, 0, 2)
+	for i := range m.ArtifactGroups {
+		if m.ArtifactGroups[i].Partition == "ORDAX" {
+			ordaxGroups = append(ordaxGroups, i)
+			if len(ordaxGroups) == 2 {
+				break
+			}
+		}
+	}
+	if len(ordaxGroups) != 2 {
+		t.Fatal("fixture needs at least two ORDAX artifact groups")
+	}
+	m.ArtifactGroups[ordaxGroups[0]].Artifacts[0].TargetPath = "/ordax/collision"
+	m.ArtifactGroups[ordaxGroups[1]].Artifacts[0].TargetPath = "/ordax/collision/child.bin"
+
+	outputRoot := t.TempDir()
+	_, err := StageDisposableTree(m, payloadRoot, outputRoot)
+	if err == nil || !strings.Contains(err.Error(), "create parent") {
+		t.Fatalf("expected copy-time target collision, got %v", err)
+	}
+	assertDirectoryEmpty(t, outputRoot)
+
+	stagingMatches, globErr := filepath.Glob(filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".stage-*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(stagingMatches) != 0 {
+		t.Fatalf("staging directories leaked after failure: %#v", stagingMatches)
+	}
+}
+
+func TestStageDisposableTreePreflightFailureDoesNotCreateMissingOutput(t *testing.T) {
+	m, payloadRoot := makeStageableFixture(t)
+	for i := range m.ArtifactGroups {
+		if m.ArtifactGroups[i].Partition == "ORDAX" {
+			m.ArtifactGroups[i].Artifacts[0].TargetPath = "/bootstrap/escape.bin"
+			break
+		}
+	}
+	parent := t.TempDir()
+	outputRoot := filepath.Join(parent, "must-not-appear")
+	_, err := StageDisposableTree(m, payloadRoot, outputRoot)
+	if err == nil || !strings.Contains(err.Error(), "below /ordax") {
+		t.Fatalf("unsafe ORDAX target error = %v", err)
+	}
+	if _, statErr := os.Lstat(outputRoot); !os.IsNotExist(statErr) {
+		t.Fatalf("failed preflight published output path: %v", statErr)
 	}
 }
 
