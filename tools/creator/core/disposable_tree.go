@@ -39,9 +39,10 @@ func partitionRelativeTarget(partition string, targetPath string) (string, error
 	}
 	switch partition {
 	case "ORDAX-ESP":
-		if targetPath == "/ordax" || strings.HasPrefix(targetPath, "/ordax/") {
-			return "", errors.New("ESP target may not use the /ordax runtime namespace")
-		}
+		// ESP targets are paths inside the FAT filesystem. The canonical boot
+		// contract intentionally stores kernel/initramfs bytes below /ordax on
+		// that filesystem; this does not refer to the ORDAX partition's
+		// /ordax runtime namespace.
 		return strings.TrimPrefix(targetPath, "/"), nil
 	case "ORDAX":
 		if !strings.HasPrefix(targetPath, "/ordax/") {
