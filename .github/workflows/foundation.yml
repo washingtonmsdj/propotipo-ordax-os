@@ -27,6 +27,7 @@ jobs:
           python -m json.tool docs/contracts/module-boundaries.json >/dev/null
           python -m json.tool docs/contracts/release-protocol.json >/dev/null
           python -m json.tool docs/contracts/sync-model.json >/dev/null
+          python -m json.tool docs/contracts/state-evolution.json >/dev/null
           python -m json.tool docs/contracts/minimal-bootstrap.json >/dev/null
           python -m json.tool docs/contracts/build-autonomy.json >/dev/null
           python -m json.tool docs/contracts/release-channel.json >/dev/null

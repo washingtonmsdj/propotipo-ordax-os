@@ -1,0 +1,86 @@
+{
+  "$schema": "prototype-ordax.state-evolution/1",
+  "status": "canonical-prototype-contract",
+  "scope": {
+    "device_state_root": "/ordax/state",
+    "user_data_root": "/ordax/home",
+    "immutable_release_root": "/ordax/releases/<commit>",
+    "device_state_owner": "system/services/state",
+    "user_data_migration_is_separate_policy": true,
+    "sync_state_is_separate_from_device_state": true
+  },
+  "schema_rules": {
+    "explicit_schema_version_required": true,
+    "schema_version_monotonic": true,
+    "unknown_newer_schema": "fail-closed-to-recovery",
+    "missing_schema_metadata": "fail-closed-no-reset",
+    "automatic_destructive_reset_allowed": false,
+    "release_must_declare_readable_state_range": true,
+    "release_must_declare_writable_state_version": true,
+    "state_schema_is_not_derived_from_app_version": true
+  },
+  "migration_rules": {
+    "verified_release_only": true,
+    "ordered_stepwise_migrations": true,
+    "migration_ids_are_stable": true,
+    "published_migration_semantics_are_immutable": true,
+    "migration_code_is_versioned_with_release": true,
+    "migration_inputs_are_validated": true,
+    "migration_outputs_are_validated": true,
+    "idempotent_or_resume_safe_required": true,
+    "crash_consistency_required": true,
+    "partial_migration_must_not_become_active_state": true,
+    "migration_history_recorded": true,
+    "migration_history_contains_no_secrets": true
+  },
+  "activation_order": [
+    "verify-release",
+    "read-current-state-schema",
+    "check-candidate-readable-range",
+    "plan-required-migrations",
+    "prove-rollback-strategy",
+    "create-state-checkpoint-if-required",
+    "run-migrations-transactionally",
+    "validate-migrated-state",
+    "activate-release",
+    "record-non-secret-migration-evidence"
+  ],
+  "rollback": {
+    "known_good_release_must_not_be_invalidated_silently": true,
+    "candidate_must_prove_previous_release_state_compatibility_or_checkpoint_restore": true,
+    "irreversible_migration_requires_restorable_checkpoint": true,
+    "checkpoint_is_bound_to_source_release_and_state_schema": true,
+    "failed_activation_restores_previous_release_and_compatible_state": true,
+    "rollback_checkpoint_retention_is_policy_driven": true,
+    "rollback_may_not_guess_downgrade_transform": true
+  },
+  "evolution_pattern": {
+    "preferred_pattern": "expand-migrate-contract",
+    "expand": "new release reads old and new representation before requiring the new one",
+    "migrate": "state is backfilled or transformed under transactional migration rules",
+    "contract": "old representation is removed only after the supported rollback horizon no longer depends on it",
+    "destructive_contract_same_release_as_expand_allowed": false
+  },
+  "user_data": {
+    "silent_data_loss_allowed": false,
+    "release_activation_may_delete_unknown_user_files": false,
+    "user_data_format_change_requires_explicit_versioned_policy": true,
+    "irreversible_user_data_change_requires_recovery_or_backup_strategy": true,
+    "device_state_checkpoint_is_not_user_data_backup": true
+  },
+  "security": {
+    "migration_may_read_private_material_only_when_domain_requires_it": true,
+    "migration_logs_may_contain_secret_values": false,
+    "migration_evidence_may_contain_secret_values": false,
+    "unverified_code_may_migrate_state": false,
+    "state_schema_metadata_is_not_authentication_authority": true
+  },
+  "compatibility": {
+    "additive_optional_state_field_is_preferred": true,
+    "new_required_state_field_requires_migration": true,
+    "changing_existing_field_meaning_requires_new_schema_version": true,
+    "removing_state_field_requires_rollback_horizon_review": true,
+    "platform_adapter_may_change_state_schema_semantics": false,
+    "backend_provider_change_requires_state_schema_change": false
+  }
+}
