@@ -1,0 +1,33 @@
+{
+  "$schema": "prototype-ordax.shared-sync-core-evidence/1",
+  "status": "pass-local-protocol-core",
+  "source_commit": "446625ed66a7cf3de5f35a6ee28ea873e5403c20",
+  "web_candidate": {
+    "workflow_run_id": 35009810921,
+    "artifact_id": 10412429923,
+    "artifact_name": "ordax-web-client-446625ed66a7cf3de5f35a6ee28ea873e5403c20",
+    "artifact_sha256": "9d44bfa94fa7d62c99d4425d843c328fe4afbc44a0a3b9f21f0bf139859f514a"
+  },
+  "gates": {
+    "foundation": "PASS",
+    "web_client": "PASS",
+    "pipeline_contract": "PASS",
+    "real_system_bundle": "PASS",
+    "source_to_signed_envelope_compatibility": "PASS"
+  },
+  "sync_core": {
+    "appearance_object_protocol": "IMPLEMENTED",
+    "server_revision_conflict_resolution": "IMPLEMENTED",
+    "explicit_tombstones": "IMPLEMENTED",
+    "offline_idempotent_mutation_queue": "IMPLEMENTED",
+    "provider_specific_backend": "NO",
+    "authenticated_account_identity": "NO",
+    "remote_sync_transport": "NO",
+    "account_continuity_active": "NO"
+  },
+  "safety": {
+    "canonical_release_trust_resolved": false,
+    "physical_write_authorized": false,
+    "public_creator_apply_available": false
+  }
+}
