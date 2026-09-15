@@ -156,12 +156,12 @@ func targetMountVolumeName(driveLetter string) (string, error) {
 	return volumeName, nil
 }
 
-// enumerateTargetPhysicalVolumesReadOnly closes two TOCTOU-adjacent read-only
+// enumerateTargetPhysicalVolumesReadOnly closes TOCTOU-adjacent read-only
 // proofs without performing a destructive action: the PhysicalDrive is opened
 // with GENERIC_READ and identity-verified, then every Windows volume is mapped
-// through IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS and the volumes touching the
-// confirmed disk are selected. The already-known drive-letter volume must be
-// present in that inventory or the operation fails closed.
+// through IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS. Any volume that crosses from
+// the selected disk onto another physical disk fails closed. The already-known
+// drive-letter volume must also be present in the isolated inventory.
 func enumerateTargetPhysicalVolumesReadOnly(expected Target) ([]physicalVolume, error) {
 	if err := validateExpectedPhysicalTarget(expected); err != nil {
 		return nil, err
@@ -173,6 +173,9 @@ func enumerateTargetPhysicalVolumesReadOnly(expected Target) ([]physicalVolume, 
 	allVolumes, err := enumerateAllPhysicalVolumesReadOnly()
 	if err != nil {
 		return nil, fmt.Errorf("enumerate Windows volumes: %w", err)
+	}
+	if err := validateTargetVolumeIsolation(allVolumes, expected.DiskNumber); err != nil {
+		return nil, fmt.Errorf("target PhysicalDrive volume ownership is not isolated: %w", err)
 	}
 	selected := selectPhysicalDiskVolumes(allVolumes, expected.DiskNumber)
 	knownVolume, err := targetMountVolumeName(expected.DriveLetter)
