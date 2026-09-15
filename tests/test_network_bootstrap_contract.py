@@ -27,9 +27,10 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         self.assertEqual(SOURCE["build"]["static_userspace"], "busybox-musl")
 
     def test_network_userspace_is_bounded(self):
+        self.assertEqual(SOURCE["busybox"]["multicall_binary"], "busybox")
         self.assertEqual(
             SOURCE["busybox"]["required_applets"],
-            ["busybox", "ifconfig", "route", "udhcpc"],
+            ["ifconfig", "route", "udhcpc"],
         )
         text = (NETWORK / "bring-up").read_text(encoding="utf-8").lower()
         dhcp = (NETWORK / "udhcpc.script").read_text(encoding="utf-8").lower()
@@ -40,6 +41,7 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         self.assertNotIn('"CONFIG_IP": "y"', builder)
         self.assertNotIn('"CONFIG_HTTPD": "y"', builder)
         self.assertNotIn('"CONFIG_TELNETD": "y"', builder)
+        self.assertIn("unexpected applets expanded netbox surface", builder)
 
     def test_runtime_sources_match_source_contract_hashes(self):
         runtime = SOURCE["runtime"]
