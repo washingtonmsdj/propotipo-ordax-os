@@ -173,11 +173,7 @@ func runPrepare(args []string) error {
 	if err != nil {
 		return err
 	}
-	image := windowsadapter.VerifiedRawImage{
-		Path:      prepared.Path,
-		SizeBytes: prepared.SizeBytes,
-		SHA256:    prepared.SHA256,
-	}
+	image := windowsadapter.VerifiedRawImage{Path: prepared.Path, SizeBytes: prepared.SizeBytes, SHA256: prepared.SHA256}
 	authorization := windowsadapter.DestructiveAuthorizationToken(target, image)
 	return encode(struct {
 		Schema                   string                             `json:"$schema"`
@@ -198,7 +194,7 @@ func runPrepare(args []string) error {
 		Target:                   target,
 		PreparedImage:            prepared,
 		DestructiveAuthorization: authorization,
-		Next:                     "run apply from an elevated terminal with the exact same target token, image SHA/size and destructive authorization token",
+		Next:                     "consumer Creator must request Windows elevation and call apply with the exact same target token, image SHA/size and destructive authorization token",
 	})
 }
 
@@ -225,11 +221,8 @@ func runApply(args []string) error {
 		return fmt.Errorf("verify prepared image: %w", err)
 	}
 	request := windowsadapter.RawDiskApplyRequest{
-		Target:                   target,
-		ConfirmationToken:        *confirm,
-		Image:                    verified,
-		CanonicalTrustResolved:   true,
-		DestructiveAuthorization: *authorize,
+		Target: target, ConfirmationToken: *confirm, Image: verified,
+		CanonicalTrustResolved: true, DestructiveAuthorization: *authorize,
 	}
 	result, err := windowsadapter.ApplyPhysicalTest(request)
 	if err != nil {
@@ -239,11 +232,7 @@ func runApply(args []string) error {
 		Schema string                             `json:"$schema"`
 		Status string                             `json:"status"`
 		Result windowsadapter.PhysicalApplyResult `json:"result"`
-	}{
-		Schema: "prototype-ordax.creator-physical-test-apply/1",
-		Status: "pass-readback-verified",
-		Result: result,
-	})
+	}{Schema: "prototype-ordax.creator-physical-test-apply/1", Status: "pass-readback-verified", Result: result})
 }
 
 func usage() {
