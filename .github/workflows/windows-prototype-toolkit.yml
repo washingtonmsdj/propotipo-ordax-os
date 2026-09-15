@@ -1,0 +1,128 @@
+name: Windows Prototype Toolkit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/RELEASE-TRUST-CEREMONY.md'
+      - 'docs/contracts/release-trust-policy.json'
+      - '.github/workflows/windows-prototype-toolkit.yml'
+  pull_request:
+    paths:
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/RELEASE-TRUST-CEREMONY.md'
+      - 'docs/contracts/release-trust-policy.json'
+      - '.github/workflows/windows-prototype-toolkit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  toolkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator and release-signing owners
+        run: |
+          set -euo pipefail
+          (cd tools/creator && go test -count=1 ./...)
+          (cd tools/release-signing && go test -count=1 ./...)
+
+      - name: Build Windows toolkit
+        run: |
+          set -euo pipefail
+          out="$PWD/out/windows-prototype-toolkit"
+          mkdir -p "$out"
+          (
+            cd tools/creator
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/windows-prototype-toolkit/ordax-creator.exe ./cmd/ordax-creator
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/windows-prototype-toolkit/ordax-creator-targets.exe ./cmd/ordax-creator-targets
+          )
+          (
+            cd tools/release-signing
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/windows-prototype-toolkit/ordax-release-signing.exe .
+          )
+          cp docs/RELEASE-TRUST-CEREMONY.md "$out/RELEASE-TRUST-CEREMONY.md"
+          cp docs/contracts/release-trust-policy.json "$out/release-trust-policy.json"
+
+      - name: Emit hashes and provenance
+        run: |
+          set -euo pipefail
+          out="$PWD/out/windows-prototype-toolkit"
+          (
+            cd "$out"
+            sha256sum \
+              ordax-creator.exe \
+              ordax-creator-targets.exe \
+              ordax-release-signing.exe \
+              > SHA256SUMS
+          )
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path('out/windows-prototype-toolkit')
+          def digest(name):
+              return hashlib.sha256((root / name).read_bytes()).hexdigest()
+          data = {
+              '$schema': 'prototype-ordax.windows-prototype-toolkit/1',
+              'status': 'candidate',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
+              'physical_write_implemented': False,
+              'physical_write_authorized': False,
+              'canonical_trust_included': False,
+              'private_key_included': False,
+              'key_generation_requires_local_user_action': True,
+              'components': {
+                  'creator': {'name': 'ordax-creator.exe', 'sha256': digest('ordax-creator.exe')},
+                  'target_helper': {'name': 'ordax-creator-targets.exe', 'sha256': digest('ordax-creator-targets.exe')},
+                  'release_signer': {'name': 'ordax-release-signing.exe', 'sha256': digest('ordax-release-signing.exe')},
+              },
+          }
+          (root / 'provenance.json').write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+      - name: Assert toolkit contains no secret material or physical writer
+        run: |
+          set -euo pipefail
+          out="$PWD/out/windows-prototype-toolkit"
+          test -z "$(find "$out" -type f \( -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.pfx' \) -print -quit)"
+          python3 - <<'PY'
+          import json, pathlib
+          root = pathlib.Path('out/windows-prototype-toolkit')
+          provenance = json.loads((root / 'provenance.json').read_text(encoding='utf-8'))
+          assert provenance['physical_write_implemented'] is False
+          assert provenance['physical_write_authorized'] is False
+          assert provenance['canonical_trust_included'] is False
+          assert provenance['private_key_included'] is False
+          assert provenance['key_generation_requires_local_user_action'] is True
+          print('TOOLKIT_SECRET_MATERIAL=NONE')
+          print('TOOLKIT_PHYSICAL_WRITE=BLOCKED')
+          PY
+
+      - name: Upload Windows prototype toolkit
+        uses: actions/upload-artifact@v6
+        with:
+          name: ordax-windows-prototype-toolkit-${{ github.sha }}
+          path: out/windows-prototype-toolkit/
+          if-no-files-found: error
+          retention-days: 14
