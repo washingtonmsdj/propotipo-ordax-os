@@ -1,0 +1,96 @@
+{
+  "$schema": "prototype-ordax.diagnostics/1",
+  "status": "canonical-prototype-contract",
+  "authority": {
+    "domain_owner": "system/services/diagnostics",
+    "sink_provider_is_protocol_authority": false,
+    "remote_telemetry_required_for_operation": false,
+    "bootstrap_remote_telemetry_required": false,
+    "local_diagnostics_available_offline": true
+  },
+  "event_contract": {
+    "schema_version_required": true,
+    "stable_event_code_required": true,
+    "component_required": true,
+    "severity_required": true,
+    "operation_or_correlation_id_supported": true,
+    "release_identity_supported": true,
+    "human_message_is_machine_identity": false,
+    "severity_levels": [
+      "debug",
+      "info",
+      "warning",
+      "error",
+      "critical"
+    ],
+    "unknown_optional_fields": "ignore",
+    "unknown_required_schema": "fail-closed-for-ingestion-not-runtime"
+  },
+  "error_contract": {
+    "stable_error_code_required_for_actionable_failure": true,
+    "error_code_is_separate_from_localized_message": true,
+    "cause_chain_may_be_recorded": true,
+    "raw_secret_or_token_in_error_allowed": false,
+    "retryability_must_not_be_inferred_from_message_text": true,
+    "retryable_failure_may_declare_retry_class": true
+  },
+  "privacy": {
+    "secret_values_allowed": false,
+    "access_tokens_allowed": false,
+    "private_keys_allowed": false,
+    "destructive_authorization_tokens_allowed": false,
+    "user_content_included_by_default": false,
+    "personally_identifying_fields_require_explicit_classification": true,
+    "diagnostic_export_requires_redaction": true
+  },
+  "local_storage": {
+    "unbounded_log_growth_allowed": false,
+    "bounded_retention_required": true,
+    "rotation_or_bounded_ring_required": true,
+    "disk_pressure_must_not_block_boot": true,
+    "old_diagnostics_may_be_evicted_before_user_data": true,
+    "logs_are_source_authority": false
+  },
+  "service_health": {
+    "states": [
+      "starting",
+      "ready",
+      "degraded",
+      "unhealthy",
+      "stopping"
+    ],
+    "liveness_and_readiness_are_distinct": true,
+    "fixed_sleep_is_readiness_probe": false,
+    "crash_loop_detection_required_for_supervised_services": true,
+    "restart_backoff_required": true,
+    "tight_infinite_restart_loop_allowed": false,
+    "dependency_failure_may_surface_degraded_state": true
+  },
+  "remote_export": {
+    "optional": true,
+    "asynchronous": true,
+    "failure_blocks_boot": false,
+    "failure_blocks_release_activation": false,
+    "failure_blocks_recovery": false,
+    "provider_neutral": true,
+    "batching_allowed": true,
+    "bounded_queue_required": true,
+    "queue_overflow_policy_must_be_explicit": true
+  },
+  "diagnostic_bundle": {
+    "explicit_user_or_support_action_required": true,
+    "redaction_before_export_required": true,
+    "manifest_of_included_files_required": true,
+    "release_and_device_non_secret_identity_supported": true,
+    "private_key_material_allowed": false,
+    "raw_user_home_export_allowed_by_default": false
+  },
+  "compatibility": {
+    "event_codes_are_stable": true,
+    "additive_optional_event_field_is_backward_compatible": true,
+    "changing_event_code_meaning_requires_new_code_or_schema_major": true,
+    "removing_event_code_requires_consumer_migration": true,
+    "diagnostics_backend_change_requires_product_code_fork": false,
+    "telemetry_provider_change_requires_event_semantic_change": false
+  }
+}
