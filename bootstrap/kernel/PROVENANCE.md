@@ -1,19 +1,94 @@
 # Kernel Provenance
 
-Status: BASELINE SELECTED / BUILD NOT YET PORTED
+Status: CLEAN-ROOM BUILD ENTRYPOINT IMPLEMENTED / PINNED BUILD ENVIRONMENT PENDING
+
+## Canonical prototype source
+
+Machine-readable source identity:
+
+`bootstrap/kernel/source.json`
+
+```text
+KERNEL_RELEASE=6.6.52
+OFFICIAL_ARCHIVE=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.52.tar.xz
+OFFICIAL_SOURCE_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8
+BASE_CONFIG=defconfig
+ORDAX_FRAGMENT=bootstrap/kernel/config/ordax.fragment
+BUILD_ENTRYPOINT=bootstrap/kernel/build.py
+```
+
+The official 6.6.52 archive remains available from kernel.org. The repository build entrypoint downloads it when needed, verifies the pinned SHA-256 before extraction, builds only from a fresh isolated source tree, and never trusts a pre-extracted developer-machine kernel tree.
 
 ## Legacy source of evidence
 
 ```text
 LEGACY_REPOSITORY=washingtonmsdj/novo-ordax-os
-LEGACY_COMMIT=f8ea8424f8cf52b516800f16f2331090ccb56748
+LEGACY_REFERENCE_COMMIT=49fe41fa67d9032f2e349e86592304e64d6c2d88
 LEGACY_ARTIFACT_PATH=out/forge/gate-inputs/vmlinuz-f3h
-KERNEL_RELEASE=6.6.52
 KNOWN_GOOD_BZIMAGE_SHA256=351941db619b7e93a4dc87010dbf39d3b8bf07262c73342381021385398a277d
-OFFICIAL_SOURCE_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8
 ```
 
-The legacy F3H proof builds from the official Linux 6.6.52 source archive, verifies the archive digest, starts from a fresh source tree, uses GCC 13, applies `defconfig` plus the project kernel fragment, clears embedded initramfs, runs `olddefconfig`, then builds `bzImage` and modules in an isolated workspace.
+The legacy proof established a useful invariant only: Linux 6.6.52 + GCC 13 + `defconfig` + the reviewed kernel fragment can produce the known hardware/Wi-Fi baseline.
+
+The clean-room does not import the Forge graph, cache, receipts, build directories, QEMU ownership or physical-deployment logic.
+
+## Clean fragment
+
+Canonical fragment:
+
+`bootstrap/kernel/config/ordax.fragment`
+
+It was selectively reimplemented from the proven selectors and cleaned of legacy partition/milestone/Forge references.
+
+The MediaTek closure is intentionally:
+
+```text
+CONFIG_WLAN_VENDOR_MEDIATEK=y
+CONFIG_MT76x2U=m
+```
+
+Do not reintroduce `CONFIG_MT76=m`; Linux 6.6.52 does not expose that historical spelling as the configurable selector needed here.
+
+## Repository-owned build
+
+```text
+python bootstrap/kernel/build.py check
+python bootstrap/kernel/build.py build
+```
+
+`check` is network-free and validates source/config contracts.
+
+`build`:
+
+1. resolves GCC 13 and required build tools;
+2. downloads the official source archive if absent;
+3. verifies the exact SHA-256;
+4. safely extracts a fresh source tree;
+5. runs `defconfig`;
+6. merges the canonical fragment;
+7. runs `olddefconfig` and rejects selectors Kconfig did not honor;
+8. builds `bzImage` and modules;
+9. installs modules into an isolated staging root;
+10. requires the baseline Wi-Fi module family;
+11. creates a normalized module USTAR;
+12. emits final config, artifact hashes and `kernel-provenance.json`.
+
+No Codex execution is involved.
+
+## CI
+
+`.github/workflows/kernel-candidate.yml` runs the build directly from repository source.
+
+The current workflow uses an Ubuntu 24.04 GitHub runner and measured GCC 13 packages. This is enough for autonomous candidate builds, but is **not yet the final promotion environment** because its full container/toolchain identity has not been pinned to an immutable digest.
+
+Therefore current CI kernel output is intentionally labeled:
+
+```text
+status=candidate-unpinned-build-environment
+promotable_to_physical=false
+```
+
+A future source change will pin the immutable build environment, repeat the build, compare provenance and then allow the build-autonomy promotion gate to close.
 
 ## Prototype decision
 
@@ -23,26 +98,18 @@ REUSE_BINARY_AS_SOURCE=NO
 REUSE_VERSION=YES
 REUSE_OFFICIAL_SOURCE_DIGEST=YES
 REUSE_KNOWN_GOOD_OUTPUT_DIGEST_AS_BASELINE=YES
+CODEX_REQUIRED=NO
+LOCAL_DEVELOPER_KERNEL_TOOLCHAIN_REQUIRED=NO
 ```
 
-The prototype will implement a smaller independent kernel build recipe from the same official Linux source identity instead of importing the legacy Forge subsystem.
+The known-good legacy bzImage digest is a comparison baseline, not a permanent byte-identity requirement. Intentional config/toolchain changes may produce a new digest, but they must remain explicit and pass boot/hardware gates.
 
-The known-good bzImage digest is a baseline comparison value, not a requirement that the new build remain byte-identical forever. Any intentional kernel configuration change must produce a new recorded identity and pass the relevant boot/hardware gates.
+## Remaining gates
 
-## Required migration work
-
-1. port only the kernel configuration requirements needed by the real notebook and bootstrap;
-2. preserve the effective MediaTek/Wi-Fi closure that was already proven where the target hardware still needs it;
-3. build in an isolated directory;
-4. normalize/fingerprint module output;
-5. record compiler/tool versions;
-6. test bzImage structure and required modules;
-7. boot the resulting kernel with the new prototype initramfs in disposable media.
-
-## Not imported
-
-- legacy Forge graph;
-- legacy CAS implementation;
-- legacy receipts/history;
-- shared temporary build directories;
-- pre-extracted kernel source trees.
+1. first clean-room CI kernel candidate succeeds and publishes provenance;
+2. inspect resolved `.config` and module closure;
+3. pin the build environment/toolchain by immutable identity;
+4. reproduce the build under that pinned environment;
+5. integrate the resulting kernel with the new minimal initramfs;
+6. prove boot in disposable media;
+7. only later authorize physical media use.
