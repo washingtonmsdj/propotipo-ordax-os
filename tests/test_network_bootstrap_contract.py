@@ -53,17 +53,24 @@ class NetworkBootstrapContractTest(unittest.TestCase):
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertEqual(runtime[hash_key], digest)
 
-    def test_network_scripts_are_partially_pinned_while_netbox_remains_unresolved(self):
+    def test_network_payload_is_resolved_with_pinned_netbox_candidate(self):
         groups = {g["id"]: g for g in MANIFEST["artifact_groups"]}
         group = groups["bootstrap-network"]
-        self.assertFalse(group["resolved"])
+        self.assertTrue(group["resolved"])
         artifacts = {a["source_path"]: a for a in group["artifacts"]}
         for relative in ("bootstrap/network/bring-up", "bootstrap/network/udhcpc.script"):
             path = ROOT / relative
             self.assertIn(relative, artifacts)
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertEqual(artifacts[relative]["sha256"], digest)
-        self.assertNotIn("bootstrap/network/bin/netbox", artifacts)
+
+        netbox = artifacts["bootstrap/network/bin/netbox"]
+        self.assertEqual(
+            netbox["sha256"],
+            "0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba",
+        )
+        self.assertEqual(netbox["target_path"], "/ordax/bootstrap/network/bin/netbox")
+        self.assertEqual(netbox["mode"], "0755")
 
     def test_kernel_has_builtin_first_acquisition_network_paths(self):
         required = (
