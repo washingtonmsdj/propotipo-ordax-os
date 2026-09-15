@@ -55,6 +55,21 @@
     "git-release-acquisition",
     "recovery-maintenance"
   ],
+  "surface": {
+    "single_source_tree_required": true,
+    "device_and_web_ui_forks_allowed": false,
+    "shared_components_required": true,
+    "shared_design_tokens_required": true,
+    "shared_application_source_required": true,
+    "platform_differences_via_adapters_only": true,
+    "targets": [
+      "ordax-device",
+      "local-web",
+      "hosted-web"
+    ],
+    "same_source_commit_for_equivalent_surface": true,
+    "manual_web_to_device_port_required": false
+  },
   "security": {
     "ssh_public_key_only": true,
     "strict_host_key_checking_required": true,
@@ -67,6 +82,8 @@
     "full_image_rebuild_per_edit": false,
     "usb_reflash_per_edit": false,
     "routine_reboot_per_edit": false,
-    "delta_or_release_update_preferred": true
+    "delta_or_release_update_preferred": true,
+    "browser_hmr_for_surface_allowed": true,
+    "surface_change_should_reach_web_and_device": true
   }
 }
