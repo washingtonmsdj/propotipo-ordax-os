@@ -58,12 +58,22 @@ func parseVolumeDiskNumbers(buffer []byte, returned uint32) ([]uint32, error) {
 	return disks, nil
 }
 
+// normalizeVolumeNameForOpen accepts the canonical GUID path returned by
+// Windows (with trailing backslash) and the already-normalized CreateFile form
+// (without it). CreateFile must receive the latter when opening the volume
+// object itself rather than its root directory.
 func normalizeVolumeNameForOpen(volumeName string) (string, error) {
 	volumeName = strings.TrimSpace(volumeName)
-	if !strings.HasPrefix(volumeName, `\\?\Volume{`) || !strings.HasSuffix(volumeName, `}\`) {
+	if !strings.HasPrefix(volumeName, `\\?\Volume{`) {
 		return "", fmt.Errorf("unexpected Windows volume GUID path %q", volumeName)
 	}
-	return strings.TrimSuffix(volumeName, `\`), nil
+	if strings.HasSuffix(volumeName, `}\`) {
+		return strings.TrimSuffix(volumeName, `\`), nil
+	}
+	if strings.HasSuffix(volumeName, `}`) {
+		return volumeName, nil
+	}
+	return "", fmt.Errorf("unexpected Windows volume GUID path %q", volumeName)
 }
 
 func selectPhysicalDiskVolumes(volumes []physicalVolume, diskNumber uint32) []physicalVolume {
@@ -75,7 +85,6 @@ func selectPhysicalDiskVolumes(volumes []physicalVolume, diskNumber uint32) []ph
 				contains = true
 				break
 			}
-		}
 		if !contains {
 			continue
 		}
