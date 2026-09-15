@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,17 @@ class ReleaseProtocolContractTests(unittest.TestCase):
 
         self.assertIn(current["manifest_schema"], generator)
 
+    def assert_v1_validator_semantics(self, source):
+        self.assertRegex(source, r"len\([A-Za-z_][A-Za-z0-9_]*\.Artifacts\)\s*!=\s*1")
+        self.assertRegex(source, r'[A-Za-z_][A-Za-z0-9_]*\.Name\s*!=\s*"system\.tar"')
+        self.assertRegex(source, r'[A-Za-z_][A-Za-z0-9_]*\.Role\s*!=\s*"system"')
+        self.assertRegex(
+            source,
+            r"[A-Za-z_][A-Za-z0-9_]*\.ReleaseID\s*!=\s*[A-Za-z_][A-Za-z0-9_]*\.SourceCommit",
+        )
+        self.assertIn("release-manifest/1 requires exactly one system.tar artifact", source)
+        self.assertIn("release-manifest/1 artifact must be system.tar with role=system", source)
+
     def test_manifest_v1_single_full_system_semantics_cannot_drift_silently(self):
         contract = self.load_contract()
         manifest = contract["current"]["manifest_v1"]
@@ -45,11 +57,8 @@ class ReleaseProtocolContractTests(unittest.TestCase):
         signing = self.read_source(SIGNING)
         generator = self.read_source(MANIFEST_TOOL)
 
-        for source in (acquisition, signing):
-            self.assertIn("len(manifest.Artifacts) != 1", source)
-            self.assertIn('artifact.Name != "system.tar"', source)
-            self.assertIn('artifact.Role != "system"', source)
-            self.assertIn("manifest.ReleaseID != manifest.SourceCommit", source)
+        self.assert_v1_validator_semantics(acquisition)
+        self.assert_v1_validator_semantics(signing)
 
         self.assertIn('filepath.Base(absolute) != "system.tar"', generator)
         self.assertIn('Name:   "system.tar"', generator)
