@@ -34,14 +34,17 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         )
         text = (NETWORK / "bring-up").read_text(encoding="utf-8").lower()
         dhcp = (NETWORK / "udhcpc.script").read_text(encoding="utf-8").lower()
-        builder = (NETWORK / "build.py").read_text(encoding="utf-8").lower()
+        builder = (NETWORK / "build.py").read_text(encoding="utf-8")
+        builder_lower = builder.lower()
         for forbidden in ("wpa_supplicant", "sshd", "dropbear", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden, text)
             self.assertNotIn(forbidden, dhcp)
         self.assertNotIn('"CONFIG_IP": "y"', builder)
         self.assertNotIn('"CONFIG_HTTPD": "y"', builder)
         self.assertNotIn('"CONFIG_TELNETD": "y"', builder)
-        self.assertIn("unexpected applets expanded netbox surface", builder)
+        self.assertIn('"CONFIG_SH_IS_NONE": "y"', builder)
+        self.assertIn('"CONFIG_BASH_IS_NONE": "y"', builder)
+        self.assertIn("unexpected applets expanded netbox surface", builder_lower)
 
     def test_runtime_sources_match_source_contract_hashes(self):
         runtime = SOURCE["runtime"]
