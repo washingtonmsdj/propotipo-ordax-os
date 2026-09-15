@@ -85,6 +85,7 @@ func selectPhysicalDiskVolumes(volumes []physicalVolume, diskNumber uint32) []ph
 				contains = true
 				break
 			}
+		}
 		if !contains {
 			continue
 		}
