@@ -6,6 +6,8 @@ on:
     paths:
       - 'bootstrap/trust/release-ed25519.json'
       - 'docs/contracts/release-trust-policy.json'
+      - 'docs/contracts/creator-component-channel.json'
+      - 'docs/contracts/creator-code-signing.json'
       - 'tools/creator/**'
       - '.github/workflows/creator-official-candidate.yml'
   workflow_dispatch:
@@ -40,8 +42,12 @@ jobs:
           import base64, json, pathlib
           trust_path = pathlib.Path('bootstrap/trust/release-ed25519.json')
           policy_path = pathlib.Path('docs/contracts/release-trust-policy.json')
+          component_path = pathlib.Path('docs/contracts/creator-component-channel.json')
+          code_signing_path = pathlib.Path('docs/contracts/creator-code-signing.json')
           trust = json.loads(trust_path.read_text(encoding='utf-8'))
           policy = json.loads(policy_path.read_text(encoding='utf-8'))
+          component = json.loads(component_path.read_text(encoding='utf-8'))
+          code_signing = json.loads(code_signing_path.read_text(encoding='utf-8'))
           assert trust['$schema'] == 'prototype-ordax.release-trust/1'
           assert trust['key_id'] == policy['canonical_key_id'] == 'ordax-prototype-release-v1'
           raw = base64.b64decode(trust['public_key_base64'], validate=True)
@@ -52,6 +58,32 @@ jobs:
           assert policy['private_key']['end_user_must_never_receive_or_manage_private_key'] is True
           assert policy['gates']['key_material_generated'] is True
           assert policy['gates']['public_anchor_pinned'] is True
+
+          assert component['$schema'] == 'prototype-ordax.creator-component-channel/1'
+          assert component['purpose'] == 'creator-inspection-windows-amd64'
+          assert component['ed25519_signature_required'] is True
+          assert component['development_fallback_allowed_in_official_creator'] is False
+          assert component['raw_disk_writer_allowed'] is False
+          assert component['publisher_private_key_in_consumer'] is False
+          assert component['publisher_private_key_in_ci_artifact'] is False
+          assert component['unsigned_manifest_may_activate_official_component'] is False
+
+          assert code_signing['$schema'] == 'prototype-ordax.creator-code-signing/1'
+          assert code_signing['platform'] == 'windows'
+          assert code_signing['artifact'] == 'OrdaX-Creator.exe'
+          assert code_signing['signature_format'] == 'authenticode'
+          assert code_signing['file_digest_algorithm'] == 'sha256'
+          assert code_signing['timestamp']['required'] is True
+          assert code_signing['timestamp']['protocol'] == 'rfc3161'
+          assert code_signing['timestamp']['digest_algorithm'] == 'sha256'
+          assert code_signing['custody']['private_key_may_enter_git'] is False
+          assert code_signing['custody']['private_key_may_enter_creator'] is False
+          assert code_signing['custody']['private_key_may_enter_github_artifact'] is False
+          assert code_signing['custody']['pfx_may_enter_git'] is False
+          assert code_signing['custody']['pfx_may_enter_github_artifact'] is False
+          assert code_signing['custody']['end_user_manages_code_signing_key'] is False
+          assert code_signing['release_policy']['authenticode_is_release_authenticity_root'] is False
+          assert code_signing['release_policy']['ed25519_release_verification_remains_required'] is True
           PY
             ready=true
             trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
@@ -121,7 +153,21 @@ jobs:
           }
           $exe = Join-Path $out 'OrdaX-Creator.exe'
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'official Creator executable missing' }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $exe
+          if ([string]$signature.Status -eq 'Valid' -or $null -ne $signature.SignerCertificate) {
+            throw 'pre-signing official candidate unexpectedly contains an Authenticode signer'
+          }
+
+          $codeSigningContract = Join-Path $PWD 'docs/contracts/creator-code-signing.json'
+          $codeSigningContractSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $codeSigningContract).Hash.ToLowerInvariant()
+          $codeSigning = Get-Content -LiteralPath $codeSigningContract -Raw -Encoding UTF8 | ConvertFrom-Json
+          $componentContractSha = (Get-FileHash -Algorithm SHA256 -LiteralPath docs/contracts/creator-component-channel.json).Hash.ToLowerInvariant()
           $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+
+          Copy-Item -LiteralPath $codeSigningContract -Destination (Join-Path $out 'creator-code-signing.json')
+          Copy-Item -LiteralPath tools/creator/windows/Verify-OrdaXCreatorSignature.ps1 -Destination (Join-Path $out 'Verify-OrdaXCreatorSignature.ps1')
+
           @(
             "$sha  OrdaX-Creator.exe"
           ) | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
@@ -129,18 +175,24 @@ jobs:
             '$schema' = 'prototype-ordax.creator-official-candidate/1'
             source_commit = '${{ github.sha }}'
             canonical_trust_sha256 = $env:TRUST_SHA256
+            creator_component_channel = 'signed-ed25519-only'
+            creator_component_contract_sha256 = $componentContractSha
+            development_component_channel_allowed = $false
             private_key_embedded = $false
             publisher_key_generation_available = $false
             physical_channel_requires_ed25519_signature = $true
-            development_channel_can_authorize_physical_write = $false
+            code_signing_contract_sha256 = $codeSigningContractSha
+            code_signing_contract_status = [string]$codeSigning.status
             authenticode_signed = $false
             publishable_to_end_users = $false
-            remaining_release_gate = 'Authenticode signing/reputation and explicit official publication'
+            remaining_release_gate = 'Authenticode signing with an approved publisher identity, timestamp verification, reputation, and explicit official publication'
           }
           $utf8 = [Text.UTF8Encoding]::new($false)
           [IO.File]::WriteAllText((Join-Path $out 'provenance.json'), (($provenance | ConvertTo-Json -Depth 5) + "`n"), $utf8)
           Write-Host 'CREATOR_OFFICIAL_PUBLIC_TRUST_EMBEDDED=YES'
           Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_EMBEDDED=NO'
+          Write-Host 'CREATOR_OFFICIAL_COMPONENT_CHANNEL=SIGNED_ED25519_ONLY'
+          Write-Host 'CREATOR_OFFICIAL_DEVELOPMENT_CHANNEL_ALLOWED=NO'
           Write-Host 'CREATOR_OFFICIAL_AUTHENTICODE_SIGNED=NO'
           Write-Host 'CREATOR_OFFICIAL_PUBLISHABLE=NO'
 
@@ -159,7 +211,7 @@ jobs:
           }
           Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_MATERIAL=ABSENT'
 
-      - name: Upload non-publishable official candidate for review
+      - name: Upload non-publishable official candidate for signing handoff
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-creator-official-candidate-${{ github.sha }}
