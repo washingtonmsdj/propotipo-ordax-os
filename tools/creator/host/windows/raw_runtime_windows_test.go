@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
