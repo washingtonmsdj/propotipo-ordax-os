@@ -30,9 +30,10 @@ button {
   overflow: hidden;
   isolation: isolate;
   background:
-    radial-gradient(circle at 12% 18%, rgba(216, 255, 87, 0.12), transparent 31rem),
-    radial-gradient(circle at 82% 14%, rgba(93, 120, 255, 0.16), transparent 30rem),
-    linear-gradient(145deg, #07090d 0%, #0b1018 52%, #090c12 100%);
+    radial-gradient(circle at 12% 18%, var(--ordax-glow-accent), transparent 31rem),
+    radial-gradient(circle at 82% 14%, var(--ordax-glow-secondary), transparent 30rem),
+    linear-gradient(145deg, var(--ordax-bg-start) 0%, var(--ordax-bg-middle) 52%, var(--ordax-bg-end) 100%);
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 .ordax-shell::before {
@@ -42,8 +43,8 @@ button {
   z-index: -1;
   opacity: 0.32;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    linear-gradient(var(--ordax-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ordax-grid-line) 1px, transparent 1px);
   background-size: 38px 38px;
   mask-image: linear-gradient(to bottom, black, transparent 80%);
 }
@@ -61,7 +62,7 @@ button {
   min-height: 58px;
   padding: 10px clamp(14px, 2vw, 28px);
   border-bottom: 1px solid var(--ordax-border);
-  background: rgba(7, 9, 13, 0.58);
+  background: var(--ordax-topbar-bg);
   backdrop-filter: blur(18px) saturate(135%);
 }
 
@@ -117,12 +118,12 @@ button {
 
 .ordax-status-dot[data-state="online"] {
   background: var(--ordax-accent);
-  box-shadow: 0 0 0 4px rgba(216, 255, 87, 0.12);
+  box-shadow: 0 0 0 4px var(--ordax-glow-accent);
 }
 
 .ordax-status-dot[data-state="offline"] {
   background: var(--ordax-danger);
-  box-shadow: 0 0 0 4px rgba(255, 122, 133, 0.12);
+  box-shadow: 0 0 0 4px var(--ordax-danger-bg);
 }
 
 .ordax-workspace {
@@ -232,19 +233,19 @@ button {
   overflow: hidden;
   transform: translateX(-50%);
   border-radius: 18px;
-  background: rgba(14, 18, 25, 0.94);
+  background: var(--ordax-window-bg);
   pointer-events: auto;
   transition: border-color 140ms ease, opacity 140ms ease, transform 180ms ease;
 }
 
 .ordax-window[data-active="false"] {
   opacity: 0.92;
-  border-color: rgba(255, 255, 255, 0.07);
+  border-color: var(--ordax-border-soft);
 }
 
 .ordax-window[data-active="true"] {
   z-index: 3;
-  border-color: rgba(216, 255, 87, 0.24);
+  border-color: var(--ordax-focus);
 }
 
 .ordax-window[data-maximized="true"] {
@@ -263,7 +264,7 @@ button {
   gap: 16px;
   padding: 10px 12px 10px 14px;
   border-bottom: 1px solid var(--ordax-border);
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--ordax-subtle-bg);
   user-select: none;
 }
 
@@ -309,21 +310,21 @@ button {
   place-items: center;
   border: 0;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.055);
+  background: var(--ordax-subtle-bg);
   color: var(--ordax-text);
   cursor: pointer;
 }
 
 .ordax-window-control:hover,
 .ordax-window-control:focus-visible {
-  background: rgba(255, 255, 255, 0.1);
-  outline: 2px solid rgba(216, 255, 87, 0.44);
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
   outline-offset: 1px;
 }
 
 .ordax-window-close:hover,
 .ordax-window-close:focus-visible {
-  background: rgba(255, 122, 133, 0.18);
+  background: var(--ordax-danger-bg);
 }
 
 .ordax-window-body {
@@ -339,7 +340,7 @@ button {
   min-height: 180px;
   padding: var(--ordax-space-5);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--ordax-subtle-bg);
   box-shadow: none;
 }
 
@@ -353,7 +354,7 @@ button {
   margin-top: 12px;
   padding: 6px 9px;
   border-radius: 999px;
-  background: rgba(127, 138, 155, 0.12);
+  background: var(--ordax-subtle-bg);
   color: var(--ordax-muted);
   font-size: 0.73rem;
   font-weight: 720;
@@ -361,14 +362,14 @@ button {
 
 .ordax-inline-status[data-state="online"],
 .ordax-inline-status[data-state="available"] {
-  background: rgba(216, 255, 87, 0.1);
+  background: var(--ordax-glow-accent);
   color: var(--ordax-accent);
 }
 
 .ordax-inline-status[data-state="offline"],
 .ordax-inline-status[data-state="unavailable"] {
-  background: rgba(255, 122, 133, 0.1);
-  color: #ff9aa4;
+  background: var(--ordax-danger-bg);
+  color: var(--ordax-danger);
 }
 
 .ordax-capability-list {
@@ -383,9 +384,44 @@ button {
   padding: 9px 11px;
   border: 1px solid var(--ordax-border);
   border-radius: var(--ordax-radius-sm);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--ordax-subtle-bg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
+}
+
+.ordax-preference-choices {
+  display: inline-flex;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 5px;
+  border: 1px solid var(--ordax-border);
+  border-radius: 13px;
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-preference-choice {
+  min-width: 84px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+}
+
+.ordax-preference-choice:hover,
+.ordax-preference-choice:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-preference-choice[data-selected="true"] {
+  background: var(--ordax-accent);
+  color: var(--ordax-accent-ink);
+  font-weight: 780;
 }
 
 .ordax-launcher {
@@ -442,8 +478,8 @@ button {
 
 .ordax-launcher-app:hover,
 .ordax-launcher-app:focus-visible {
-  background: rgba(255, 255, 255, 0.075);
-  outline: 2px solid rgba(216, 255, 87, 0.44);
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
   outline-offset: 1px;
 }
 
@@ -489,7 +525,7 @@ button {
   transform: translateX(-50%);
   border: 1px solid var(--ordax-border);
   border-radius: 20px;
-  background: rgba(18, 22, 30, 0.78);
+  background: var(--ordax-dock-bg);
   box-shadow: var(--ordax-shadow);
   backdrop-filter: blur(22px) saturate(145%);
 }
@@ -511,8 +547,8 @@ button {
 
 .ordax-dock-button:hover,
 .ordax-dock-button:focus-visible {
-  background: rgba(255, 255, 255, 0.08);
-  outline: 2px solid rgba(216, 255, 87, 0.5);
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
   outline-offset: 1px;
 }
 
@@ -545,7 +581,7 @@ button {
 }
 
 .ordax-running-app[data-active="true"] {
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--ordax-hover-bg);
 }
 
 .ordax-running-app[data-active="true"]::after {
@@ -615,6 +651,14 @@ button {
     overflow: auto;
   }
 
+  .ordax-preference-choices {
+    width: 100%;
+  }
+
+  .ordax-preference-choice {
+    flex: 1;
+  }
+
   .ordax-dock-button:not(.ordax-primary):not(.ordax-running-app) {
     padding-inline: 11px;
     font-size: 0.82rem;
@@ -632,18 +676,6 @@ button {
   @keyframes ordax-enter {
     from {
       opacity: 0;
-      transform: translateY(8px);
-    }
-  }
-
-  .ordax-window {
-    animation-name: ordax-window-enter;
-  }
-
-  @keyframes ordax-window-enter {
-    from {
-      opacity: 0;
-      transform: translate(-50%, 8px) scale(0.985);
     }
   }
 }

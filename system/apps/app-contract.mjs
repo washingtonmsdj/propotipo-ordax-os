@@ -1,5 +1,30 @@
 const APP_ID_RE = /^[a-z][a-z0-9-]*$/;
-const PANEL_KINDS = new Set(["static", "capability", "capabilities", "connectivity"]);
+const PANEL_KINDS = new Set([
+  "static",
+  "capability",
+  "capabilities",
+  "connectivity",
+  "preference-choice",
+]);
+
+function freezeChoiceOptions(appId, panel) {
+  if (!panel.preferenceId || !Array.isArray(panel.options) || panel.options.length === 0) {
+    throw new TypeError(`First-party app ${appId} preference panel is invalid`);
+  }
+  const values = new Set();
+  return Object.freeze(
+    panel.options.map((option) => {
+      if (!option || typeof option.value !== "string" || !option.value || !option.label) {
+        throw new TypeError(`First-party app ${appId} preference option is invalid`);
+      }
+      if (values.has(option.value)) {
+        throw new TypeError(`First-party app ${appId} preference option values must be unique`);
+      }
+      values.add(option.value);
+      return Object.freeze({ value: option.value, label: option.label });
+    })
+  );
+}
 
 function freezePanel(appId, panel) {
   if (!panel || typeof panel !== "object") {
@@ -14,7 +39,11 @@ function freezePanel(appId, panel) {
   if (panel.kind === "capability" && !panel.capabilityId) {
     throw new TypeError(`First-party app ${appId} capability panel is missing capabilityId`);
   }
-  return Object.freeze({ ...panel });
+  const frozen = { ...panel };
+  if (panel.kind === "preference-choice") {
+    frozen.options = freezeChoiceOptions(appId, panel);
+  }
+  return Object.freeze(frozen);
 }
 
 export function defineFirstPartyApp(spec) {

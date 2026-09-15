@@ -1,3 +1,4 @@
+import { appearancePreference } from "../../services/preferences/appearance.mjs";
 import { defineFirstPartyApp } from "../app-contract.mjs";
 
 export const settingsApp = defineFirstPartyApp({
@@ -9,10 +10,12 @@ export const settingsApp = defineFirstPartyApp({
   requiredCapabilities: [],
   panels: [
     {
-      kind: "static",
-      label: "Preferências",
-      title: "Uma configuração, vários modos",
-      body: "A Surface mantém a mesma semântica de preferências entre Web, Mobile, Desktop, USB e Native; diferenças de host entram por capacidades.",
+      kind: "preference-choice",
+      label: "Aparência",
+      title: "Tema da Surface",
+      body: "A preferência pertence ao produto compartilhado; cada host apenas persiste ou sincroniza quando essa capacidade existir.",
+      preferenceId: appearancePreference.id,
+      options: appearancePreference.options,
     },
     {
       kind: "capabilities",

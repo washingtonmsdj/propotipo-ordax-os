@@ -1,14 +1,30 @@
-:root {
+:root,
+[data-ordax-theme="dark"] {
   color-scheme: dark;
   --ordax-bg: #07090d;
+  --ordax-bg-start: #07090d;
+  --ordax-bg-middle: #0b1018;
+  --ordax-bg-end: #090c12;
   --ordax-surface: rgba(18, 22, 30, 0.78);
   --ordax-surface-strong: rgba(27, 32, 43, 0.92);
+  --ordax-window-bg: rgba(14, 18, 25, 0.94);
+  --ordax-topbar-bg: rgba(7, 9, 13, 0.58);
+  --ordax-dock-bg: rgba(18, 22, 30, 0.78);
+  --ordax-subtle-bg: rgba(255, 255, 255, 0.035);
+  --ordax-hover-bg: rgba(255, 255, 255, 0.08);
+  --ordax-grid-line: rgba(255, 255, 255, 0.025);
   --ordax-border: rgba(255, 255, 255, 0.1);
+  --ordax-border-soft: rgba(255, 255, 255, 0.07);
   --ordax-text: #f5f7fb;
   --ordax-muted: #9ca7b8;
   --ordax-accent: #d8ff57;
   --ordax-accent-ink: #141807;
+  --ordax-focus: rgba(216, 255, 87, 0.5);
+  --ordax-glow-accent: rgba(216, 255, 87, 0.12);
+  --ordax-glow-secondary: rgba(93, 120, 255, 0.16);
   --ordax-danger: #ff7a85;
+  --ordax-danger-bg: rgba(255, 122, 133, 0.18);
+  --ordax-shadow: 0 22px 60px rgba(0, 0, 0, 0.36);
   --ordax-radius-sm: 10px;
   --ordax-radius-md: 18px;
   --ordax-radius-lg: 28px;
@@ -18,6 +34,33 @@
   --ordax-space-4: 1rem;
   --ordax-space-5: 1.5rem;
   --ordax-space-6: 2rem;
-  --ordax-shadow: 0 22px 60px rgba(0, 0, 0, 0.36);
   --ordax-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-ordax-theme="light"] {
+  color-scheme: light;
+  --ordax-bg: #edf1f7;
+  --ordax-bg-start: #f8fafc;
+  --ordax-bg-middle: #edf2f8;
+  --ordax-bg-end: #e9eef6;
+  --ordax-surface: rgba(255, 255, 255, 0.76);
+  --ordax-surface-strong: rgba(250, 252, 255, 0.94);
+  --ordax-window-bg: rgba(250, 252, 255, 0.96);
+  --ordax-topbar-bg: rgba(247, 249, 253, 0.72);
+  --ordax-dock-bg: rgba(247, 249, 253, 0.84);
+  --ordax-subtle-bg: rgba(17, 24, 39, 0.035);
+  --ordax-hover-bg: rgba(17, 24, 39, 0.065);
+  --ordax-grid-line: rgba(17, 24, 39, 0.035);
+  --ordax-border: rgba(17, 24, 39, 0.12);
+  --ordax-border-soft: rgba(17, 24, 39, 0.08);
+  --ordax-text: #151922;
+  --ordax-muted: #657083;
+  --ordax-accent: #b5d91f;
+  --ordax-accent-ink: #151a08;
+  --ordax-focus: rgba(118, 146, 10, 0.42);
+  --ordax-glow-accent: rgba(181, 217, 31, 0.14);
+  --ordax-glow-secondary: rgba(93, 120, 255, 0.11);
+  --ordax-danger: #c94755;
+  --ordax-danger-bg: rgba(201, 71, 85, 0.12);
+  --ordax-shadow: 0 22px 60px rgba(45, 56, 76, 0.18);
 }

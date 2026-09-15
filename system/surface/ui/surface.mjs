@@ -1,5 +1,6 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
+import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createSurfaceState, reduceSurfaceState } from "./surface-state.mjs";
 
 const SHELL_MARKUP = `
@@ -83,6 +84,21 @@ function capabilityState(capabilityIds, capabilityId) {
   return capabilityIds.includes(capabilityId) ? "Disponível" : "Indisponível neste host";
 }
 
+function renderPreferenceChoice(panel, state) {
+  const choices = element("div", "ordax-preference-choices");
+  const selected = state.preferences[panel.preferenceId];
+  for (const option of panel.options) {
+    const button = element("button", "ordax-preference-choice", option.label);
+    button.type = "button";
+    button.dataset.preferenceId = panel.preferenceId;
+    button.dataset.preferenceValue = option.value;
+    button.dataset.selected = String(selected === option.value);
+    button.setAttribute("aria-pressed", String(selected === option.value));
+    choices.append(button);
+  }
+  return choices;
+}
+
 function renderPanel(panel, state) {
   const section = element("section", "ordax-app-panel");
   section.append(element("span", "ordax-app-panel-label", panel.label));
@@ -108,6 +124,8 @@ function renderPanel(panel, state) {
       }
       section.append(list);
     }
+  } else if (panel.kind === "preference-choice") {
+    section.append(renderPreferenceChoice(panel, state));
   }
 
   if (panel.body) section.append(element("p", "ordax-app-panel-body", panel.body));
@@ -216,6 +234,7 @@ export function mountSurface(root, host) {
   };
 
   const render = () => {
+    root.dataset.ordaxTheme = state.preferences[APPEARANCE_PREFERENCE_ID];
     launcher.hidden = !state.launcherOpen;
     launcherToggle.setAttribute("aria-expanded", String(state.launcherOpen));
 
@@ -248,6 +267,16 @@ export function mountSurface(root, host) {
     const appButton = event.target.closest("[data-launch-app]");
     if (appButton) {
       dispatch({ type: "app.launch", appId: appButton.dataset.launchApp });
+      return;
+    }
+
+    const preferenceButton = event.target.closest("[data-preference-id]");
+    if (preferenceButton) {
+      dispatch({
+        type: "preference.set",
+        preferenceId: preferenceButton.dataset.preferenceId,
+        value: preferenceButton.dataset.preferenceValue,
+      });
       return;
     }
 
@@ -307,6 +336,7 @@ export function mountSurface(root, host) {
       root.removeEventListener("click", onClick);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
+      delete root.dataset.ordaxTheme;
       root.replaceChildren();
     },
   });

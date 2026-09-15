@@ -12,7 +12,7 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SurfaceWebBuilderTests(unittest.TestCase):
-    def test_current_source_graph_discovers_shared_surface_apps_adapter_and_contract(self):
+    def test_current_source_graph_discovers_shared_surface_apps_services_adapter_and_contract(self):
         graph = {path.as_posix() for path in MODULE.discover_graph(ROOT)}
         for expected in (
             "system/composition/web/index.html",
@@ -25,6 +25,8 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/apps/settings/app.mjs",
             "system/apps/account/app.mjs",
             "system/apps/system/app.mjs",
+            "system/services/preferences/appearance.mjs",
+            "system/services/preferences/catalog.mjs",
             "system/adapters/web/runtime.mjs",
             "system/contracts/surface-host.mjs",
             "system/surface/ui/tokens.css",

@@ -1,5 +1,9 @@
 import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
 import { getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
+import {
+  createPreferenceSnapshot,
+  setPreferenceValue,
+} from "../../services/preferences/catalog.mjs";
 
 function freezeWindow(windowState) {
   return Object.freeze({ ...windowState });
@@ -14,6 +18,7 @@ function freezeState(state) {
     ...state,
     capabilityIds: Object.freeze([...state.capabilityIds]),
     windows: freezeWindows(state.windows),
+    preferences: Object.freeze({ ...state.preferences }),
   });
 }
 
@@ -36,7 +41,7 @@ function focusWindow(state, windowId) {
   return freezeState({ ...state, windows, activeWindowId: windowId, launcherOpen: false });
 }
 
-export function createSurfaceState(snapshot) {
+export function createSurfaceState(snapshot, preferenceSeed = {}) {
   const safeSnapshot = validateSurfaceSnapshot(snapshot);
   return freezeState({
     launcherOpen: false,
@@ -45,6 +50,7 @@ export function createSurfaceState(snapshot) {
     windows: [],
     activeWindowId: null,
     nextWindowOrdinal: 1,
+    preferences: createPreferenceSnapshot(preferenceSeed),
   });
 }
 
@@ -126,6 +132,16 @@ export function reduceSurfaceState(state, action) {
         windows: state.windows.map((item) => ({ ...item, minimized: true })),
         activeWindowId: null,
       });
+    }
+    case "preference.set": {
+      const preferences = setPreferenceValue(
+        state.preferences,
+        action.preferenceId,
+        action.value
+      );
+      return preferences === state.preferences
+        ? state
+        : freezeState({ ...state, preferences });
     }
     case "host.snapshot": {
       const snapshot = validateSurfaceSnapshot(action.snapshot);
