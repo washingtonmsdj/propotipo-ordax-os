@@ -83,13 +83,18 @@ jobs:
               h.update(path.read_bytes())
               return h.hexdigest()
           data = {
-              '$schema': 'prototype-ordax.creator-provenance/2',
+              '$schema': 'prototype-ordax.creator-provenance/3',
               'status': 'candidate',
               'physical_write_implemented': False,
               'physical_write_authorized': False,
               'windows_target_discovery_implemented': True,
-              'windows_target_discovery_mode': 'read-only-removable-volumes-only',
-              'windows_fixed_media_usb_supported': False,
+              'windows_target_discovery_mode': 'read-only-usb-physicaldrive',
+              'windows_fixed_media_usb_supported': True,
+              'windows_usb_transport_verification': True,
+              'windows_system_disk_exclusion': True,
+              'target_reenumeration_confirmation': True,
+              'blocked_raw_disk_plan_implemented': True,
+              'raw_disk_plan_strategy': 'verified-full-disk-image',
               'disposable_tree_staging_implemented': True,
               'gpt_filesystem_proof_implemented': True,
               'source_commit': os.environ['GITHUB_SHA'],

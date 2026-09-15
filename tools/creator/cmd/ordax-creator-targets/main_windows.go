@@ -13,9 +13,14 @@ import (
 
 func main() {
 	confirm := flag.String("confirm", "", "re-enumerate and confirm one previously listed target token")
+	planWrite := flag.Bool("plan-write", false, "emit the blocked future raw-disk write plan for a confirmed target")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "ordax-creator-targets: unexpected positional arguments")
+		os.Exit(2)
+	}
+	if *planWrite && *confirm == "" {
+		fmt.Fprintln(os.Stderr, "ordax-creator-targets: --plan-write requires --confirm")
 		os.Exit(2)
 	}
 
@@ -34,8 +39,8 @@ func main() {
 			PhysicalWrite bool                    `json:"physical_write"`
 			Targets       []windowsadapter.Target `json:"targets"`
 		}{
-			Schema:        "prototype-ordax.creator-windows-targets/1",
-			Mode:          "read-only-discovery",
+			Schema:        "prototype-ordax.creator-windows-targets/2",
+			Mode:          "read-only-usb-physicaldrive-discovery",
 			PhysicalWrite: false,
 			Targets:       targets,
 		}
@@ -51,6 +56,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ordax-creator-targets:", err)
 		os.Exit(1)
 	}
+	if *planWrite {
+		plan, err := windowsadapter.BuildBlockedRawDiskWritePlan(target, *confirm)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ordax-creator-targets:", err)
+			os.Exit(1)
+		}
+		if err := encoder.Encode(plan); err != nil {
+			fmt.Fprintln(os.Stderr, "ordax-creator-targets:", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	output := struct {
 		Schema        string                `json:"$schema"`
 		Mode          string                `json:"mode"`
@@ -58,7 +76,7 @@ func main() {
 		Confirmed     bool                  `json:"confirmed"`
 		Target        windowsadapter.Target `json:"target"`
 	}{
-		Schema:        "prototype-ordax.creator-windows-target-confirmation/1",
+		Schema:        "prototype-ordax.creator-windows-target-confirmation/2",
 		Mode:          "read-only-reenumeration-confirmation",
 		PhysicalWrite: false,
 		Confirmed:     true,
