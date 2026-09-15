@@ -25,6 +25,39 @@ func openedIdentityFor(target Target) openedPhysicalIdentity {
 	}
 }
 
+func TestValidateExpectedPhysicalTargetAcceptsCurrentSafeUSB(t *testing.T) {
+	target := openedIdentityTarget()
+	if err := validateExpectedPhysicalTarget(target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateExpectedPhysicalTargetRejectsStaleTokenBeforeOpen(t *testing.T) {
+	target := openedIdentityTarget()
+	target.PhysicalDiskBytes++
+	if err := validateExpectedPhysicalTarget(target); err == nil {
+		t.Fatal("Target changed after confirmation must be rejected before PhysicalDrive open")
+	}
+}
+
+func TestValidateExpectedPhysicalTargetRejectsNonUSBIdentity(t *testing.T) {
+	target := openedIdentityTarget()
+	target.BusType = "other"
+	target.ConfirmationToken = ConfirmationToken(target)
+	if err := validateExpectedPhysicalTarget(target); err == nil {
+		t.Fatal("non-USB target identity must be rejected before PhysicalDrive open")
+	}
+}
+
+func TestValidateExpectedPhysicalTargetRejectsSystemDisk(t *testing.T) {
+	target := openedIdentityTarget()
+	target.SystemDisk = true
+	target.ConfirmationToken = ConfirmationToken(target)
+	if err := validateExpectedPhysicalTarget(target); err == nil {
+		t.Fatal("Windows system disk must be rejected before PhysicalDrive open")
+	}
+}
+
 func TestValidateOpenedPhysicalIdentityAcceptsExactConfirmedDisk(t *testing.T) {
 	target := openedIdentityTarget()
 	if err := validateOpenedPhysicalIdentity(target, openedIdentityFor(target)); err != nil {
