@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
@@ -15,6 +17,62 @@ import (
 )
 
 const testCommit = "0123456789abcdef0123456789abcdef01234567"
+
+type archiveEntry struct {
+	name     string
+	mode     int64
+	typeflag byte
+	body     []byte
+	linkname string
+}
+
+func makeSystemTar(t *testing.T, entries ...archiveEntry) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := tar.NewWriter(&buffer)
+	for _, entry := range entries {
+		header := &tar.Header{
+			Name:     entry.name,
+			Mode:     entry.mode,
+			Typeflag: entry.typeflag,
+			Size:     int64(len(entry.body)),
+			Linkname: entry.linkname,
+		}
+		if entry.typeflag == tar.TypeDir || entry.typeflag == tar.TypeSymlink || entry.typeflag == tar.TypeLink {
+			header.Size = 0
+		}
+		if err := writer.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Size > 0 {
+			if _, err := writer.Write(entry.body); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func validSystemTar(t *testing.T) []byte {
+	t.Helper()
+	return makeSystemTar(t,
+		archiveEntry{name: "system/", mode: 0o755, typeflag: tar.TypeDir},
+		archiveEntry{name: "system/entrypoint", mode: 0o755, typeflag: tar.TypeReg, body: []byte("#!/bin/sh\necho ordax-test\n")},
+		archiveEntry{name: "system/version", mode: 0o644, typeflag: tar.TypeReg, body: []byte("prototype-test\n")},
+	)
+}
+
+func writeTempArchive(t *testing.T, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "system.tar")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
 
 func testKeys(t *testing.T) (TrustAnchor, ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
@@ -102,11 +160,16 @@ func TestManifestRejectsNonHTTPSArtifact(t *testing.T) {
 	}
 }
 
-func TestManifestRejectsPathTraversalAndRepositoryMismatch(t *testing.T) {
+func TestManifestRequiresExactlyOneCanonicalSystemTar(t *testing.T) {
 	m := manifestFor("https://example.invalid/system.tar", []byte("payload"))
-	m.Artifacts[0].Name = "../system.tar"
+	m.Artifacts[0].Name = "other.tar"
 	if err := validateManifest(m, defaultRepo); err == nil {
-		t.Fatal("path traversal artifact was accepted")
+		t.Fatal("non-canonical release artifact was accepted")
+	}
+	m = manifestFor("https://example.invalid/system.tar", []byte("payload"))
+	m.Artifacts = append(m.Artifacts, m.Artifacts[0])
+	if err := validateManifest(m, defaultRepo); err == nil {
+		t.Fatal("multiple v1 release artifacts were accepted")
 	}
 	m = manifestFor("https://example.invalid/system.tar", []byte("payload"))
 	if err := validateManifest(m, "someone/else"); err == nil {
@@ -114,9 +177,45 @@ func TestManifestRejectsPathTraversalAndRepositoryMismatch(t *testing.T) {
 	}
 }
 
-func TestInstallActivatesOnlyVerifiedRelease(t *testing.T) {
+func TestExtractSystemArchiveRejectsTraversal(t *testing.T) {
+	archive := makeSystemTar(t,
+		archiveEntry{name: "system/", mode: 0o755, typeflag: tar.TypeDir},
+		archiveEntry{name: "system/../escape", mode: 0o644, typeflag: tar.TypeReg, body: []byte("escape")},
+		archiveEntry{name: "system/entrypoint", mode: 0o755, typeflag: tar.TypeReg, body: []byte("#!/bin/sh\n")},
+	)
+	root := t.TempDir()
+	if err := extractSystemArchive(writeTempArchive(t, archive), root); err == nil {
+		t.Fatal("path traversal archive was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(err) {
+		t.Fatal("path traversal wrote outside system root")
+	}
+}
+
+func TestExtractSystemArchiveRejectsSymlink(t *testing.T) {
+	archive := makeSystemTar(t,
+		archiveEntry{name: "system/", mode: 0o755, typeflag: tar.TypeDir},
+		archiveEntry{name: "system/entrypoint", mode: 0o755, typeflag: tar.TypeReg, body: []byte("#!/bin/sh\n")},
+		archiveEntry{name: "system/link", mode: 0o777, typeflag: tar.TypeSymlink, linkname: "/etc/passwd"},
+	)
+	if err := extractSystemArchive(writeTempArchive(t, archive), t.TempDir()); err == nil {
+		t.Fatal("symlink archive entry was accepted")
+	}
+}
+
+func TestExtractSystemArchiveRequiresBootableEntrypoint(t *testing.T) {
+	archive := makeSystemTar(t,
+		archiveEntry{name: "system/", mode: 0o755, typeflag: tar.TypeDir},
+		archiveEntry{name: "system/version", mode: 0o644, typeflag: tar.TypeReg, body: []byte("no-entrypoint\n")},
+	)
+	if err := extractSystemArchive(writeTempArchive(t, archive), t.TempDir()); err == nil {
+		t.Fatal("archive without system/entrypoint was accepted")
+	}
+}
+
+func TestInstallMaterializesBootableVerifiedRelease(t *testing.T) {
 	trust, pub, priv := testKeys(t)
-	artifact := []byte("verified ordax release")
+	artifact := validSystemTar(t)
 	var envelope []byte
 	mux := http.NewServeMux()
 	server := httptest.NewTLSServer(mux)
@@ -144,12 +243,28 @@ func TestInstallActivatesOnlyVerifiedRelease(t *testing.T) {
 	if current != filepath.Join("releases", testCommit) {
 		t.Fatalf("unexpected current target: %s", current)
 	}
-	got, err := os.ReadFile(filepath.Join(root, "releases", testCommit, "system.tar"))
+	target := filepath.Join(root, "releases", testCommit)
+	entrypoint := filepath.Join(target, "system", "entrypoint")
+	entrypointInfo, err := os.Stat(entrypoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != string(artifact) {
-		t.Fatal("materialized artifact differs")
+	if entrypointInfo.Mode().Perm() != 0o755 || entrypointInfo.Size() == 0 {
+		t.Fatal("materialized entrypoint is not bootable")
+	}
+	archived, err := os.ReadFile(filepath.Join(target, "artifacts", "system.tar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(archived, artifact) {
+		t.Fatal("preserved release artifact differs from verified system.tar")
+	}
+	version, err := os.ReadFile(filepath.Join(target, "system", "version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(version) != "prototype-test\n" {
+		t.Fatal("materialized system tree differs from archive")
 	}
 	second, err := install(server.Client(), server.URL+"/release.json", root, trust, pub, defaultRepo)
 	if err != nil {
@@ -160,10 +275,45 @@ func TestInstallActivatesOnlyVerifiedRelease(t *testing.T) {
 	}
 }
 
+func TestExistingReleaseRejectsMaterializedTreeTampering(t *testing.T) {
+	trust, pub, priv := testKeys(t)
+	artifact := validSystemTar(t)
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	m := manifestFor(server.URL+"/system.tar", artifact)
+	envelope := signedEnvelope(t, m, trust.KeyID, priv)
+	mux.HandleFunc("/release.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(envelope)
+	})
+	mux.HandleFunc("/system.tar", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(artifact)
+	})
+	root := t.TempDir()
+	if _, err := install(server.Client(), server.URL+"/release.json", root, trust, pub, defaultRepo); err != nil {
+		t.Fatal(err)
+	}
+	tampered := filepath.Join(root, "releases", testCommit, "system", "version")
+	if err := os.WriteFile(tampered, []byte("tampered\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := install(server.Client(), server.URL+"/release.json", root, trust, pub, defaultRepo); err == nil {
+		t.Fatal("tampered materialized release was accepted as idempotent")
+	}
+	current, err := os.Readlink(filepath.Join(root, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != filepath.Join("releases", testCommit) {
+		t.Fatalf("current pointer changed after tamper detection: %s", current)
+	}
+}
+
 func TestFailedNewReleasePreservesCurrentKnownGood(t *testing.T) {
 	trust, pub, priv := testKeys(t)
-	served := []byte("corrupt bytes")
-	declared := []byte("expected bytes")
+	declared := validSystemTar(t)
+	served := append([]byte(nil), declared...)
+	served[len(served)/2] ^= 0xff
 	var envelope []byte
 	mux := http.NewServeMux()
 	server := httptest.NewTLSServer(mux)
