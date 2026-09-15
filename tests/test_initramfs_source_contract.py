@@ -36,7 +36,8 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn('"CONFIG_TC=y\\n"', BUILDER)
         self.assertIn('"CONFIG_TELNETD=y\\n"', BUILDER)
         self.assertIn('"CONFIG_HTTPD=y\\n"', BUILDER)
-        self.assertIn('libc_archive_sha256', BUILDER)
+        self.assertIn('effective_specs_sha256', BUILDER)
+        self.assertIn('"musl_specs_verified": True', BUILDER)
 
     def test_physical_use_remains_fail_closed(self):
         self.assertFalse(CONTRACT["build"]["physical_artifact_authorized"])
