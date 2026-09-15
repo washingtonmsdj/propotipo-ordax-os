@@ -35,7 +35,7 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test Creator Core
+      - name: Test Creator Core and host policies
         run: go test -count=1 ./...
 
       - name: Verify canonical manifest stays fail-closed
@@ -65,8 +65,13 @@ jobs:
           set -euo pipefail
           mkdir -p ../../out/creator/windows-amd64 ../../out/creator/linux-amd64
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/creator/windows-amd64/ordax-creator.exe ./cmd/ordax-creator
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/creator/windows-amd64/ordax-creator-targets.exe ./cmd/ordax-creator-targets
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/creator/linux-amd64/ordax-creator ./cmd/ordax-creator
-          sha256sum ../../out/creator/windows-amd64/ordax-creator.exe ../../out/creator/linux-amd64/ordax-creator > ../../out/creator/SHA256SUMS
+          sha256sum \
+            ../../out/creator/windows-amd64/ordax-creator.exe \
+            ../../out/creator/windows-amd64/ordax-creator-targets.exe \
+            ../../out/creator/linux-amd64/ordax-creator \
+            > ../../out/creator/SHA256SUMS
 
       - name: Emit candidate provenance
         run: |
@@ -78,18 +83,25 @@ jobs:
               h.update(path.read_bytes())
               return h.hexdigest()
           data = {
-              '$schema': 'prototype-ordax.creator-provenance/1',
+              '$schema': 'prototype-ordax.creator-provenance/2',
               'status': 'candidate',
               'physical_write_implemented': False,
               'physical_write_authorized': False,
+              'windows_target_discovery_implemented': True,
+              'windows_target_discovery_mode': 'read-only-removable-volumes-only',
+              'windows_fixed_media_usb_supported': False,
               'disposable_tree_staging_implemented': True,
-              'gpt_filesystem_proof_implemented': False,
+              'gpt_filesystem_proof_implemented': True,
               'source_commit': os.environ['GITHUB_SHA'],
               'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
               'artifacts': {
                   'windows-amd64': {
                       'name': 'ordax-creator.exe',
                       'sha256': digest(root / 'windows-amd64' / 'ordax-creator.exe'),
+                  },
+                  'windows-target-discovery-amd64': {
+                      'name': 'ordax-creator-targets.exe',
+                      'sha256': digest(root / 'windows-amd64' / 'ordax-creator-targets.exe'),
                   },
                   'linux-amd64': {
                       'name': 'ordax-creator',
@@ -101,7 +113,7 @@ jobs:
           PY
 
       - name: Upload Creator candidates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ordax-creator-${{ github.sha }}
           path: out/creator/
