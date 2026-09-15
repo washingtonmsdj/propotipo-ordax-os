@@ -1,0 +1,54 @@
+{
+  "$schema": "prototype-ordax.creator-consumer-flow/1",
+  "status": "implemented-gated-physical-release-pending",
+  "audience": "end-user",
+  "principle": "the consumer Creator behaves like a USB creation utility; publisher trust and signing custody are never user tasks",
+  "normal_flow": [
+    "launch_creator",
+    "automatic_component_update",
+    "automatic_usb_detection",
+    "select_usb",
+    "click_create_ordax_usb",
+    "confirm_destructive_target",
+    "approve_windows_uac",
+    "automatic_seed_verification_and_target_capacity_preparation",
+    "raw_write_to_exact_revalidated_target",
+    "readback_verification",
+    "success"
+  ],
+  "forbidden_user_steps": [
+    "generate_release_signing_key",
+    "backup_release_signing_key",
+    "provide_private_key",
+    "provide_public_trust_file",
+    "select_bootstrap_image_manually",
+    "use_terminal",
+    "use_powershell",
+    "run_cmd_scripts"
+  ],
+  "publisher_boundary": {
+    "private_signing_key_is_consumer_input": false,
+    "private_signing_key_may_ship_in_creator": false,
+    "private_signing_key_may_ship_in_creator_payload": false,
+    "public_verification_material_is_automatic": true,
+    "release_signature_verification_is_automatic": true
+  },
+  "physical_write_gate": {
+    "development_channel_can_write": false,
+    "requires_raw_backend": true,
+    "requires_canonical_public_trust_binding": true,
+    "requires_authorized_manifest_binding": true,
+    "requires_authorized_seed_hash_and_size": true,
+    "requires_live_usb_confirmation_token": true,
+    "requires_user_destructive_confirmation": true,
+    "requires_windows_elevation": true,
+    "requires_post_write_readback": true
+  },
+  "failure_policy": {
+    "network_update_failure": "use_last_known_valid_component_set_when_available",
+    "target_changes_during_prepare": "abort",
+    "uac_denied": "abort_without_write",
+    "seed_or_prepared_image_mismatch": "abort",
+    "write_or_readback_failure": "report_failure_and_never_claim_success"
+  }
+}
