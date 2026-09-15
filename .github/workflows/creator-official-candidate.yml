@@ -11,6 +11,7 @@ on:
       - 'docs/contracts/creator-code-signing.json'
       - 'tools/creator/**'
       - 'tools/release-signing/cmd/ordax-creator-app-signing/**'
+      - 'tools/release-signing/cmd/ordax-creator-app-manifest/**'
       - '.github/workflows/creator-official-candidate.yml'
   workflow_dispatch:
 
@@ -154,7 +155,7 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test Creator update chain before official build
+      - name: Test Creator update and publisher tooling before official build
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -168,12 +169,12 @@ jobs:
           }
           Push-Location tools/release-signing
           try {
-            go test -count=1 ./cmd/ordax-creator-app-signing
+            go test -count=1 ./cmd/ordax-creator-app-signing ./cmd/ordax-creator-app-manifest
           } finally {
             Pop-Location
           }
 
-      - name: Build stable launcher versioned app and offline signing tool
+      - name: Build stable launcher versioned app and publisher tools
         shell: pwsh
         env:
           TRUST_SHA256: ${{ needs.trust-gate.outputs.trust_sha256 }}
@@ -209,6 +210,9 @@ jobs:
             go build -trimpath -buildvcs=false -ldflags='-s -w' `
               -o ../../out/creator-official-candidate/ordax-creator-app-signing.exe `
               ./cmd/ordax-creator-app-signing
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/creator-official-candidate/ordax-creator-app-manifest.exe `
+              ./cmd/ordax-creator-app-manifest
           } finally {
             Pop-Location
           }
@@ -222,23 +226,33 @@ jobs:
             }
           }
 
-          $codeSigningContract = Join-Path $PWD 'docs/contracts/creator-code-signing.json'
-          $appContract = Join-Path $PWD 'docs/contracts/creator-app-channel.json'
-          $componentContract = Join-Path $PWD 'docs/contracts/creator-component-channel.json'
-          Copy-Item -LiteralPath $codeSigningContract -Destination (Join-Path $out 'creator-code-signing.json')
-          Copy-Item -LiteralPath $appContract -Destination (Join-Path $out 'creator-app-channel.json')
-          Copy-Item -LiteralPath $componentContract -Destination (Join-Path $out 'creator-component-channel.json')
+          Copy-Item -LiteralPath docs/contracts/creator-code-signing.json -Destination (Join-Path $out 'creator-code-signing.json')
+          Copy-Item -LiteralPath docs/contracts/creator-app-channel.json -Destination (Join-Path $out 'creator-app-channel.json')
+          Copy-Item -LiteralPath docs/contracts/creator-component-channel.json -Destination (Join-Path $out 'creator-component-channel.json')
+          Copy-Item -LiteralPath bootstrap/trust/release-ed25519.json -Destination (Join-Path $out 'release-ed25519.json')
           Copy-Item -LiteralPath tools/creator/windows/Verify-OrdaXCreatorSignature.ps1 -Destination (Join-Path $out 'Verify-OrdaXCreatorSignature.ps1')
+          Copy-Item -LiteralPath tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1 -Destination (Join-Path $out 'Finalize-OrdaXCreatorRelease.ps1')
+
+          $names = @(
+            'OrdaX-Creator.exe',
+            'OrdaX-Creator-App.exe',
+            'ordax-creator-app-signing.exe',
+            'ordax-creator-app-manifest.exe',
+            'Verify-OrdaXCreatorSignature.ps1',
+            'Finalize-OrdaXCreatorRelease.ps1',
+            'release-ed25519.json',
+            'creator-code-signing.json',
+            'creator-app-channel.json',
+            'creator-component-channel.json'
+          )
+          $preSigning = foreach ($name in $names) {
+            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out $name)).Hash.ToLowerInvariant()
+            "$sha  $name"
+          }
+          $preSigning | Set-Content -Encoding ascii (Join-Path $out 'PRE-SIGNING-SHA256SUMS')
 
           $launcherSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out 'OrdaX-Creator.exe')).Hash.ToLowerInvariant()
           $appSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out 'OrdaX-Creator-App.exe')).Hash.ToLowerInvariant()
-          $signerSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out 'ordax-creator-app-signing.exe')).Hash.ToLowerInvariant()
-          @(
-            "$launcherSha  OrdaX-Creator.exe"
-            "$appSha  OrdaX-Creator-App.exe"
-            "$signerSha  ordax-creator-app-signing.exe"
-          ) | Set-Content -Encoding ascii (Join-Path $out 'PRE-SIGNING-SHA256SUMS')
-
           $provenance = [ordered]@{
             '$schema' = 'prototype-ordax.creator-official-candidate/2'
             source_commit = '${{ github.sha }}'
@@ -257,6 +271,7 @@ jobs:
               manifest_generated = $false
               ed25519_envelope_generated = $false
             }
+            publisher_handoff_tools = @('Verify-OrdaXCreatorSignature.ps1', 'Finalize-OrdaXCreatorRelease.ps1', 'ordax-creator-app-manifest.exe', 'ordax-creator-app-signing.exe')
             creator_component_channel = 'signed-ed25519-only'
             development_component_channel_allowed = $false
             private_key_embedded = $false
@@ -271,12 +286,13 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $out 'provenance.json'), (($provenance | ConvertTo-Json -Depth 10) + "`n"), $utf8)
           Write-Host 'CREATOR_OFFICIAL_LAUNCHER_BUILT=YES'
           Write-Host 'CREATOR_OFFICIAL_VERSIONED_APP_BUILT=YES'
+          Write-Host 'CREATOR_PUBLISHER_FINALIZER_INCLUDED=YES'
           Write-Host 'CREATOR_OFFICIAL_AUTHENTICODE_SIGNED=NO'
           Write-Host 'CREATOR_APP_MANIFEST_GENERATED=NO'
           Write-Host 'CREATOR_APP_ED25519_ENVELOPE_GENERATED=NO'
           Write-Host 'CREATOR_OFFICIAL_PUBLISHABLE=NO'
 
-      - name: Prove no private signing material entered publisher handoff
+      - name: Prove no private signing material or premature release output entered handoff
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -291,9 +307,11 @@ jobs:
           }
           if (Test-Path -LiteralPath (Join-Path $out 'creator-app-manifest.json')) { throw 'app manifest was generated before Authenticode verification' }
           if (Test-Path -LiteralPath (Join-Path $out 'creator-app-envelope.json')) { throw 'Ed25519 envelope was generated inside CI before publisher signing' }
+          if (Test-Path -LiteralPath (Join-Path $out 'final-release')) { throw 'final public release directory appeared inside unsigned CI handoff' }
           Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_MATERIAL=ABSENT'
           Write-Host 'CREATOR_PREMATURE_APP_MANIFEST=ABSENT'
           Write-Host 'CREATOR_PREMATURE_ED25519_ENVELOPE=ABSENT'
+          Write-Host 'CREATOR_PREMATURE_PUBLIC_RELEASE=ABSENT'
 
       - name: Upload non-publishable official launcher and app for publisher signing
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
