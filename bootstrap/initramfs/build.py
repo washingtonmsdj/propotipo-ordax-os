@@ -74,6 +74,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def load_contract() -> dict:
     try:
         value = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -142,14 +146,14 @@ def capture(argv: list[str], *, cwd: Path | None = None) -> str:
 
 def musl_identity(musl_cc: str) -> dict:
     target = capture([musl_cc, "-dumpmachine"])
-    libc_value = capture([musl_cc, "-print-file-name=libc.a"])
-    libc = Path(libc_value).resolve()
-    if not libc.is_file() or "musl" not in libc.as_posix().lower():
-        raise BuildError(f"musl-gcc did not resolve a musl libc archive: {libc_value}")
+    specs = capture([musl_cc, "-dumpspecs"])
+    if "linux-musl" not in specs or "ld-musl-" not in specs:
+        raise BuildError("musl-gcc effective specs do not identify musl include/linker paths")
     return {
         "compiler": Path(musl_cc).name,
         "target": target,
-        "libc_archive_sha256": sha256_file(libc),
+        "effective_specs_sha256": sha256_text(specs),
+        "musl_specs_verified": True,
     }
 
 
