@@ -6,7 +6,7 @@ This file records decisions that change the prototype's durable architecture. Do
 
 ## ADR-001 - Separate clean-room repository
 
-Decision: build the simplified architecture in `washingtonmsdj/propotipo-ordax-os` instead of rewriting the legacy repository in place.
+Decision: build the simplified architecture in `washingtonmsdj/prototipo-ordax-os` instead of rewriting the legacy repository in place.
 
 Reason:
 
@@ -132,3 +132,30 @@ End users must not need WSL, QEMU or a kernel toolchain to install OrdaX.
 Decision: OrdaX owns its Remote/Control application protocol and authorization semantics, but does not invent cryptographic algorithms.
 
 Use mature audited transport/crypto implementations. A proprietary or custom protocol layer must still rely on standard cryptographic primitives and fail-closed identity/authentication.
+
+## ADR-015 - Initial physical media is minimum network-first
+
+Decision: the first USB contains only boot-critical artifacts and the minimal substrate required to reach, verify and activate a complete release.
+
+The initial media does not preseed the normal Surface, applications, high-level services, full source checkout or build toolchain.
+
+Target:
+
+```text
+UEFI
+ -> kernel/initramfs
+ -> minimal bootstrap
+ -> network
+ -> device identity
+ -> OrdaX Remote Core
+ -> trust/Control Plane minimum
+ -> release acquisition
+ -> verified releases/<commit>
+ -> current
+```
+
+After the first verified release is activated, it remains local for normal offline boot and rollback. Git/network are needed for acquiring new releases, not for booting an already known-good system.
+
+Reason: keep physical provisioning small, stable and infrequent while almost all future system development happens over Git/network.
+
+See `docs/MINIMAL-USB-BOOTSTRAP.md`.
