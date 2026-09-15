@@ -61,22 +61,33 @@ jobs:
             Remove-Item -LiteralPath $ciTemp -Force -Recurse -ErrorAction SilentlyContinue
           }
 
-      - name: Build portable graphical Creator and development payload
+      - name: Build portable graphical Creator self-updater and development payload
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $release = Join-Path $PWD 'out/creator-dev-release'
           $payload = Join-Path $PWD 'out/creator-dev-payload'
+          $sha = '${{ github.sha }}'
+          $version = 'dev-' + $sha.Substring(0, 12)
           New-Item -ItemType Directory -Force -Path $release | Out-Null
           New-Item -ItemType Directory -Force -Path $payload | Out-Null
 
           Push-Location tools/creator
           try {
             # User-facing portable app: native Windows GUI, no console window.
-            go build -trimpath -buildvcs=false -ldflags='-s -w -H=windowsgui' `
+            # buildCommit lets the app determine whether its own EXE is stale.
+            go build -trimpath -buildvcs=false `
+              -ldflags="-s -w -H=windowsgui -X main.buildCommit=$sha" `
               -o ../../out/creator-dev-release/OrdaX-Creator.exe `
               ./cmd/ordax-creator-app
+
+            # Hidden helper performs the same-volume executable swap only after
+            # the running Creator has exited and re-verifies SHA-256 + size.
+            go build -trimpath -buildvcs=false `
+              -ldflags='-s -w -H=windowsgui' `
+              -o ../../out/creator-dev-payload/ordax-creator-self-update.exe `
+              ./cmd/ordax-creator-self-update
 
             # Internal CLI bootstrap remains only for automated updater regression proof.
             go build -trimpath -buildvcs=false -ldflags='-s -w' `
@@ -99,8 +110,8 @@ jobs:
             Pop-Location
           }
 
-          # Internal diagnostics remain in the versioned payload. The normal user flow
-          # is the graphical OrdaX-Creator.exe and does not require these launchers.
+          # Internal diagnostics remain in the versioned payload. Normal use is
+          # exclusively through the graphical OrdaX-Creator.exe.
           Copy-Item tools/creator/windows/1-Inspect-OrdaXUSB.cmd (Join-Path $payload '1-Inspect-OrdaXUSB.cmd')
           Copy-Item tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 (Join-Path $payload 'Initialize-OrdaXReleaseTrust.ps1')
           Copy-Item tools/release-signing/windows/2-Initialize-OrdaXTrust.cmd (Join-Path $payload '2-Initialize-OrdaXTrust.cmd')
@@ -109,20 +120,21 @@ jobs:
           OrdaX Creator - development update payload
 
           Normal usage is through the portable graphical OrdaX-Creator.exe.
-          This payload is updated automatically and stored in a versioned local cache.
+          The app and this payload update automatically from the rolling channel.
 
           PHYSICAL WRITE: BLOCKED IN DEVELOPMENT CHANNEL.
-          The included physical-test executable is deliberately unbound and cannot
-          prepare or apply a physical image until canonical trust + manifest + seed
-          bindings are approved in a separate physical-test build.
+          The physical-test executable remains deliberately unbound and cannot
+          apply a disk image until canonical trust + manifest + seed bindings are
+          approved in the separately authorized physical build.
           "@ | Set-Content -Encoding utf8 (Join-Path $payload 'README.txt')
 
           $zip = Join-Path $release 'ordax-creator-dev-windows-amd64.zip'
           Compress-Archive -Path (Join-Path $payload '*') -DestinationPath $zip -CompressionLevel Optimal
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-          $size = (Get-Item -LiteralPath $zip).Length
-          $sha = '${{ github.sha }}'
-          $version = 'dev-' + $sha.Substring(0, 12)
+          $payloadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $payloadSize = (Get-Item -LiteralPath $zip).Length
+
+          # Keep update-channel/1 wire compatibility. These entrypoint names are
+          # strict and cannot be renamed without a schema version change.
           $manifest = [ordered]@{
             '$schema' = 'prototype-ordax.creator-update-channel/1'
             channel = 'development'
@@ -130,22 +142,36 @@ jobs:
             source_commit = $sha
             payload = [ordered]@{
               url = 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/ordax-creator-dev-windows-amd64.zip'
-              sha256 = $hash
-              size = $size
+              sha256 = $payloadHash
+              size = $payloadSize
             }
             entrypoints = [ordered]@{
-              graphical_app = 'OrdaX-Creator.exe'
-              inspect_backend = 'ordax-creator-physical-test.exe'
-              trust_internal = '2-Initialize-OrdaXTrust.cmd'
+              inspect = '1-Inspect-OrdaXUSB.cmd'
+              trust = '2-Initialize-OrdaXTrust.cmd'
+              status = 'ordax-creator-physical-test.exe'
             }
           }
+
+          $creatorPath = Join-Path $release 'OrdaX-Creator.exe'
+          $creatorHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $creatorPath).Hash.ToLowerInvariant()
+          $creatorSize = (Get-Item -LiteralPath $creatorPath).Length
+          $appManifest = [ordered]@{
+            '$schema' = 'prototype-ordax.creator-app-update/1'
+            channel = 'development'
+            version = $version
+            source_commit = $sha
+            url = 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/OrdaX-Creator.exe'
+            sha256 = $creatorHash
+            size = $creatorSize
+          }
+
           $utf8NoBom = [Text.UTF8Encoding]::new($false)
           [IO.File]::WriteAllText((Join-Path $release 'creator-dev-manifest.json'), (($manifest | ConvertTo-Json -Depth 6) + "`n"), $utf8NoBom)
+          [IO.File]::WriteAllText((Join-Path $release 'creator-app.json'), (($appManifest | ConvertTo-Json -Depth 5) + "`n"), $utf8NoBom)
 
-          $creatorHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $release 'OrdaX-Creator.exe')).Hash.ToLowerInvariant()
           @(
             "$creatorHash  OrdaX-Creator.exe",
-            "$hash  ordax-creator-dev-windows-amd64.zip"
+            "$payloadHash  ordax-creator-dev-windows-amd64.zip"
           ) | Set-Content -Encoding ascii (Join-Path $release 'SHA256SUMS')
 
       - name: Prove updater bootstrap starts fail-closed before channel publication
@@ -153,20 +179,32 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $exe = Join-Path $PWD 'out/creator-dev-release/ordax-creator-bootstrap-ci.exe'
+          $release = Join-Path $PWD 'out/creator-dev-release'
+          $payload = Join-Path $PWD 'out/creator-dev-payload'
+          $exe = Join-Path $release 'ordax-creator-bootstrap-ci.exe'
           $version = & $exe version
           if ($LASTEXITCODE -ne 0) { throw 'bootstrap version command failed' }
           if (($version -join "`n") -notmatch 'ORDAX_CREATOR_BOOTSTRAP_VERSION=1') { throw 'unexpected bootstrap version output' }
           if (($version -join "`n") -notmatch 'INSTALLED_VERSION=NONE') { throw 'CI bootstrap unexpectedly found an installed Creator' }
           Remove-Item -LiteralPath $exe -Force
-          if (-not (Test-Path -LiteralPath (Join-Path $PWD 'out/creator-dev-release/OrdaX-Creator.exe') -PathType Leaf)) {
-            throw 'graphical Creator executable is missing'
+
+          foreach ($required in @(
+            (Join-Path $release 'OrdaX-Creator.exe'),
+            (Join-Path $release 'creator-app.json'),
+            (Join-Path $release 'creator-dev-manifest.json'),
+            (Join-Path $payload 'ordax-creator-self-update.exe'),
+            (Join-Path $payload 'ordax-creator-physical-test.exe')
+          )) {
+            if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+              throw "required graphical Creator artifact is missing: $required"
+            }
           }
           Write-Host 'CREATOR_GRAPHICAL_PORTABLE_APP_BUILD=PASS'
+          Write-Host 'CREATOR_APPLICATION_SELF_UPDATE_HELPER=PASS'
           Write-Host 'CREATOR_BOOTSTRAP_COLD_START=PASS'
           Write-Host 'DEVELOPMENT_CHANNEL_PHYSICAL_WRITE=BLOCKED'
 
-      - name: Publish rolling creator-dev release with manifest last
+      - name: Publish rolling creator-dev release with application pointer last
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -186,6 +224,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'failed to create creator-dev release' }
           }
 
+          # Publish bytes first.
           gh release upload creator-dev `
             (Join-Path $release 'OrdaX-Creator.exe') `
             (Join-Path $release 'ordax-creator-dev-windows-amd64.zip') `
@@ -194,14 +233,23 @@ jobs:
             --clobber
           if ($LASTEXITCODE -ne 0) { throw 'failed to upload Creator payload/app' }
 
-          # Publish the manifest LAST: it is the atomic pointer the app updater follows.
+          # Payload pointer next: a newer application always gets the matching
+          # replacement helper before it is allowed to self-replace.
           gh release upload creator-dev `
             (Join-Path $release 'creator-dev-manifest.json') `
             --repo washingtonmsdj/prototipo-ordax-os `
             --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'failed to publish Creator update manifest' }
+          if ($LASTEXITCODE -ne 0) { throw 'failed to publish Creator payload manifest' }
+
+          # Application pointer LAST: this is the atomic self-update switch.
+          gh release upload creator-dev `
+            (Join-Path $release 'creator-app.json') `
+            --repo washingtonmsdj/prototipo-ordax-os `
+            --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'failed to publish Creator application manifest' }
 
           Write-Host 'CREATOR_DEV_CHANNEL_PUBLISHED=YES'
           Write-Host 'CREATOR_NATIVE_GUI=YES'
-          Write-Host 'CREATOR_DEV_MANIFEST_PUBLISHED_LAST=YES'
+          Write-Host 'CREATOR_APP_SELF_UPDATE=YES'
+          Write-Host 'CREATOR_APP_MANIFEST_PUBLISHED_LAST=YES'
           Write-Host 'CREATOR_DEV_CHANNEL_CAN_AUTHORIZE_PHYSICAL_WRITE=NO'
