@@ -23,6 +23,16 @@ func writeRawFixture(t *testing.T, data []byte) VerifiedRawImage {
 	}
 }
 
+func mutateHexToken(token string) string {
+	mutated := []byte(token)
+	if mutated[0] == '0' {
+		mutated[0] = '1'
+	} else {
+		mutated[0] = '0'
+	}
+	return string(mutated)
+}
+
 func targetForRawImage(image VerifiedRawImage) Target {
 	return FinalizeTarget(Target{
 		DriveLetter:       "E:",
@@ -48,7 +58,7 @@ func TestVerifyRawImageChecksSizeAndDigest(t *testing.T) {
 	if _, err := VerifyRawImage(fixture.Path, fixture.SHA256, fixture.SizeBytes+1); err == nil {
 		t.Fatal("size mismatch must fail")
 	}
-	if _, err := VerifyRawImage(fixture.Path, "0"+fixture.SHA256[1:], fixture.SizeBytes); err == nil {
+	if _, err := VerifyRawImage(fixture.Path, mutateHexToken(fixture.SHA256), fixture.SizeBytes); err == nil {
 		t.Fatal("digest mismatch must fail")
 	}
 }
@@ -114,7 +124,7 @@ func TestValidateRawDiskApplyRequestFailsClosedUntilTrustAndAuthorizationMatch(t
 		t.Fatalf("fully bound request rejected: %v", err)
 	}
 
-	request.ConfirmationToken = "0" + target.ConfirmationToken[1:]
+	request.ConfirmationToken = mutateHexToken(target.ConfirmationToken)
 	if err := ValidateRawDiskApplyRequest(request); err == nil {
 		t.Fatal("stale target confirmation must block physical write")
 	}
