@@ -10,6 +10,10 @@ This adapter may use browser APIs, authorized remote APIs or explicit unsupporte
 
 `identity.mjs` implements the neutral `ordax.identity-session/1` port. Its current snapshot is deliberately `unavailable`: there is no provider-specific authentication integration yet, so the adapter must not claim a signed-out or signed-in account state that it cannot actually establish. A future provider implementation replaces this adapter behavior without changing the shared Account app or Surface contract.
 
+`identity-actions.mjs` implements the separate `ordax.identity-actions/1` command port. It currently advertises no supported commands and rejects execution, because Web has no real authentication provider yet. The contract exposes only provider-neutral `sign-in` / `sign-out` command families; OAuth redirects, passkeys, Google, Microsoft or another provider remain adapter/integration choices rather than shared product semantics.
+
+Session state and command support are intentionally separate ports. `system/services/account/` validates their relationship with runtime capabilities so adapters cannot advertise account actions while identity itself is unavailable. The Surface chooses the context-appropriate action from the current session and never needs provider-specific branches.
+
 The Web preference store currently persists only the shared preference snapshot supplied by the Surface. It does not imply account sync, server backup or secure-secret storage.
 
 This adapter deliberately does **not** claim that account or sync services are implemented merely because those capabilities belong to the Web product baseline. Runtime capability snapshots describe what the current host actually exposes.
