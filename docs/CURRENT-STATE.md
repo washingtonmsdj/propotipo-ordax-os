@@ -27,12 +27,27 @@ ONE_SURFACE_SOURCE=YES
 CAPABILITY_DIFFERENCES_VIA_ADAPTERS=YES
 SYSTEM_ENTRYPOINT_IMPLEMENTED=YES
 SURFACE_BOOTSTRAP_RUNTIME=YES
+GRAPHICAL_SURFACE_SOURCE=IMPLEMENTED
+SHARED_WORKSPACE_WINDOW_MODEL=IMPLEMENTED
+FIRST_PARTY_APP_REGISTRY=FILES,SETTINGS,ACCOUNT,SYSTEM
+WEB_CLIENT_CANDIDATE=PASS
+WEB_CLIENT_SOURCE_COMMIT=a87b8a9753c6072e7c84b72a9a4d0e1438edf29b
+WEB_CLIENT_ARTIFACT_SHA256=bc1b0b5e8a7e60047dbbdf4ed8c3016ba88bf1c6c76eaf9df2b68f6ca08f6f9e
+APPEARANCE_THEME_VALUES=DARK,LIGHT
+APPEARANCE_PERSISTENCE=NO
+NATIVE_GRAPHICAL_HOST=NO
 REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
 GRAPHICAL_SURFACE_COMPLETE=NO
 CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 ```
 
-`system/` is the shared product source. The real release path now exists as `system/entrypoint -> system/surface/entrypoint -> system/surface/bin/ordax-surface`, and repository CI proves that the actual `system/` tree can be bundled deterministically as `system.tar`. The current Surface runtime is a deliberate bootstrap-console milestone; the graphical user-facing Surface remains incomplete and must not be described as production-ready.
+`system/` is the shared product source. The verified native release path remains `system/entrypoint -> system/surface/entrypoint -> system/surface/bin/ordax-surface`, and repository CI proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
+
+The shared graphical source now exists under `system/surface/ui/` with a platform-neutral Surface host contract, a real workspace/window lifecycle, a bounded first-party app registry and capability-driven app availability. Each first-party app has one owner under `system/apps/`; Web wiring lives only in `system/composition/web/` plus `system/adapters/web/`, so the shared Surface does not import concrete platform adapters.
+
+The deterministic Web client build discovers the local ES/CSS/HTML dependency graph, includes multiline ES-module imports, rejects remote/bare/path-escaping dependencies and emits a SHA-256 manifest. CI produced `ordax-web-client-a87b8a9753c6072e7c84b72a9a4d0e1438edf29b` with artifact digest shown above.
+
+`appearance.theme` is the first concrete shared user preference and currently supports `dark` and `light`. It is deliberately session-local at this milestone: persistence/account sync are not implemented or claimed yet. Likewise, the booted native OrdaX path still uses the safe bootstrap-console Surface; the graphical native host/runtime has not been proven and must not be described as complete.
 
 ## Build autonomy
 
@@ -45,9 +60,15 @@ ARTIFACT_PROVENANCE_REQUIRED=YES
 ARTIFACT_SHA256_REQUIRED=YES
 PINNED_KERNEL_BUILD_ENVIRONMENT=PASS
 KERNEL_REPEAT_DIGEST_PROOF=PASS
+GITHUB_ACTIONS_IMMUTABLE_SHA_POLICY=PASS
+GITHUB_ACTIONS_MUTABLE_TAGS=FORBIDDEN
+GITHUB_ACTIONS_UNKNOWN_EXTERNAL_REFS=FORBIDDEN
+GITHUB_ACTIONS_PULL_REQUEST_TARGET=FORBIDDEN_BY_DEFAULT
 ```
 
 GitHub Actions is the current executor; repository recipes remain source authority. The kernel environment is pinned by immutable OCI digest, APT snapshot, exact package versions and CA-bundle digest, and an independent repeat build produced identical kernel artifact hashes.
+
+External GitHub Actions used by repository workflows are pinned to approved full commit SHAs. The foundation gate rejects mutable Action tags/branches, unapproved external refs, Docker actions without immutable SHA-256 digests, `permissions: write-all` and `pull_request_target` by default. The verifier covers both normal `uses:` and compact `- uses:` YAML syntax.
 
 ## Physical architecture
 
@@ -212,7 +233,7 @@ RELEASE_PIPELINE_CI=PASS
 PRODUCTION_RELEASE_PUBLISHED=NO
 ```
 
-CI has proved both the protocol fixture chain and deterministic bundling of the actual repository `system/` tree. CI-only signing keys remain ephemeral and are never canonical trust.
+CI has proved both the protocol fixture chain and deterministic bundling of the actual repository `system/` tree, including the shared graphical source and preference service. CI-only signing keys remain ephemeral and are never canonical trust.
 
 ### Release channel
 
@@ -389,9 +410,9 @@ DESTRUCTIVE_AUTHORIZATION=NO
 3. keep the tagged, unbound native Windows backend behind `ordax_raw_backend` and the no-public-apply CI gates while completing canonical trust and byte-complete media evidence; do not expose `apply` yet;
 4. only after those gates pass, implement the deliberate public apply boundary and request explicit user authorization for the exact target operation at execution time;
 5. after an authorized physical write, boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
-6. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
+6. continue the shared graphical Surface by proving a native graphical host, adding preference persistence/account continuity through explicit capabilities, and expanding first-party apps without platform forks;
 7. add production release publication and signed trust rotation before product promotion.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, byte-complete proof, internal raw-writer test, tagged-unbound native backend or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, Web candidate, graphical source tree, byte-complete proof, internal raw-writer test, tagged-unbound native backend or disposable-media proof never implicitly authorizes physical mutation, proves native graphical boot or promotes a CI key/runtime to production.
