@@ -1,115 +1,59 @@
-# OrdaX Remote / Control Core
+# OrdaX Remote / Control Capability
 
-Status: CANONICAL DIRECTION FOR PROTOTYPE
+Status: OPTIONAL / NOT REQUIRED FOR BOOTSTRAP
 
-## Goal
+## Decision
 
-OrdaX must not depend on an external SSH executable as the primary product control path.
+The prototype does not require SSH, Remote Core or Control Plane to boot, develop normally or receive ordinary updates.
 
-The prototype will build one OrdaX-owned Remote/Control Core used by development, device management, logs, file transfer, release activation and recovery operations.
-
-## Important security boundary
-
-OrdaX may own the protocol/application layer, but must not invent cryptographic primitives.
-
-Use audited standard cryptography and secure transport libraries. Do not design custom ciphers, key exchange, signatures or certificate formats.
-
-## Product transport
-
-Target direction:
+Normal update path:
 
 ```text
-OrdaX Client / Web / Creator
-        |
-        | authenticated encrypted transport
-        v
-OrdaX Remote Core
-        |
-        +-- device identity
-        +-- capability RPC
-        +-- file/delta transfer
-        +-- logs/events
-        +-- release control
-        +-- health/readiness
-        +-- bounded recovery actions
+Git/GitHub
+ -> release or delta
+ -> OrdaX updater
+ -> verify
+ -> activate
 ```
 
-The transport should be based on broadly implemented secure web-compatible standards so both native clients and browser-based OrdaX tooling can use the same service where appropriate.
-
-Preferred architectural properties:
-
-- TLS 1.3 or equivalent mature secure transport;
-- authenticated device identity;
-- explicit client authorization;
-- structured RPC rather than arbitrary shell as the normal path;
-- streaming for logs/files/events;
-- capability-scoped permissions;
-- replay-resistant requests for state-changing operations;
-- audit receipts for privileged mutations;
-- no password authentication;
-- no private keys committed to Git.
-
-## SSH policy
-
-SSH is not a required product dependency.
+Therefore:
 
 ```text
-SSH_REQUIRED_FOR_PRODUCT=NO
-SSH_REQUIRED_FOR_CREATOR=NO
-SSH_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
+SSH_REQUIRED=NO
+REMOTE_CORE_REQUIRED_FOR_BOOTSTRAP=NO
+REMOTE_CORE_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
+CONTROL_PLANE_REQUIRED_FOR_BOOTSTRAP=NO
 ```
 
-During prototype migration, SSH may temporarily remain available only as an explicitly documented break-glass/bootstrap compatibility mechanism until OrdaX Remote Core proves equivalent recovery access on physical hardware.
+## Why this stays documented
 
-Once that gate passes, SSH can be removed from the required bootstrap contract.
+A future product may still benefit from optional remote capabilities such as:
 
-## Structured operations
+- device diagnostics;
+- logs/events;
+- remote recovery assistance;
+- paired-device management;
+- support tooling.
 
-Normal remote actions should be named capabilities, for example:
+Those capabilities should only be implemented when a concrete requirement exists.
 
-```text
-system.health.read
-system.logs.stream
-release.stage
-release.activate
-release.rollback
-files.delta.push
-service.restart
-creator.attest
-recovery.status
-```
+## If implemented later
 
-Avoid making unrestricted remote shell execution the foundation of development. A privileged emergency console, if retained, must be separately gated and auditable.
+Remote management must be a normal release component, not a reason to enlarge the initial USB without evidence.
 
-## Web compatibility
+Requirements:
 
-Because OrdaX Web is a first-class product mode, the Remote Core should be consumable through browser-compatible transport for authorized operations where browser security allows it.
+- OrdaX-owned application protocol if useful;
+- mature audited secure transport/crypto;
+- explicit authorization;
+- structured capabilities instead of unrestricted shell as the default;
+- no custom ciphers, key exchange or signatures;
+- no private keys in Git.
 
-This permits the same OrdaX management UI to inspect/manage a paired native device without maintaining a second SSH-specific frontend.
-
-## Device pairing
-
-Target pairing model:
-
-1. device generates/persists its private identity locally;
-2. user authenticates to OrdaX;
-3. device presents a public identity/attestation;
-4. user approves pairing;
-5. client receives only public trust material/capability authorization;
-6. privileged calls are mutually authenticated and authorized.
-
-Private device keys remain on the device and never synchronize through the repository.
+SSH is not the planned fallback by default. Add any emergency remote path only after a specific need is demonstrated and documented.
 
 ## Migration rule
 
-Do not copy the legacy SSH tooling as the new Remote Core.
+Do not import the legacy SSH/QEMU/F7 remote stack into this clean-room repository.
 
-Legacy code may be studied only for invariants worth preserving, such as:
-
-- persistent device identity;
-- multi-operator authorization;
-- fail-closed trust;
-- recovery access expectations;
-- readiness/health semantics.
-
-The new implementation must be clean-room and must not preserve legacy host-key workarounds, shell wrappers or duplicated control owners merely for compatibility.
+The legacy implementation remains evidence of previous experiments only. Reuse individual security invariants if they become relevant, not the subsystem itself.
