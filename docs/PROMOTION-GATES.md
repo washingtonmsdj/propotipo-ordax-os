@@ -35,11 +35,13 @@ UPSTREAM_SOURCE_HASH_VERIFY=PASS
 ARTIFACT_PROVENANCE=PASS
 ARTIFACT_SHA256=PASS
 PORTABLE_BUILD_ENTRYPOINT=PASS
-PINNED_BUILD_ENVIRONMENT=BLOCKED
-KERNEL_PROMOTABLE_TO_PHYSICAL=NO
+PINNED_BUILD_ENVIRONMENT=PASS
+KERNEL_REPEAT_DIGEST_PROOF=PASS
+KERNEL_BUILD_ENVIRONMENT_PROMOTABLE=YES
+PHYSICAL_KERNEL_AUTHORIZED=NO
 ```
 
-Repository-owned recipes and CI compilation are proven. This gate is **not closed** because kernel provenance still reports `candidate-unpinned-build-environment` and `promotable_to_physical=false`. The immutable build environment/toolchain identity must be pinned and the boot artifacts rebuilt before physical promotion.
+The immutable kernel environment is now pinned by OCI manifest digest, APT snapshot, exact package versions and CA-bundle digest in `docs/contracts/kernel-build-environment.json`. Two independent builds produced identical config, modules and bzImage SHA-256 values, so the build-environment portion of this gate is closed. `PHYSICAL_KERNEL_AUTHORIZED=NO` remains a separate physical-media decision and is not changed by reproducibility proof.
 
 ## Gate 2 - Reproducible minimal bootstrap source
 
@@ -48,7 +50,7 @@ Current state:
 ```text
 BOOTSTRAP_SOURCE=PASS
 MINIMAL_BOOTSTRAP_MANIFEST=PARTIAL_UNTIL_RELEASE_TRUST
-KERNEL_PROVENANCE=PASS_CANDIDATE_ONLY
+KERNEL_PROVENANCE=PASS_PINNED_REPEAT_PROOF
 INITRAMFS_PROVENANCE=PASS
 RELEASE_CHANNEL=PASS
 RELEASE_TRUST_POLICY=PASS
@@ -125,13 +127,16 @@ WINDOWS_FIXED_MEDIA_USB_DISCOVERY=PASS
 USB_TRANSPORT_VERIFICATION=PASS
 WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
 TARGET_CONFIRMATION_TOKEN=PASS
+TARGET_IDENTITY_RECOMPUTED_AT_CONFIRMATION=PASS
 TARGET_REENUMERATION=PASS
 BLOCKED_RAW_DISK_PLAN=PASS
+INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
+RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
 PHYSICAL_WRITE_IMPLEMENTED=NO
 ```
 
-The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Host code remains read-only in this gate.
+The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Target confirmation recomputes the token from the current identity instead of trusting a stored token. The internal raw-writer orchestration is intentionally unexported and CI-tested only with an in-memory backend; no native destructive PhysicalDrive backend or public apply command is connected in this gate.
 
 ## Gate 6 - Physical USB reprovisioning
 
@@ -145,10 +150,12 @@ TARGET_REENUMERATION_IMMEDIATELY_BEFORE_WRITE=REQUIRED
 SOURCE_LAYOUT_CONTRACT=PASS
 MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PENDING_CANONICAL_TRUST
 RELEASE_TRUST=PENDING_CANONICAL_KEY
-PINNED_BOOT_BUILD_ENVIRONMENT=PENDING
+PINNED_BOOT_BUILD_ENVIRONMENT=PASS
 DISPOSABLE_LAYOUT_TEST=PASS
 FULL_BOOTSTRAP_BYTE_COMPLETE_PROOF=PENDING_WORKFLOW_RESULT
-CREATOR_RAW_DISK_WRITER_IMPLEMENTED_AND_TESTED=NO
+CREATOR_INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
+CREATOR_NATIVE_WINDOWS_RAW_DISK_BACKEND=NO
+CREATOR_PUBLIC_PHYSICAL_APPLY=NO
 DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=NO
 ```
 
@@ -265,4 +272,4 @@ Only if Remote Core or another remote-management feature is later adopted as a s
 
 ## Promotion decision
 
-Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate. In particular, no physical write is permitted while canonical release trust, pinned boot build environment, raw-disk writer validation or explicit destructive authorization remain open.
+Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate. In particular, no physical write is permitted while canonical release trust, the native raw-disk backend/public apply path, physical artifact authorization or explicit destructive authorization remain open.
