@@ -291,13 +291,19 @@ CREATOR_BLOCKED_RAW_DISK_PLAN=PASS
 RAW_DISK_PLAN_STRATEGY=verified-full-disk-image
 CREATOR_INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
 CREATOR_INTERNAL_RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
+CREATOR_WINDOWS_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
+CREATOR_WINDOWS_VOLUME_EXTENT_INVENTORY=PASS
+CREATOR_WINDOWS_NATIVE_TESTS=PASS
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
+CREATOR_WINDOWS_LOCK_DISMOUNT_IMPLEMENTED=NO
 CREATOR_PUBLIC_APPLY_IMPLEMENTED=NO
 CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND_IMPLEMENTED=NO
 PHYSICAL_USB_WRITE=NO
 ```
 
-The fail-closed raw-disk plan and internal orchestration bind a currently re-enumerated safe USB target to its exact physical identity, require elevation, exact full-disk geometry, image SHA-256, canonical trust and explicit destructive authorization, and perform byte-complete read-back verification in the in-memory test backend. The orchestration is intentionally unexported and has no CLI/public apply path. Windows target discovery remains read-only, and no native host backend currently opens, locks, dismounts or writes `\\.\PhysicalDriveN`.
+The fail-closed raw-disk plan and internal orchestration bind a currently re-enumerated safe USB target to its exact physical identity, require elevation, exact full-disk geometry, image SHA-256, canonical trust and explicit destructive authorization, and perform byte-complete read-back verification in the in-memory test backend. The orchestration is intentionally unexported and has no CLI/public apply path.
+
+The Windows adapter now also has a non-destructive native boundary: it can open the exact `\\.\PhysicalDriveN` with `GENERIC_READ` only, re-prove disk number, USB transport, capacity, removable identity and serial from that same handle, then close it. Separately, it can enumerate Windows volume GUIDs and use physical disk extents to identify every volume touching the confirmed disk, including multi-disk/spanned volumes; the drive-letter volume originally used for discovery must appear in that inventory or the probe fails closed. These Windows-only paths are exercised by a `windows-latest` CI job. No `GENERIC_WRITE`, volume lock, dismount, native write backend or public apply command is connected.
 
 A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key, no canonical trust and no exposed physical writer.
 
@@ -344,7 +350,7 @@ DESTRUCTIVE_AUTHORIZATION=NO
 1. complete the full-bootstrap-media proof with ephemeral trust and record the result without promoting it to canonical trust;
 2. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
 3. rerun the byte-complete media proof with canonical public trust while keeping physical write disabled;
-4. implement the native Windows `PhysicalDrive` backend behind the already tested internal orchestration, with handle-bound identity verification and fail-closed lock/dismount semantics, while keeping the public apply path disabled;
+4. continue the native Windows raw-device boundary with fail-closed volume lock/dismount semantics over the complete extent inventory, then bind any future writable `PhysicalDrive` handle to the already proven identity; keep the public apply path disabled;
 5. request explicit user authorization only when the real physical write is ready to execute;
 6. boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
 7. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
