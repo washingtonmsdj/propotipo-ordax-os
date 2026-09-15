@@ -93,7 +93,7 @@ func ValidateRawDiskApplyRequest(request RawDiskApplyRequest) error {
 	if err != nil {
 		return err
 	}
-	if confirmed.SystemDisk || confirmed.BusType != "usb" || !confirmed.PrototypeSafe {
+	if confirmed.SystemDisk || confirmed.BusType != "usb" || !confirmed.PrototypeSafe || confirmed.PhysicalDiskBytes == 0 {
 		return errors.New("target is not eligible for physical write")
 	}
 	if !request.CanonicalTrustResolved {
@@ -106,6 +106,13 @@ func ValidateRawDiskApplyRequest(request RawDiskApplyRequest) error {
 	}
 	if verified.SizeBytes <= 0 {
 		return errors.New("verified raw image is empty")
+	}
+	if uint64(verified.SizeBytes) != confirmed.PhysicalDiskBytes {
+		return fmt.Errorf(
+			"physical write blocked: full-disk image size must equal physical device size: image=%d device=%d",
+			verified.SizeBytes,
+			confirmed.PhysicalDiskBytes,
+		)
 	}
 
 	expectedAuthorization := DestructiveAuthorizationToken(confirmed, verified)
