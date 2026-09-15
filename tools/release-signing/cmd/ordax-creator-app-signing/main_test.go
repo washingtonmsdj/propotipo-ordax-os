@@ -13,6 +13,21 @@ import (
 	"testing"
 )
 
+func realTestDir(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(".", ".ordax-app-signing-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		_ = os.RemoveAll(root)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(absolute) })
+	return absolute
+}
+
 func writeIdentity(t *testing.T, root string) (string, string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -63,7 +78,7 @@ func validManifestBytes() []byte {
 }
 
 func TestSignAppRoundTripPreservesExactManifestBytes(t *testing.T) {
-	root := t.TempDir()
+	root := realTestDir(t)
 	privatePath, trustPath := writeIdentity(t, root)
 	manifestPath := filepath.Join(root, "manifest.json")
 	manifestBytes := validManifestBytes()
@@ -130,7 +145,7 @@ func TestAppSignerRejectsWrongPurposeSequenceAndURL(t *testing.T) {
 }
 
 func TestAppSignerRejectsWrongKeyAndOverwrite(t *testing.T) {
-	root := t.TempDir()
+	root := realTestDir(t)
 	privateA, trustA := writeIdentity(t, filepath.Join(root, "a"))
 	_, trustB := writeIdentity(t, filepath.Join(root, "b"))
 	manifestPath := filepath.Join(root, "manifest.json")
