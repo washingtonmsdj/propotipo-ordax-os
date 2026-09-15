@@ -14,14 +14,14 @@ class MinimalBootstrapContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
-    def test_media_policy_is_minimum_network_first(self):
-        self.assertEqual(self.manifest["policy"], "minimum-network-first")
+    def test_media_policy_is_minimum_git_acquisition_first(self):
+        self.assertEqual(self.manifest["policy"], "minimum-git-acquisition-first")
         self.assertEqual(
             [partition["name"] for partition in self.manifest["partitions"]],
             ["ORDAX-ESP", "ORDAX"],
         )
 
-    def test_full_system_is_forbidden_from_initial_payload(self):
+    def test_full_system_and_remote_stack_are_forbidden_from_initial_payload(self):
         forbidden = set(self.manifest["forbidden_initial_payload"])
         self.assertIn("system/surface", forbidden)
         self.assertIn("system/apps", forbidden)
@@ -30,6 +30,10 @@ class MinimalBootstrapContractTest(unittest.TestCase):
         self.assertIn("legacy-repository-dump", forbidden)
         self.assertIn("wsl-runtime", forbidden)
         self.assertIn("qemu-runtime", forbidden)
+        self.assertIn("ssh-runtime", forbidden)
+        self.assertIn("bootstrap/remote", forbidden)
+        self.assertIn("bootstrap/control-plane", forbidden)
+        self.assertIn("bootstrap/identity", forbidden)
 
     def test_runtime_roots_start_without_a_release(self):
         self.assertEqual(
@@ -55,11 +59,23 @@ class MinimalBootstrapContractTest(unittest.TestCase):
                 self.assertTrue(required.issubset(artifact), artifact)
                 self.assertRegex(artifact["sha256"], r"^[0-9a-f]{64}$")
 
-    def test_bootstrap_contains_remote_and_release_acquisition(self):
+    def test_bootstrap_contains_only_required_network_release_path(self):
         capabilities = set(self.manifest["required_capabilities_before_first_release"])
-        self.assertIn("ordax-remote-core", capabilities)
+        self.assertIn("uefi-boot", capabilities)
+        self.assertIn("kernel", capabilities)
+        self.assertIn("initramfs", capabilities)
+        self.assertIn("minimal-network", capabilities)
         self.assertIn("release-acquisition", capabilities)
-        self.assertNotIn("full-surface", capabilities)
+        self.assertIn("recovery-maintenance", capabilities)
+        self.assertNotIn("ordax-remote-core", capabilities)
+        self.assertNotIn("minimal-control-plane-and-trust", capabilities)
+        self.assertNotIn("stable-device-identity", capabilities)
+
+    def test_remote_control_remains_optional_after_first_release(self):
+        optional = set(self.manifest["optional_after_first_release"])
+        self.assertIn("ordax-remote-core", optional)
+        self.assertIn("control-plane", optional)
+        self.assertIn("stable-device-identity", optional)
 
 
 if __name__ == "__main__":
