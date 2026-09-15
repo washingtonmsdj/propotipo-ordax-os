@@ -1,0 +1,129 @@
+{
+  "$schema": "prototype-ordax.minimal-bootstrap/1",
+  "status": "design-bounded-unresolved",
+  "physical_write_allowed": false,
+  "all_artifacts_resolved": false,
+  "policy": "minimum-network-first",
+  "partitions": [
+    {
+      "name": "ORDAX-ESP",
+      "role": "uefi-boot"
+    },
+    {
+      "name": "ORDAX",
+      "role": "main"
+    }
+  ],
+  "required_capabilities_before_first_release": [
+    "uefi-boot",
+    "kernel",
+    "initramfs",
+    "minimal-network",
+    "stable-device-identity",
+    "ordax-remote-core",
+    "minimal-control-plane-and-trust",
+    "release-acquisition",
+    "recovery-maintenance"
+  ],
+  "artifact_groups": [
+    {
+      "id": "uefi-boot",
+      "partition": "ORDAX-ESP",
+      "source_owner": "boot/esp",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "kernel",
+      "partition": "ORDAX-ESP",
+      "source_owner": "bootstrap/kernel",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "initramfs",
+      "partition": "ORDAX-ESP",
+      "source_owner": "bootstrap/initramfs",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-network",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/network",
+      "source_owner": "bootstrap/network",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-identity",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/identity",
+      "source_owner": "bootstrap/identity",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-remote",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/remote",
+      "source_owner": "bootstrap/remote",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-control-plane",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/control-plane",
+      "source_owner": "bootstrap/control-plane",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-release-acquisition",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/release-acquisition",
+      "source_owner": "bootstrap/git",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-recovery",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/recovery",
+      "source_owner": "bootstrap/recovery",
+      "resolved": false,
+      "artifacts": []
+    }
+  ],
+  "runtime_roots_created_empty": [
+    "/ordax/releases",
+    "/ordax/state",
+    "/ordax/home"
+  ],
+  "current_pointer_initial_state": "unset",
+  "forbidden_initial_payload": [
+    "system/surface",
+    "system/apps",
+    "normal-high-level-services",
+    "complete-source-checkout",
+    "build-toolchain",
+    "legacy-repository-dump",
+    "wsl-runtime",
+    "qemu-runtime"
+  ],
+  "resolution_requirements_per_artifact": [
+    "source_path",
+    "target_path",
+    "sha256",
+    "mode",
+    "logical_owner",
+    "reason"
+  ],
+  "write_gate": {
+    "requires_all_groups_resolved": true,
+    "requires_all_artifact_hashes": true,
+    "requires_disposable_layout_proof": true,
+    "requires_explicit_destructive_authorization": true
+  }
+}
