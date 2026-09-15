@@ -123,6 +123,18 @@ def acquire_source(contract: dict, source: Path) -> None:
         raise BuildError(f"systemd source commit mismatch: expected={source_commit} actual={actual}")
 
 
+def locate_bootloader(build_dir: Path) -> Path:
+    candidates = [
+        path
+        for path in build_dir.rglob("systemd-bootx64.efi")
+        if path.is_file() and not path.is_symlink()
+    ]
+    if len(candidates) != 1:
+        rendered = [str(path.relative_to(build_dir)) for path in candidates]
+        raise BuildError(f"expected exactly one x64 systemd-boot EFI output, found: {rendered}")
+    return candidates[0]
+
+
 def build(work_dir: Path, out_dir: Path) -> dict:
     contract = load_contract()
     check_contract()
@@ -167,11 +179,13 @@ def build(work_dir: Path, out_dir: Path) -> dict:
         "-Dsbat-distro-url=https://github.com/washingtonmsdj/prototipo-ordax-os",
     ]
     run(meson_args, env=env)
-    target = "src/boot/efi/systemd-bootx64.efi"
-    run([resolve("ninja"), "-C", str(build_dir), target], env=env)
-    built = build_dir / target
-    if not built.is_file():
-        raise BuildError("systemd-boot build did not produce expected x64 EFI binary")
+
+    # systemd v261 exposes a canonical `systemd-boot` Meson/Ninja alias.
+    # Build that public target, then locate the uniquely generated x64 EFI
+    # output instead of depending on an internal build-directory layout.
+    run([resolve("ninja"), "-C", str(build_dir), "systemd-boot"], env=env)
+    built = locate_bootloader(build_dir)
+
     objdump = capture([resolve("objdump"), "-f", str(built)])
     if "pei-x86-64" not in objdump and "pei-x86-64" not in capture([resolve("objdump"), "-p", str(built)]):
         raise BuildError("systemd-boot output is not an x86_64 PE/EFI image")
@@ -188,6 +202,7 @@ def build(work_dir: Path, out_dir: Path) -> dict:
         "upstream_tag_object_sha": contract["bootloader"]["tag_object_sha"],
         "upstream_source_commit": contract["bootloader"]["source_commit"],
         "upstream_tag_signature_verified": True,
+        "meson_target": "systemd-boot",
         "artifact": {
             "name": output.name,
             "sha256": sha256_file(output),
@@ -212,6 +227,10 @@ def verify(out_dir: Path) -> dict:
     provenance = json.loads(prov.read_text(encoding="utf-8"))
     if provenance.get("$schema") != "prototype-ordax.esp-bootloader-provenance/1":
         raise BuildError("unexpected ESP bootloader provenance schema")
+    if provenance.get("physical_artifact_authorized") is not False:
+        raise BuildError("ESP candidate must not authorize physical media")
+    if provenance.get("meson_target") != "systemd-boot":
+        raise BuildError("ESP provenance does not identify canonical systemd-boot target")
     entries = {}
     for line in sums.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)", line)
