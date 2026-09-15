@@ -33,5 +33,8 @@ jobs:
       - name: Validate module import boundaries
         run: python tools/verify/module_boundaries.py
 
+      - name: Validate GitHub Actions supply chain
+        run: python tools/verify/github_actions_supply_chain.py
+
       - name: Run foundation regressions
         run: python -m unittest discover -s tests -p 'test_*.py' -v
