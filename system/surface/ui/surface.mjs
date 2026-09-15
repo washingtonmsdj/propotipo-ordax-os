@@ -1,3 +1,4 @@
+import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import { createSurfaceState, reduceSurfaceState } from "./surface-state.mjs";
 
@@ -15,18 +16,20 @@ const SHELL_MARKUP = `
     </header>
 
     <main class="ordax-workspace" tabindex="-1" data-workspace>
-      <section class="ordax-view" data-view="home" aria-labelledby="surface-home-title">
-        <p class="ordax-eyebrow">Surface compartilhada</p>
-        <h1 id="surface-home-title">Uma base visual. Todos os modos.</h1>
-        <p class="ordax-lead">
-          Esta é a primeira camada gráfica executável da Surface do OrdaX. A interface é compartilhada;
-          capacidades específicas entram por contratos, sem forks de produto.
-        </p>
+      <section class="ordax-desktop" aria-labelledby="surface-home-title">
+        <div class="ordax-desktop-intro">
+          <p class="ordax-eyebrow">Surface compartilhada</p>
+          <h1 id="surface-home-title">Seu espaço OrdaX.</h1>
+          <p class="ordax-lead">
+            Uma única Surface e um único modelo de aplicações para Web, Mobile, Desktop, USB e Native.
+            O host expõe capacidades; os apps e o workspace continuam os mesmos.
+          </p>
+        </div>
         <div class="ordax-card-grid">
           <article class="ordax-card">
-            <span class="ordax-card-label">Runtime</span>
-            <strong>Surface visual ativa</strong>
-            <p>Sem framework obrigatório e sem dependência de serviço remoto para renderizar.</p>
+            <span class="ordax-card-label">Workspace</span>
+            <strong data-window-count>0 apps abertos</strong>
+            <p>Janelas pertencem à Surface compartilhada e não ao adapter de uma plataforma.</p>
           </article>
           <article class="ordax-card">
             <span class="ordax-card-label">Conectividade</span>
@@ -40,23 +43,16 @@ const SHELL_MARKUP = `
           </article>
         </div>
       </section>
-
-      <section class="ordax-view" data-view="system" aria-labelledby="surface-system-title" hidden>
-        <p class="ordax-eyebrow">Sistema</p>
-        <h1 id="surface-system-title">Contrato do host</h1>
-        <p class="ordax-lead">Somente capacidades realmente expostas pelo host atual aparecem aqui.</p>
-        <div class="ordax-panel">
-          <h2>Capacidades</h2>
-          <ul class="ordax-capability-list" data-capability-list></ul>
-          <p class="ordax-empty" data-capability-empty>Nenhuma capacidade adicional foi declarada.</p>
-        </div>
-      </section>
+      <div class="ordax-window-layer" data-window-layer aria-live="polite"></div>
     </main>
 
     <div class="ordax-launcher" data-launcher hidden>
-      <div class="ordax-launcher-panel" role="menu" aria-label="Navegação OrdaX">
-        <button type="button" role="menuitem" data-open-view="home">Início</button>
-        <button type="button" role="menuitem" data-open-view="system">Sistema</button>
+      <div class="ordax-launcher-panel" role="menu" aria-label="Aplicações OrdaX">
+        <div class="ordax-launcher-heading">
+          <span>Aplicações</span>
+          <small>Fonte compartilhada</small>
+        </div>
+        <div class="ordax-launcher-grid" data-app-launcher></div>
       </div>
     </div>
 
@@ -64,8 +60,8 @@ const SHELL_MARKUP = `
       <button type="button" class="ordax-dock-button ordax-primary" data-launcher-toggle aria-expanded="false" aria-label="Abrir lançador">
         <span aria-hidden="true">O</span>
       </button>
-      <button type="button" class="ordax-dock-button" data-open-view="home" aria-label="Abrir início">Início</button>
-      <button type="button" class="ordax-dock-button" data-open-view="system" aria-label="Abrir sistema">Sistema</button>
+      <button type="button" class="ordax-dock-button" data-show-desktop aria-label="Mostrar área de trabalho">Mesa</button>
+      <div class="ordax-dock-running" data-running-apps aria-label="Aplicações abertas"></div>
     </nav>
   </div>
 `;
@@ -75,6 +71,87 @@ const CONNECTIVITY_LABELS = {
   offline: "Offline",
   unknown: "Conectividade desconhecida",
 };
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function capabilityState(capabilityIds, capabilityId) {
+  return capabilityIds.includes(capabilityId) ? "Disponível" : "Indisponível neste host";
+}
+
+function renderPanel(panel, state) {
+  const section = element("section", "ordax-app-panel");
+  section.append(element("span", "ordax-app-panel-label", panel.label));
+  section.append(element("h3", "ordax-app-panel-title", panel.title));
+
+  if (panel.kind === "connectivity") {
+    const label = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
+    const badge = element("span", "ordax-inline-status", label);
+    badge.dataset.state = state.connectivity;
+    section.append(badge);
+  } else if (panel.kind === "capability") {
+    const available = state.capabilityIds.includes(panel.capabilityId);
+    const badge = element("span", "ordax-inline-status", capabilityState(state.capabilityIds, panel.capabilityId));
+    badge.dataset.state = available ? "available" : "unavailable";
+    section.append(badge);
+  } else if (panel.kind === "capabilities") {
+    if (state.capabilityIds.length === 0) {
+      section.append(element("p", "ordax-empty", "Nenhuma capacidade adicional foi declarada."));
+    } else {
+      const list = element("ul", "ordax-capability-list");
+      for (const capabilityId of state.capabilityIds) {
+        list.append(element("li", "", capabilityId));
+      }
+      section.append(list);
+    }
+  }
+
+  if (panel.body) section.append(element("p", "ordax-app-panel-body", panel.body));
+  return section;
+}
+
+function createWindow(app, windowState, state, index) {
+  const windowNode = element("article", "ordax-window");
+  windowNode.dataset.windowId = windowState.id;
+  windowNode.dataset.active = String(state.activeWindowId === windowState.id);
+  windowNode.dataset.maximized = String(windowState.maximized);
+  windowNode.style.setProperty("--ordax-window-offset", `${index * 22}px`);
+  windowNode.setAttribute("role", "region");
+  windowNode.setAttribute("aria-label", app.title);
+
+  const titlebar = element("header", "ordax-window-titlebar");
+  titlebar.dataset.windowTitlebar = "";
+  const identity = element("div", "ordax-window-identity");
+  identity.append(element("span", "ordax-app-mark", app.monogram));
+  const titleGroup = element("div", "ordax-window-title-group");
+  titleGroup.append(element("strong", "", app.title));
+  titleGroup.append(element("small", "", app.description));
+  identity.append(titleGroup);
+
+  const controls = element("div", "ordax-window-controls");
+  for (const [action, label, glyph] of [
+    ["minimize", `Minimizar ${app.title}`, "−"],
+    ["maximize", windowState.maximized ? `Restaurar ${app.title}` : `Maximizar ${app.title}`, "□"],
+    ["close", `Fechar ${app.title}`, "×"],
+  ]) {
+    const button = element("button", `ordax-window-control ordax-window-${action}`, glyph);
+    button.type = "button";
+    button.dataset.windowAction = action;
+    button.dataset.windowId = windowState.id;
+    button.setAttribute("aria-label", label);
+    controls.append(button);
+  }
+  titlebar.append(identity, controls);
+
+  const body = element("div", "ordax-window-body");
+  for (const panel of app.panels) body.append(renderPanel(panel, state));
+  windowNode.append(titlebar, body);
+  return windowNode;
+}
 
 export function mountSurface(root, host) {
   if (!(root instanceof Element)) {
@@ -88,14 +165,57 @@ export function mountSurface(root, host) {
   const workspace = root.querySelector("[data-workspace]");
   const launcher = root.querySelector("[data-launcher]");
   const launcherToggle = root.querySelector("[data-launcher-toggle]");
-  const capabilityList = root.querySelector("[data-capability-list]");
-  const capabilityEmpty = root.querySelector("[data-capability-empty]");
+  const appLauncher = root.querySelector("[data-app-launcher]");
+  const windowLayer = root.querySelector("[data-window-layer]");
+  const runningApps = root.querySelector("[data-running-apps]");
+
+  const renderLauncher = () => {
+    appLauncher.replaceChildren();
+    for (const app of listFirstPartyApps()) {
+      const available = isAppAvailable(app, state.capabilityIds);
+      const button = element("button", "ordax-launcher-app");
+      button.type = "button";
+      button.dataset.launchApp = app.id;
+      button.disabled = !available;
+      button.setAttribute("role", "menuitem");
+      button.setAttribute("aria-label", available ? `Abrir ${app.title}` : `${app.title} indisponível`);
+      button.append(element("span", "ordax-app-mark", app.monogram));
+      const copy = element("span", "ordax-launcher-app-copy");
+      copy.append(element("strong", "", app.title));
+      copy.append(element("small", "", available ? app.description : "Capacidades necessárias indisponíveis"));
+      button.append(copy);
+      appLauncher.append(button);
+    }
+  };
+
+  const renderWindows = () => {
+    windowLayer.replaceChildren();
+    let visibleIndex = 0;
+    for (const windowState of state.windows) {
+      if (windowState.minimized) continue;
+      const app = getFirstPartyApp(windowState.appId);
+      if (!app) continue;
+      windowLayer.append(createWindow(app, windowState, state, visibleIndex));
+      visibleIndex += 1;
+    }
+  };
+
+  const renderDock = () => {
+    runningApps.replaceChildren();
+    for (const windowState of state.windows) {
+      const app = getFirstPartyApp(windowState.appId);
+      if (!app) continue;
+      const button = element("button", "ordax-dock-button ordax-running-app", app.monogram);
+      button.type = "button";
+      button.dataset.openWindow = windowState.id;
+      button.dataset.active = String(state.activeWindowId === windowState.id && !windowState.minimized);
+      button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
+      button.title = app.title;
+      runningApps.append(button);
+    }
+  };
 
   const render = () => {
-    for (const view of root.querySelectorAll("[data-view]")) {
-      view.hidden = view.dataset.view !== state.activeView;
-    }
-
     launcher.hidden = !state.launcherOpen;
     launcherToggle.setAttribute("aria-expanded", String(state.launcherOpen));
 
@@ -104,14 +224,11 @@ export function mountSurface(root, host) {
     root.querySelector("[data-connectivity-card]").textContent = connectivityLabel;
     root.querySelector("[data-connectivity-dot]").dataset.state = state.connectivity;
     root.querySelector("[data-capability-count]").textContent = String(state.capabilityIds.length);
+    root.querySelector("[data-window-count]").textContent = `${state.windows.length} ${state.windows.length === 1 ? "app aberto" : "apps abertos"}`;
 
-    capabilityList.replaceChildren();
-    for (const capabilityId of state.capabilityIds) {
-      const item = document.createElement("li");
-      item.textContent = capabilityId;
-      capabilityList.append(item);
-    }
-    capabilityEmpty.hidden = state.capabilityIds.length > 0;
+    renderLauncher();
+    renderWindows();
+    renderDock();
   };
 
   const dispatch = (action) => {
@@ -128,16 +245,47 @@ export function mountSurface(root, host) {
       return;
     }
 
-    const viewButton = event.target.closest("[data-open-view]");
-    if (viewButton) {
-      dispatch({ type: "view.open", view: viewButton.dataset.openView });
+    const appButton = event.target.closest("[data-launch-app]");
+    if (appButton) {
+      dispatch({ type: "app.launch", appId: appButton.dataset.launchApp });
+      return;
+    }
+
+    const showDesktop = event.target.closest("[data-show-desktop]");
+    if (showDesktop) {
+      dispatch({ type: "workspace.show-desktop" });
       workspace.focus({ preventScroll: true });
+      return;
+    }
+
+    const runningButton = event.target.closest("[data-open-window]");
+    if (runningButton) {
+      dispatch({ type: "window.focus", windowId: runningButton.dataset.openWindow });
+      return;
+    }
+
+    const control = event.target.closest("[data-window-action]");
+    if (control) {
+      dispatch({ type: `window.${control.dataset.windowAction}`, windowId: control.dataset.windowId });
+      return;
+    }
+
+    const windowNode = event.target.closest("[data-window-id]");
+    if (windowNode) {
+      dispatch({ type: "window.focus", windowId: windowNode.dataset.windowId });
       return;
     }
 
     if (state.launcherOpen && !event.target.closest("[data-launcher]")) {
       dispatch({ type: "launcher.close" });
     }
+  };
+
+  const onDoubleClick = (event) => {
+    const titlebar = event.target.closest("[data-window-titlebar]");
+    const windowNode = titlebar?.closest("[data-window-id]");
+    if (!windowNode || event.target.closest("[data-window-action]")) return;
+    dispatch({ type: "window.maximize", windowId: windowNode.dataset.windowId });
   };
 
   const onKeyDown = (event) => {
@@ -148,6 +296,7 @@ export function mountSurface(root, host) {
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribe = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
   render();
@@ -156,6 +305,7 @@ export function mountSurface(root, host) {
     destroy() {
       unsubscribe?.();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
       root.replaceChildren();
     },

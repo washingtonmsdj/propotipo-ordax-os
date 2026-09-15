@@ -6,6 +6,7 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/surface/**'
+      - 'system/apps/**'
       - 'system/adapters/web/**'
       - 'system/composition/web/**'
       - 'tools/surface-web/**'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/surface/**'
+      - 'system/apps/**'
       - 'system/adapters/web/**'
       - 'system/composition/web/**'
       - 'tools/surface-web/**'

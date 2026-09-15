@@ -12,12 +12,13 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SurfaceWebBuilderTests(unittest.TestCase):
-    def test_current_source_graph_discovers_shared_surface_adapter_and_contract(self):
+    def test_current_source_graph_discovers_shared_surface_apps_adapter_and_contract(self):
         graph = {path.as_posix() for path in MODULE.discover_graph(ROOT)}
         self.assertIn("system/composition/web/index.html", graph)
         self.assertIn("system/composition/web/main.mjs", graph)
         self.assertIn("system/surface/ui/surface.mjs", graph)
         self.assertIn("system/surface/ui/surface-state.mjs", graph)
+        self.assertIn("system/apps/catalog.mjs", graph)
         self.assertIn("system/adapters/web/runtime.mjs", graph)
         self.assertIn("system/contracts/surface-host.mjs", graph)
         self.assertIn("system/surface/ui/tokens.css", graph)
