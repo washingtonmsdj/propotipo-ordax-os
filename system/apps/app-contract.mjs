@@ -5,6 +5,7 @@ const PANEL_KINDS = new Set([
   "capabilities",
   "connectivity",
   "identity-session",
+  "identity-actions",
   "preference-choice",
 ]);
 
