@@ -1,0 +1,72 @@
+{
+  "$schema": "prototype-ordax.foundation/1",
+  "status": "prototype-not-promoted",
+  "source_authority": {
+    "kind": "git",
+    "branch": "main",
+    "physical_media_is_source_authority": false,
+    "notebook_is_source_authority": false
+  },
+  "physical_media": {
+    "partition_count": 2,
+    "partitions": [
+      {
+        "index": 1,
+        "name": "ORDAX-ESP",
+        "role": "uefi-boot",
+        "filesystem": "fat32"
+      },
+      {
+        "index": 2,
+        "name": "ORDAX",
+        "role": "main",
+        "filesystem": "linux"
+      }
+    ],
+    "forbidden_required_partitions": [
+      "ORDAX-HOME",
+      "ORDAX-PLATFORM"
+    ],
+    "separate_home_partition": false
+  },
+  "logical_main_layout": {
+    "root": "/ordax",
+    "bootstrap": "/ordax/bootstrap",
+    "releases": "/ordax/releases",
+    "current": "/ordax/current",
+    "state": "/ordax/state",
+    "home": "/ordax/home"
+  },
+  "release_model": {
+    "addressing": "source-commit",
+    "path_template": "/ordax/releases/<commit>",
+    "immutable_after_verification": true,
+    "activation": "atomic-current-pointer",
+    "rollback_required": true
+  },
+  "pre_git_capabilities": [
+    "uefi-boot",
+    "kernel",
+    "initramfs",
+    "minimal-network",
+    "stable-device-identity",
+    "remote-core-ssh",
+    "minimal-control-plane",
+    "git-release-acquisition",
+    "recovery-maintenance"
+  ],
+  "security": {
+    "ssh_public_key_only": true,
+    "strict_host_key_checking_required": true,
+    "persistent_device_host_key_required": true,
+    "multiple_operator_public_keys_allowed": true,
+    "private_keys_in_repository_allowed": false,
+    "fail_closed_identity_and_integrity": true
+  },
+  "development": {
+    "full_image_rebuild_per_edit": false,
+    "usb_reflash_per_edit": false,
+    "routine_reboot_per_edit": false,
+    "delta_or_release_update_preferred": true
+  }
+}
