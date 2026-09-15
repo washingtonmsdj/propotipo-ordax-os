@@ -90,7 +90,10 @@ func FinalizeTarget(target Target, driveType uint32, mappedPhysicalDisk bool, bu
 }
 
 func MatchConfirmedTarget(targets []Target, token string) (Target, error) {
-	token = strings.ToLower(strings.TrimSpace(token))
+	token = strings.TrimSpace(token)
+	if token != strings.ToLower(token) {
+		return Target{}, errors.New("confirmation token must be lowercase 64-hex SHA-256")
+	}
 	decoded, err := hex.DecodeString(token)
 	if err != nil || len(decoded) != sha256.Size {
 		return Target{}, errors.New("confirmation token must be lowercase 64-hex SHA-256")
@@ -98,7 +101,17 @@ func MatchConfirmedTarget(targets []Target, token string) (Target, error) {
 	var match *Target
 	for i := range targets {
 		candidate := targets[i]
-		if !candidate.PrototypeSafe || candidate.ConfirmationToken != token {
+		if !candidate.PrototypeSafe {
+			continue
+		}
+		// Never trust the token carried by an object as proof of its current
+		// identity. Recompute it from the fields that identify the live target
+		// so stale or internally modified Target values fail closed.
+		recomputed := ConfirmationToken(candidate)
+		if candidate.ConfirmationToken != recomputed {
+			return Target{}, errors.New("currently safe USB target identity is internally inconsistent")
+		}
+		if recomputed != token {
 			continue
 		}
 		if match != nil {
