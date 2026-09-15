@@ -1,0 +1,93 @@
+name: Creator Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/creator/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - '.github/workflows/creator-candidate.yml'
+  pull_request:
+    paths:
+      - 'tools/creator/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - '.github/workflows/creator-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  creator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/creator
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator Core
+        run: go test -count=1 ./...
+
+      - name: Verify canonical manifest stays fail-closed
+        run: |
+          go run ./cmd/ordax-creator check --manifest ../../docs/contracts/minimal-bootstrap.json
+          if go run ./cmd/ordax-creator plan --manifest ../../docs/contracts/minimal-bootstrap.json; then
+            echo 'creator unexpectedly produced a destructive write plan' >&2
+            exit 1
+          fi
+
+      - name: Build Windows and Linux candidates
+        run: |
+          set -euo pipefail
+          mkdir -p ../../out/creator/windows-amd64 ../../out/creator/linux-amd64
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/creator/windows-amd64/ordax-creator.exe ./cmd/ordax-creator
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/creator/linux-amd64/ordax-creator ./cmd/ordax-creator
+          sha256sum ../../out/creator/windows-amd64/ordax-creator.exe ../../out/creator/linux-amd64/ordax-creator > ../../out/creator/SHA256SUMS
+
+      - name: Emit candidate provenance
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, os, subprocess
+          root = pathlib.Path('../../out/creator')
+          def digest(path):
+              h = hashlib.sha256()
+              h.update(path.read_bytes())
+              return h.hexdigest()
+          data = {
+              '$schema': 'prototype-ordax.creator-provenance/1',
+              'status': 'candidate',
+              'physical_write_implemented': False,
+              'physical_write_authorized': False,
+              'source_commit': os.environ['GITHUB_SHA'],
+              'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
+              'artifacts': {
+                  'windows-amd64': {
+                      'name': 'ordax-creator.exe',
+                      'sha256': digest(root / 'windows-amd64' / 'ordax-creator.exe'),
+                  },
+                  'linux-amd64': {
+                      'name': 'ordax-creator',
+                      'sha256': digest(root / 'linux-amd64' / 'ordax-creator'),
+                  },
+              },
+          }
+          (root / 'provenance.json').write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+      - name: Upload Creator candidates
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordax-creator-${{ github.sha }}
+          path: out/creator/
+          if-no-files-found: error
+          retention-days: 14
