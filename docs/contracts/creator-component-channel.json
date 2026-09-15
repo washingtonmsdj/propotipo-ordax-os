@@ -1,0 +1,19 @@
+{
+  "$schema": "prototype-ordax.creator-component-channel/1",
+  "status": "blocked-canonical-trust-pending",
+  "purpose": "creator-inspection-windows-amd64",
+  "source_repository": "washingtonmsdj/prototipo-ordax-os",
+  "release_tag": "creator-components",
+  "bundle_name": "ordax-creator-components-windows-amd64.zip",
+  "envelope_name": "creator-component-envelope.json",
+  "created_from_recipe": "creator/component/windows/1",
+  "release_sequence": 1,
+  "canonical_public_trust_required": true,
+  "ed25519_signature_required": true,
+  "development_fallback_allowed_in_official_creator": false,
+  "raw_disk_writer_allowed": false,
+  "publisher_private_key_in_consumer": false,
+  "publisher_private_key_in_ci_artifact": false,
+  "unsigned_manifest_may_activate_official_component": false,
+  "publish_allowed": false
+}
