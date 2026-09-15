@@ -43,7 +43,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
                 '<script type="module" src="./main.mjs"></script>', encoding="utf-8"
             )
             (composition / "main.mjs").write_text(
-                'import {\n  value,\n} from "../../../services/preferences/value.mjs";\nconsole.log(value);\n',
+                'import {\n  value,\n} from "../../services/preferences/value.mjs";\nconsole.log(value);\n',
                 encoding="utf-8",
             )
             dependency = root / "system" / "services" / "preferences" / "value.mjs"
