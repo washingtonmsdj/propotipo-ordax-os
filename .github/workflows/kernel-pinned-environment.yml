@@ -97,7 +97,7 @@ jobs:
               # apt-secure still authenticates signed Ubuntu Release metadata
               # and package hashes with the image-bundled archive keyring.
               printf "%s\n" \
-                "Acquire::https::Verify-Peer::snapshot.ubuntu.com \"false\";" \
+                "Acquire::https::snapshot.ubuntu.com::Verify-Peer \"false\";" \
                 > /etc/apt/apt.conf.d/49ordax-ca-bootstrap
               apt-get update --error-on=any
               apt-get install -y --no-install-recommends ca-certificates
