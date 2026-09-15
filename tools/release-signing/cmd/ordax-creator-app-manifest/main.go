@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 )
 
 const (
@@ -194,5 +193,4 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("CREATOR_APP_MANIFEST_CREATED=YES\nSOURCE_COMMIT=%s\nVERSION=%s\nRELEASE_SEQUENCE=%d\nARTIFACT_SHA256=%s\nARTIFACT_SIZE=%d\nAUTHENTICODE_VERIFICATION_MUST_PRECEDE_THIS_TOOL=YES\n", m.SourceCommit, m.Version, m.ReleaseSequence, m.Artifact.SHA256, m.Artifact.Size)
-	_ = runtime.GOOS // retain runtime in the dependency graph for cross-platform test parity
 }
