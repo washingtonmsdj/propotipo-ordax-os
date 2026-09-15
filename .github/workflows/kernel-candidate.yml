@@ -39,7 +39,7 @@ jobs:
         run: python bootstrap/kernel/build.py check
 
       - name: Build kernel candidate with provenance
-        run: python bootstrap/kernel/build.py build --jobs 2
+        run: python bootstrap/kernel/build.py build --jobs 4
 
       - name: Validate emitted provenance
         run: |
