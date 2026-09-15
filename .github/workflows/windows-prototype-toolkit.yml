@@ -42,6 +42,25 @@ jobs:
           (cd tools/creator && go test -count=1 ./...)
           (cd tools/release-signing && go test -count=1 ./...)
 
+      - name: Assert toolkit commands expose no physical apply route
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('tools/creator/cmd/ordax-creator/main.go').read_text(encoding='utf-8')
+          forbidden = [
+              'case "apply"',
+              'case "write"',
+              'case "flash"',
+              'applyRawDiskInternal',
+              'windowsRawDiskRuntimeUnbound',
+          ]
+          found = [item for item in forbidden if item in source]
+          if found:
+              raise SystemExit(f'Windows toolkit Creator exposes forbidden physical route markers: {found}')
+          print('TOOLKIT_PUBLIC_PHYSICAL_APPLY=BLOCKED')
+          PY
+
       - name: Build Windows toolkit
         run: |
           set -euo pipefail
@@ -83,11 +102,13 @@ jobs:
           def digest(name):
               return hashlib.sha256((root / name).read_bytes()).hexdigest()
           data = {
-              '$schema': 'prototype-ordax.windows-prototype-toolkit/1',
+              '$schema': 'prototype-ordax.windows-prototype-toolkit/2',
               'status': 'candidate',
               'source_commit': os.environ['GITHUB_SHA'],
               'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
-              'physical_write_implemented': False,
+              'native_windows_raw_disk_backend_source_implemented': True,
+              'native_windows_raw_disk_backend_publicly_reachable': False,
+              'public_physical_apply_implemented': False,
               'physical_write_authorized': False,
               'canonical_trust_included': False,
               'private_key_included': False,
@@ -101,7 +122,7 @@ jobs:
           (root / 'provenance.json').write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           PY
 
-      - name: Assert toolkit contains no secret material or physical writer
+      - name: Assert toolkit contains no secret material or public physical writer
         run: |
           set -euo pipefail
           out="$PWD/out/windows-prototype-toolkit"
@@ -110,13 +131,16 @@ jobs:
           import json, pathlib
           root = pathlib.Path('out/windows-prototype-toolkit')
           provenance = json.loads((root / 'provenance.json').read_text(encoding='utf-8'))
-          assert provenance['physical_write_implemented'] is False
+          assert provenance['native_windows_raw_disk_backend_source_implemented'] is True
+          assert provenance['native_windows_raw_disk_backend_publicly_reachable'] is False
+          assert provenance['public_physical_apply_implemented'] is False
           assert provenance['physical_write_authorized'] is False
           assert provenance['canonical_trust_included'] is False
           assert provenance['private_key_included'] is False
           assert provenance['key_generation_requires_local_user_action'] is True
           print('TOOLKIT_SECRET_MATERIAL=NONE')
-          print('TOOLKIT_PHYSICAL_WRITE=BLOCKED')
+          print('TOOLKIT_PUBLIC_PHYSICAL_APPLY=BLOCKED')
+          print('TOOLKIT_PHYSICAL_WRITE_AUTHORIZED=NO')
           PY
 
       - name: Upload Windows prototype toolkit
