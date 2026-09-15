@@ -4,7 +4,7 @@ Status: CANONICAL FOR PROTOTYPE
 
 ## Goal
 
-Prove a minimal, reproducible, Git-first operating system substrate that can boot independently, establish secure OrdaX-owned control, acquire the rest of the system as versioned releases, and expose the same user-facing Surface on Web, USB and native-disk OrdaX from one source tree.
+Prove a minimal, reproducible, Git-first OrdaX that boots independently, reaches the network, acquires the rest of the system as a verified release, and exposes the same user-facing Surface on Web, USB and native disk from one source tree.
 
 ## Core invariant
 
@@ -19,26 +19,27 @@ SINGLE_SURFACE_SOURCE=YES
 WEB_AND_DEVICE_UI_FORKS=FORBIDDEN
 WSL_REQUIRED=NO
 QEMU_REQUIRED=NO
-SSH_REQUIRED_FOR_PRODUCT=NO
+SSH_REQUIRED=NO
+REMOTE_CONTROL_REQUIRED=NO
 CUSTOM_CRYPTO_ALLOWED=NO
 ```
 
 ## Source/product shape
 
 ```text
-propotipo-ordax-os/
-  boot/                 # source/definition for boot media
-  bootstrap/            # source needed to reach a trusted release
+prototipo-ordax-os/
+  boot/                 # boot media definition
+  bootstrap/            # only what is needed to reach a verified release
   system/               # shared product delivered as releases
     surface/            # same UI source for Web + native OrdaX
     apps/               # same app source
-    services/           # shared domain/service logic
+    services/
     adapters/
-      web/               # browser capability adapter
-      native/            # OrdaX/native capability adapter
+      web/
+      native/
   platform/             # persistent layout contracts/templates
   tools/
-    creator/             # one OrdaX Creator product
+    creator/
     dev/
     verify/
   docs/
@@ -48,8 +49,6 @@ propotipo-ordax-os/
 There must not be separate Web and native forks of the Surface or application source.
 
 ## Product modes
-
-See `docs/PRODUCT-MODES.md`.
 
 ```text
 OrdaX Web
@@ -65,28 +64,33 @@ They share account model, Surface source and app source. Capability differences 
 
 Role: only UEFI boot material.
 
-Expected contents are bounded to the bootloader, loader configuration, kernel/initramfs references or payloads required for boot, and recovery/developer entries when justified.
+Expected contents are bounded to bootloader/configuration plus the kernel/initramfs payloads required for boot. ESP must not become a general application filesystem.
 
-ESP must not become a general application filesystem.
+### 2. Minimal bootstrap substrate
 
-### 2. Bootstrap substrate
+Role: do only enough work to reach and activate the first verified release.
 
-Role: make the machine independently capable of reaching a trusted release.
-
-Minimum responsibilities:
+Mandatory responsibilities:
 
 - kernel + initramfs;
 - minimal userspace needed for boot;
-- network bring-up;
-- stable device identity;
-- OrdaX Remote Core;
-- minimal Control Plane path;
-- Git/release acquisition;
+- minimal network bring-up;
+- GitHub/Git/release acquisition over standard secure transport;
+- release integrity verification;
 - recovery/maintenance path.
 
-Anything that is not needed to reach, verify, activate, control or recover a release should normally not live here.
+Not mandatory before the first release:
 
-SSH is not part of the required final product substrate. A temporary break-glass SSH path may exist only during migration while OrdaX Remote Core is not yet proven on physical hardware.
+- SSH;
+- OrdaX Remote Core;
+- Control Plane;
+- stable device identity service;
+- Surface/desktop;
+- normal applications;
+- complete source checkout;
+- build toolchain.
+
+If future evidence shows Remote Core, Control Plane or a persistent device identity is actually necessary, add it through a new recorded architectural decision. Do not preinstall it speculatively.
 
 ### 3. Releases
 
@@ -97,72 +101,43 @@ Canonical materialization model:
 /ordax/current -> releases/<commit>
 ```
 
-A release is immutable after publication. Activation changes the pointer, not the contents of an existing release.
+A release is immutable after verification. Activation changes the pointer, not existing release contents. Rollback selects a previously verified release.
 
-Rollback changes `current` to a previously verified release.
+The first full release is acquired after boot. Once verified and activated, at least one known-good release remains local so ordinary boot does not require the network.
 
 ### 4. Universal Surface
 
 There is exactly one user-facing Surface source tree.
 
-The same source owns desktop, shell/chrome, windows, explorer, settings, first-party apps, visual tokens and shared interaction behavior.
+The same source owns desktop, windows, explorer, settings, first-party apps, visual tokens and shared interaction behavior.
 
-It must render from the same components and design tokens on:
+It renders from the same components on:
 
 1. OrdaX USB/native runtime;
 2. local browser development;
 3. hosted Web deployment.
 
-Creating a second Web UI, a second notebook UI, copied CSS, copied components or platform-specific visual forks is forbidden.
-
-Platform differences are expressed only behind capability interfaces/adapters.
-
-```text
-Surface/core/UI
-      |
-      +--> adapters/native -> real OrdaX services/kernel/hardware capabilities
-      |
-      +--> adapters/web    -> browser-safe implementations or authorized remote APIs
-```
-
-A color, spacing, component, window, app or interaction changed in shared Surface source must be the same change for every mode consuming that commit.
-
-The Web target is a real supported OrdaX mode, not a screenshot, mock or separate product fork.
+Creating copied CSS, copied screens or separate Web/native UI implementations is forbidden. Platform differences live only behind capability adapters.
 
 ### 5. Persistent state
 
-Persistent mutable state must be separated from release contents.
+Persistent mutable state lives under:
 
 ```text
 /ordax/state/
 ```
 
-Examples:
-
-- device identity;
-- local private device identity material;
-- approved operator/device authorizations;
-- Control Plane enrollment/attestation state;
-- release activation metadata;
-- bounded service state that cannot be reconstructed.
-
-Never store source code here as canonical authority. Private keys and secrets never belong in Git.
+Only state that cannot or should not be reconstructed belongs there. Private keys and secrets never belong in Git.
 
 ### 6. User data
 
-User/workspace data is logically separate:
+User/workspace data lives logically under:
 
 ```text
 /ordax/home/
 ```
 
-This is not a separate physical partition in the prototype. Backup, quota, encryption, snapshots or later isolation can be implemented logically first.
-
-### 7. Shared system
-
-`system/` is the source for the product users interact with after bootstrap.
-
-Web, USB and native-disk modes consume the same Surface/apps/services source. Only capability adapters differ.
+It is not a separate physical partition in the prototype.
 
 ## Boot and evolution chain
 
@@ -170,18 +145,17 @@ Web, USB and native-disk modes consume the same Surface/apps/services source. On
 UEFI
   -> ESP
   -> kernel/initramfs
-  -> bootstrap substrate
+  -> minimal bootstrap
   -> network
-  -> device identity
-  -> OrdaX Remote/Control Core
-  -> Git/release resolver
-  -> verified releases/<commit>
+  -> Git/release acquisition
+  -> verify release
+  -> /ordax/releases/<commit>
   -> atomic current switch
   -> OrdaX runtime
   -> shared Surface
 ```
 
-The Web path begins from the same source graph without the native kernel boundary:
+The Web path begins from the same source graph without the native boot boundary:
 
 ```text
 Git
@@ -192,61 +166,49 @@ Git
 
 ## Update semantics
 
-A normal Surface/application change is source-shared:
+Normal development is Git-driven:
 
 ```text
 edit shared source
- -> local browser HMR during development
+ -> local Web/HMR while developing
+ -> test
  -> commit/push
- -> hosted Web receives the same commit
- -> USB/native release or delta receives the same commit
+ -> hosted Web receives the commit
+ -> OrdaX updater detects/pulls the matching release or delta
+ -> verify
+ -> activate
 ```
 
-No manual porting or conversion step between Web and native OrdaX is allowed for shared UI/app code.
+No SSH session, remote shell or Control Plane is required for that normal path.
 
-Changes to boot/kernel/initramfs remain separately gated because the browser has no equivalent kernel boundary.
+Changes to boot/kernel/initramfs remain separately gated and may require a staged base update/reboot.
 
 ## Host independence
 
-See `docs/HOST-INDEPENDENCE.md`.
-
 No canonical operation may depend exclusively on WSL, QEMU, PowerShell, Bash or one desktop operating system.
 
-Where raw-disk/elevation APIs differ, shared tooling may use thin host adapters. Partition policy, artifact selection, verification and product behavior remain single-source.
+Thin host adapters are allowed only where operating systems expose different raw-disk/elevation APIs. Product policy remains shared.
 
-QEMU may be used as optional test infrastructure, but it is never required for the product, OrdaX Creator or source authority.
+## Optional remote/control capability
 
-## Remote control
+Remote management is intentionally **not** a bootstrap dependency or daily-development dependency.
 
-See `docs/REMOTE-CONTROL.md`.
-
-OrdaX owns the control protocol/application layer but uses mature audited secure transport and cryptographic libraries. Custom cryptographic primitives are forbidden.
-
-Normal remote control is structured capability RPC, file/delta transfer, logs/events and release operations rather than an unrestricted shell.
-
-## Ownership rules
-
-Each responsibility must have one canonical owner. A compatibility wrapper is acceptable only when it is thin, documented and delegates to that owner. Permanent duplicate implementations are forbidden.
-
-For the Surface specifically, platform adapters own capabilities; they do not own duplicated screens or design systems.
+If a later product requirement appears for remote device management, diagnostics or recovery, an OrdaX-owned Remote Core may be added as a normal release component using mature standard transport/cryptography. SSH remains unnecessary unless explicitly justified later.
 
 ## Failure model
 
-Identity, integrity, authorization, release verification and physical-target selection fail closed. Loss of network or Git must not make the machine unbootable when a previously verified release exists.
+Integrity, release verification and physical-target selection fail closed. Loss of network or Git must not make the machine unbootable once a known-good release has been activated locally.
 
-Web unavailability must not make the physical OrdaX device unusable, and physical-device unavailability must not prevent shared Surface development in the browser.
+## First milestone
 
-## Non-goals for the first prototype
+The first milestone is deliberately small:
 
-The first prototype does not need to prove:
+```text
+boot
+ -> network
+ -> acquire verified release from Git/GitHub
+ -> activate
+ -> boot that release offline later
+```
 
-- final desktop visual design;
-- marketplace/apps ecosystem;
-- final user-data encryption policy;
-- final multi-user model;
-- production update CDN;
-- every service from the legacy repository;
-- custom cryptographic primitives;
-- browser access to privileged kernel operations that browsers cannot safely expose.
-
-The first milestone is a trustworthy substrate that boots and can evolve by Git without reimaging for every change, with one shared product source across Web and native OrdaX.
+Everything else must justify its presence instead of entering the bootstrap by default.
