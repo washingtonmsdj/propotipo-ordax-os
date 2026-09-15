@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.foundation/5",
+  "$schema": "prototype-ordax.foundation/6",
   "status": "prototype-not-promoted",
   "source_authority": {
     "kind": "git",
@@ -94,6 +94,7 @@
     "single_product": true,
     "modes": [
       "web",
+      "desktop",
       "usb",
       "native-disk"
     ],
@@ -101,11 +102,25 @@
     "same_surface_source": true,
     "same_application_source": true,
     "web_is_first_class_mode": true,
+    "desktop_is_first_class_mode": true,
     "capability_progression": [
       "web",
+      "desktop",
       "usb",
       "native-disk"
     ]
+  },
+  "desktop": {
+    "first_host": "windows",
+    "normal_user_install": true,
+    "is_ordax_operating_system": false,
+    "shared_surface_required": true,
+    "signed_updates_required": true,
+    "usb_creator_capability": true,
+    "raw_host_disk_access_by_default": false,
+    "privileged_helper_only_when_required": true,
+    "arbitrary_privileged_command_api_allowed": false,
+    "desktop_update_and_os_release_channels_separate": true
   },
   "surface": {
     "single_source_tree_required": true,
@@ -116,6 +131,7 @@
     "platform_differences_via_adapters_only": true,
     "targets": [
       "ordax-device",
+      "desktop-host",
       "local-web",
       "hosted-web"
     ],
@@ -130,6 +146,7 @@
     "specific_linux_distribution_required": false,
     "specific_desktop_os_required": false,
     "shared_creator_core_required": true,
+    "creator_is_desktop_capability": true,
     "thin_platform_adapters_allowed": true,
     "platform_policy_forks_allowed": false,
     "end_user_kernel_toolchain_required": false
@@ -154,7 +171,7 @@
     "routine_reboot_per_edit": false,
     "delta_or_release_update_preferred": true,
     "browser_hmr_for_surface_allowed": true,
-    "surface_change_should_reach_web_and_device": true,
+    "surface_change_should_reach_web_desktop_and_device": true,
     "remote_shell_required": false,
     "remote_control_service_required": false,
     "emulator_mandatory": false,

@@ -14,6 +14,9 @@ class FoundationContractTest(unittest.TestCase):
     def setUpClass(cls):
         cls.contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
+    def test_contract_schema_is_current(self):
+        self.assertEqual(self.contract["$schema"], "prototype-ordax.foundation/6")
+
     def test_git_main_is_source_authority(self):
         source = self.contract["source_authority"]
         self.assertEqual(source["kind"], "git")
@@ -88,16 +91,31 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(release["device_compiler_required"])
         self.assertFalse(release["remote_shell_required"])
 
-    def test_three_modes_are_one_product(self):
+    def test_four_modes_are_one_product(self):
         modes = self.contract["product_modes"]
         self.assertTrue(modes["single_product"])
-        self.assertEqual(modes["modes"], ["web", "usb", "native-disk"])
+        self.assertEqual(modes["modes"], ["web", "desktop", "usb", "native-disk"])
+        self.assertEqual(modes["capability_progression"], ["web", "desktop", "usb", "native-disk"])
         self.assertTrue(modes["same_account_model"])
         self.assertTrue(modes["same_surface_source"])
         self.assertTrue(modes["same_application_source"])
         self.assertTrue(modes["web_is_first_class_mode"])
+        self.assertTrue(modes["desktop_is_first_class_mode"])
 
-    def test_surface_has_one_source_for_device_and_web(self):
+    def test_desktop_is_intermediate_mode_with_narrow_privilege_boundary(self):
+        desktop = self.contract["desktop"]
+        self.assertEqual(desktop["first_host"], "windows")
+        self.assertTrue(desktop["normal_user_install"])
+        self.assertFalse(desktop["is_ordax_operating_system"])
+        self.assertTrue(desktop["shared_surface_required"])
+        self.assertTrue(desktop["signed_updates_required"])
+        self.assertTrue(desktop["usb_creator_capability"])
+        self.assertFalse(desktop["raw_host_disk_access_by_default"])
+        self.assertTrue(desktop["privileged_helper_only_when_required"])
+        self.assertFalse(desktop["arbitrary_privileged_command_api_allowed"])
+        self.assertTrue(desktop["desktop_update_and_os_release_channels_separate"])
+
+    def test_surface_has_one_source_for_every_product_mode(self):
         surface = self.contract["surface"]
         self.assertTrue(surface["single_source_tree_required"])
         self.assertFalse(surface["device_and_web_ui_forks_allowed"])
@@ -107,7 +125,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertTrue(surface["platform_differences_via_adapters_only"])
         self.assertEqual(
             surface["targets"],
-            ["ordax-device", "local-web", "hosted-web"],
+            ["ordax-device", "desktop-host", "local-web", "hosted-web"],
         )
         self.assertTrue(surface["same_source_commit_for_equivalent_surface"])
         self.assertFalse(surface["manual_web_to_device_port_required"])
@@ -121,6 +139,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(host["specific_linux_distribution_required"])
         self.assertFalse(host["specific_desktop_os_required"])
         self.assertTrue(host["shared_creator_core_required"])
+        self.assertTrue(host["creator_is_desktop_capability"])
         self.assertTrue(host["thin_platform_adapters_allowed"])
         self.assertFalse(host["platform_policy_forks_allowed"])
         self.assertFalse(host["end_user_kernel_toolchain_required"])
@@ -148,7 +167,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(development["routine_reboot_per_edit"])
         self.assertTrue(development["delta_or_release_update_preferred"])
         self.assertTrue(development["browser_hmr_for_surface_allowed"])
-        self.assertTrue(development["surface_change_should_reach_web_and_device"])
+        self.assertTrue(development["surface_change_should_reach_web_desktop_and_device"])
         self.assertFalse(development["remote_shell_required"])
         self.assertFalse(development["remote_control_service_required"])
         self.assertFalse(development["emulator_mandatory"])
