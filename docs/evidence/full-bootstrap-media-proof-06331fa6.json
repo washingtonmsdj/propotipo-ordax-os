@@ -1,0 +1,111 @@
+{
+  "$schema": "prototype-ordax.full-bootstrap-media-proof-evidence/2",
+  "status": "pass",
+  "source_commit": "c505eeac20f3664c8a308bd1abf3e0bf457fda12",
+  "workflow": {
+    "name": "Full Bootstrap Media Proof",
+    "run_id": 35035819208,
+    "run_number": 109,
+    "conclusion": "success",
+    "completed_at": "2026-09-15T23:40:22Z"
+  },
+  "artifact": {
+    "id": 10423616684,
+    "name": "ordax-full-bootstrap-media-proof-c505eeac20f3664c8a308bd1abf3e0bf457fda12",
+    "archive_sha256": "85bc108594862c611f0462d914083dbeff5bfa1cb55a8a5e80006c0dfb7fe566",
+    "metadata_only": true,
+    "files": {
+      "proof-summary.json": "9efc98f67059955effed6638c1c3ebb002f4aa079504cb7fe195ef0ed5ea6677",
+      "ext4-growth-runtime-proof.json": "962f8c931a269effed5c011eee7414fc0ca99230c740d6d75fc04f7dc450b409",
+      "creator-prepared-ext4-growth-proof.json": "28809f295be0622e986400fb018923a406317014b257cf2541c9ed1e27c6028b",
+      "disposable-media-proof.json": "d1e5df40a490d25e526ee41127f62ff621c6a7dc00df7bac80b11b8a88062144"
+    }
+  },
+  "trust": {
+    "canonical_trust": false,
+    "ephemeral_ci_trust": true,
+    "canonical_key_material_committed": false
+  },
+  "payload": {
+    "artifact_count": 14,
+    "unresolved_groups_in_ephemeral_proof_manifest": []
+  },
+  "seed_media": {
+    "partition_table": "gpt",
+    "image_bytes": 536870912,
+    "image_sha256": "06331fa69d3955e0428a4634baac84e19da7599d67a4961444096bce0e894093",
+    "logical_sector_bytes": 512,
+    "partition_count": 2,
+    "partitions": [
+      {
+        "index": 1,
+        "name": "ORDAX-ESP",
+        "filesystem": "vfat",
+        "first_lba": 2048,
+        "last_lba": 526335,
+        "verified_file_count": 6
+      },
+      {
+        "index": 2,
+        "name": "ORDAX",
+        "filesystem": "ext4",
+        "first_lba": 526336,
+        "last_lba": 1048542,
+        "verified_file_count": 8,
+        "verified_directory_count": 10
+      }
+    ]
+  },
+  "initramfs_ext4_growth": {
+    "helper_sha256": "61d39d25f4df0ae3660945cb6f68b84d1d24c6684672aa692f35d3c5afbec912",
+    "initial_blocks": 16384,
+    "raw_target_blocks": 33792,
+    "final_blocks": 32768,
+    "resize2fs_final_blocks": 32768,
+    "unused_tail_blocks": 1024,
+    "mismatched_device_rejected": true,
+    "read_only_mount_rejected": true,
+    "read_only_size_unchanged": true,
+    "canonical_superblock_count_used": true
+  },
+  "creator_prepared_media": {
+    "prepare_regular_file_only": true,
+    "target_image_bytes": 805306368,
+    "prepared_image_sha256_before_growth": "dc86cd987418d1ec7ad94b11a7c214e1705628325025b15ec47929183370eeec",
+    "ordax_first_lba": 526336,
+    "ordax_last_lba": 1572830,
+    "last_usable_lba": 1572830,
+    "ordax_partition_bytes": 535805440,
+    "ext4_initial_blocks": 65275,
+    "ext4_raw_target_blocks": 130811,
+    "ext4_final_blocks": 130811,
+    "resize2fs_final_blocks": 130811,
+    "unused_tail_blocks": 0,
+    "tree_digest_before": "79f7c652890bd03809955e4797b8895b0cae3cbbaf6b1925816065d265a0f500",
+    "tree_digest_after": "79f7c652890bd03809955e4797b8895b0cae3cbbaf6b1925816065d265a0f500",
+    "files_preserved": true,
+    "read_only_e2fsck_passed": true
+  },
+  "checks": {
+    "filesystem_types_and_labels_match_contract": true,
+    "gpt_valid": true,
+    "partition_count_exactly_two": true,
+    "partition_geometry_matches_contract": true,
+    "raw_partition_bytes_match_filesystem_images": true,
+    "staged_file_hashes_reverified_from_filesystems": true,
+    "creator_prepare_image_proven": true,
+    "creator_ext4_growth_matches_resize2fs": true,
+    "creator_files_preserved_across_growth": true,
+    "physical_write_remains_blocked": true
+  },
+  "cleanup": {
+    "ephemeral_private_key_destroyed": true,
+    "ephemeral_public_trust_removed_from_checkout": true,
+    "raw_image_published": false,
+    "proof_metadata_only_uploaded": true
+  },
+  "real_hardware_touched": false,
+  "physical_hardware_proven": false,
+  "physical_write_authorized": false,
+  "promotion_effect": "evidence-only; proves disposable Creator capacity expansion and boot-time ext4 growth but does not resolve canonical trust, prove notebook boot, or authorize physical media mutation"
+}
