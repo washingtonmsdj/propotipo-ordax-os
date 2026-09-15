@@ -21,10 +21,13 @@ if ([string]::IsNullOrWhiteSpace($ScriptRoot)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($PrivateKeyPath)) {
-    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        throw 'LOCALAPPDATA is unavailable; specify -PrivateKeyPath explicitly.'
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        throw 'USERPROFILE is unavailable; specify -PrivateKeyPath explicitly.'
     }
-    $PrivateKeyPath = Join-Path $env:LOCALAPPDATA 'OrdaX\release-signing\ordax-release-private.pem'
+    # Keep canonical private material in a direct child of the user profile.
+    # LOCALAPPDATA can be backed by Windows reparse/junction paths on some hosts,
+    # which the signing tool intentionally rejects for private-key custody.
+    $PrivateKeyPath = Join-Path $env:USERPROFILE 'OrdaX-Private\release-signing\ordax-release-private.pem'
 }
 if ([string]::IsNullOrWhiteSpace($ReviewDirectory)) {
     $ReviewDirectory = Join-Path $ScriptRoot 'trust-review'
