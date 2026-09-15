@@ -7,13 +7,14 @@ import (
 
 func safeUSBTargetForRawPlan() Target {
 	return FinalizeTarget(Target{
-		DriveLetter:     "E:",
-		VolumeLabel:     "ORDAXTEST",
-		VolumeSerial:    0xabcddcba,
-		DiskNumber:      9,
-		VolumeBytes:     32 << 30,
-		DeviceRemovable: false,
-		DeviceSerial:    "USB-RAW-PLAN-1",
+		DriveLetter:       "E:",
+		VolumeLabel:       "ORDAXTEST",
+		VolumeSerial:      0xabcddcba,
+		DiskNumber:        9,
+		VolumeBytes:       30 << 30,
+		PhysicalDiskBytes: 32 << 30,
+		DeviceRemovable:   false,
+		DeviceSerial:      "USB-RAW-PLAN-1",
 	}, DriveTypeFixed, true, BusTypeUSB, false)
 }
 
@@ -35,8 +36,8 @@ func TestBuildBlockedRawDiskWritePlanBindsConfirmedPhysicalDrive(t *testing.T) {
 	if !plan.RequiresElevation || !plan.RequiresCanonicalTrust || !plan.RequiresExplicitAuthorization {
 		t.Fatal("raw-disk plan is missing required safety gates")
 	}
-	if plan.Target.ConfirmationToken != target.ConfirmationToken {
-		t.Fatal("raw-disk plan lost target confirmation identity")
+	if plan.Target.ConfirmationToken != target.ConfirmationToken || plan.Target.PhysicalDiskBytes != 32<<30 {
+		t.Fatal("raw-disk plan lost physical target identity")
 	}
 }
 
@@ -55,6 +56,23 @@ func TestBuildBlockedRawDiskWritePlanRejectsUnsafeTarget(t *testing.T) {
 	target.PrototypeSafe = false
 	if _, err := BuildBlockedRawDiskWritePlan(target, target.ConfirmationToken); err == nil {
 		t.Fatal("unsafe target must not create a raw-disk plan")
+	}
+}
+
+func TestRawDiskPlanRequiresMeasuredCapacityAndExactImageGeometry(t *testing.T) {
+	plan, err := BuildBlockedRawDiskWritePlan(safeUSBTargetForRawPlan(), safeUSBTargetForRawPlan().ConfirmationToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan.Preconditions, "\n")
+	for _, required := range []string{
+		"physical-disk-capacity-measured",
+		"full-disk-image-size-equals-physical-device",
+		"explicit-destructive-authorization-collected-at-apply-boundary",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("precondition list missing %q", required)
+		}
 	}
 }
 
