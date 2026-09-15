@@ -39,18 +39,30 @@ jobs:
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          Push-Location tools/creator
+          $ciTemp = Join-Path $PWD '.ci-windows-temp'
+          New-Item -ItemType Directory -Force -Path $ciTemp | Out-Null
+          $oldTemp = $env:TEMP
+          $oldTmp = $env:TMP
+          $env:TEMP = $ciTemp
+          $env:TMP = $ciTemp
           try {
-            go test -count=1 ./...
-            go test -count=1 -tags ordax_raw_backend ./host/windows
+            Push-Location tools/creator
+            try {
+              go test -count=1 ./...
+              go test -count=1 -tags ordax_raw_backend ./host/windows
+            } finally {
+              Pop-Location
+            }
+            Push-Location tools/release-signing
+            try {
+              go test -count=1 ./...
+            } finally {
+              Pop-Location
+            }
           } finally {
-            Pop-Location
-          }
-          Push-Location tools/release-signing
-          try {
-            go test -count=1 ./...
-          } finally {
-            Pop-Location
+            $env:TEMP = $oldTemp
+            $env:TMP = $oldTmp
+            Remove-Item -LiteralPath $ciTemp -Force -Recurse -ErrorAction SilentlyContinue
           }
 
       - name: Build inspection-only physical test and signing executables
@@ -92,6 +104,7 @@ jobs:
           $status = Get-Content -Raw $statusPath | ConvertFrom-Json
           if (-not $status.raw_backend_linked) { throw 'raw backend was not linked' }
           if ($status.build.ready) { throw 'unbound inspection build unexpectedly reports ready' }
+          if ($status.build.physical_write_authorized) { throw 'inspection build unexpectedly reports physical authorization' }
 
           $prepareOutput = & $exe prepare --confirm ('0' * 64) --seed missing.raw --out missing-out.raw 2>&1
           if ($LASTEXITCODE -eq 0) { throw 'unbound prepare unexpectedly succeeded' }
@@ -108,9 +121,9 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $privateDir = Join-Path $env:RUNNER_TEMP 'ordax-ci-trust-private'
+          $privateDir = Join-Path $PWD '.ci-trust-private'
           $private = Join-Path $privateDir 'ordax-release-private.pem'
-          $review = Join-Path $env:RUNNER_TEMP 'ordax-ci-trust-review'
+          $review = Join-Path $PWD '.ci-trust-review'
           New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
           try {
             & (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1') `
@@ -173,17 +186,19 @@ jobs:
 
           prepare/apply are compiled but fail closed until a later physical-test build is bound to:
           - canonical Ed25519 public trust SHA-256
+          - authorized canonical manifest SHA-256 with physical write allowed
           - authorized canonical seed RAW SHA-256 and size
           - exact source commit
 
           No physical write is authorized by this inspection artifact.
           "@ | Set-Content -Encoding utf8 (Join-Path $out 'README.txt')
           $provenance = [ordered]@{
-            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/3'
+            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/4'
             status = 'inspection-only'
             source_commit = '${{ github.sha }}'
             raw_backend_linked = $true
             canonical_trust_bound = $false
+            canonical_manifest_bound = $false
             seed_image_bound = $false
             prepare_enabled = $false
             physical_apply_enabled = $false
