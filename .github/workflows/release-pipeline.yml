@@ -47,6 +47,33 @@ jobs:
           (cd tools/release-signing && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-signing .)
           (cd bootstrap/release-acquisition && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-agent .)
 
+      - name: Prove real repository system bundle
+        run: |
+          set -euo pipefail
+          bundle="$PWD/out/release-pipeline/ordax-release-bundle"
+          work="$RUNNER_TEMP/real-system-bundle"
+          mkdir -p "$work"
+          "$bundle" --root "$PWD" --out "$work/system-a.tar"
+          "$bundle" --root "$PWD" --out "$work/system-b.tar"
+          cmp "$work/system-a.tar" "$work/system-b.tar"
+          python - "$work/system-a.tar" <<'PY'
+          import pathlib, sys, tarfile
+          tar_path = pathlib.Path(sys.argv[1])
+          with tarfile.open(tar_path, 'r:') as archive:
+              required = {
+                  'system/entrypoint': 0o755,
+                  'system/surface/entrypoint': 0o755,
+                  'system/surface/bin/ordax-surface': 0o755,
+              }
+              members = {member.name: member for member in archive.getmembers()}
+              for name, mode in required.items():
+                  member = members[name]
+                  assert member.isfile(), name
+                  assert member.mode == mode, (name, oct(member.mode))
+              assert all(not member.issym() and not member.islnk() for member in members.values())
+          print('REAL_SYSTEM_BUNDLE=PASS')
+          PY
+
       - name: Prove source to signed envelope compatibility
         run: |
           set -euo pipefail
