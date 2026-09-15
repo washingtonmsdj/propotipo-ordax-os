@@ -1,0 +1,61 @@
+{
+  "$schema": "prototype-ordax.build-autonomy/1",
+  "status": "canonical-prototype-contract",
+  "source_authority": {
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "branch": "main"
+  },
+  "required_independence": {
+    "codex_required": false,
+    "developer_local_toolchain_required": false,
+    "wsl_required": false,
+    "qemu_required": false,
+    "manual_kernel_build_required": false,
+    "specific_developer_host_os_required": false
+  },
+  "canonical_build": {
+    "repository_recipe_required": true,
+    "ci_build_required": true,
+    "pinned_build_environment_required": true,
+    "immutable_environment_identity_required": true,
+    "upstream_source_hash_verification_required": true,
+    "artifact_sha256_required": true,
+    "artifact_provenance_required": true,
+    "github_actions_is_current_executor_not_source_authority": true,
+    "portable_build_entrypoint_required": true
+  },
+  "kernel": {
+    "baseline_version": "6.6.52",
+    "source_archive_sha256": "1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8",
+    "canonical_config_required": true,
+    "pinned_toolchain_required": true,
+    "ci_compilation_required": true,
+    "developer_machine_compilation_required": false,
+    "provenance_manifest_required": true
+  },
+  "artifact_graph": {
+    "independent_artifact_classes": [
+      "kernel",
+      "initramfs",
+      "minimal-bootstrap",
+      "surface-web",
+      "native-system-release",
+      "creator",
+      "manifests"
+    ],
+    "surface_change_rebuilds_kernel": false,
+    "kernel_change_rebuilds_unrelated_surface": false
+  },
+  "physical_boundary": {
+    "creator_consumes_prebuilt_verified_artifacts": true,
+    "end_user_compiles_kernel": false,
+    "physical_action_requires_authorized_local_execution": true
+  },
+  "ai_operating_model": {
+    "any_repository_agent_may_edit_source": true,
+    "any_repository_agent_may_fix_ci": true,
+    "codex_is_optional_partner": true,
+    "codex_is_release_authority": false,
+    "codex_is_build_authority": false
+  }
+}
