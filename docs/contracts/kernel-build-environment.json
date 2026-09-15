@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.kernel-build-environment/1",
-  "status": "candidate-observation-required",
+  "status": "pinned-repeat-proof-required",
   "architecture": "linux/amd64",
   "base_image": {
     "repository": "docker.io/library/ubuntu",
@@ -29,11 +29,38 @@
       "python3",
       "xz-utils"
     ],
-    "expected_versions": {}
+    "expected_versions": {
+      "bc": "1.07.1-3ubuntu4",
+      "binutils": "2.42-4ubuntu2.10",
+      "bison": "2:3.8.2+dfsg-1build2",
+      "ca-certificates": "20260601~24.04.1",
+      "dwarves": "1.25-0ubuntu3",
+      "flex": "2.6.4-8.2build1",
+      "gcc": "4:13.2.0-7ubuntu1",
+      "gcc-13": "13.3.0-6ubuntu2~24.04.1",
+      "kmod": "31+20240202-2ubuntu7.2",
+      "libelf-dev": "0.190-1.1ubuntu0.1",
+      "libssl-dev": "3.0.13-0ubuntu3.15",
+      "make": "4.3-4.1build2",
+      "openssl": "3.0.13-0ubuntu3.15",
+      "perl": "5.38.2-3.2ubuntu0.4",
+      "pkg-config": "1.8.1-2build1",
+      "python3": "3.12.3-0ubuntu2.1",
+      "xz-utils": "5.6.1+really5.4.5-1ubuntu0.3"
+    }
+  },
+  "reference_observation": {
+    "source_commit": "6537ddc1a6947de6257f3111ca7ffad3ee9d574d",
+    "ca_bundle_sha256": "9481fcd95f41b221f02f14d896535fe500bec539bc563c4cdca1acee483a8bdd",
+    "artifacts": {
+      "kernel-6.6.52.config": "c83a86c2bf87a6f052c8485cfbdc36a1f904216cdc79b542205e3010d3392841",
+      "kernel-modules-6.6.52.tar": "0056f8bd6a1ea02b9aa0b0f35a30adc27060888b6ae6124804e96b6740de72f2",
+      "vmlinuz-6.6.52": "e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1"
+    }
   },
   "proof": {
-    "first_observation_complete": false,
-    "package_versions_pinned": false,
+    "first_observation_complete": true,
+    "package_versions_pinned": true,
     "repeat_build_digest_match": false,
     "promotable_to_physical": false
   }
