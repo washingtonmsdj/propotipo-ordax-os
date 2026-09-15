@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,7 +60,7 @@ def real_regular_file(root: Path, relative: str) -> Path:
     for index, part in enumerate(pure.parts):
         current = current / part
         try:
-            info = current.lstat()
+            current.lstat()
         except OSError as exc:
             raise AssembleError(f"source artifact missing: {relative}: {exc}") from exc
         if current.is_symlink():
@@ -92,18 +93,28 @@ def source_for_artifact(repository_root: Path, source_path: str, generated_sourc
     return real_regular_file(repository_root, source_path)
 
 
-def prepare_empty_output(out_dir: Path) -> Path:
-    out_dir = out_dir.resolve()
-    if out_dir.exists():
-        if out_dir.is_symlink() or not out_dir.is_dir():
+def inspect_output_destination(out_dir: Path) -> Path:
+    out_abs = out_dir.resolve(strict=False)
+    if out_abs.exists() or out_abs.is_symlink():
+        if out_abs.is_symlink() or not out_abs.is_dir():
             raise AssembleError("payload output must be a real directory")
         try:
-            next(out_dir.iterdir())
+            next(out_abs.iterdir())
         except StopIteration:
-            return out_dir
+            return out_abs
         raise AssembleError("payload output must be empty")
-    out_dir.mkdir(parents=True, mode=0o755)
-    return out_dir
+    return out_abs
+
+
+def fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def source_commit(repository_root: Path) -> str:
@@ -122,19 +133,17 @@ def source_commit(repository_root: Path) -> str:
         return "unknown"
 
 
-def assemble(
+def preflight(
     repository_root: Path,
     manifest: dict[str, Any],
-    out_dir: Path,
     *,
     allow_unresolved: bool,
-    generated_sources: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    generated_sources = dict(GENERATED_SOURCES if generated_sources is None else generated_sources)
-    out_dir = prepare_empty_output(out_dir)
+    generated_sources: dict[str, str],
+) -> tuple[list[str], bool, list[dict[str, Any]]]:
     unresolved: list[str] = []
-    artifacts: dict[str, dict[str, Any]] = {}
+    prepared: list[dict[str, Any]] = []
     seen_targets: set[tuple[str, str]] = set()
+    seen_sources: set[str] = set()
 
     groups = manifest["artifact_groups"]
     for group in groups:
@@ -160,6 +169,9 @@ def assemble(
             expected = artifact.get("sha256")
             mode_text = artifact.get("mode")
             safe_relative(source_path)
+            if source_path in seen_sources:
+                raise AssembleError(f"duplicate payload source path: {source_path}")
+            seen_sources.add(source_path)
             if not isinstance(target_path, str) or not target_path.startswith("/"):
                 raise AssembleError(f"invalid target path for {source_path!r}")
             if not SHA256_RE.fullmatch(str(expected or "")):
@@ -177,57 +189,115 @@ def assemble(
                 raise AssembleError(
                     f"source artifact SHA-256 mismatch: {source_path}: expected={expected} actual={actual}"
                 )
-
-            destination = out_dir.joinpath(*PurePosixPath(source_path).parts)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            if destination.exists() or destination.is_symlink():
-                raise AssembleError(f"duplicate payload source path: {source_path}")
-            with source.open("rb") as input_handle, destination.open("xb") as output_handle:
-                shutil.copyfileobj(input_handle, output_handle, length=1024 * 1024)
-                output_handle.flush()
-                os.fsync(output_handle.fileno())
-            destination.chmod(int(mode_text, 8))
-            copied = sha256_file(destination)
-            if copied != expected:
-                raise AssembleError(f"payload copy SHA-256 mismatch: {source_path}")
-
-            artifacts[source_path] = {
-                "sha256": copied,
-                "size": destination.stat().st_size,
-                "mode": mode_text,
-                "partition": partition,
-                "target_path": target_path,
-                "logical_owner": artifact.get("logical_owner"),
-            }
+            prepared.append(
+                {
+                    "source_path": source_path,
+                    "source": source,
+                    "sha256": expected,
+                    "size": source.stat().st_size,
+                    "mode": mode_text,
+                    "partition": partition,
+                    "target_path": target_path,
+                    "logical_owner": artifact.get("logical_owner"),
+                }
+            )
 
     all_groups_resolved = not unresolved
     manifest_flag = manifest.get("all_artifacts_resolved") is True
     if manifest_flag != all_groups_resolved:
-        raise AssembleError(
-            "all_artifacts_resolved disagrees with artifact-group resolution state"
-        )
+        raise AssembleError("all_artifacts_resolved disagrees with artifact-group resolution state")
     if unresolved and not allow_unresolved:
-        raise AssembleError(
-            "manifest still has unresolved groups: " + ", ".join(unresolved)
-        )
+        raise AssembleError("manifest still has unresolved groups: " + ", ".join(unresolved))
+    return unresolved, manifest_flag, prepared
 
-    provenance = {
-        "$schema": "prototype-ordax.creator-payload-provenance/1",
-        "status": "complete-candidate" if all_groups_resolved else "resolved-subset-candidate",
-        "physical_write_authorized": False,
-        "source_commit": source_commit(repository_root),
-        "manifest_schema": manifest["$schema"],
-        "manifest_all_artifacts_resolved": manifest_flag,
-        "artifact_count": len(artifacts),
-        "unresolved_groups": unresolved,
-        "artifacts": dict(sorted(artifacts.items())),
-    }
-    provenance_path = out_dir / "payload-provenance.json"
-    provenance_path.write_text(
-        json.dumps(provenance, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
+
+def publish_staged_directory(staging: Path, out_dir: Path) -> None:
+    parent = out_dir.parent
+    if out_dir.exists() or out_dir.is_symlink():
+        if out_dir.is_symlink() or not out_dir.is_dir():
+            raise AssembleError("payload output changed during assembly")
+        try:
+            next(out_dir.iterdir())
+        except StopIteration:
+            out_dir.rmdir()
+        else:
+            raise AssembleError("payload output changed during assembly")
+    os.replace(staging, out_dir)
+    fsync_directory(parent)
+
+
+def assemble(
+    repository_root: Path,
+    manifest: dict[str, Any],
+    out_dir: Path,
+    *,
+    allow_unresolved: bool,
+    generated_sources: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    generated_sources = dict(GENERATED_SOURCES if generated_sources is None else generated_sources)
+
+    # Entire manifest, source topology and every input digest are validated before
+    # any payload output directory is created or modified.
+    unresolved, manifest_flag, prepared = preflight(
+        repository_root,
+        manifest,
+        allow_unresolved=allow_unresolved,
+        generated_sources=generated_sources,
     )
-    return provenance
+    out_abs = inspect_output_destination(out_dir)
+    out_abs.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_abs.name}.staging-", dir=out_abs.parent))
+    published = False
+    artifacts: dict[str, dict[str, Any]] = {}
+
+    try:
+        for item in prepared:
+            source_path = item["source_path"]
+            source = item["source"]
+            expected = item["sha256"]
+            destination = staging.joinpath(*PurePosixPath(source_path).parts)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with source.open("rb") as input_handle, destination.open("xb") as output_handle:
+                shutil.copyfileobj(input_handle, output_handle, length=1024 * 1024)
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
+            destination.chmod(int(item["mode"], 8))
+            copied = sha256_file(destination)
+            if copied != expected:
+                raise AssembleError(f"payload copy SHA-256 mismatch: {source_path}")
+            artifacts[source_path] = {
+                "sha256": copied,
+                "size": destination.stat().st_size,
+                "mode": item["mode"],
+                "partition": item["partition"],
+                "target_path": item["target_path"],
+                "logical_owner": item["logical_owner"],
+            }
+
+        all_groups_resolved = not unresolved
+        provenance = {
+            "$schema": "prototype-ordax.creator-payload-provenance/1",
+            "status": "complete-candidate" if all_groups_resolved else "resolved-subset-candidate",
+            "physical_write_authorized": False,
+            "source_commit": source_commit(repository_root),
+            "manifest_schema": manifest["$schema"],
+            "manifest_all_artifacts_resolved": manifest_flag,
+            "artifact_count": len(artifacts),
+            "unresolved_groups": unresolved,
+            "artifacts": dict(sorted(artifacts.items())),
+        }
+        provenance_path = staging / "payload-provenance.json"
+        with provenance_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        fsync_directory(staging)
+        publish_staged_directory(staging, out_abs)
+        published = True
+        return provenance
+    finally:
+        if not published and staging.exists():
+            shutil.rmtree(staging)
 
 
 def verify(
@@ -261,7 +331,10 @@ def verify(
                 raise AssembleError(f"unresolved group {group.get('id')!r} carries payload bytes")
             continue
         for artifact in group.get("artifacts", []):
-            expected_artifacts[artifact["source_path"]] = artifact
+            source_path = artifact["source_path"]
+            if source_path in expected_artifacts:
+                raise AssembleError(f"duplicate payload source path: {source_path}")
+            expected_artifacts[source_path] = artifact
 
     if set(provenance.get("artifacts", {})) != set(expected_artifacts):
         raise AssembleError("payload provenance artifact set disagrees with manifest")
