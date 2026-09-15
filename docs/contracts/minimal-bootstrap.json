@@ -1,12 +1,18 @@
 {
   "$schema": "prototype-ordax.minimal-bootstrap/4",
-  "status": "candidate-bytes-resolved-trust-channel-pending",
+  "status": "candidate-bytes-resolved-trust-pending",
   "physical_write_allowed": false,
   "all_artifacts_resolved": false,
   "policy": "minimum-release-acquisition-first",
   "partitions": [
-    {"name": "ORDAX-ESP", "role": "uefi-boot"},
-    {"name": "ORDAX", "role": "main"}
+    {
+      "name": "ORDAX-ESP",
+      "role": "uefi-boot"
+    },
+    {
+      "name": "ORDAX",
+      "role": "main"
+    }
   ],
   "required_capabilities_before_first_release": [
     "uefi-boot",
@@ -184,8 +190,17 @@
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/config",
       "source_owner": "bootstrap/config",
-      "resolved": false,
-      "artifacts": []
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/config/release-envelope-url",
+          "target_path": "/ordax/bootstrap/config/release-envelope-url",
+          "sha256": "ea1f3bae328a1c1e7aca1474d4930f84b2dd6da1702dcc11b08c01ed63a6ee5b",
+          "mode": "0644",
+          "logical_owner": "bootstrap-release-channel",
+          "reason": "Stable HTTPS pointer to the latest published signed release envelope on GitHub Releases; signature verification remains authoritative"
+        }
+      ]
     },
     {
       "id": "bootstrap-recovery",

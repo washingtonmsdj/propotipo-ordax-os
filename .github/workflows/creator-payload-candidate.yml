@@ -125,13 +125,13 @@ jobs:
           python tools/creator/assemble.py build --allow-unresolved
           python tools/creator/assemble.py verify --allow-unresolved
 
-      - name: Assert only explicit promotion inputs remain unresolved
+      - name: Assert only release trust remains unresolved
         run: |
           python - <<'PY'
           import json, pathlib
           manifest = json.loads(pathlib.Path('docs/contracts/minimal-bootstrap.json').read_text(encoding='utf-8'))
           unresolved = [g['id'] for g in manifest['artifact_groups'] if not g['resolved']]
-          expected = ['bootstrap-release-trust', 'bootstrap-release-channel']
+          expected = ['bootstrap-release-trust']
           if unresolved != expected:
               raise SystemExit(f'unexpected unresolved groups: {unresolved!r}')
           if manifest['all_artifacts_resolved'] is not False:
@@ -140,7 +140,7 @@ jobs:
               raise SystemExit('partial payload must keep physical_write_allowed=false')
           provenance = json.loads(pathlib.Path('out/creator-payload/payload-provenance.json').read_text(encoding='utf-8'))
           if provenance['unresolved_groups'] != expected:
-              raise SystemExit('payload provenance lost unresolved promotion inputs')
+              raise SystemExit('payload provenance lost unresolved promotion input')
           if provenance['physical_write_authorized'] is not False:
               raise SystemExit('payload provenance unexpectedly authorized physical write')
           PY

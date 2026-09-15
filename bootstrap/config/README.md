@@ -1,8 +1,14 @@
 # Bootstrap Release Channel Configuration
 
-Status: UNRESOLVED PROMOTION INPUT — PHYSICAL USE NOT AUTHORIZED
+Status: CANONICAL PROTOTYPE INPUT — PHYSICAL USE STILL NOT AUTHORIZED
 
-This owner will contain the minimum immutable bootstrap configuration needed to locate the first signed OrdaX release envelope.
+This owner contains the minimum bootstrap configuration needed to locate the first signed OrdaX release envelope.
+
+Canonical source file:
+
+```text
+bootstrap/config/release-envelope-url
+```
 
 Canonical runtime path:
 
@@ -10,12 +16,20 @@ Canonical runtime path:
 /ordax/bootstrap/config/release-envelope-url
 ```
 
-The file contains exactly one HTTPS URL consumed by `bootstrap/entrypoint`. The downloaded envelope is not trusted merely because HTTPS succeeds: authenticity is independently verified by the release acquisition agent against the local Ed25519 public trust anchor.
+The file contains exactly one HTTPS URL:
 
-## Promotion boundary
+```text
+https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json
+```
 
-- no placeholder, example domain or temporary CI URL may satisfy the physical manifest;
-- the selected URL must have an explicit release-channel owner and retention/availability policy;
-- redirects and downloaded bytes remain subject to the release agent's strict HTTPS, signature, size and SHA-256 checks;
-- changing the release channel is a source-controlled bootstrap policy change;
-- Creator physical authorization remains blocked while this owner is unresolved.
+GitHub documents `/releases/latest/download/<asset>` as the direct download form for an asset on the latest release. This pointer selects the candidate delivery object only; it is **not** an authenticity authority. The downloaded envelope must still pass the local Ed25519 trust anchor, strict schema checks, repository pin, exact source-commit identity, artifact size checks and SHA-256 verification.
+
+## Security boundary
+
+- HTTPS is mandatory transport;
+- the `latest` pointer may move only by publishing another GitHub Release;
+- moving that pointer cannot make an unsigned or wrongly signed envelope acceptable;
+- the release trust anchor remains independently pinned in `/ordax/bootstrap/trust/release-ed25519.json`;
+- changing this URL is a source-controlled bootstrap policy change;
+- no access token, credential or private signing material belongs in this file;
+- physical write remains blocked while the release trust owner is unresolved and until the remaining promotion gates pass.
