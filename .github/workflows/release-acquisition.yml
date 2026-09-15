@@ -1,0 +1,95 @@
+name: Release Acquisition Agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/release-acquisition/**'
+      - '.github/workflows/release-acquisition.yml'
+  pull_request:
+    paths:
+      - 'bootstrap/release-acquisition/**'
+      - '.github/workflows/release-acquisition.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-agent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: bootstrap/release-acquisition
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test release protocol and fail-closed activation
+        run: go test -count=1 ./...
+
+      - name: Build static Linux amd64 release agent
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p ../../out/release-acquisition
+          go build -trimpath -buildvcs=false -ldflags='-s -w' -o ../../out/release-acquisition/ordax-release-agent .
+
+      - name: Verify static artifact and emit provenance
+        run: |
+          set -euo pipefail
+          artifact='../../out/release-acquisition/ordax-release-agent'
+          test -s "$artifact"
+          if readelf -l "$artifact" | grep -q 'Requesting program interpreter'; then
+            echo 'release agent is dynamically linked' >&2
+            exit 1
+          fi
+          go_version="$(go version)"
+          artifact_sha="$(sha256sum "$artifact" | awk '{print $1}')"
+          artifact_size="$(stat -c '%s' "$artifact")"
+          python3 - "$go_version" "$artifact_sha" "$artifact_size" "$GITHUB_SHA" <<'PY'
+          import json, pathlib, sys
+          go_version, digest, size, source_commit = sys.argv[1:]
+          out = pathlib.Path('../../out/release-acquisition')
+          provenance = {
+              '$schema': 'prototype-ordax.release-agent-provenance/1',
+              'status': 'candidate',
+              'physical_artifact_authorized': False,
+              'source_commit': source_commit,
+              'go_version': go_version,
+              'cgo_enabled': False,
+              'goos': 'linux',
+              'goarch': 'amd64',
+              'artifact': {
+                  'name': 'ordax-release-agent',
+                  'sha256': digest,
+                  'size': int(size),
+              },
+          }
+          (out / 'release-agent-provenance.json').write_text(
+              json.dumps(provenance, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+          (
+            cd ../../out/release-acquisition
+            sha256sum ordax-release-agent release-agent-provenance.json > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Upload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordax-release-agent-${{ github.sha }}
+          path: out/release-acquisition/
+          if-no-files-found: error
+          retention-days: 14
