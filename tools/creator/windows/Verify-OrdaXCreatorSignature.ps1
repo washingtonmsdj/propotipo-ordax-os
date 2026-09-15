@@ -41,14 +41,31 @@ if (($contractItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
 }
 
 $contract = Get-Content -LiteralPath $ContractPath -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($contract.'$schema' -ne 'prototype-ordax.creator-code-signing/1') {
+if ($contract.'$schema' -ne 'prototype-ordax.creator-code-signing/2') {
     throw 'Unsupported Creator code-signing contract schema'
 }
 if ($contract.status -ne 'configured') {
     throw "Creator code signing is not configured; contract status is '$($contract.status)'"
 }
-if ($contract.platform -ne 'windows' -or $contract.artifact -ne 'OrdaX-Creator.exe' -or $contract.signature_format -ne 'authenticode') {
+if ($contract.platform -ne 'windows' -or $contract.signature_format -ne 'authenticode') {
     throw 'Creator code-signing contract identity is invalid'
+}
+$allowedArtifacts = @($contract.artifacts)
+if ($allowedArtifacts.Count -ne 2 -or
+    $allowedArtifacts -cnotcontains 'OrdaX-Creator.exe' -or
+    $allowedArtifacts -cnotcontains 'OrdaX-Creator-App.exe') {
+    throw 'Creator code-signing artifact allowlist is invalid'
+}
+if ($contract.artifact_roles.'OrdaX-Creator.exe' -ne 'stable-signed-app-loader' -or
+    $contract.artifact_roles.'OrdaX-Creator-App.exe' -ne 'versioned-signed-creator-gui') {
+    throw 'Creator code-signing artifact roles are invalid'
+}
+if ($contract.verification.exact_artifact_name_required -ne $true) {
+    throw 'Creator code-signing artifact-name policy was weakened'
+}
+$artifactName = [IO.Path]::GetFileName($ExecutablePath)
+if ($allowedArtifacts -cnotcontains $artifactName) {
+    throw "Creator executable name is not authorized by the code-signing contract: $artifactName"
 }
 if ($contract.file_digest_algorithm -ne 'sha256') {
     throw 'Creator code-signing contract requires an unsupported file digest algorithm'
@@ -66,6 +83,7 @@ if ($contract.verification.windows_signature_status_required -ne 'Valid' -or
 if ($contract.release_policy.unsigned_candidate_publishable -ne $false -or
     $contract.release_policy.signature_with_unapproved_identity_publishable -ne $false -or
     $contract.release_policy.signature_without_timestamp_publishable -ne $false -or
+    $contract.release_policy.unlisted_artifact_publishable -ne $false -or
     $contract.release_policy.authenticode_is_release_authenticity_root -ne $false -or
     $contract.release_policy.ed25519_release_verification_remains_required -ne $true -or
     $contract.release_policy.publish_allowed -ne $true) {
@@ -117,6 +135,7 @@ if ($null -eq $signature.TimeStamperCertificate) {
 
 $exeSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $ExecutablePath).Hash.ToLowerInvariant()
 Write-Output 'AUTHENTICODE_SIGNATURE_VALID=YES'
+Write-Output "AUTHENTICODE_ARTIFACT=$artifactName"
 Write-Output "AUTHENTICODE_PUBLISHER_SUBJECT=$expectedSubject"
 Write-Output "AUTHENTICODE_CERTIFICATE_SHA256=$leafSha256"
 Write-Output 'AUTHENTICODE_TIMESTAMP_PRESENT=YES'
