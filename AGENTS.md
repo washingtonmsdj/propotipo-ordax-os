@@ -14,6 +14,7 @@ Nao trate este repositorio como sucessor oficial enquanto `docs/PROMOTION-GATES.
 - Midia fisica, notebook, imagens, backups e copias locais nao sao source authority.
 - Nenhuma alteracao fisica sem equivalente reproduzivel no source.
 - Nao criar caminhos paralelos para a mesma responsabilidade.
+- Codex nao e source authority, build authority ou release authority.
 
 ## 3. Ordem obrigatoria de leitura
 
@@ -22,15 +23,16 @@ Antes de alterar codigo, contratos ou midia:
 1. `README.md`
 2. `docs/CURRENT-STATE.md`
 3. `docs/ARCHITECTURE.md`
-4. `docs/PRODUCT-MODES.md`
-5. `docs/MINIMAL-USB-BOOTSTRAP.md`
-6. `docs/HOST-INDEPENDENCE.md`
-7. `docs/REMOTE-CONTROL.md`
-8. `docs/PHYSICAL-MEDIA.md`
-9. `docs/DEVELOPMENT-WORKFLOW.md`
-10. `docs/SOURCE-MIGRATION.md`
-11. `docs/PROMOTION-GATES.md`
-12. `docs/DECISIONS.md`
+4. `docs/BUILD-AUTONOMY.md`
+5. `docs/PRODUCT-MODES.md`
+6. `docs/MINIMAL-USB-BOOTSTRAP.md`
+7. `docs/HOST-INDEPENDENCE.md`
+8. `docs/REMOTE-CONTROL.md`
+9. `docs/PHYSICAL-MEDIA.md`
+10. `docs/DEVELOPMENT-WORKFLOW.md`
+11. `docs/SOURCE-MIGRATION.md`
+12. `docs/PROMOTION-GATES.md`
+13. `docs/DECISIONS.md`
 
 ## 4. Arquitetura fisica alvo
 
@@ -86,7 +88,35 @@ Nao sao obrigatorios antes da primeira release:
 
 Depois do primeiro boot, a release completa deve ser adquirida, verificada e materializada em `/ordax/releases/<commit>`. Uma release conhecida deve permanecer local para boot offline e rollback.
 
-## 7. Desenvolvimento diario
+## 7. Build autonomo e independente de Codex
+
+Nenhum artefato pode depender de Codex, memoria de comandos manuais ou toolchain instalada na maquina do desenvolvedor.
+
+```text
+source em main
+ -> receita versionada no repo
+ -> ambiente de build fixado
+ -> CI
+ -> testes
+ -> provenance + SHA-256
+ -> artefato
+```
+
+Isso inclui kernel, initramfs, bootstrap, Surface e OrdaX Creator.
+
+Regras:
+
+- `CODEX_REQUIRED=NO`;
+- `LOCAL_DEVELOPER_TOOLCHAIN_REQUIRED=NO`;
+- `MANUAL_KERNEL_BUILD_REQUIRED=NO`;
+- GitHub Actions e o executor atual, nao source authority;
+- o entrypoint de build deve ser portavel para outro executor/container compativel;
+- Codex pode ser parceiro opcional para revisao, investigacao fisica ou segunda opiniao;
+- um build que depende de estado local nao documentado e defeito arquitetural.
+
+Ver `docs/BUILD-AUTONOMY.md` e `docs/contracts/build-autonomy.json`.
+
+## 8. Desenvolvimento diario
 
 Fluxo normal:
 
@@ -95,15 +125,18 @@ editar source
  -> preview Web/HMR quando aplicavel
  -> testar
  -> commit/push em main
+ -> CI gera/verifica apenas artefatos afetados
  -> Web recebe o mesmo commit
  -> OrdaX detecta/puxa release ou delta
  -> verifica
  -> ativa
 ```
 
-Nao exigir SSH, shell remoto, Remote Core ou Control Plane para esse fluxo.
+Nao exigir SSH, shell remoto, Remote Core, Control Plane ou Codex para esse fluxo.
 
-## 8. Independencia do host
+Uma mudanca de Surface nao deve reconstruir kernel. Uma mudanca de kernel nao deve reconstruir Surface sem motivo real de dependencia.
+
+## 9. Independencia do host
 
 A arquitetura nao pode exigir como dependencia obrigatoria:
 
@@ -111,13 +144,15 @@ A arquitetura nao pode exigir como dependencia obrigatoria:
 - QEMU;
 - PowerShell;
 - Bash;
-- distribuicao Linux especifica;
+- distribuicao Linux especifica no host do desenvolvedor;
 - sistema desktop especifico;
 - executavel SSH externo.
 
 Quando Windows/Linux/macOS exigirem APIs diferentes para disco/elevacao, usar adapters finos sob um core compartilhado. Politica, formato, hashes, layout e comportamento nao podem divergir por host.
 
-## 9. Remote/Control opcional
+Um runner Linux/container pode compilar o kernel Linux no CI. Isso nao torna Linux/WSL uma dependencia da maquina do desenvolvedor.
+
+## 10. Remote/Control opcional
 
 Remote Core e Control Plane sao capacidades futuras opcionais.
 
@@ -125,7 +160,7 @@ Nao implementar ou colocar no bootstrap por antecipacao. So adicionar quando exi
 
 Se forem implementados, devem usar transporte/criptografia padrao e auditado. Criptografia customizada e proibida.
 
-## 10. Reuso do repositorio antigo
+## 11. Reuso do repositorio antigo
 
 `novo-ordax-os` e referencia, nao dependencia automatica.
 
@@ -141,14 +176,14 @@ Para portar qualquer componente antigo, registrar em `docs/SOURCE-MIGRATION.md`:
 
 Nao copiar pastas inteiras, history, tmp, backups, scripts antigos, stack SSH/QEMU/F7 ou contratos obsoletos.
 
-## 11. Seguranca
+## 12. Seguranca
 
 - Nunca versionar private keys, tokens, secrets ou credenciais.
 - Integridade, autorizacao e selecao de alvo falham fechado.
 - Operacao destrutiva de disco exige identificacao inequivoca do alvo, dry-run e evidencia.
 - Criptografia customizada e proibida.
 
-## 12. Trabalho fisico
+## 13. Trabalho fisico
 
 Antes de formatar ou escrever em pendrive/notebook:
 
@@ -160,17 +195,22 @@ Antes de formatar ou escrever em pendrive/notebook:
 6. somente depois aplicar;
 7. verificar leitura/hashes/layout depois da escrita.
 
-## 13. Qualidade
+OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario final nao compila kernel para instalar o sistema.
+
+## 14. Qualidade
 
 - SSOT unico por responsabilidade.
 - Sem bridges permanentes ou compatibilidade legada sem owner.
 - Testes cobrem contratos criticos.
 - Documentacao canonica muda junto com arquitetura.
 - Platform adapters nao podem duplicar regras de produto.
+- Build reproduzivel e provenance sao parte da qualidade, nao tarefas opcionais de release.
 
-## 14. Estado atual
+## 15. Estado atual
 
-Kernel/initramfs e provisioning ainda nao foram implementados no clean-room. O primeiro objetivo e provar o menor caminho possivel:
+Kernel/initramfs e provisioning ainda nao foram implementados no clean-room. O primeiro objetivo tecnico de build e transformar o kernel 6.6.52 conhecido em uma receita reproduzivel executada pelo CI, sem depender de Codex ou da maquina local.
+
+O menor caminho fisico continua:
 
 ```text
 boot -> rede -> adquirir release do Git/GitHub -> verificar -> ativar -> boot offline posterior
