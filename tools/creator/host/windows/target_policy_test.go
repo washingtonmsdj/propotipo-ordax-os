@@ -35,13 +35,14 @@ func TestPrototypeCandidateRequiresUSBAndRejectsSystemDisk(t *testing.T) {
 
 func TestConfirmationTokenIsDeterministicAndIdentitySensitive(t *testing.T) {
 	base := FinalizeTarget(Target{
-		DriveLetter:     "E:",
-		VolumeLabel:     "USB",
-		VolumeSerial:    0x1234abcd,
-		DiskNumber:      7,
-		VolumeBytes:     32 << 30,
-		DeviceRemovable: true,
-		DeviceSerial:    "DEVICE-123",
+		DriveLetter:       "E:",
+		VolumeLabel:       "USB",
+		VolumeSerial:      0x1234abcd,
+		DiskNumber:        7,
+		VolumeBytes:       30 << 30,
+		PhysicalDiskBytes: 32 << 30,
+		DeviceRemovable:   true,
+		DeviceSerial:      "DEVICE-123",
 	}, DriveTypeRemovable, true, BusTypeUSB, false)
 	first := ConfirmationToken(base)
 	second := ConfirmationToken(base)
@@ -64,6 +65,11 @@ func TestConfirmationTokenIsDeterministicAndIdentitySensitive(t *testing.T) {
 		t.Fatal("volume-size change must change confirmation token")
 	}
 	changed = base
+	changed.PhysicalDiskBytes++
+	if ConfirmationToken(changed) == first {
+		t.Fatal("physical-disk-size change must change confirmation token")
+	}
+	changed = base
 	changed.DeviceSerial = "DEVICE-456"
 	if ConfirmationToken(changed) == first {
 		t.Fatal("device-serial change must change confirmation token")
@@ -75,17 +81,18 @@ func TestConfirmationTokenIsDeterministicAndIdentitySensitive(t *testing.T) {
 	}
 }
 
-func TestFinalizeTargetBindsUSBTransportSafetyAndToken(t *testing.T) {
+func TestFinalizeTargetBindsUSBTransportCapacitySafetyAndToken(t *testing.T) {
 	target := FinalizeTarget(Target{
-		DriveLetter:     "F:",
-		VolumeSerial:    42,
-		DiskNumber:      4,
-		VolumeBytes:     16 << 30,
-		DeviceRemovable: false,
-		DeviceSerial:    "SSD-USB",
+		DriveLetter:       "F:",
+		VolumeSerial:      42,
+		DiskNumber:        4,
+		VolumeBytes:       15 << 30,
+		PhysicalDiskBytes: 16 << 30,
+		DeviceRemovable:   false,
+		DeviceSerial:      "SSD-USB",
 	}, DriveTypeFixed, true, BusTypeUSB, false)
 	if !target.PrototypeSafe {
-		t.Fatal("expected fixed-media USB target to be prototype-safe")
+		t.Fatal("expected fixed-media USB target with measured capacity to be prototype-safe")
 	}
 	if target.DriveType != "fixed" || target.BusType != "usb" || target.SystemDisk {
 		t.Fatalf("unexpected finalized identity: %#v", target)
@@ -93,22 +100,30 @@ func TestFinalizeTargetBindsUSBTransportSafetyAndToken(t *testing.T) {
 	if target.ConfirmationToken != ConfirmationToken(target) {
 		t.Fatal("finalized target confirmation token mismatch")
 	}
+
+	missingCapacity := target
+	missingCapacity.PhysicalDiskBytes = 0
+	missingCapacity = FinalizeTarget(missingCapacity, DriveTypeFixed, true, BusTypeUSB, false)
+	if missingCapacity.PrototypeSafe {
+		t.Fatal("target without measured physical capacity must not be prototype-safe")
+	}
 }
 
 func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 	target := FinalizeTarget(Target{
-		DriveLetter:     "G:",
-		VolumeSerial:    99,
-		DiskNumber:      8,
-		VolumeBytes:     64 << 30,
-		DeviceRemovable: true,
-		DeviceSerial:    "USB-99",
+		DriveLetter:       "G:",
+		VolumeSerial:      99,
+		DiskNumber:        8,
+		VolumeBytes:       62 << 30,
+		PhysicalDiskBytes: 64 << 30,
+		DeviceRemovable:   true,
+		DeviceSerial:      "USB-99",
 	}, DriveTypeRemovable, true, BusTypeUSB, false)
 	matched, err := MatchConfirmedTarget([]Target{target}, target.ConfirmationToken)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if matched.DiskNumber != target.DiskNumber || matched.VolumeSerial != target.VolumeSerial {
+	if matched.DiskNumber != target.DiskNumber || matched.PhysicalDiskBytes != target.PhysicalDiskBytes {
 		t.Fatalf("matched wrong target: %#v", matched)
 	}
 
@@ -130,7 +145,7 @@ func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 	}
 }
 
-func TestWindowsDiscoverySourceRequiresUSBDescriptorAndSystemDiskGuard(t *testing.T) {
+func TestWindowsDiscoverySourceRequiresUSBDescriptorPhysicalCapacityAndSystemDiskGuard(t *testing.T) {
 	data, err := os.ReadFile("targets_windows.go")
 	if err != nil {
 		t.Fatal(err)
@@ -138,6 +153,8 @@ func TestWindowsDiscoverySourceRequiresUSBDescriptorAndSystemDiskGuard(t *testin
 	text := string(data)
 	for _, required := range []string{
 		"ioctlStorageQueryProperty",
+		"ioctlDiskGetDriveGeometryEx",
+		"PhysicalDiskBytes",
 		"BusTypeUSB",
 		"procGetWindowsDirectoryW",
 		"windowsSystemDiskNumber",
