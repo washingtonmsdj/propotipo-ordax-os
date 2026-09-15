@@ -6,6 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = json.loads((ROOT / "bootstrap/initramfs/source.json").read_text(encoding="utf-8"))
 INIT = (ROOT / CONTRACT["root_init"]).read_text(encoding="utf-8")
 BUILDER = (ROOT / "bootstrap/initramfs/build.py").read_text(encoding="utf-8")
+GROW_HELPER = (ROOT / "bootstrap/initramfs/grow_ext4.c").read_text(encoding="utf-8")
+GROWTH_PROOF = (ROOT / "bootstrap/initramfs/prove_ext4_growth.sh").read_text(encoding="utf-8")
 
 
 class InitramfsSourceContractTests(unittest.TestCase):
@@ -40,6 +42,22 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn('wrapper_sha256', BUILDER)
         self.assertIn('specs_sha256', BUILDER)
         self.assertIn('"musl_specs_verified": True', BUILDER)
+
+    def test_ext4_growth_is_bound_to_exact_rw_device_and_has_runtime_proof(self):
+        self.assertIn("mount_stat.st_dev != device_stat.st_rdev", GROW_HELPER)
+        self.assertIn("mountpoint does not belong to the supplied block device", GROW_HELPER)
+        self.assertIn("mount_flags.f_flag & ST_RDONLY", GROW_HELPER)
+        self.assertIn("mounted filesystem is read-only", GROW_HELPER)
+        self.assertIn("EXT4_IOC_RESIZE_FS", GROW_HELPER)
+        self.assertIn("BLKGETSIZE64", GROW_HELPER)
+
+        self.assertIn("truncate -s 128M", GROWTH_PROOF)
+        self.assertIn('"$DECOY_LOOP" "$MOUNT"', GROWTH_PROOF)
+        self.assertIn("ORDAX_EXT4_GROWTH=PASS", GROWTH_PROOF)
+        self.assertIn("mount -t ext4 -o ro", GROWTH_PROOF)
+        self.assertIn("read_only_size_unchanged", GROWTH_PROOF)
+        self.assertIn('"physical_write_authorized": false', GROWTH_PROOF)
+        self.assertIn('"physical_hardware_proven": false', GROWTH_PROOF)
 
     def test_physical_use_remains_fail_closed(self):
         self.assertFalse(CONTRACT["build"]["physical_artifact_authorized"])
