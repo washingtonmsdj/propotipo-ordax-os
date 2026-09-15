@@ -2,10 +2,13 @@ package physicalchannel
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const currentEnvelopeName = "current-envelope.json"
@@ -24,6 +27,45 @@ func physicalRoot(root string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(home, ".ordax-creator-physical"), nil
+}
+
+func writeEnvelopeAtomic(path string, data []byte) error {
+	parent := filepath.Dir(path)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(parent, ".ordax-physical-envelope-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	remove := true
+	defer func() {
+		_ = temp.Close()
+		if remove {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := temp.Write(data); err != nil {
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(tempPath, 0o600); err != nil {
+			return err
+		}
+	}
+	_ = os.Remove(path)
+	if err := os.Rename(tempPath, path); err != nil {
+		return err
+	}
+	remove = false
+	return nil
 }
 
 // Current is deliberately strict: offline use is allowed only when the cached
@@ -60,4 +102,43 @@ func Current(root string, trustBytes []byte, expectedTrustSHA256 string) (Instal
 		return Installed{}, err
 	}
 	return Installed{SourceCommit: manifest.SourceCommit, Directory: directory, Manifest: manifest}, nil
+}
+
+// AcquireCached first lets the canonical online acquisition path install and
+// verify a candidate. It then performs a second independent read of the signed
+// envelope. The cache pointer is committed only if that second envelope still
+// names the same commit and all installed bytes still match its bindings.
+// This prevents a moving release pointer from creating an unsafe offline cache.
+func AcquireCached(client *http.Client, root, envelopeURL string, trustBytes []byte, expectedTrustSHA256 string) (Installed, bool, error) {
+	installed, changed, err := Acquire(client, root, envelopeURL, trustBytes, expectedTrustSHA256)
+	if err != nil {
+		return Installed{}, false, err
+	}
+	actualRoot, err := physicalRoot(root)
+	if err != nil {
+		return Installed{}, false, err
+	}
+	if envelopeURL == "" {
+		envelopeURL = DefaultEnvelopeURL
+	}
+	separator := "?"
+	if strings.Contains(envelopeURL, "?") {
+		separator = "&"
+	}
+	verifyURL := envelopeURL + separator + "ordax_cache_verify=" + fmt.Sprint(time.Now().UnixNano())
+	envelopeBytes, err := fetchBytes(client, verifyURL, maxEnvelopeBytes)
+	if err != nil {
+		return installed, changed, nil
+	}
+	manifest, err := VerifyEnvelope(envelopeBytes, trustBytes, expectedTrustSHA256)
+	if err != nil || manifest.SourceCommit != installed.SourceCommit {
+		return installed, changed, nil
+	}
+	if err := VerifyInstalled(installed.Directory, manifest); err != nil {
+		return Installed{}, false, err
+	}
+	if err := writeEnvelopeAtomic(filepath.Join(actualRoot, currentEnvelopeName), envelopeBytes); err != nil {
+		return installed, changed, nil
+	}
+	return installed, changed, nil
 }
