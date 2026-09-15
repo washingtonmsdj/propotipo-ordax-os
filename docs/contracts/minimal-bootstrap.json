@@ -1,9 +1,9 @@
 {
-  "$schema": "prototype-ordax.minimal-bootstrap/1",
+  "$schema": "prototype-ordax.minimal-bootstrap/2",
   "status": "design-bounded-unresolved",
   "physical_write_allowed": false,
   "all_artifacts_resolved": false,
-  "policy": "minimum-network-first",
+  "policy": "minimum-git-acquisition-first",
   "partitions": [
     {
       "name": "ORDAX-ESP",
@@ -19,11 +19,13 @@
     "kernel",
     "initramfs",
     "minimal-network",
-    "stable-device-identity",
-    "ordax-remote-core",
-    "minimal-control-plane-and-trust",
     "release-acquisition",
     "recovery-maintenance"
+  ],
+  "optional_after_first_release": [
+    "stable-device-identity",
+    "ordax-remote-core",
+    "control-plane"
   ],
   "artifact_groups": [
     {
@@ -56,30 +58,6 @@
       "artifacts": []
     },
     {
-      "id": "bootstrap-identity",
-      "partition": "ORDAX",
-      "target_root": "/ordax/bootstrap/identity",
-      "source_owner": "bootstrap/identity",
-      "resolved": false,
-      "artifacts": []
-    },
-    {
-      "id": "bootstrap-remote",
-      "partition": "ORDAX",
-      "target_root": "/ordax/bootstrap/remote",
-      "source_owner": "bootstrap/remote",
-      "resolved": false,
-      "artifacts": []
-    },
-    {
-      "id": "bootstrap-control-plane",
-      "partition": "ORDAX",
-      "target_root": "/ordax/bootstrap/control-plane",
-      "source_owner": "bootstrap/control-plane",
-      "resolved": false,
-      "artifacts": []
-    },
-    {
       "id": "bootstrap-release-acquisition",
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/release-acquisition",
@@ -106,11 +84,15 @@
     "system/surface",
     "system/apps",
     "normal-high-level-services",
+    "bootstrap/remote",
+    "bootstrap/control-plane",
+    "bootstrap/identity",
     "complete-source-checkout",
     "build-toolchain",
     "legacy-repository-dump",
     "wsl-runtime",
-    "qemu-runtime"
+    "qemu-runtime",
+    "ssh-runtime"
   ],
   "resolution_requirements_per_artifact": [
     "source_path",
