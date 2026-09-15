@@ -9,9 +9,23 @@
   "root_init": "bootstrap/initramfs/root/init",
   "main_partition_label": "ORDAX",
   "bootstrap_entrypoint": "/ordax/bootstrap/entrypoint",
+  "storage_growth": {
+    "normal_boot": "online-ext4-grow-only",
+    "helper_source": "bootstrap/initramfs/grow_ext4.c",
+    "helper_runtime_path": "/sbin/ordax-grow-ext4",
+    "target": "largest-valid-ext4-size-within-ORDAX-block-device",
+    "exact_mounted_block_device_required": true,
+    "read_write_mount_required": true,
+    "bigalloc_supported": false,
+    "failure_policy": "warn-and-continue",
+    "runtime_proof": "bootstrap/initramfs/prove_ext4_growth.sh",
+    "runtime_oracle": "upstream-resize2fs-on-disposable-twin-media",
+    "physical_write_authorized": false
+  },
   "recovery": {
     "cmdline_token": "ordax.mode=recovery",
     "main_partition_mount": "read-only",
+    "filesystem_growth": false,
     "entrypoint": "/ordax/bootstrap/recovery/entrypoint",
     "network_started": false
   },
