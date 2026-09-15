@@ -54,12 +54,21 @@ func decodePrivateForTest(t *testing.T, path string) ed25519.PrivateKey {
 	return privateKey
 }
 
+func writeManifestForTest(t *testing.T, root string, data []byte) string {
+	t.Helper()
+	path := filepath.Join(root, "release-manifest.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestGenerateDeriveAndSignRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	privatePath := filepath.Join(root, "release-private.pem")
 	trustPath := filepath.Join(root, "release-trust.json")
 	derivedPath := filepath.Join(root, "derived-trust.json")
-	manifestPath := filepath.Join(root, "release-manifest.json")
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
 	envelopePath := filepath.Join(root, "release-envelope.json")
 
 	fingerprint, err := generateKeyFiles(privatePath, trustPath, "prototype-1")
@@ -98,11 +107,7 @@ func TestGenerateDeriveAndSignRoundTrip(t *testing.T) {
 		t.Fatal("derived trust differs from generated trust")
 	}
 
-	manifestBytes := validManifestBytes()
-	if err := os.WriteFile(manifestPath, manifestBytes, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	commit, err := signManifest(manifestPath, privatePath, envelopePath, "prototype-1", defaultRepo)
+	commit, err := signManifest(manifestPath, privatePath, trustPath, envelopePath, "prototype-1", defaultRepo)
 	if err != nil {
 		t.Fatalf("signManifest: %v", err)
 	}
@@ -121,6 +126,7 @@ func TestGenerateDeriveAndSignRoundTrip(t *testing.T) {
 	if envelope.Schema != envelopeSchema || envelope.KeyID != "prototype-1" {
 		t.Fatalf("unexpected envelope identity: %#v", envelope)
 	}
+	manifestBytes := validManifestBytes()
 	if string(envelope.Payload) != string(manifestBytes) {
 		t.Fatal("signed envelope did not preserve exact manifest bytes")
 	}
@@ -147,12 +153,9 @@ func TestSignPreservesWhitespaceInExactPayload(t *testing.T) {
 	}
 	manifest := append([]byte("\n  "), validManifestBytes()...)
 	manifest = append(manifest, []byte("\n")...)
-	manifestPath := filepath.Join(root, "manifest.json")
-	if err := os.WriteFile(manifestPath, manifest, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	manifestPath := writeManifestForTest(t, root, manifest)
 	envelopePath := filepath.Join(root, "envelope.json")
-	if _, err := signManifest(manifestPath, privatePath, envelopePath, "prototype-1", defaultRepo); err != nil {
+	if _, err := signManifest(manifestPath, privatePath, trustPath, envelopePath, "prototype-1", defaultRepo); err != nil {
 		t.Fatal(err)
 	}
 	var envelope Envelope
@@ -162,6 +165,93 @@ func TestSignPreservesWhitespaceInExactPayload(t *testing.T) {
 	}
 	if string(envelope.Payload) != string(manifest) {
 		t.Fatal("payload whitespace changed during signing")
+	}
+}
+
+func TestStrictManifestMatchesReleaseAgentV1Shape(t *testing.T) {
+	if _, err := strictManifest(validManifestBytes(), defaultRepo); err != nil {
+		t.Fatal(err)
+	}
+	var manifest Manifest
+	if err := json.Unmarshal(validManifestBytes(), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Artifacts = append(manifest.Artifacts, manifest.Artifacts[0])
+	data, _ := json.Marshal(manifest)
+	if _, err := strictManifest(data, defaultRepo); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("multiple artifact error = %v", err)
+	}
+	manifest.Artifacts = manifest.Artifacts[:1]
+	manifest.Artifacts[0].Name = "other.tar"
+	data, _ = json.Marshal(manifest)
+	if _, err := strictManifest(data, defaultRepo); err == nil || !strings.Contains(err.Error(), "system.tar") {
+		t.Fatalf("non-canonical artifact error = %v", err)
+	}
+}
+
+func TestSigningPrivateKeyMustMatchTrustAnchor(t *testing.T) {
+	root := t.TempDir()
+	privateA := filepath.Join(root, "a.pem")
+	trustA := filepath.Join(root, "a.json")
+	privateB := filepath.Join(root, "b.pem")
+	trustB := filepath.Join(root, "b.json")
+	if _, err := generateKeyFiles(privateA, trustA, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := generateKeyFiles(privateB, trustB, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
+	output := filepath.Join(root, "envelope.json")
+	if _, err := signManifest(manifestPath, privateA, trustB, output, "prototype-1", defaultRepo); err == nil || !strings.Contains(err.Error(), "does not match supplied trust anchor") {
+		t.Fatalf("private/trust mismatch error = %v", err)
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("envelope appeared after private/trust mismatch: %v", err)
+	}
+}
+
+func TestSigningKeyIDMustMatchTrustAnchor(t *testing.T) {
+	root := t.TempDir()
+	privatePath := filepath.Join(root, "private.pem")
+	trustPath := filepath.Join(root, "trust.json")
+	if _, err := generateKeyFiles(privatePath, trustPath, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
+	output := filepath.Join(root, "envelope.json")
+	if _, err := signManifest(manifestPath, privatePath, trustPath, output, "prototype-2", defaultRepo); err == nil || !strings.Contains(err.Error(), "does not match trust anchor key id") {
+		t.Fatalf("key-id mismatch error = %v", err)
+	}
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("envelope appeared after key-id mismatch: %v", err)
+	}
+}
+
+func TestTrustAnchorSymlinkIsRejected(t *testing.T) {
+	root := t.TempDir()
+	privatePath := filepath.Join(root, "private.pem")
+	trustPath := filepath.Join(root, "trust.json")
+	if _, err := generateKeyFiles(privatePath, trustPath, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "trust-link.json")
+	if err := os.Symlink(trustPath, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, _, err := loadTrustAnchor(link); err == nil || !strings.Contains(err.Error(), "non-symlink") {
+		t.Fatalf("trust symlink error = %v", err)
+	}
+}
+
+func TestMalformedTrustAnchorIsRejected(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "trust.json")
+	if err := os.WriteFile(path, []byte(`{"$schema":"prototype-ordax.release-trust/1","key_id":"prototype-1","public_key_base64":"bad","unexpected":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := loadTrustAnchor(path); err == nil {
+		t.Fatal("malformed trust anchor was accepted")
 	}
 }
 
@@ -187,15 +277,12 @@ func TestSignRefusesExistingEnvelope(t *testing.T) {
 	if _, err := generateKeyFiles(privatePath, trustPath, "prototype-1"); err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(root, "manifest.json")
-	if err := os.WriteFile(manifestPath, validManifestBytes(), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
 	output := filepath.Join(root, "envelope.json")
 	if err := os.WriteFile(output, []byte("sentinel"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := signManifest(manifestPath, privatePath, output, "prototype-1", defaultRepo); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, err := signManifest(manifestPath, privatePath, trustPath, output, "prototype-1", defaultRepo); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("sign overwrite error = %v", err)
 	}
 	data, _ := os.ReadFile(output)
@@ -257,12 +344,9 @@ func TestManifestRepositoryMismatchIsRejectedBeforeSigning(t *testing.T) {
 	if _, err := generateKeyFiles(privatePath, trustPath, "prototype-1"); err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(root, "manifest.json")
-	if err := os.WriteFile(manifestPath, validManifestBytes(), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
 	output := filepath.Join(root, "envelope.json")
-	if _, err := signManifest(manifestPath, privatePath, output, "prototype-1", "someone/else"); err == nil || !strings.Contains(err.Error(), "unexpected source repository") {
+	if _, err := signManifest(manifestPath, privatePath, trustPath, output, "prototype-1", "someone/else"); err == nil || !strings.Contains(err.Error(), "unexpected source repository") {
 		t.Fatalf("repository mismatch error = %v", err)
 	}
 	if _, err := os.Stat(output); !os.IsNotExist(err) {

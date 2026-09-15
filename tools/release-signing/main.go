@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strings"
 )
 
 const (
@@ -29,14 +28,14 @@ const (
 	defaultRepo    = "washingtonmsdj/prototipo-ordax-os"
 	maxManifest    = 512 << 10
 	maxPrivateKey  = 16 << 10
+	maxTrust       = 16 << 10
+	maxArtifact    = int64(16 << 30)
 )
 
 var (
 	keyIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	namePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$`)
-	rolePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 	recipePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$`)
 )
 
@@ -185,6 +184,25 @@ func marshalJSON(value any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
+func decodeStrict(data []byte, max int, target any) error {
+	if len(data) == 0 || len(data) > max {
+		return fmt.Errorf("document size outside allowed range: %d", len(data))
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values are forbidden")
+		}
+		return err
+	}
+	return nil
+}
+
 func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
 	data, err := readRegular(path, maxPrivateKey, true)
 	if err != nil {
@@ -205,6 +223,28 @@ func loadPrivateKey(path string) (ed25519.PrivateKey, error) {
 	return privateKey, nil
 }
 
+func loadTrustAnchor(path string) (TrustAnchor, ed25519.PublicKey, error) {
+	data, err := readRegular(path, maxTrust, false)
+	if err != nil {
+		return TrustAnchor{}, nil, fmt.Errorf("trust anchor: %w", err)
+	}
+	var trust TrustAnchor
+	if err := decodeStrict(data, maxTrust, &trust); err != nil {
+		return TrustAnchor{}, nil, fmt.Errorf("trust anchor: %w", err)
+	}
+	if trust.Schema != trustSchema {
+		return TrustAnchor{}, nil, errors.New("unsupported trust anchor schema")
+	}
+	if err := validateKeyID(trust.KeyID); err != nil {
+		return TrustAnchor{}, nil, fmt.Errorf("trust anchor: %w", err)
+	}
+	publicKey, err := base64.StdEncoding.Strict().DecodeString(trust.PublicKeyB64)
+	if err != nil || len(publicKey) != ed25519.PublicKeySize {
+		return TrustAnchor{}, nil, errors.New("trust anchor contains invalid Ed25519 public key")
+	}
+	return trust, ed25519.PublicKey(publicKey), nil
+}
+
 func trustForPrivate(privateKey ed25519.PrivateKey, keyID string) (TrustAnchor, error) {
 	if err := validateKeyID(keyID); err != nil {
 		return TrustAnchor{}, err
@@ -220,6 +260,20 @@ func trustForPrivate(privateKey ed25519.PrivateKey, keyID string) (TrustAnchor, 
 	}, nil
 }
 
+func validateSigningIdentity(privateKey ed25519.PrivateKey, trust TrustAnchor, trustedPublic ed25519.PublicKey, keyID string) error {
+	if trust.KeyID != keyID {
+		return fmt.Errorf("signing key id %q does not match trust anchor key id %q", keyID, trust.KeyID)
+	}
+	publicKey, ok := privateKey.Public().(ed25519.PublicKey)
+	if !ok || len(publicKey) != ed25519.PublicKeySize {
+		return errors.New("cannot derive public key from signing private key")
+	}
+	if !bytes.Equal(publicKey, trustedPublic) {
+		return errors.New("signing private key does not match supplied trust anchor")
+	}
+	return nil
+}
+
 func validateHTTPSURL(raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
@@ -229,21 +283,9 @@ func validateHTTPSURL(raw string) error {
 }
 
 func strictManifest(data []byte, expectedRepository string) (Manifest, error) {
-	if len(data) == 0 || len(data) > maxManifest {
-		return Manifest{}, fmt.Errorf("manifest size outside allowed range: %d", len(data))
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var manifest Manifest
-	if err := decoder.Decode(&manifest); err != nil {
+	if err := decodeStrict(data, maxManifest, &manifest); err != nil {
 		return Manifest{}, fmt.Errorf("decode manifest: %w", err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return Manifest{}, errors.New("manifest contains multiple JSON values")
-		}
-		return Manifest{}, err
 	}
 	if manifest.Schema != manifestSchema {
 		return Manifest{}, errors.New("unsupported release manifest schema")
@@ -260,30 +302,21 @@ func strictManifest(data []byte, expectedRepository string) (Manifest, error) {
 	if !recipePattern.MatchString(manifest.CreatedFromCIRecipe) {
 		return Manifest{}, errors.New("invalid created_from_ci_recipe")
 	}
-	if len(manifest.Artifacts) == 0 || len(manifest.Artifacts) > 128 {
-		return Manifest{}, errors.New("release must contain between 1 and 128 artifacts")
+	if len(manifest.Artifacts) != 1 {
+		return Manifest{}, errors.New("release-manifest/1 requires exactly one system.tar artifact")
 	}
-	seen := map[string]bool{}
-	for _, artifact := range manifest.Artifacts {
-		if !namePattern.MatchString(artifact.Name) || filepath.Base(artifact.Name) != artifact.Name || strings.ContainsAny(artifact.Name, `/\\`) || artifact.Name == "release-manifest.json" {
-			return Manifest{}, fmt.Errorf("unsafe artifact name: %q", artifact.Name)
-		}
-		if seen[artifact.Name] {
-			return Manifest{}, fmt.Errorf("duplicate artifact name: %q", artifact.Name)
-		}
-		seen[artifact.Name] = true
-		if !rolePattern.MatchString(artifact.Role) {
-			return Manifest{}, fmt.Errorf("invalid artifact role: %q", artifact.Role)
-		}
-		if !shaPattern.MatchString(artifact.SHA256) {
-			return Manifest{}, fmt.Errorf("invalid artifact SHA-256 for %q", artifact.Name)
-		}
-		if artifact.Size <= 0 || artifact.Size > 16<<30 {
-			return Manifest{}, fmt.Errorf("artifact size outside allowed range for %q", artifact.Name)
-		}
-		if err := validateHTTPSURL(artifact.URL); err != nil {
-			return Manifest{}, fmt.Errorf("artifact %q: %w", artifact.Name, err)
-		}
+	artifact := manifest.Artifacts[0]
+	if artifact.Name != "system.tar" || artifact.Role != "system" {
+		return Manifest{}, errors.New("release-manifest/1 artifact must be system.tar with role=system")
+	}
+	if !shaPattern.MatchString(artifact.SHA256) {
+		return Manifest{}, errors.New("invalid artifact SHA-256 for system.tar")
+	}
+	if artifact.Size <= 0 || artifact.Size > maxArtifact {
+		return Manifest{}, errors.New("system.tar size outside allowed range")
+	}
+	if err := validateHTTPSURL(artifact.URL); err != nil {
+		return Manifest{}, fmt.Errorf("system.tar: %w", err)
 	}
 	return manifest, nil
 }
@@ -348,7 +381,7 @@ func deriveTrust(privatePath, outputPath, keyID string) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
-func signManifest(manifestPath, privatePath, outputPath, keyID, repository string) (string, error) {
+func signManifest(manifestPath, privatePath, trustPath, outputPath, keyID, repository string) (string, error) {
 	if err := validateKeyID(keyID); err != nil {
 		return "", err
 	}
@@ -362,6 +395,13 @@ func signManifest(manifestPath, privatePath, outputPath, keyID, repository strin
 	}
 	privateKey, err := loadPrivateKey(privatePath)
 	if err != nil {
+		return "", err
+	}
+	trust, trustedPublic, err := loadTrustAnchor(trustPath)
+	if err != nil {
+		return "", err
+	}
+	if err := validateSigningIdentity(privateKey, trust, trustedPublic, keyID); err != nil {
 		return "", err
 	}
 	signature := ed25519.Sign(privateKey, manifestBytes)
@@ -418,20 +458,21 @@ func signCommand(args []string) error {
 	flags := flag.NewFlagSet("sign", flag.ContinueOnError)
 	manifestPath := flags.String("manifest", "", "exact release manifest JSON path")
 	privatePath := flags.String("private-key", "", "external PKCS#8 Ed25519 private-key path")
+	trustPath := flags.String("trust", "", "public trust-anchor JSON expected by devices")
 	outputPath := flags.String("out", "", "new release envelope JSON path")
 	keyID := flags.String("key-id", "", "stable release key identifier")
 	repository := flags.String("repository", defaultRepo, "expected source repository")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *manifestPath == "" || *privatePath == "" || *outputPath == "" || *keyID == "" || flags.NArg() != 0 {
-		return errors.New("sign requires --manifest, --private-key, --out and --key-id")
+	if *manifestPath == "" || *privatePath == "" || *trustPath == "" || *outputPath == "" || *keyID == "" || flags.NArg() != 0 {
+		return errors.New("sign requires --manifest, --private-key, --trust, --out and --key-id")
 	}
-	commit, err := signManifest(*manifestPath, *privatePath, *outputPath, *keyID, *repository)
+	commit, err := signManifest(*manifestPath, *privatePath, *trustPath, *outputPath, *keyID, *repository)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("RELEASE_ENVELOPE_SIGNED=YES\nSOURCE_COMMIT=%s\nKEY_ID=%s\nPRIVATE_KEY_PRINTED=NO\n", commit, *keyID)
+	fmt.Printf("RELEASE_ENVELOPE_SIGNED=YES\nSOURCE_COMMIT=%s\nKEY_ID=%s\nTRUST_MATCH=YES\nPRIVATE_KEY_PRINTED=NO\n", commit, *keyID)
 	return nil
 }
 

@@ -92,6 +92,7 @@ jobs:
           "$signer" sign \
             --manifest "$work/release-manifest.json" \
             --private-key "$work/private.pem" \
+            --trust "$work/trust.json" \
             --key-id ci-test-1 \
             --out "$work/release-envelope.json"
           "$signer" derive-trust \
@@ -108,6 +109,7 @@ jobs:
           grep -q '"source_commit": "0123456789abcdef0123456789abcdef01234567"' <<<"$verify_output"
           rm -f "$work/private.pem"
           test ! -e "$work/private.pem"
+          echo 'SIGNER_TRUST_MATCH=PASS'
           echo 'SIGNER_AGENT_PROTOCOL=PASS'
           echo 'CI_TEST_KEY_REMOVED=YES'
           echo 'CANONICAL_TRUST_ANCHOR=NO'

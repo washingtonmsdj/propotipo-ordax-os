@@ -20,7 +20,9 @@ The release acquisition agent expects schema `prototype-ordax.release-trust/1`, 
 - a random, disposable or CI-ephemeral key must not be promoted as the physical trust anchor;
 - Creator physical authorization remains blocked while this owner is unresolved.
 
-`tools/release-signing/` now provides standard-library tooling to generate an external PKCS#8 Ed25519 key during an explicit operator ceremony, derive the public trust JSON from an existing external private key, and sign exact release-manifest bytes. The tool does not make a key canonical merely by generating it.
+`tools/release-signing/` provides standard-library tooling to generate an external PKCS#8 Ed25519 key during an explicit operator ceremony, derive the public trust JSON from an existing external private key, and sign exact release-manifest bytes. The tool does not make a key canonical merely by generating it.
+
+The signer is fail-closed against trust drift: `sign` requires the public trust JSON and refuses to create an envelope unless the supplied external private key derives exactly the same Ed25519 public key and the requested `key_id` equals the trust anchor `key_id`.
 
 ## Canonicalization gate
 
@@ -33,10 +35,11 @@ PRIVATE_KEY_ROTATION_POLICY=DEFINED
 KEY_ID=<stable id>
 PUBLIC_KEY_DERIVED_FROM_CUSTODIED_PRIVATE_KEY=YES
 PUBLIC_KEY_FINGERPRINT_REVIEWED=YES
+SIGNER_PRIVATE_TRUST_MATCH=PASS
 PRIVATE_KEY_IN_GIT=NO
 ```
 
-Then derive the public file from the actual private key with `tools/release-signing`, review its public fingerprint independently, and only then bind its exact SHA-256 in `docs/contracts/minimal-bootstrap.json`.
+Then derive the public file from the actual private key with `tools/release-signing`, independently review its public fingerprint, exercise a signing proof using that same public trust input, and only then bind its exact SHA-256 in `docs/contracts/minimal-bootstrap.json`.
 
 A CI-only test key may be used by isolated protocol tests, but it must remain test-scoped and must never satisfy the physical bootstrap manifest.
 
