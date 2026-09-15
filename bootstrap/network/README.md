@@ -1,6 +1,6 @@
 # Minimal Network Bootstrap
 
-Status: CLEAN-ROOM PROTOTYPE — PHYSICAL USE NOT AUTHORIZED
+Status: CLEAN-ROOM CANDIDATE — PHYSICAL USE NOT AUTHORIZED
 
 This owner exists only to obtain enough network connectivity for the **first signed release acquisition** when `/ordax/current` does not yet exist.
 
@@ -23,7 +23,7 @@ This keeps the first USB small and avoids copying the legacy `wpa_supplicant`/co
 ```text
 /ordax/bootstrap/network/bring-up
   -> /ordax/bootstrap/network/bin/netbox
-     -> ifconfig/ip/udhcpc/route
+     -> ifconfig / route / udhcpc
   -> /ordax/bootstrap/network/udhcpc.script
   -> IPv4 + default route + /etc/resolv.conf
 ```
@@ -32,24 +32,27 @@ This keeps the first USB small and avoids copying the legacy `wpa_supplicant`/co
 
 ## Netbox
 
-`bin/netbox` is not yet resolved. It will be a repository-built static BusyBox networking binary using the same pinned BusyBox 1.38.0 upstream archive already used by the clean initramfs, but with a separate network-only applet configuration.
+`bin/netbox` is a repository-built static BusyBox 1.38.0 multicall candidate with a deliberately bounded executable surface.
 
-Required applets are intentionally bounded:
+Current candidate:
 
 ```text
-busybox
-ifconfig
-ip
-route
-udhcpc
+SHA256=0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba
+SIZE=128536
+APPLETS=ifconfig,route,udhcpc
+STATIC=YES
 ```
 
-No HTTP server, telnet daemon, SSH server, packet sniffer or general administration shell belongs in this network payload.
+`busybox` is the multicall binary identity, not an exposed extra bootstrap applet. `sh`, HTTP servers, telnet, SSH, packet sniffers and general administration applets are rejected by the CI contract.
 
 ## Kernel prerequisites
 
-The kernel must expose the network device before this owner runs. For the prototype path, common wired Ethernet and USB tether/Ethernet drivers should be built into the kernel rather than requiring a module loader before the first release.
+The kernel must expose the network device before this owner runs. The canonical Linux 6.6.52 fragment builds common first-acquisition paths directly into the kernel, including USB networking, CDC Ethernet/NCM and RNDIS host support. The current candidate configuration verifies those selectors as built-in, so this bootstrap does not need a module loader for its engineering Ethernet/USB-tether path.
+
+Wi-Fi drivers may remain modules because Wi-Fi authentication and firmware policy are outside this minimum first-acquisition owner.
 
 ## Final-product gate
 
 Ethernet/USB tether is acceptable for the first engineering bring-up only. Consumer promotion still requires a clean first-boot Wi-Fi experience with real authentication, firmware provenance, credential protection and reconnect behavior.
+
+No candidate in this directory is automatically authorized for physical USB use.
