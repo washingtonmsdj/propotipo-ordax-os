@@ -71,6 +71,7 @@ type fakeRawDiskRuntime struct {
 	openErr        error
 	openCount      int
 	openedTarget   Target
+	openedLease    rawVolumeLease
 	lease          rawVolumeLease
 	leaseErr       error
 	leaseCount     int
@@ -104,9 +105,10 @@ func (r *fakeRawDiskRuntime) AcquireTargetVolumeLease(expected Target) (rawVolum
 	return &fakeRawVolumeLease{events: r.leaseEvents}, nil
 }
 
-func (r *fakeRawDiskRuntime) OpenVerifiedPhysicalDrive(expected Target) (rawDiskDevice, error) {
+func (r *fakeRawDiskRuntime) OpenVerifiedPhysicalDrive(expected Target, lease rawVolumeLease) (rawDiskDevice, error) {
 	r.openCount++
 	r.openedTarget = expected
+	r.openedLease = lease
 	if r.openErr != nil {
 		return nil, r.openErr
 	}
@@ -168,6 +170,9 @@ func TestApplyRawDiskInternalWritesFlushesAndReadsBackExactImage(t *testing.T) {
 	}
 	if runtime.openCount != 1 || runtime.openedTarget.ConfirmationToken != target.ConfirmationToken {
 		t.Fatalf("writer opened unexpected target: count=%d target=%#v", runtime.openCount, runtime.openedTarget)
+	}
+	if runtime.openedLease != runtime.lease {
+		t.Fatal("physical device open did not receive the exact acquired target-volume lease")
 	}
 	lockAt := eventIndex(events, "lock")
 	writeAt := eventIndex(events, "write")
@@ -265,6 +270,9 @@ func TestApplyRawDiskInternalReleasesLeaseWhenDeviceOpenFails(t *testing.T) {
 	}
 	if runtime.leaseCount != 1 || runtime.openCount != 1 {
 		t.Fatalf("unexpected boundary counts: leases=%d opens=%d", runtime.leaseCount, runtime.openCount)
+	}
+	if runtime.openedLease != runtime.lease {
+		t.Fatal("failed physical-device open did not receive the exact acquired lease")
 	}
 	if !reflect.DeepEqual(events, []string{"lock", "unlock"}) {
 		t.Fatalf("lease was not safely released after device-open failure: %v", events)
