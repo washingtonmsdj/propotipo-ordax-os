@@ -3,6 +3,7 @@ package update
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,6 @@ func validManifestForTest() Manifest {
 		},
 		Entrypoints: Entrypoints{
 			Inspect: "1-Inspect-OrdaXUSB.cmd",
-			Trust:   "2-Initialize-OrdaXTrust.cmd",
 			Status:  "ordax-creator-physical-test.exe",
 		},
 	}
@@ -44,9 +44,21 @@ func TestValidateManifestRejectsExternalPayload(t *testing.T) {
 
 func TestValidateManifestRejectsTraversalEntrypoint(t *testing.T) {
 	m := validManifestForTest()
-	m.Entrypoints.Trust = "../evil.cmd"
+	m.Entrypoints.Inspect = "../evil.cmd"
 	if err := ValidateManifest(m); err == nil {
 		t.Fatal("path traversal entrypoint unexpectedly accepted")
+	}
+}
+
+func TestDecodeManifestRejectsPublisherTrustField(t *testing.T) {
+	m := validManifestForTest()
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.TrimSuffix(string(data), "}") + `,"trust":"forbidden"}`
+	if _, err := decodeManifest([]byte(text)); err == nil {
+		t.Fatal("publisher trust field unexpectedly accepted in consumer manifest")
 	}
 }
 
@@ -80,7 +92,6 @@ func TestExtractPayloadRequiresAllEntrypoints(t *testing.T) {
 	m := validManifestForTest()
 	zipPath := writeZip(t, map[string]string{
 		m.Entrypoints.Inspect: "@echo inspect\r\n",
-		m.Entrypoints.Trust:   "@echo trust\r\n",
 	})
 	dest := filepath.Join(t.TempDir(), "out")
 	if err := os.Mkdir(dest, 0o755); err != nil {
@@ -112,5 +123,23 @@ func TestExtractPayloadRejectsTraversal(t *testing.T) {
 	}
 	if err := extractPayload(path, dest, validManifestForTest()); err == nil || !strings.Contains(err.Error(), "unsafe archive path") {
 		t.Fatalf("traversal error = %v", err)
+	}
+}
+
+func TestCurrentRejectsDirectoryOutsideVersionSlot(t *testing.T) {
+	root := t.TempDir()
+	current := Installed{
+		Schema:       "prototype-ordax.creator-installed/1",
+		Channel:      DevelopmentChannel,
+		Version:      "dev-0123456789ab",
+		SourceCommit: "0123456789abcdef0123456789abcdef01234567",
+		Directory:    filepath.Join(root, "elsewhere"),
+	}
+	data, _ := json.Marshal(current)
+	if err := os.WriteFile(filepath.Join(root, "current.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Current(root); err == nil {
+		t.Fatal("external current directory unexpectedly accepted")
 	}
 }
