@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.foundation/2",
+  "$schema": "prototype-ordax.foundation/3",
   "status": "prototype-not-promoted",
   "source_authority": {
     "kind": "git",
@@ -28,6 +28,33 @@
       "ORDAX-PLATFORM"
     ],
     "separate_home_partition": false
+  },
+  "initial_media": {
+    "policy": "minimum-network-first",
+    "full_system_preseeded": false,
+    "surface_preseeded": false,
+    "normal_apps_preseeded": false,
+    "legacy_repository_dump_allowed": false,
+    "build_toolchain_preseeded": false,
+    "complete_source_checkout_preseeded": false,
+    "first_full_release_acquired_after_boot": true,
+    "bootstrap_manifest_required_before_physical_write": true,
+    "known_good_release_persisted_after_first_activation": true,
+    "known_good_offline_boot_required": true,
+    "normal_system_changes_require_usb_reflash": false,
+    "allowed_initial_payload_classes": [
+      "uefi-boot",
+      "kernel",
+      "initramfs",
+      "minimal-network",
+      "stable-device-identity",
+      "ordax-remote-core",
+      "minimal-control-plane",
+      "release-acquisition",
+      "trust-material-public-only",
+      "recovery-maintenance",
+      "empty-runtime-roots"
+    ]
   },
   "logical_main_layout": {
     "root": "/ordax",
