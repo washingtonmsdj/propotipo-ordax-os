@@ -271,14 +271,14 @@ OrdaX Desktop UI
  -> verified target
 ```
 
-Implemented and proven non-destructively:
+Implemented and proven without exposing a physical apply route:
 
 ```text
 CREATOR_CORE_IMPLEMENTED=YES
 CREATOR_VERIFY_PAYLOAD_IMPLEMENTED=YES
 CREATOR_STAGE_TREE=IMPLEMENTED_TRANSACTIONAL
 CREATOR_DISPOSABLE_GPT_FILESYSTEM_PROOF=PASS
-CREATOR_PLAN=FAIL_CLOSED
+CREATOR_PLAN=FAIL_CLOSED_SCHEMA_V2
 CREATOR_WINDOWS_TARGET_DISCOVERY=PASS
 CREATOR_WINDOWS_REMOVABLE_USB_DISCOVERY=PASS
 CREATOR_WINDOWS_FIXED_MEDIA_USB_DISCOVERY=PASS
@@ -287,31 +287,34 @@ CREATOR_WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
 CREATOR_TARGET_CONFIRMATION_TOKEN=PASS
 CREATOR_TARGET_IDENTITY_RECOMPUTED=PASS
 CREATOR_TARGET_REENUMERATION_CONFIRMATION=PASS
-CREATOR_BLOCKED_RAW_DISK_PLAN=PASS
 RAW_DISK_PLAN_STRATEGY=verified-full-disk-image
 CREATOR_INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
 CREATOR_INTERNAL_RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
-CREATOR_INTERNAL_TARGET_VOLUME_LEASE=PASS_FAKE_BACKEND_ONLY
+CREATOR_INTERNAL_TARGET_VOLUME_LEASE=PASS
 CREATOR_WINDOWS_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
 CREATOR_WINDOWS_VOLUME_EXTENT_INVENTORY=PASS
 CREATOR_WINDOWS_TARGET_VOLUME_ISOLATION=PASS
-CREATOR_WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_UNWIRED
-CREATOR_WINDOWS_VOLUME_LOCK_DISMOUNT_CONNECTED=NO
+CREATOR_WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS
+CREATOR_WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE=PASS_UNBOUND
+CREATOR_WINDOWS_PROCESS_ELEVATION_PROBE=PASS
+CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_UNBOUND
 CREATOR_WINDOWS_NATIVE_TESTS=PASS
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
-CREATOR_WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE_IMPLEMENTED=NO
-CREATOR_PUBLIC_APPLY_IMPLEMENTED=NO
-CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND_IMPLEMENTED=NO
+CREATOR_PUBLIC_PHYSICAL_APPLY_IMPLEMENTED=NO
+CREATOR_NATIVE_BACKEND_PUBLICLY_REACHABLE=NO
+PHYSICAL_WRITE_AUTHORIZED=NO
 PHYSICAL_USB_WRITE=NO
 ```
 
-The fail-closed raw-disk plan and internal orchestration bind a currently re-enumerated safe USB target to its exact physical identity, require elevation, exact full-disk geometry, image SHA-256, canonical trust and explicit destructive authorization, and perform byte-complete read-back verification in the in-memory test backend. The internal writer now also requires a target-volume lease before any fake physical device can be opened and holds that lease through write, flush, full read-back and device close. The orchestration remains intentionally unexported and has no CLI/public apply path.
+The fail-closed raw-disk plan now uses `prototype-ordax.creator-windows-raw-disk-plan/2` and explicitly separates native implementation from public reachability. It reports `native_backend_implemented=true`, while `public_physical_apply_implemented=false` and `physical_write_authorized=false` remain blocking facts.
 
-The Windows adapter has a native read-only boundary that opens the exact `\\.\PhysicalDriveN` with `GENERIC_READ` only and re-proves disk number, USB transport, capacity, removable identity and serial from that same handle. It enumerates Windows volume GUIDs through physical disk extents, rejects any volume that spans the target plus another disk, and requires the originally discovered drive-letter volume to appear in the target inventory.
+The Windows adapter now contains the complete internal host-side chain needed for a future physical writer: real process-token elevation detection; USB/system-disk-safe target reenumeration; complete volume GUID/extent inventory; rejection of target volumes spanning another disk; managed `FSCTL_LOCK_VOLUME`/same-handle extent proof/`FSCTL_DISMOUNT_VOLUME` leases; a `GENERIC_READ|GENERIC_WRITE` `PhysicalDrive` open that accepts only the exact active managed lease for the same disk; and same-handle reproof of disk number, USB transport, capacity, removable identity and serial before returning the writable handle.
 
-The next native boundary is implemented but deliberately unwired: Win32 primitives can open a volume GUID for direct access, request `FSCTL_LOCK_VOLUME`, verify physical extents from that exact locked handle, request `FSCTL_DISMOUNT_VOLUME`, then unlock/close. Host-neutral lease policy also snapshots all target-owned volumes, detects newly appearing target volumes before dismount and fails closed on any identity/remap change. Native Windows CI compiles and tests the guard paths without touching real volumes. No production `rawDiskRuntime` delegates to these primitives, no writable `PhysicalDrive` handle exists, and no public apply command is connected.
+Those pieces are assembled only in the unexported `windowsRawDiskRuntimeUnbound`. The internal writer interface also requires the exact acquired lease to be passed into `OpenVerifiedPhysicalDrive`, and holds that lease through write, flush, byte-complete readback and device close. Native Windows CI covers the guard paths without opening a real target for writing.
 
-A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key, no canonical trust and no exposed physical writer.
+The public boundary is still intentionally absent. `ordax-creator` exposes only `check`, `verify-payload`, `stage-tree` and `plan`; CI rejects `apply`, `write`, `flash` or direct unbound-runtime markers in that command owner. Candidate/toolkit provenance records the backend source as implemented while explicitly marking it not publicly reachable, public apply unimplemented and physical authorization false.
+
+A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key and no canonical trust, and its public Creator command cannot reach the native raw-disk backend.
 
 Disposable media proof already demonstrates two partitions, FAT32+EXT4 labels, embedded partition bytes and post-materialization hash verification without touching a physical disk.
 
@@ -346,11 +349,10 @@ USB_LOCATION=WINDOWS
 PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 PHYSICAL_NOTEBOOK_BOOT_PROVEN=NO
-CREATOR_WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_UNWIRED
-CREATOR_WINDOWS_VOLUME_LOCK_DISMOUNT_CONNECTED=NO
-CREATOR_WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE_IMPLEMENTED=NO
-CREATOR_PUBLIC_APPLY_IMPLEMENTED=NO
-CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND_IMPLEMENTED=NO
+CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_UNBOUND
+CREATOR_NATIVE_BACKEND_PUBLICLY_REACHABLE=NO
+CREATOR_PUBLIC_PHYSICAL_APPLY_IMPLEMENTED=NO
+RELEASE_TRUST=UNRESOLVED
 DESTRUCTIVE_AUTHORIZATION=NO
 ```
 
@@ -358,13 +360,13 @@ DESTRUCTIVE_AUTHORIZATION=NO
 
 1. complete the full-bootstrap-media proof with ephemeral trust and record the result without promoting it to canonical trust;
 2. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
-3. rerun the byte-complete media proof with canonical public trust while keeping physical write disabled;
-4. continue the native Windows raw-device boundary by adding an unbound writable `PhysicalDrive` handle that re-proves the exact target identity on the same handle, then only later bind it behind the already-tested volume-lease boundary; keep every public apply path disabled;
-5. request explicit user authorization only when the real physical write is ready to execute;
-6. boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
+3. rerun the byte-complete media proof with canonical public trust while keeping physical write unavailable;
+4. keep the unbound native Windows backend behind the no-public-apply CI gate while completing canonical trust and byte-complete media evidence; do not expose `apply` yet;
+5. only after those gates pass, implement the deliberate public apply boundary and request explicit user authorization for the exact target operation at execution time;
+6. after an authorized physical write, boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
 7. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
 8. add production release publication and signed trust rotation before product promotion.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, a byte-complete proof, internal fake-backend writer test, native-but-unwired volume primitive or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, byte-complete proof, internal raw-writer test, unbound native backend or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
