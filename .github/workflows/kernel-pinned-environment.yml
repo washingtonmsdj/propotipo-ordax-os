@@ -56,7 +56,8 @@ jobs:
           docker pull "$IMAGE"
           repo_digests="$(docker image inspect --format '{{json .RepoDigests}}' "$IMAGE")"
           printf '%s\n' "$repo_digests"
-          grep -Fq "${IMAGE#docker.io/}" <<<"$repo_digests"
+          expected_digest="${IMAGE##*@}"
+          grep -Fq "@$expected_digest" <<<"$repo_digests"
 
       - name: Build kernel inside digest-pinned image and snapshot-pinned archive
         env:
