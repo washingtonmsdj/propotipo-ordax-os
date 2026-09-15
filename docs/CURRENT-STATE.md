@@ -109,6 +109,35 @@ UEFI
  -> boot release
 ```
 
+## ESP / bootloader
+
+The seed ESP is deliberately bounded to normal boot plus recovery:
+
+```text
+EFI/BOOT/BOOTX64.EFI
+loader/loader.conf
+loader/entries/ordax.conf
+loader/entries/ordax-recovery.conf
+ordax/vmlinuz
+ordax/initrd.gz
+```
+
+Bootloader candidate:
+
+```text
+BOOTLOADER=systemd-boot
+UPSTREAM_VERSION=261.2
+UPSTREAM_TAG=v261.2
+UPSTREAM_SOURCE_COMMIT=4925d9f07fc697efccd98a93046ff535b8832445
+UPSTREAM_TAG_SIGNATURE_VERIFIED=YES
+ESP_BOOTLOADER_CANDIDATE_CI=SUCCESS
+SYSTEMD_BOOT_X64_SHA256=9ac1ca03fc52ed2d8c40cea76b84192d718909d561a7bc6cf36d84784b71ada5
+SYSTEMD_BOOT_X64_SIZE=177152
+PHYSICAL_BOOTLOADER_AUTHORIZED=NO
+```
+
+The bootloader is built through the canonical upstream Meson/Ninja `systemd-boot` target. No legacy developer/maintenance boot entries are carried into the clean-room ESP.
+
 ## Kernel
 
 ```text
@@ -174,13 +203,37 @@ PHYSICAL_AGENT_AUTHORIZED=NO
 
 ## Network bootstrap
 
+The prototype first-acquisition network owner is implemented clean-room and CI-proven:
+
 ```text
-NETWORK_BOOTSTRAP_IMPLEMENTED=NO
+NETWORK_BOOTSTRAP_IMPLEMENTED=YES
+NETWORK_BOOTSTRAP_CANDIDATE_CI=SUCCESS
+PROTOTYPE_SCOPE=ETHERNET_USB_TETHER_DHCP
+BUSYBOX_VERSION=1.38.0
+STATIC_MUSL=YES
+NETBOX_APPLETS=ifconfig,route,udhcpc
+NETBOX_SHELL_APPLET=NO
+NETBOX_SHA256=0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba
+NETBOX_SIZE=128536
+NETWORK_CANDIDATE_SOURCE_COMMIT=7e44986aa1d09bd205939d7ae613c328ea81b16c
+WIFI_IN_PROTOTYPE_SEED=NO
+CONSUMER_WIFI_REQUIRED_BEFORE_PROMOTION=YES
+PHYSICAL_NETWORK_ARTIFACT_AUTHORIZED=NO
 ```
 
-This is the main remaining prerequisite for first online acquisition. Prototype-first direction may use Ethernet/USB tether DHCP to keep the seed minimal; consumer promotion still requires a good first-boot Wi-Fi experience.
+The build uses Linux UAPI headers only as compile-time inputs for BusyBox DHCP. The resulting netbox is static and has no runtime host dependency. Legacy networking is evidence only and is not bulk-copied.
 
-Legacy networking is evidence only. Do not bulk-copy it.
+## Recovery
+
+```text
+RECOVERY_ENTRY=YES
+RECOVERY_ORDAX_MOUNT=READ_ONLY
+RECOVERY_AUTOMATIC_NETWORK=NO
+RECOVERY_SSH=NO
+RECOVERY_AUTOMATIC_MUTATION=NO
+```
+
+Recovery uses the same kernel/initramfs seed and a local read-only recovery path.
 
 ## Creator / physical installer
 
@@ -200,12 +253,26 @@ Implemented now:
 ```text
 CREATOR_CORE_IMPLEMENTED=YES
 CREATOR_CHECK_IMPLEMENTED=YES
+CREATOR_VERIFY_PAYLOAD_IMPLEMENTED=YES
 CREATOR_PLAN_IMPLEMENTED=YES_BUT_FAIL_CLOSED_WHILE_MANIFEST_UNAUTHORIZED
 CREATOR_WINDOWS_CANDIDATE_BUILD=SUCCESS
 CREATOR_LINUX_CANDIDATE_BUILD=SUCCESS
 CREATOR_APPLY_IMPLEMENTED=NO
 CREATOR_WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
 PHYSICAL_USB_WRITE=NO
+```
+
+Creator payload contract:
+
+```text
+SOURCE_PATH_MEANS=BUNDLE_RELATIVE_PATH
+ABSOLUTE_SOURCE_PATH_ALLOWED=NO
+PATH_TRAVERSAL_ALLOWED=NO
+SYMLINK_TRAVERSAL_ALLOWED=NO
+NON_REGULAR_SOURCE_ALLOWED=NO
+DUPLICATE_PARTITION_TARGET_ALLOWED=NO
+LOCAL_SHA256_RECHECK_BEFORE_APPLY=YES
+PAYLOAD_CAN_BE_VERIFIED_BEFORE_DESTRUCTIVE_AUTHORIZATION=YES
 ```
 
 Canonical docs/source:
@@ -215,7 +282,7 @@ Canonical docs/source:
 - `tools/creator/cmd/ordax-creator/`
 - `.github/workflows/creator-candidate.yml`
 
-The first Creator CI artifact was built from commit `a831c8f2d7ddebfebcdb3868cf397b52958f7496` and the workflow completed successfully. The candidate intentionally cannot write disks yet.
+Creator Candidate passed again after adding the `verify-payload` integrity gate. The candidate intentionally cannot write disks yet.
 
 ## Mobile / account sync
 
@@ -285,13 +352,13 @@ This remains historical evidence only and must not cause SSH/QEMU/F7 architectur
 
 ## Current main priorities
 
-1. implement the minimal network owner without importing the legacy networking stack;
-2. resolve bootloader/ESP artifacts with source/hash/provenance;
-3. bind real kernel/initramfs/release-agent/network artifacts into `minimal-bootstrap.json`;
-4. build signed release/media manifests;
-5. implement Creator target identity and a narrow Windows removable-device adapter;
-6. prove layout/write/verification against disposable media representation;
-7. only then add Creator APPLY and request explicit physical destructive authorization;
+1. retrieve and pin the actual CI hashes/provenance for kernel, initramfs and release-agent candidates;
+2. bind bootloader, kernel, initramfs, network and release-agent artifacts into one deterministic Creator payload contract;
+3. implement the CI payload assembler and verify the assembled bytes again through Creator Core;
+4. resolve `minimal-bootstrap.json` without enabling physical write;
+5. build the disposable two-partition media representation and prove GPT/filesystems/file hashes/recovery;
+6. implement Creator target identity and the narrow Windows removable-device adapter;
+7. only after disposable proof, add Creator APPLY and request explicit physical destructive authorization;
 8. build the shared Surface/runtime for Web/Mobile/Desktop/USB/Native in parallel;
 9. implement real account sync/conflict handling before product promotion;
 10. prove first physical boot and later Git-driven release updates.
