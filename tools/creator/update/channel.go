@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	ChannelSchema       = "prototype-ordax.creator-update-channel/1"
+	ChannelSchema       = "prototype-ordax.creator-update-channel/2"
 	DevelopmentChannel  = "development"
 	DefaultManifestURL  = "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/creator-dev-manifest.json"
 	maxManifestBytes    = 256 << 10
@@ -29,8 +29,8 @@ const (
 )
 
 var (
-	commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	shaPattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	commitPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	shaPattern     = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	versionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$`)
 )
 
@@ -42,7 +42,6 @@ type Payload struct {
 
 type Entrypoints struct {
 	Inspect string `json:"inspect"`
-	Trust   string `json:"trust"`
 	Status  string `json:"status"`
 }
 
@@ -123,7 +122,6 @@ func ValidateManifest(m Manifest) error {
 	}
 	for label, value := range map[string]string{
 		"inspect": m.Entrypoints.Inspect,
-		"trust":   m.Entrypoints.Trust,
 		"status":  m.Entrypoints.Status,
 	} {
 		if !safeRelative(value) {
@@ -161,7 +159,7 @@ func fetchBytes(client *http.Client, raw string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "OrdaX-Creator-Updater/1")
+	req.Header.Set("User-Agent", "OrdaX-Creator-Updater/2")
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -245,7 +243,7 @@ func downloadPayload(client *http.Client, payload Payload, out string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "OrdaX-Creator-Updater/1")
+	req.Header.Set("User-Agent", "OrdaX-Creator-Updater/2")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -287,6 +285,19 @@ func downloadPayload(client *http.Client, payload Payload, out string) error {
 	return nil
 }
 
+func verifyEntrypoints(directory string, manifest Manifest) error {
+	for label, entry := range map[string]string{
+		"inspect": manifest.Entrypoints.Inspect,
+		"status":  manifest.Entrypoints.Status,
+	} {
+		info, err := os.Lstat(filepath.Join(directory, filepath.FromSlash(entry)))
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("required %s entrypoint missing or unsafe", label)
+		}
+	}
+	return nil
+}
+
 func extractPayload(zipPath, destination string, manifest Manifest) error {
 	archive, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -296,11 +307,17 @@ func extractPayload(zipPath, destination string, manifest Manifest) error {
 	if len(archive.File) == 0 || len(archive.File) > maxArchiveFileCount {
 		return errors.New("archive file count outside allowed range")
 	}
+	seen := make(map[string]struct{}, len(archive.File))
 	var total int64
 	for _, item := range archive.File {
 		if !safeRelative(item.Name) {
 			return fmt.Errorf("unsafe archive path %q", item.Name)
 		}
+		cleanName := filepath.Clean(filepath.FromSlash(item.Name))
+		if _, exists := seen[cleanName]; exists {
+			return fmt.Errorf("duplicate archive path %q", item.Name)
+		}
+		seen[cleanName] = struct{}{}
 		if item.FileInfo().Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink is forbidden in update archive: %q", item.Name)
 		}
@@ -308,7 +325,7 @@ func extractPayload(zipPath, destination string, manifest Manifest) error {
 		if total > maxExtractedBytes {
 			return errors.New("archive expands beyond allowed size")
 		}
-		target := filepath.Join(destination, filepath.FromSlash(item.Name))
+		target := filepath.Join(destination, cleanName)
 		if item.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
@@ -340,17 +357,16 @@ func extractPayload(zipPath, destination string, manifest Manifest) error {
 			return closeReadErr
 		}
 	}
-	for label, entry := range map[string]string{
-		"inspect": manifest.Entrypoints.Inspect,
-		"trust": manifest.Entrypoints.Trust,
-		"status": manifest.Entrypoints.Status,
-	} {
-		info, err := os.Stat(filepath.Join(destination, filepath.FromSlash(entry)))
-		if err != nil || !info.Mode().IsRegular() {
-			return fmt.Errorf("required %s entrypoint missing after extraction", label)
-		}
+	return verifyEntrypoints(destination, manifest)
+}
+
+func samePath(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
 	}
-	return nil
+	return a == b
 }
 
 func Current(root string) (Installed, error) {
@@ -366,15 +382,28 @@ func Current(root string) (Installed, error) {
 		return Installed{}, err
 	}
 	var current Installed
-	if err := json.Unmarshal(data, &current); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&current); err != nil {
 		return Installed{}, err
 	}
-	if current.Schema != "prototype-ordax.creator-installed/1" || !commitPattern.MatchString(current.SourceCommit) {
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return Installed{}, errors.New("invalid installed Creator metadata")
 	}
-	info, err := os.Stat(current.Directory)
-	if err != nil || !info.IsDir() {
-		return Installed{}, errors.New("installed Creator directory is unavailable")
+	if current.Schema != "prototype-ordax.creator-installed/1" ||
+		current.Channel != DevelopmentChannel ||
+		!versionPattern.MatchString(current.Version) ||
+		!commitPattern.MatchString(current.SourceCommit) {
+		return Installed{}, errors.New("invalid installed Creator metadata")
+	}
+	expected := filepath.Join(root, "versions", current.SourceCommit)
+	if !samePath(current.Directory, expected) {
+		return Installed{}, errors.New("installed Creator directory is outside its version slot")
+	}
+	info, err := os.Lstat(current.Directory)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return Installed{}, errors.New("installed Creator directory is unavailable or unsafe")
 	}
 	return current, nil
 }
@@ -392,13 +421,23 @@ func Ensure(client *http.Client, root, manifestURL string) (Installed, bool, err
 		return Installed{}, false, err
 	}
 	if current, err := Current(root); err == nil && current.SourceCommit == manifest.SourceCommit {
+		if err := verifyEntrypoints(current.Directory, manifest); err != nil {
+			return Installed{}, false, fmt.Errorf("installed Creator payload failed validation: %w", err)
+		}
 		return current, false, nil
 	}
-	if err := os.MkdirAll(filepath.Join(root, "versions"), 0o755); err != nil {
+	versionsDir := filepath.Join(root, "versions")
+	if err := os.MkdirAll(versionsDir, 0o755); err != nil {
 		return Installed{}, false, err
 	}
-	finalDir := filepath.Join(root, "versions", manifest.SourceCommit)
-	if info, err := os.Stat(finalDir); err == nil && info.IsDir() {
+	finalDir := filepath.Join(versionsDir, manifest.SourceCommit)
+	if info, err := os.Lstat(finalDir); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return Installed{}, false, errors.New("existing Creator version slot is unsafe")
+		}
+		if err := verifyEntrypoints(finalDir, manifest); err != nil {
+			return Installed{}, false, fmt.Errorf("existing Creator version slot failed validation: %w", err)
+		}
 		installed := Installed{Schema: "prototype-ordax.creator-installed/1", Channel: manifest.Channel, Version: manifest.Version, SourceCommit: manifest.SourceCommit, Directory: finalDir}
 		data, _ := json.MarshalIndent(installed, "", "  ")
 		data = append(data, '\n')
@@ -406,8 +445,11 @@ func Ensure(client *http.Client, root, manifestURL string) (Installed, bool, err
 			return Installed{}, false, err
 		}
 		return installed, false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Installed{}, false, err
 	}
-	tempDir, err := os.MkdirTemp(filepath.Join(root, "versions"), ".install-*")
+
+	tempDir, err := os.MkdirTemp(versionsDir, ".install-*")
 	if err != nil {
 		return Installed{}, false, err
 	}
