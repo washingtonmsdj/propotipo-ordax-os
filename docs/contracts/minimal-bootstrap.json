@@ -1,9 +1,9 @@
 {
-  "$schema": "prototype-ordax.minimal-bootstrap/2",
+  "$schema": "prototype-ordax.minimal-bootstrap/3",
   "status": "design-bounded-unresolved",
   "physical_write_allowed": false,
   "all_artifacts_resolved": false,
-  "policy": "minimum-git-acquisition-first",
+  "policy": "minimum-release-acquisition-first",
   "partitions": [
     {
       "name": "ORDAX-ESP",
@@ -61,7 +61,7 @@
       "id": "bootstrap-release-acquisition",
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/release-acquisition",
-      "source_owner": "bootstrap/git",
+      "source_owner": "bootstrap/release-acquisition",
       "resolved": false,
       "artifacts": []
     },
