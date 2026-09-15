@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Repository-owned deterministic OrdaX initramfs builder.
 
-No legacy initramfs is imported. The fixed capsule contains a static BusyBox and
-the small PID 1 script owned by this repository. Network/release acquisition
-lives on the ORDAX partition and is intentionally outside this fixed archive.
+No legacy initramfs is imported. The fixed capsule contains a static BusyBox,
+a minimal repository-owned ext4 growth helper, and the small PID 1 script owned
+by this repository. Network/release acquisition lives on the ORDAX partition
+and is intentionally outside this fixed archive.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / "bootstrap" / "initramfs"
 CONTRACT = HERE / "source.json"
+GROW_HELPER_SOURCE = HERE / "grow_ext4.c"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REQUIRED_APPLETS = {
@@ -94,14 +96,22 @@ def init_path(contract: dict) -> Path:
     if not isinstance(relative, str):
         raise BuildError("root_init is missing")
     path = (ROOT / relative).resolve()
-    if ROOT.resolve() not in path.parents or not path.is_file():
+    if ROOT.resolve() not in path.parents or not path.is_file() or path.is_symlink():
         raise BuildError("root_init is missing or unsafe")
+    return path
+
+
+def growth_helper_source_path() -> Path:
+    path = GROW_HELPER_SOURCE.resolve()
+    if ROOT.resolve() not in path.parents or not path.is_file() or path.is_symlink():
+        raise BuildError("ext4 growth helper source is missing or unsafe")
     return path
 
 
 def check_contract() -> dict:
     contract = load_contract()
     init = init_path(contract)
+    helper_source = growth_helper_source_path()
     text = init.read_text(encoding="utf-8")
     forbidden = ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex")
     found = [value for value in forbidden if value.lower() in text.lower()]
@@ -109,6 +119,18 @@ def check_contract() -> dict:
         raise BuildError(f"legacy/high-level responsibility leaked into fixed initramfs: {found}")
     if "findfs LABEL=ORDAX" not in text or "/ordax/bootstrap/entrypoint" not in text:
         raise BuildError("init must hand off through the canonical ORDAX bootstrap path")
+    rw_mount = 'mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax'
+    grow_call = '/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax'
+    recovery_mount = 'mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax'
+    if rw_mount not in text or grow_call not in text:
+        raise BuildError("normal boot must mount ORDAX rw and invoke the fixed ext4 growth helper")
+    if text.index(grow_call) < text.index(rw_mount):
+        raise BuildError("ext4 growth helper may run only after the rw ORDAX mount")
+    if recovery_mount not in text or text.index(recovery_mount) > text.index(rw_mount):
+        raise BuildError("recovery must remain a separate read-only path before normal rw boot")
+    recovery_section = text[text.index(recovery_mount):text.index(rw_mount)]
+    if "ordax-grow-ext4" in recovery_section:
+        raise BuildError("recovery mode may never invoke the ext4 growth helper")
     if contract.get("network_inside_fixed_initramfs") is not False:
         raise BuildError("network must remain outside the fixed initramfs")
     return {
@@ -116,6 +138,8 @@ def check_contract() -> dict:
         "busybox_archive_sha256": contract["busybox"]["archive_sha256"],
         "root_init": str(init.relative_to(ROOT)),
         "root_init_sha256": sha256_file(init),
+        "ext4_growth_helper_source": str(helper_source.relative_to(ROOT)),
+        "ext4_growth_helper_source_sha256": sha256_file(helper_source),
         "main_partition_label": contract["main_partition_label"],
     }
 
@@ -304,9 +328,33 @@ def git_head() -> str:
         return "unknown"
 
 
+def build_growth_helper(musl_cc: str, readelf: str, source: Path, destination: Path, env: dict[str, str]) -> None:
+    command = [
+        musl_cc,
+        "-static",
+        "-Os",
+        "-s",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wl,--build-id=none",
+        f"-ffile-prefix-map={ROOT}=.",
+        "-o",
+        str(destination),
+        str(source),
+    ]
+    run(command, cwd=ROOT, env=env)
+    elf = capture([readelf, "-l", str(destination)])
+    if "Requesting program interpreter" in elf:
+        raise BuildError("ext4 growth helper is dynamically linked; fixed initramfs requires static userspace")
+    if not destination.is_file() or destination.is_symlink():
+        raise BuildError("ext4 growth helper build did not produce a safe regular binary")
+
+
 def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     contract = load_contract()
     init = init_path(contract)
+    grow_source = growth_helper_source_path()
     check_contract()
     for name in ("make", "musl-gcc", "readelf"):
         resolve_program(name)
@@ -321,6 +369,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     env = dict(os.environ)
     env.update(FIXED_ENV)
     musl_cc = resolve_program("musl-gcc")
+    readelf = resolve_program("readelf")
     toolchain = musl_identity(musl_cc)
     make = ["make", f"CC={musl_cc}"]
     run(make + ["allnoconfig"], cwd=source, env=env)
@@ -331,7 +380,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     busybox = source / "busybox"
     if not busybox.is_file():
         raise BuildError("BusyBox build did not produce busybox")
-    elf = capture([resolve_program("readelf"), "-l", str(busybox)])
+    elf = capture([readelf, "-l", str(busybox)])
     if "Requesting program interpreter" in elf:
         raise BuildError("BusyBox is dynamically linked; fixed initramfs requires static userspace")
     try:
@@ -354,6 +403,12 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         (rootfs / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(init, rootfs / "init")
     os.chmod(rootfs / "init", 0o755)
+    grow_binary = work_dir / "ordax-grow-ext4"
+    build_growth_helper(musl_cc, readelf, grow_source, grow_binary, env)
+    grow_install = rootfs / "sbin" / "ordax-grow-ext4"
+    grow_install.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(grow_binary, grow_install)
+    os.chmod(grow_install, 0o755)
     final_config = out_dir / "busybox.config"
     shutil.copy2(source / ".config", final_config)
     archive_path = out_dir / "initramfs.cpio.gz"
@@ -369,6 +424,14 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         "busybox_sha256": sha256_file(busybox),
         "toolchain": toolchain,
         "root_init_sha256": sha256_file(init),
+        "filesystem_growth": {
+            "mode": "online-ext4-kernel-ioctl",
+            "helper_path": "/sbin/ordax-grow-ext4",
+            "source_sha256": sha256_file(grow_source),
+            "binary_sha256": sha256_file(grow_binary),
+            "normal_boot_best_effort": True,
+            "recovery_mode_allowed": False,
+        },
         "static_userspace": True,
         "network_inside_fixed_initramfs": False,
         "artifacts": {
@@ -397,6 +460,13 @@ def verify(out_dir: Path) -> dict:
         raise BuildError(f"invalid initramfs provenance: {exc}") from exc
     if provenance.get("$schema") != "prototype-ordax.initramfs-provenance/1":
         raise BuildError("unexpected initramfs provenance schema")
+    growth = provenance.get("filesystem_growth", {})
+    if growth.get("mode") != "online-ext4-kernel-ioctl" or growth.get("helper_path") != "/sbin/ordax-grow-ext4":
+        raise BuildError("initramfs provenance is missing the canonical ext4 growth helper")
+    if growth.get("normal_boot_best_effort") is not True or growth.get("recovery_mode_allowed") is not False:
+        raise BuildError("initramfs filesystem-growth safety policy is invalid")
+    if not _SHA256.fullmatch(str(growth.get("source_sha256", ""))) or not _SHA256.fullmatch(str(growth.get("binary_sha256", ""))):
+        raise BuildError("initramfs filesystem-growth provenance hashes are invalid")
     entries: dict[str, str] = {}
     for line in manifest.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)", line)
