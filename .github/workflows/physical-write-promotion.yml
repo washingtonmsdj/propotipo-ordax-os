@@ -1,0 +1,237 @@
+name: Physical Write Promotion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/trust/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - 'docs/contracts/release-trust-policy.json'
+      - 'docs/contracts/physical-media.json'
+      - 'docs/contracts/physical-write-authorization.json'
+      - 'tools/creator/physical_promotion.py'
+      - 'tools/creator/assemble.py'
+      - 'tools/creator/core/**'
+      - 'tools/creator/proof/**'
+      - 'tools/creator/cmd/ordax-creator-physical-test/**'
+      - '.github/workflows/physical-write-promotion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Evaluate canonical physical promotion gates
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$RUNNER_TEMP/physical-promotion-status.json"
+          python tools/creator/physical_promotion.py --output "$status" >/dev/null
+          cat "$status"
+          ready="$(python - "$status" <<'PY'
+          import json, pathlib, sys
+          data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert data['$schema'] == 'prototype-ordax.physical-promotion-status/1'
+          assert data['consumer_key_setup_required'] is False
+          assert data['development_channel_can_authorize_write'] is False
+          print('true' if data['ready'] else 'false')
+          PY
+          )"
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = true ]; then
+            echo 'PHYSICAL_PROMOTION_GATE=READY'
+          else
+            echo 'PHYSICAL_PROMOTION_GATE=BLOCKED'
+            echo 'PHYSICAL_WRITER_ARTIFACT_WILL_BE_CREATED=NO'
+          fi
+
+  build-authorized-candidate:
+    needs: preflight
+    if: ${{ needs.preflight.outputs.ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Recheck promotion immediately before materialization
+        run: python tools/creator/physical_promotion.py --require-ready
+
+      - name: Install bounded bootstrap image dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
+            gdisk dosfstools e2fsprogs mtools util-linux
+          python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
+
+      - name: Build canonical bootstrap owners
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+          python bootstrap/network/build.py check
+          python bootstrap/network/build.py build --jobs 4
+          python bootstrap/network/build.py verify
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-acquisition/ordax-release-agent .
+          )
+
+      - name: Assemble and verify canonical payload
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/physical-payload"
+          stage="$RUNNER_TEMP/physical-stage"
+          python tools/creator/assemble.py build --out-dir "$payload"
+          python tools/creator/assemble.py verify --payload-root "$payload"
+          pushd tools/creator >/dev/null
+          go run ./cmd/ordax-creator verify-payload \
+            --manifest ../../docs/contracts/minimal-bootstrap.json \
+            --payload-root "$payload"
+          go run ./cmd/ordax-creator stage-tree \
+            --manifest ../../docs/contracts/minimal-bootstrap.json \
+            --payload-root "$payload" \
+            --output-root "$stage"
+          popd >/dev/null
+          echo "$stage" > "$RUNNER_TEMP/physical-stage-path"
+
+      - name: Materialize and verify exact seed bytes using proof-only media builder
+        run: |
+          set -euo pipefail
+          stage="$(cat "$RUNNER_TEMP/physical-stage-path")"
+          proof="$RUNNER_TEMP/physical-seed-proof"
+          python tools/creator/proof/disposable_media.py \
+            --contract docs/contracts/physical-media.json \
+            --stage-root "$stage" \
+            --output-root "$proof"
+          python - "$proof/proof.json" <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert proof['status'] == 'pass'
+          assert proof['physical_write_authorized'] is False
+          assert all(proof['checks'].values())
+          PY
+          echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/physical-seed-path"
+
+      - name: Bind raw writer to canonical trust manifest and generated seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          seed="$(cat "$RUNNER_TEMP/physical-seed-path")"
+          out="$GITHUB_WORKSPACE/out/physical-write-candidate"
+          mkdir -p "$out"
+          trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
+          manifest_sha="$(sha256sum docs/contracts/minimal-bootstrap.json | cut -d' ' -f1)"
+          media_sha="$(sha256sum docs/contracts/physical-media.json | cut -d' ' -f1)"
+          seed_sha="$(sha256sum "$seed" | cut -d' ' -f1)"
+          seed_size="$(stat -c '%s' "$seed")"
+
+          python - docs/contracts/physical-write-authorization.json "$manifest_sha" "$trust_sha" "$media_sha" <<'PY'
+          import json, pathlib, sys
+          auth = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          expected = auth['bindings']
+          actual = {
+              'minimal_bootstrap_sha256': sys.argv[2],
+              'release_trust_sha256': sys.argv[3],
+              'physical_media_sha256': sys.argv[4],
+          }
+          if expected != actual:
+              raise SystemExit(f'authorization binding changed after preflight: expected={expected!r} actual={actual!r}')
+          PY
+
+          cp --sparse=always "$seed" "$out/ordax-bootstrap-seed.raw"
+          cp bootstrap/trust/release-ed25519.json "$out/release-ed25519.json"
+
+          pushd tools/creator >/dev/null
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false -tags ordax_raw_backend \
+              -ldflags="-s -w -X main.buildSourceCommit=$GITHUB_SHA -X main.buildCanonicalTrustSHA256=$trust_sha -X main.buildManifestSHA256=$manifest_sha -X main.buildSeedImageSHA256=$seed_sha -X main.buildSeedImageSize=$seed_size -X main.buildPhysicalWriteAuthorized=YES" \
+              -o "$out/ordax-creator-physical-test.exe" \
+              ./cmd/ordax-creator-physical-test
+          popd >/dev/null
+
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$trust_sha" >/dev/null
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$manifest_sha" >/dev/null
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$seed_sha" >/dev/null
+
+          python - "$out/provenance.json" "$trust_sha" "$manifest_sha" "$media_sha" "$seed_sha" "$seed_size" <<'PY'
+          import json, pathlib, sys, os
+          data = {
+              '$schema': 'prototype-ordax.physical-write-candidate/1',
+              'status': 'authorized-candidate-not-published',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'consumer_key_setup_required': False,
+              'development_channel': False,
+              'canonical_trust_sha256': sys.argv[2],
+              'minimal_bootstrap_sha256': sys.argv[3],
+              'physical_media_sha256': sys.argv[4],
+              'seed_sha256': sys.argv[5],
+              'seed_size': int(sys.argv[6]),
+              'raw_backend_linked': True,
+              'physical_write_authorized_in_binary': True,
+              'release_published': False,
+              'private_key_in_candidate': False,
+          }
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+          (
+            cd "$out"
+            sha256sum ordax-creator-physical-test.exe ordax-bootstrap-seed.raw release-ed25519.json provenance.json > SHA256SUMS
+          )
+          if find "$out" -type f \( -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.dpapi' \) -print -quit | grep -q .; then
+            echo 'private signing material entered physical candidate' >&2
+            exit 1
+          fi
+          echo 'AUTHORIZED_PHYSICAL_CANDIDATE_BUILT=YES'
+          echo 'PRIVATE_KEY_IN_CANDIDATE=NO'
+          echo 'PHYSICAL_CANDIDATE_PUBLISHED=NO'
+
+      - name: Upload authorized candidate for publisher signing review only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-authorized-physical-candidate-${{ github.sha }}
+          path: out/physical-write-candidate/
+          if-no-files-found: error
+          retention-days: 7
