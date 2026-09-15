@@ -1,0 +1,39 @@
+{
+  "$schema": "prototype-ordax.release-channel/1",
+  "status": "canonical-prototype-contract",
+  "source_authority": {
+    "kind": "git",
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "branch": "main"
+  },
+  "device_pre_release": {
+    "full_git_client_required": false,
+    "source_checkout_required": false,
+    "compiler_required": false,
+    "codex_required": false,
+    "https_release_resolver_required": true,
+    "public_trust_anchor_required": true
+  },
+  "release": {
+    "exact_source_commit_required": true,
+    "immutable_after_verification": true,
+    "artifact_sha256_required": true,
+    "artifact_size_required": true,
+    "manifest_authenticity_required_before_production": true,
+    "custom_crypto_allowed": false,
+    "atomic_activation_required": true,
+    "known_good_preservation_required": true,
+    "offline_known_good_boot_required": true
+  },
+  "publication": {
+    "ci_owned": true,
+    "github_is_current_artifact_host": true,
+    "github_is_only_allowed_future_host": false,
+    "codex_required": false
+  },
+  "kernel": {
+    "compiled_on_device": false,
+    "compiled_in_repository_ci": true,
+    "delivered_as_verified_artifact": true
+  }
+}
