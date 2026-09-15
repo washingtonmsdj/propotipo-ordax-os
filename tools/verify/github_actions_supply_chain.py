@@ -41,6 +41,8 @@ def approved_refs(contract: dict) -> set[tuple[str, str]]:
 def checkout_disables_persisted_credentials(lines: list[str], uses_index: int) -> bool:
     uses_line = lines[uses_index]
     uses_indent = len(uses_line) - len(uses_line.lstrip())
+    compact_step = uses_line.lstrip().startswith("- ")
+    sibling_indent = uses_indent + 2 if compact_step else uses_indent
     in_with = False
 
     for line in lines[uses_index + 1 :]:
@@ -48,9 +50,13 @@ def checkout_disables_persisted_credentials(lines: list[str], uses_index: int) -
         if not stripped or stripped.startswith("#"):
             continue
         indent = len(line) - len(line.lstrip())
-        if indent < uses_indent:
+
+        # A compact `- uses:` owns sibling step keys two columns deeper than
+        # the list marker. A normal `uses:` under `- name:` already sits at
+        # sibling-key indentation. Stop as soon as we leave that step.
+        if indent < sibling_indent:
             break
-        if indent == uses_indent:
+        if indent == sibling_indent:
             if stripped == "with:":
                 in_with = True
                 continue
