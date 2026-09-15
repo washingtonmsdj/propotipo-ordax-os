@@ -162,6 +162,34 @@ func TestVerifyInstalledRehashesCriticalFilesEveryTime(t *testing.T) {
 	}
 }
 
+func TestCurrentOfflineFallbackRechecksSignatureAndCriticalFiles(t *testing.T) {
+	trust, private, trustSHA := testTrust(t)
+	root := t.TempDir()
+	manifest := validManifest()
+	dir := filepath.Join(root, "versions", manifest.SourceCommit)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest = writeBoundFiles(t, dir)
+	envelope := signedEnvelope(t, manifest, private)
+	if err := os.WriteFile(filepath.Join(root, currentEnvelopeName), envelope, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := Current(root, trust, trustSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.SourceCommit != manifest.SourceCommit || installed.Directory != dir {
+		t.Fatalf("unexpected installed state: %+v", installed)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte("tampered"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Current(root, trust, trustSHA); err == nil || !strings.Contains(err.Error(), "changed") {
+		t.Fatalf("tampered offline candidate unexpectedly accepted: %v", err)
+	}
+}
+
 func zipWithEntries(t *testing.T, entries map[string][]byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "candidate.zip")
