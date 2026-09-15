@@ -1,14 +1,37 @@
 [CmdletBinding()]
 param(
-    [string]$PrivateKeyPath = (Join-Path $env:LOCALAPPDATA 'OrdaX\release-signing\ordax-release-private.pem'),
-    [string]$ReviewDirectory = (Join-Path $PSScriptRoot 'trust-review')
+    [string]$PrivateKeyPath,
+    [string]$ReviewDirectory
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$ScriptPath = $PSCommandPath
+if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+    $ScriptPath = $MyInvocation.MyCommand.Path
+}
+if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+    throw 'Unable to resolve the trust ceremony script path.'
+}
+$ScriptPath = [IO.Path]::GetFullPath($ScriptPath)
+$ScriptRoot = Split-Path -Parent $ScriptPath
+if ([string]::IsNullOrWhiteSpace($ScriptRoot)) {
+    throw 'Unable to resolve the trust ceremony script directory.'
+}
+
+if ([string]::IsNullOrWhiteSpace($PrivateKeyPath)) {
+    if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        throw 'LOCALAPPDATA is unavailable; specify -PrivateKeyPath explicitly.'
+    }
+    $PrivateKeyPath = Join-Path $env:LOCALAPPDATA 'OrdaX\release-signing\ordax-release-private.pem'
+}
+if ([string]::IsNullOrWhiteSpace($ReviewDirectory)) {
+    $ReviewDirectory = Join-Path $ScriptRoot 'trust-review'
+}
+
 $KeyId = 'ordax-prototype-release-v1'
-$Signer = Join-Path $PSScriptRoot 'ordax-release-signing.exe'
+$Signer = Join-Path $ScriptRoot 'ordax-release-signing.exe'
 if (-not (Test-Path -LiteralPath $Signer -PathType Leaf)) {
     throw "ordax-release-signing.exe was not found next to this script: $Signer"
 }
@@ -19,7 +42,8 @@ $PrivateDirectory = Split-Path -Parent $PrivateKeyPath
 if ([string]::IsNullOrWhiteSpace($PrivateDirectory)) {
     throw 'PrivateKeyPath must include a parent directory.'
 }
-if ($PrivateKeyPath.StartsWith([IO.Path]::GetFullPath($PSScriptRoot), [StringComparison]::OrdinalIgnoreCase)) {
+$ToolkitRoot = $ScriptRoot.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+if ($PrivateKeyPath.StartsWith($ToolkitRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The private key must be outside the downloaded toolkit/repository directory.'
 }
 if (Test-Path -LiteralPath $PrivateKeyPath) {
