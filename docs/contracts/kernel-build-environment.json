@@ -17,6 +17,7 @@
       "ca-certificates",
       "dwarves",
       "flex",
+      "gcc",
       "gcc-13",
       "kmod",
       "libelf-dev",
