@@ -113,7 +113,11 @@ func TestStreamRawImageVerifiedChecksBytesWhileWriting(t *testing.T) {
 		t.Fatal("streamed bytes differ from source")
 	}
 
-	if _, err := streamRawImageVerified(bytes.NewReader(append(data, 'x')), &bytes.Buffer{}, expected, int64(len(data))); err == nil {
+	var grownDestination bytes.Buffer
+	if _, err := streamRawImageVerified(bytes.NewReader(append(data, 'x')), &grownDestination, expected, int64(len(data))); err == nil {
 		t.Fatal("source growth during streaming must fail")
+	}
+	if grownDestination.Len() != len(data) {
+		t.Fatalf("source growth wrote %d bytes, expected exactly %d authorized bytes", grownDestination.Len(), len(data))
 	}
 }
