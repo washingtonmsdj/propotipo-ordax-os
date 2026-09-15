@@ -1,63 +1,60 @@
 # Prototipo OrdaX OS
 
-Clean-room experimental para validar uma arquitetura OrdaX OS mais simples antes de substituir qualquer base atual.
+Clean-room experimental para validar uma arquitetura OrdaX OS simples, reproduzivel e Git-first antes de substituir qualquer base atual.
 
 > **Status:** PROTOTIPO / NAO PROMOVIDO
 >
-> Este repositorio nao substitui `washingtonmsdj/novo-ordax-os` enquanto os gates definidos em `docs/PROMOTION-GATES.md` nao forem aprovados.
+> Este repositorio nao substitui `washingtonmsdj/novo-ordax-os` enquanto os gates de `docs/PROMOTION-GATES.md` nao forem aprovados.
 
-## Objetivo
-
-Construir uma unica OrdaX, reproduzivel e Git-first, em tres modos:
+## Um produto, cinco modos
 
 ```text
 OrdaX Web
+ -> OrdaX Mobile (Android / iPhone)
+ -> OrdaX Desktop
  -> OrdaX USB
  -> OrdaX Native (SSD/HD)
 ```
 
-Todos compartilham a mesma Surface, apps e logica de produto. O modo nativo apenas acrescenta capacidades de kernel/hardware por adapters.
+Todos usam uma identidade OrdaX, a mesma Surface/app source onde aplicavel e sincronizacao segura de estado suportado. Diferencas de ambiente ficam atras de adapters de capacidade, nao em forks de produto.
 
 ## Principios
 
 - `main` e a source authority.
 - Pendrive/notebook sao alvos materializados.
-- Codex e parceiro opcional, nunca requisito de source/build/release.
-- Builds devem nascer de receitas versionadas + ambiente fixado + CI + provenance/hash.
-- Kernel nao e excecao manual: deve ser compilado pelo pipeline canonico, nao pela maquina do desenvolvedor.
-- Layout fisico: `ORDAX-ESP` + `ORDAX`.
-- HOME e estado de usuario sao logicos, nao uma terceira particao obrigatoria.
+- Codex e parceiro opcional, nunca requisito de source/build/release/instalacao.
+- Builds nascem de receitas versionadas + CI + provenance/hash.
+- Kernel e initramfs sao artefatos normais do pipeline canonico.
+- Layout fisico: exatamente `ORDAX-ESP` + `ORDAX`.
+- HOME e estado de usuario sao logicos, nao uma terceira particao.
 - O primeiro USB e minimo: boot + kernel/initramfs + rede + aquisicao/verificacao de release + recovery.
 - SSH, Remote Core e Control Plane nao sao requisitos do bootstrap nem do desenvolvimento diario.
-- Surface, apps e sistema de alto nivel chegam depois por release.
-- Depois da primeira release verificada, ela permanece local para boot offline e rollback.
-- Web, USB e SSD/HD sao modos do mesmo produto, nao forks.
-- Surface e apps possuem uma unica arvore source.
-- WSL, QEMU, PowerShell, Bash e SSH externo nao sao dependencias arquiteturais obrigatorias.
+- WSL, QEMU e toolchains locais nao sao requisitos do usuario final.
 - Nada do repositorio antigo entra por copia em massa.
 - Segredos/chaves privadas nunca sao versionados.
 - Criptografia caseira e proibida.
-- Escrita fisica exige gates e evidencia.
+- Escrita fisica exige gates, hashes, identidade de target e autorizacao explicita.
 
-## Entrada obrigatoria
-
-Leia:
+## Leia primeiro
 
 1. `AGENTS.md`
 2. `docs/CURRENT-STATE.md`
 3. `docs/ARCHITECTURE.md`
 4. `docs/BUILD-AUTONOMY.md`
 5. `docs/PRODUCT-MODES.md`
-6. `docs/MINIMAL-USB-BOOTSTRAP.md`
-7. `docs/HOST-INDEPENDENCE.md`
-8. `docs/REMOTE-CONTROL.md`
-9. `docs/PHYSICAL-MEDIA.md`
-10. `docs/DEVELOPMENT-WORKFLOW.md`
-11. `docs/SOURCE-MIGRATION.md`
-12. `docs/PROMOTION-GATES.md`
-13. `docs/DECISIONS.md`
+6. `docs/ACCOUNT-SYNC-AND-PLANS.md`
+7. `docs/MINIMAL-USB-BOOTSTRAP.md`
+8. `docs/CREATOR-INSTALLATION.md`
+9. `docs/HOST-INDEPENDENCE.md`
+10. `docs/REMOTE-CONTROL.md`
+11. `docs/PHYSICAL-MEDIA.md`
+12. `docs/DEVELOPMENT-WORKFLOW.md`
+13. `docs/RELEASE-CHANNEL.md`
+14. `docs/SOURCE-MIGRATION.md`
+15. `docs/PROMOTION-GATES.md`
+16. `docs/DECISIONS.md`
 
-## Estrutura alvo
+## Estrutura principal
 
 ```text
 boot/
@@ -66,17 +63,16 @@ bootstrap/
   kernel/
   initramfs/
   network/
-  git/                   # release acquisition/update
+  release-acquisition/
   recovery/
-  identity/              # opcional futuro
-  remote/                # opcional futuro
-  control-plane/         # opcional futuro
 system/
   surface/
   apps/
   services/
   adapters/
     web/
+    mobile/
+    desktop/
     native/
 platform/
   releases/
@@ -84,6 +80,9 @@ platform/
   home/
 tools/
   creator/
+    core/
+    cmd/ordax-creator/
+    platform/
   dev/
   verify/
 tests/
@@ -102,24 +101,47 @@ alteracao em main
  -> artefato/release
 ```
 
-O objetivo e que eu, outra IA ou qualquer desenvolvedor consiga manter o projeto apenas pelo repositorio e pelo pipeline canonico. Nenhum passo pode exigir Codex especificamente.
-
-GitHub Actions e o executor atual, mas nao e source authority. O entrypoint de build deve continuar portavel para outro runner/container compativel.
+O objetivo e que ChatGPT, outra IA ou qualquer desenvolvedor mantenha o projeto pelo repositorio e pipeline canonico sem depender de Codex especificamente.
 
 ## Pendrive inicial
 
 ```text
-USB inicial
- -> boot
- -> rede
- -> buscar release exata no Git/GitHub
+USB minimo
+ -> UEFI
+ -> kernel/initramfs
+ -> /ordax/bootstrap/entrypoint
+ -> se current conhecido existe: boot offline
+ -> senao: rede minima
+ -> release HTTPS assinada
  -> verificar
  -> releases/<commit>
  -> current
  -> OrdaX completa
 ```
 
-Nao gravar o sistema completo no pendrive inicial por conveniencia. Quase toda evolucao posterior acontece por Git/rede.
+## Instalacao sem Codex
+
+O caminho permanente e o Creator como capacidade do OrdaX Desktop:
+
+```text
+OrdaX Desktop
+ -> Creator Core
+ -> adapter/helper Windows estreito
+ -> USB OrdaX verificado
+```
+
+Para nao bloquear os primeiros testes fisicos esperando o Desktop completo, o CI pode publicar antes um pequeno `ordax-creator.exe`. Ele usa exatamente o mesmo Creator Core e depois desaparece como shell separado quando a interface Desktop assumir a funcao.
+
+O Creator nao compila kernel no Windows. Ele consome artefatos ja gerados e verificados pelo CI.
+
+Estado atual:
+
+```text
+Creator CHECK=IMPLEMENTED
+Creator PLAN=FAIL_CLOSED_ENQUANTO_MANIFESTO_NAO_AUTORIZADO
+Creator APPLY=NAO_IMPLEMENTADO
+PHYSICAL_USB_WRITE=NO
+```
 
 ## Desenvolvimento
 
@@ -129,43 +151,27 @@ editar
  -> testar
  -> commit/push main
  -> CI gera/verifica o afetado
- -> Web recebe a mudanca
- -> OrdaX recebe release/delta correspondente
- -> verifica
- -> ativa
+ -> Web/Mobile/Desktop recebem o commit aplicavel
+ -> OrdaX USB/Native recebe release/delta verificado
 ```
 
-Sem SSH, shell remoto ou Codex como requisito.
-
-## Instalacao
-
-```text
-OrdaX Web
- -> baixar OrdaX Creator
- -> criar USB minimo
- -> bootar OrdaX
- -> adquirir/sincronizar ambiente
- -> opcionalmente instalar no SSD/HD
-```
-
-O usuario final nao deve precisar de WSL, QEMU ou toolchain de kernel. O Creator consome artefatos ja compilados e verificados pelo pipeline.
-
-## Regra de promocao
+## Promocao
 
 O sucessor oficial precisa provar no hardware real:
 
 ```text
 source/build sem Codex
- -> kernel/initramfs reproduziveis no CI
+ -> kernel/initramfs reproduziveis
+ -> Creator seguro
+ -> duas particoes exatas
  -> UEFI
  -> rede
  -> aquisicao/verificacao de release
- -> release/<commit>
- -> current
- -> boot offline conhecido-bom
+ -> current conhecido-bom
+ -> boot offline
  -> Surface compartilhada
  -> atualizacao Git-driven
- -> continuidade Web/USB/Native
+ -> continuidade Web/Mobile/Desktop/USB/Native
 ```
 
-Ate la, `novo-ordax-os` permanece como referencia.
+Ate la, `novo-ordax-os` permanece somente como referencia/evidencia.
