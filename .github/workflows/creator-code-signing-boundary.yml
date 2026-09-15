@@ -1,0 +1,109 @@
+name: Creator Code Signing Boundary
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/contracts/creator-code-signing.json'
+      - 'tools/creator/windows/Verify-OrdaXCreatorSignature.ps1'
+      - 'tools/creator/cmd/ordax-creator-app/**'
+      - 'tools/creator/componentchannel/**'
+      - 'tools/creator/physicalchannel/**'
+      - '.github/workflows/creator-code-signing-boundary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authenticode-boundary:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Validate unresolved production code-signing policy
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $contract = Get-Content -LiteralPath docs/contracts/creator-code-signing.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($contract.'$schema' -ne 'prototype-ordax.creator-code-signing/1') { throw 'unexpected code-signing schema' }
+          if ($contract.status -ne 'unconfigured') { throw 'production code-signing contract must stay unconfigured until a real publisher certificate/provider is provisioned' }
+          if ($contract.release_policy.publish_allowed -ne $false) { throw 'unconfigured code-signing policy may not authorize publication' }
+          if ($null -ne $contract.publisher_identity.expected_subject) { throw 'publisher subject was populated without enabling the signing policy' }
+          if (@($contract.publisher_identity.allowed_leaf_certificate_sha256).Count -ne 0) { throw 'certificate pins were populated without enabling the signing policy' }
+          if ($contract.custody.provider -ne 'unconfigured') { throw 'signing provider was populated without enabling the signing policy' }
+          Write-Host 'CREATOR_CODE_SIGNING_POLICY_CONFIGURED=NO'
+          Write-Host 'CREATOR_OFFICIAL_PUBLISH_ALLOWED=NO'
+
+      - name: Build disposable unsigned Creator executable
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path out/code-signing-boundary | Out-Null
+          Push-Location tools/creator
+          try {
+            go test -count=1 ./componentchannel ./physicalchannel
+            go build -trimpath -buildvcs=false -ldflags='-s -w -H=windowsgui' `
+              -o ../../out/code-signing-boundary/OrdaX-Creator.exe `
+              ./cmd/ordax-creator-app
+          } finally {
+            Pop-Location
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath out/code-signing-boundary/OrdaX-Creator.exe
+          if ([string]$signature.Status -eq 'Valid' -or $null -ne $signature.SignerCertificate) {
+            throw 'disposable unsigned Creator unexpectedly carries a trusted Authenticode signature'
+          }
+          Write-Host 'DISPOSABLE_CREATOR_AUTHENTICODE_SIGNED=NO'
+
+      - name: Prove unconfigured policy and unsigned executable both fail closed
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'out/code-signing-boundary/OrdaX-Creator.exe'
+          $verifier = Join-Path $PWD 'tools/creator/windows/Verify-OrdaXCreatorSignature.ps1'
+
+          $failedUnconfigured = $false
+          try {
+            & $verifier -ExecutablePath $exe -ContractPath docs/contracts/creator-code-signing.json | Out-Host
+          } catch {
+            $failedUnconfigured = $true
+            if ($_.Exception.Message -notmatch 'not configured') { throw }
+          }
+          if (-not $failedUnconfigured) { throw 'unconfigured production policy unexpectedly passed verification' }
+
+          $testContract = Join-Path $env:RUNNER_TEMP 'creator-code-signing-configured-test.json'
+          $data = Get-Content -LiteralPath docs/contracts/creator-code-signing.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $data.status = 'configured'
+          $data.publisher_identity.expected_subject = 'CN=OrdaX CI Disposable Test'
+          $data.publisher_identity.allowed_leaf_certificate_sha256 = @('0000000000000000000000000000000000000000000000000000000000000000')
+          $data.custody.provider = 'ci-disposable-test-only'
+          $data.release_policy.publish_allowed = $true
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText($testContract, (($data | ConvertTo-Json -Depth 10) + "`n"), $utf8)
+
+          $failedUnsigned = $false
+          try {
+            & $verifier -ExecutablePath $exe -ContractPath $testContract | Out-Host
+          } catch {
+            $failedUnsigned = $true
+            if ($_.Exception.Message -notmatch 'signature status') { throw }
+          }
+          if (-not $failedUnsigned) { throw 'unsigned Creator unexpectedly passed configured Authenticode gate' }
+          Remove-Item -LiteralPath $testContract -Force
+          Write-Host 'UNCONFIGURED_POLICY_FAIL_CLOSED=PASS'
+          Write-Host 'UNSIGNED_EXECUTABLE_FAIL_CLOSED=PASS'
+          Write-Host 'CREATOR_CODE_SIGNING_BOUNDARY=PASS'
