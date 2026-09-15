@@ -132,11 +132,15 @@ TARGET_REENUMERATION=PASS
 BLOCKED_RAW_DISK_PLAN=PASS
 INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
 RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
+WINDOWS_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
+WINDOWS_VOLUME_EXTENT_INVENTORY=PASS
+WINDOWS_NATIVE_HOST_TESTS=PASS
+WINDOWS_VOLUME_LOCK_DISMOUNT=NO
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
 PHYSICAL_WRITE_IMPLEMENTED=NO
 ```
 
-The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Target confirmation recomputes the token from the current identity instead of trusting a stored token. The internal raw-writer orchestration is intentionally unexported and CI-tested only with an in-memory backend; no native destructive PhysicalDrive backend or public apply command is connected in this gate.
+The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Target confirmation recomputes the token from the current identity instead of trusting a stored token. The Windows adapter can now open the selected `PhysicalDrive` with `GENERIC_READ` only, verify identity from that exact handle, and enumerate all volume GUIDs touching the disk through physical disk extents; those Windows-only paths are covered by native Windows CI. The internal raw-writer orchestration remains intentionally unexported and write-tested only with an in-memory backend. No writable PhysicalDrive handle, volume lock/dismount path, native destructive backend or public apply command is connected in this gate.
 
 ## Gate 6 - Physical USB reprovisioning
 
@@ -147,6 +151,9 @@ Before write:
 ```text
 TARGET_IDENTITY=PASS
 TARGET_REENUMERATION_IMMEDIATELY_BEFORE_WRITE=REQUIRED
+TARGET_HANDLE_IDENTITY_PROOF=PASS_READ_ONLY
+TARGET_VOLUME_EXTENT_INVENTORY=PASS_READ_ONLY
+TARGET_VOLUME_LOCK_DISMOUNT=PENDING_NATIVE_BACKEND
 SOURCE_LAYOUT_CONTRACT=PASS
 MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PENDING_CANONICAL_TRUST
 RELEASE_TRUST=PENDING_CANONICAL_KEY
