@@ -276,7 +276,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     env["CC"] = resolve_program("musl-gcc")
     run(["make", "defconfig"], cwd=source, env=env)
     set_config(source / ".config", REQUESTED_CONFIG)
-    run(["make", "olddefconfig"], cwd=source, env=env)
+    run(["make", "oldconfig"], cwd=source, env=env)
     verify_config(source / ".config")
     run(["make", f"-j{max(1, jobs)}"], cwd=source, env=env)
     busybox = source / "busybox"
