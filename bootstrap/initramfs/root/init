@@ -31,5 +31,10 @@ if [ "$RECOVERY_MODE" -eq 1 ]; then
 fi
 
 mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
+if [ -x /sbin/ordax-grow-ext4 ]; then
+    if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
+        echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
+    fi
+fi
 [ -x /ordax/bootstrap/entrypoint ] || rescue "bootstrap entrypoint is missing"
 exec /ordax/bootstrap/entrypoint
