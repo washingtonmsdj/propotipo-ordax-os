@@ -1,0 +1,234 @@
+name: Full Bootstrap Media Proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/network/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'bootstrap/recovery/**'
+      - 'bootstrap/config/**'
+      - 'bootstrap/entrypoint'
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - 'docs/contracts/physical-media.json'
+      - '.github/workflows/full-bootstrap-media-proof.yml'
+  pull_request:
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/network/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'bootstrap/recovery/**'
+      - 'bootstrap/config/**'
+      - 'bootstrap/entrypoint'
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - 'docs/contracts/physical-media.json'
+      - '.github/workflows/full-bootstrap-media-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-bootstrap-media-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Install bounded build and media-proof dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
+            gdisk dosfstools e2fsprogs mtools util-linux
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            jinja2 pyelftools
+
+      - name: Build real bootstrap owners
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+          python bootstrap/network/build.py check
+          python bootstrap/network/build.py build --jobs 4
+          python bootstrap/network/build.py verify
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-acquisition/ordax-release-agent .
+          )
+          test -s out/release-acquisition/ordax-release-agent
+
+      - name: Build signer and create ephemeral proof trust
+        run: |
+          set -euo pipefail
+          mkdir -p out/full-media-proof bootstrap/trust
+          (
+            cd tools/release-signing
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/full-media-proof/ordax-release-signing .
+          )
+          signer="$PWD/out/full-media-proof/ordax-release-signing"
+          private="$RUNNER_TEMP/full-media-proof-private.pem"
+          "$signer" generate-key \
+            --private-key "$private" \
+            --trust bootstrap/trust/release-ed25519.json \
+            --key-id ci-full-media-proof
+          test -s "$private"
+          test -s bootstrap/trust/release-ed25519.json
+
+      - name: Derive fully resolved proof manifest without mutating canonical contract
+        run: |
+          python - "$RUNNER_TEMP/minimal-bootstrap-full-proof.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          source = pathlib.Path('docs/contracts/minimal-bootstrap.json')
+          trust = pathlib.Path('bootstrap/trust/release-ed25519.json')
+          output = pathlib.Path(sys.argv[1])
+          manifest = json.loads(source.read_text(encoding='utf-8'))
+          payload = trust.read_bytes()
+          digest = hashlib.sha256(payload).hexdigest()
+          groups = {group['id']: group for group in manifest['artifact_groups']}
+          group = groups['bootstrap-release-trust']
+          assert group['resolved'] is False and group['artifacts'] == []
+          group['resolved'] = True
+          group['artifacts'] = [{
+              'source_path': 'bootstrap/trust/release-ed25519.json',
+              'target_path': '/ordax/bootstrap/trust/release-ed25519.json',
+              'sha256': digest,
+              'mode': '0644',
+              'logical_owner': 'bootstrap-release-trust',
+              'reason': 'Ephemeral CI-only public trust anchor used solely to prove byte-complete media composition'
+          }]
+          manifest['status'] = 'ci-proof-byte-complete-ephemeral-trust'
+          manifest['all_artifacts_resolved'] = True
+          manifest['physical_write_allowed'] = False
+          output.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          print('EPHEMERAL_TRUST_SHA256=' + digest)
+          PY
+
+      - name: Assemble and verify byte-complete payload
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/minimal-bootstrap-full-proof.json"
+          payload="$RUNNER_TEMP/full-media-payload"
+          python tools/creator/assemble.py build --manifest "$manifest" --out-dir "$payload"
+          python tools/creator/assemble.py verify --manifest "$manifest" --payload-root "$payload"
+          python - "$payload/payload-provenance.json" <<'PY'
+          import json, pathlib, sys
+          p = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert p['status'] == 'complete-candidate'
+          assert p['unresolved_groups'] == []
+          assert p['physical_write_authorized'] is False
+          print('BYTE_COMPLETE_PAYLOAD=PASS')
+          PY
+
+      - name: Stage payload through Creator Core
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/minimal-bootstrap-full-proof.json"
+          payload="$RUNNER_TEMP/full-media-payload"
+          stage="$RUNNER_TEMP/full-media-stage"
+          pushd tools/creator >/dev/null
+          verify_output="$(go run ./cmd/ordax-creator verify-payload --manifest "$manifest" --payload-root "$payload")"
+          printf '%s\n' "$verify_output"
+          stage_output="$(go run ./cmd/ordax-creator stage-tree --manifest "$manifest" --payload-root "$payload" --output-root "$stage")"
+          printf '%s\n' "$stage_output"
+          grep -q '^DISPOSABLE_TREE_STAGED=YES$' <<<"$stage_output"
+          grep -q '^PHYSICAL_WRITE_STATUS=blocked$' <<<"$stage_output"
+          popd >/dev/null
+          printf '%s\n' "$stage" > "$RUNNER_TEMP/full-media-stage-path"
+
+      - name: Prove real GPT, FAT32, ext4 and post-materialization hashes
+        run: |
+          set -euo pipefail
+          stage="$(cat "$RUNNER_TEMP/full-media-stage-path")"
+          output="$RUNNER_TEMP/full-media-disk-proof"
+          python tools/creator/proof/disposable_media.py \
+            --contract docs/contracts/physical-media.json \
+            --stage-root "$stage" \
+            --output-root "$output"
+          python - "$output/proof.json" "$RUNNER_TEMP/full-media-payload/payload-provenance.json" <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          payload = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
+          assert proof['status'] == 'pass'
+          assert proof['physical_write_authorized'] is False
+          assert all(proof['checks'].values())
+          summary = {
+              '$schema': 'prototype-ordax.full-bootstrap-media-proof/1',
+              'status': 'pass',
+              'canonical_trust': False,
+              'ephemeral_ci_trust': True,
+              'payload_artifact_count': payload['artifact_count'],
+              'unresolved_groups': payload['unresolved_groups'],
+              'disk_image_sha256': proof['image_sha256'],
+              'physical_write_authorized': False,
+          }
+          pathlib.Path('out/full-media-proof/proof-summary.json').write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print('REAL_BOOTSTRAP_MEDIA_COMPOSITION=PASS')
+          print('CANONICAL_TRUST=NO')
+          print('PHYSICAL_WRITE_AUTHORIZED=NO')
+          PY
+
+      - name: Destroy ephemeral private key and unpublished media bytes
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/full-media-proof-private.pem"
+          rm -f bootstrap/trust/release-ed25519.json
+          rm -rf "$RUNNER_TEMP/full-media-payload" "$RUNNER_TEMP/full-media-stage"
+          rm -f "$RUNNER_TEMP/full-media-disk-proof/ordax-disposable.raw"
+          rm -f out/full-media-proof/ordax-release-signing
+          test ! -e "$RUNNER_TEMP/full-media-proof-private.pem"
+          test ! -e bootstrap/trust/release-ed25519.json
+          test ! -e "$RUNNER_TEMP/full-media-disk-proof/ordax-disposable.raw"
+          test -z "$(git status --porcelain)"
+          echo 'EPHEMERAL_PRIVATE_KEY_DESTROYED=YES'
+          echo 'RAW_IMAGE_PUBLISHED=NO'
+
+      - name: Upload proof metadata only
+        uses: actions/upload-artifact@v6
+        with:
+          name: ordax-full-bootstrap-media-proof-${{ github.sha }}
+          path: |
+            out/full-media-proof/proof-summary.json
+            ${{ runner.temp }}/full-media-disk-proof/proof.json
+          if-no-files-found: error
+          retention-days: 14
