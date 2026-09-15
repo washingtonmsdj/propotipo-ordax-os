@@ -121,14 +121,24 @@ func streamRawImageVerified(source io.Reader, destination io.Writer, expectedSHA
 	}
 
 	digest := sha256.New()
-	reader := io.TeeReader(io.LimitReader(source, expectedSizeBytes+1), digest)
-	written, err := io.Copy(destination, reader)
+	limited := io.LimitReader(source, expectedSizeBytes)
+	written, err := io.Copy(io.MultiWriter(destination, digest), limited)
 	if err != nil {
 		return written, fmt.Errorf("stream raw image: %w", err)
 	}
 	if written != expectedSizeBytes {
 		return written, fmt.Errorf("raw image changed while streaming: expected=%d actual=%d", expectedSizeBytes, written)
 	}
+
+	var extra [1]byte
+	extraCount, extraErr := source.Read(extra[:])
+	if extraCount != 0 {
+		return written, errors.New("raw image changed while streaming: source grew beyond authorized size")
+	}
+	if extraErr != nil && !errors.Is(extraErr, io.EOF) {
+		return written, fmt.Errorf("check raw image end: %w", extraErr)
+	}
+
 	actual := hex.EncodeToString(digest.Sum(nil))
 	if actual != expectedSHA256 {
 		return written, fmt.Errorf("raw image changed while streaming: expected SHA-256=%s actual=%s", expectedSHA256, actual)
