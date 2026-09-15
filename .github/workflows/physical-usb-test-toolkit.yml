@@ -115,33 +115,38 @@ jobs:
           if (($applyOutput -join "`n") -notmatch 'inspection-only') { throw 'apply did not fail closed on missing build binding' }
           $global:LASTEXITCODE = 0
 
-      - name: Smoke test one-command trust ceremony with disposable CI key
+      - name: Smoke test double-click trust ceremony defaults with disposable CI key
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $privateDir = Join-Path $PWD '.ci-trust-private'
-          $private = Join-Path $privateDir 'ordax-release-private.pem'
-          $review = Join-Path $PWD '.ci-trust-review'
-          New-Item -ItemType Directory -Force -Path $privateDir | Out-Null
+          $toolkit = Join-Path $PWD '.ci-trust-toolkit'
+          $localAppData = Join-Path $PWD '.ci-trust-localappdata'
+          New-Item -ItemType Directory -Force -Path $toolkit | Out-Null
+          New-Item -ItemType Directory -Force -Path $localAppData | Out-Null
+          Copy-Item (Join-Path $out 'ordax-release-signing.exe') (Join-Path $toolkit 'ordax-release-signing.exe')
+          Copy-Item (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1') (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
+          $oldLocalAppData = $env:LOCALAPPDATA
+          $env:LOCALAPPDATA = $localAppData
           try {
-            & (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1') `
-              -PrivateKeyPath $private `
-              -ReviewDirectory $review
-            if (-not (Test-Path -LiteralPath $private -PathType Leaf)) { throw 'ceremony did not create private key' }
+            & (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
+            $private = Join-Path $localAppData 'OrdaX\release-signing\ordax-release-private.pem'
+            $review = Join-Path $toolkit 'trust-review'
+            if (-not (Test-Path -LiteralPath $private -PathType Leaf)) { throw 'default ceremony did not create private key' }
             $result = Get-Content -Raw (Join-Path $review 'ceremony-result.json') | ConvertFrom-Json
             if ($result.key_id -ne 'ordax-prototype-release-v1') { throw 'unexpected ceremony key id' }
             if (-not $result.independent_derivation_byte_equal) { throw 'independent trust derivation did not match' }
             if (-not $result.proof_signature_created) { throw 'proof signature was not created' }
             if ($result.ready_to_pin_public_anchor) { throw 'ceremony must remain blocked until offline backup' }
           } finally {
-            Remove-Item -LiteralPath $private -Force -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $privateDir -Force -Recurse -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $review -Force -Recurse -ErrorAction SilentlyContinue
+            $env:LOCALAPPDATA = $oldLocalAppData
+            Remove-Item -LiteralPath $toolkit -Force -Recurse -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $localAppData -Force -Recurse -ErrorAction SilentlyContinue
           }
-          if (Test-Path -LiteralPath $private) { throw 'disposable CI private key was not destroyed' }
-          Write-Host 'CI_TRUST_CEREMONY_SMOKE_TEST=PASS'
+          if (Test-Path -LiteralPath $toolkit) { throw 'disposable CI toolkit was not destroyed' }
+          if (Test-Path -LiteralPath $localAppData) { throw 'disposable CI private storage was not destroyed' }
+          Write-Host 'CI_TRUST_DEFAULT_DOUBLE_CLICK_SMOKE_TEST=PASS'
           Write-Host 'CI_PRIVATE_KEY_DESTROYED=YES'
           Write-Host 'CI_KEY_CANONICAL=NO'
 
