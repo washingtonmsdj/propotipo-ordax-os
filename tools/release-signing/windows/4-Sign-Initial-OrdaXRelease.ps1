@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PrivateKeyPath = (Join-Path $env:LOCALAPPDATA 'OrdaX\release-signing\ordax-release-private.pem')
+    [string]$PrivateKeyPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -8,6 +8,16 @@ $ErrorActionPreference = 'Stop'
 
 $KeyId = 'ordax-prototype-release-v1'
 $Root = [IO.Path]::GetFullPath($PSScriptRoot)
+if ([string]::IsNullOrWhiteSpace($PrivateKeyPath)) {
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        throw 'USERPROFILE is unavailable; provide -PrivateKeyPath explicitly.'
+    }
+    # Keep this identical to Initialize-OrdaXReleaseTrust.ps1 and the Creator
+    # publisher finalizer. LOCALAPPDATA can traverse Windows reparse/junction
+    # aliases that the release signer intentionally refuses for private keys.
+    $PrivateKeyPath = Join-Path $env:USERPROFILE 'OrdaX-Private\release-signing\ordax-release-private.pem'
+}
+$PrivateKeyPath = [IO.Path]::GetFullPath($PrivateKeyPath)
 $Signer = Join-Path $Root 'ordax-release-signing.exe'
 $Manifest = Join-Path $Root 'release-manifest.json'
 $Trust = Join-Path $Root 'release-ed25519.json'
@@ -17,17 +27,22 @@ foreach ($path in @($Signer, $Manifest, $Trust, $PrivateKeyPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required file is missing: $path"
     }
+    $item = Get-Item -LiteralPath $path -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Required file may not be a reparse point or symlink: $path"
+    }
 }
 if (Test-Path -LiteralPath $Envelope) {
     throw "Refusing to replace existing release envelope: $Envelope"
 }
-if ([IO.Path]::GetFullPath($PrivateKeyPath).StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) {
+if ($PrivateKeyPath.StartsWith($Root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+    $PrivateKeyPath.Equals($Root, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The canonical private key must remain outside the physical candidate directory.'
 }
 
 & $Signer sign `
     --manifest $Manifest `
-    --private-key ([IO.Path]::GetFullPath($PrivateKeyPath)) `
+    --private-key $PrivateKeyPath `
     --trust $Trust `
     --key-id $KeyId `
     --out $Envelope
@@ -40,6 +55,7 @@ Write-Host 'INITIAL_RELEASE_SIGNED=YES'
 Write-Host "RELEASE_MANIFEST_SHA256=$ManifestHash"
 Write-Host "RELEASE_ENVELOPE_SHA256=$EnvelopeHash"
 Write-Host "RELEASE_ENVELOPE_PATH=$Envelope"
+Write-Host "PRIVATE_KEY_PATH=$PrivateKeyPath"
 Write-Host 'PRIVATE_KEY_COPIED_TO_PACKAGE=NO'
 Write-Host 'READY_FOR_RELEASE_PUBLICATION=YES'
 Write-Host ''
