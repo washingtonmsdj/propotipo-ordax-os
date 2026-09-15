@@ -55,13 +55,11 @@ jobs:
 
           Push-Location tools/creator
           try {
-            # Stable user-facing launcher. It never replaces or rewrites itself.
             go build -trimpath -buildvcs=false `
               -ldflags='-s -w -H=windowsgui' `
               -o ../../out/creator-dev-release/OrdaX-Creator.exe `
               ./cmd/ordax-creator-app
 
-            # Development channel contains discovery only. No raw-disk writer is linked.
             go build -trimpath -buildvcs=false `
               -ldflags='-s -w' `
               -o ../../out/creator-dev-payload/ordax-creator-physical-test.exe `
@@ -76,25 +74,19 @@ jobs:
           "%~dp0ordax-creator-physical-test.exe" targets
           '@ | Set-Content -Encoding ascii (Join-Path $payload '1-Inspect-OrdaXUSB.cmd')
 
-          @'
-          @echo off
-          echo Release trust initialization is intentionally not part of the unsigned development payload.
-          echo It will be handled by the signed physical-release flow.
-          exit /b 1
-          '@ | Set-Content -Encoding ascii (Join-Path $payload '2-Initialize-OrdaXTrust.cmd')
-
           @"
           OrdaX Creator - development payload
 
           Normal usage is through OrdaX-Creator.exe.
-          The launcher is stable and does not modify or replace itself.
-          Versioned internal components update automatically under the user profile.
+          Versioned non-destructive components update automatically under the user profile.
 
           DEVELOPMENT CHANNEL:
           - USB discovery: enabled
+          - publisher key generation/custody: NO
+          - raw private key material: NO
+          - release signing tool: NO
           - raw-disk writer linked: NO
           - physical write: NO
-          - release-signing private key handling: NO
           "@ | Set-Content -Encoding utf8 (Join-Path $payload 'README.txt')
 
           $zip = Join-Path $release 'ordax-creator-dev-windows-amd64.zip'
@@ -103,7 +95,7 @@ jobs:
           $payloadSize = (Get-Item -LiteralPath $zip).Length
 
           $manifest = [ordered]@{
-            '$schema' = 'prototype-ordax.creator-update-channel/1'
+            '$schema' = 'prototype-ordax.creator-update-channel/2'
             channel = 'development'
             version = $version
             source_commit = $sha
@@ -114,7 +106,6 @@ jobs:
             }
             entrypoints = [ordered]@{
               inspect = '1-Inspect-OrdaXUSB.cmd'
-              trust = '2-Initialize-OrdaXTrust.cmd'
               status = 'ordax-creator-physical-test.exe'
             }
           }
@@ -128,18 +119,19 @@ jobs:
             "$payloadHash  ordax-creator-dev-windows-amd64.zip"
           ) | Set-Content -Encoding ascii (Join-Path $release 'SHA256SUMS')
 
-      - name: Prove development package contains no destructive backend or self-replacer
+      - name: Prove consumer payload is non-destructive and contains no publisher key capability
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $release = Join-Path $PWD 'out/creator-dev-release'
           $payload = Join-Path $PWD 'out/creator-dev-payload'
+          $backend = Join-Path $payload 'ordax-creator-physical-test.exe'
 
           foreach ($required in @(
             (Join-Path $release 'OrdaX-Creator.exe'),
             (Join-Path $release 'creator-dev-manifest.json'),
-            (Join-Path $payload 'ordax-creator-physical-test.exe')
+            $backend
           )) {
             if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
               throw "required Creator artifact is missing: $required"
@@ -149,20 +141,33 @@ jobs:
           foreach ($forbidden in @(
             (Join-Path $payload 'ordax-creator-self-update.exe'),
             (Join-Path $payload 'ordax-release-signing.exe'),
+            (Join-Path $payload '2-Initialize-OrdaXTrust.cmd'),
             (Join-Path $release 'creator-app.json')
           )) {
             if (Test-Path -LiteralPath $forbidden) {
-              throw "unsafe development-channel artifact unexpectedly present: $forbidden"
+              throw "forbidden consumer artifact unexpectedly present: $forbidden"
             }
           }
 
-          $status = & (Join-Path $payload 'ordax-creator-physical-test.exe') status | ConvertFrom-Json
+          foreach ($pattern in @('*.pem','*.key','*.p12','*.pfx','*.dpapi')) {
+            if (@(Get-ChildItem -LiteralPath $payload -Recurse -File -Filter $pattern).Count -ne 0) {
+              throw "publisher/private key material unexpectedly present in consumer payload: $pattern"
+            }
+          }
+
+          $manifest = Get-Content -LiteralPath (Join-Path $release 'creator-dev-manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.'$schema' -ne 'prototype-ordax.creator-update-channel/2') { throw 'unexpected Creator manifest schema' }
+          if ($null -ne $manifest.entrypoints.PSObject.Properties['trust']) { throw 'consumer manifest unexpectedly exposes a trust entrypoint' }
+
+          $status = & $backend status | ConvertFrom-Json
           if ($status.raw_backend_linked -ne $false) { throw 'development backend unexpectedly links raw writer' }
           if ($status.build.physical_write_authorized -ne $false) { throw 'development backend unexpectedly authorizes physical write' }
           if ($status.build.ready -ne $false) { throw 'development backend unexpectedly reports ready' }
 
           Write-Host 'CREATOR_STABLE_GUI=PASS'
           Write-Host 'CREATOR_SELF_REPLACEMENT=ABSENT'
+          Write-Host 'CREATOR_CONSUMER_PUBLISHER_KEY_CAPABILITY=ABSENT'
+          Write-Host 'CREATOR_CONSUMER_KEY_SETUP=NO'
           Write-Host 'CREATOR_DEV_RAW_DISK_BACKEND=ABSENT'
           Write-Host 'CREATOR_DEV_PHYSICAL_WRITE=BLOCKED'
 
@@ -182,7 +187,7 @@ jobs:
               --target '${{ github.sha }}' `
               --title 'OrdaX Creator Development Channel' `
               --prerelease `
-              --notes 'Portable graphical OrdaX Creator. Stable launcher; versioned read-only development payload updates automatically. Physical write is not present in this channel.'
+              --notes 'Portable graphical OrdaX Creator. Stable launcher; versioned read-only development payload updates automatically. Physical write and publisher signing keys are not present in this channel.'
             if ($LASTEXITCODE -ne 0) { throw 'failed to create creator-dev release' }
           }
 
@@ -194,14 +199,12 @@ jobs:
             --clobber
           if ($LASTEXITCODE -ne 0) { throw 'failed to upload Creator launcher/payload' }
 
-          # Manifest is the atomic pointer and is published last.
           gh release upload creator-dev `
             (Join-Path $release 'creator-dev-manifest.json') `
             --repo washingtonmsdj/prototipo-ordax-os `
             --clobber
           if ($LASTEXITCODE -ne 0) { throw 'failed to publish Creator payload manifest' }
 
-          # Remove obsolete self-update metadata from the rolling release if present.
           gh release delete-asset creator-dev creator-app.json `
             --repo washingtonmsdj/prototipo-ordax-os `
             --yes 2>$null
@@ -210,4 +213,5 @@ jobs:
           Write-Host 'CREATOR_DEV_CHANNEL_PUBLISHED=YES'
           Write-Host 'CREATOR_NATIVE_GUI=YES'
           Write-Host 'CREATOR_LAUNCHER_SELF_MODIFIES=NO'
+          Write-Host 'CREATOR_CONSUMER_KEY_SETUP=NO'
           Write-Host 'CREATOR_DEV_CHANNEL_CAN_AUTHORIZE_PHYSICAL_WRITE=NO'
