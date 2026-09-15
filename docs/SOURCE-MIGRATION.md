@@ -23,9 +23,9 @@ DEPENDENCIES=
 SECURITY_REVIEW=
 TESTS=
 ARTIFACT_SHA256=
-DECISION=ADOPTED|REIMPLEMENTED|REJECTED
+DECISION=ADOPTED|REIMPLEMENTED|REJECTED|REFERENCE_ONLY
 TARGET_PATH=
-IMPLEMENTATION=COMPLETE|PENDING
+IMPLEMENTATION=COMPLETE|PENDING|NOT_APPLICABLE
 NOTES=
 ```
 
@@ -35,10 +35,10 @@ NOTES=
 2. known-good minimal initramfs artifact/source;
 3. only the network drivers/userspace required by the actual notebook;
 4. stable device identity logic;
-5. Remote Core / SSH host-key persistence and multi-key authorization behavior;
+5. useful remote-access invariants such as additive operator authorization, persistent device identity and fail-closed trust;
 6. Control Plane attestation/bootstrap logic;
 7. minimal maintenance/recovery functionality;
-8. trustworthy Windows-side target identification/provisioning ideas that can be simplified for the two-partition contract.
+8. trustworthy target-identification/provisioning ideas that can be simplified for the two-partition contract.
 
 ## Explicitly not imported by default
 
@@ -48,6 +48,7 @@ NOTES=
 - obsolete rsync-daemon ownership;
 - duplicate remote-access owners;
 - fail-open SSH helpers;
+- full SSH/QEMU/F7 development subsystem;
 - backup outputs, generated artifacts or physical evidence as source code;
 - stale compatibility bridges;
 - complete desktop/application trees before the bootstrap substrate is proven.
@@ -115,10 +116,53 @@ An older evidence record referenced SHA256 `038769af1a65954cf511c6b1a4f1b1b4f984
 
 See `bootstrap/initramfs/PROVENANCE.md`.
 
+## Ledger 003 - Legacy SSH/operator authorization evidence
+
+Codex completed one additional legacy hardening commit after the prototype SSH-source hardening baseline.
+
+Repository continuity verified through GitHub:
+
+```text
+BASE=f8ea8424f8cf52b516800f16f2331090ccb56748
+HEAD=49fe41fa67d9032f2e349e86592304e64d6c2d88
+HEAD_PARENT=f8ea8424f8cf52b516800f16f2331090ccb56748
+DIVERGENCE=NO
+```
+
+Reported public-key fingerprints:
+
+```text
+OLD_OPERATOR_KEY=SHA256:Q2ClLoKlAz4WTsFoc8+b3pBnjim8mayhhzafM9eJ8f0
+NEW_OPERATOR_KEY=SHA256:wKKyxsf8vQ3uKYczpqKnv/P2LTbHILs8oYnrqNRGvuM
+OLD_KEY_PRESERVED=YES
+NEW_KEY_ADDED=NO_PHYSICAL_TARGET_PENDING
+```
+
+Migration decision:
+
+```text
+COMPONENT=legacy-ssh-operator-trust
+LEGACY_REPOSITORY=washingtonmsdj/novo-ordax-os
+LEGACY_COMMIT=49fe41fa67d9032f2e349e86592304e64d6c2d88
+LEGACY_PATH=tools/ordax-dev + scripts/remote-access.sh + F7/QEMU trust path
+RESPONSIBILITY=legacy development access and host/operator trust
+WHY_NEEDED=extract proven invariants only
+DEPENDENCIES=SSH/QEMU/legacy Control Plane flow
+SECURITY_REVIEW=private keys not imported; fingerprints are public identifiers; fail-closed/additive authorization are useful invariants
+TESTS=legacy report: SSH policy 7 PASS; security 3 PASS; F7/QEMU 18 PASS; Control Plane identity 8 PASS; planner 37 PASS; physical proof pending
+ARTIFACT_SHA256=NOT_APPLICABLE
+DECISION=REFERENCE_ONLY
+TARGET_PATH=bootstrap/remote + docs/REMOTE-CONTROL.md
+IMPLEMENTATION=NOT_APPLICABLE
+NOTES=Do not copy the SSH/QEMU/F7 subsystem. Reimplement additive authorization, persistent identity and fail-closed trust in OrdaX Remote Core using standard secure transport.
+```
+
+Physical SSH/live-sync evidence remains pending because the USB is on Windows and the notebook is not booted from it.
+
 ## Current ledger state
 
 ```text
-REVIEWED_COMPONENT_COUNT=2
+REVIEWED_COMPONENT_COUNT=3
 IMPLEMENTED_MIGRATION_COUNT=0
 BULK_LEGACY_IMPORT=NO
 LEGACY_REPOSITORY_CHANGED_BY_MIGRATION=NO
