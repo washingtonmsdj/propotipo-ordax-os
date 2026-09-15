@@ -1,0 +1,116 @@
+name: Release Pipeline Contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/release-bundle/**'
+      - 'tools/release-manifest/**'
+      - 'tools/release-signing/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'docs/RELEASE-PIPELINE.md'
+      - '.github/workflows/release-pipeline.yml'
+  pull_request:
+    paths:
+      - 'tools/release-bundle/**'
+      - 'tools/release-manifest/**'
+      - 'tools/release-signing/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'docs/RELEASE-PIPELINE.md'
+      - '.github/workflows/release-pipeline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Build release pipeline tools
+        run: |
+          set -euo pipefail
+          mkdir -p out/release-pipeline
+          (cd tools/release-bundle && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-bundle .)
+          (cd tools/release-manifest && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-manifest .)
+          (cd tools/release-signing && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-signing .)
+          (cd bootstrap/release-acquisition && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-agent .)
+
+      - name: Prove source to signed envelope compatibility
+        run: |
+          set -euo pipefail
+          bundle="$PWD/out/release-pipeline/ordax-release-bundle"
+          manifest_tool="$PWD/out/release-pipeline/ordax-release-manifest"
+          signer="$PWD/out/release-pipeline/ordax-release-signing"
+          agent="$PWD/out/release-pipeline/ordax-release-agent"
+          work="$RUNNER_TEMP/release-pipeline-proof"
+          source="$work/source"
+          commit="0123456789abcdef0123456789abcdef01234567"
+          mkdir -p "$source/system" "$work/public"
+          chmod 0755 "$work" "$source" "$source/system"
+          printf '#!/bin/sh\nprintf "ordax pipeline proof\\n"\n' > "$source/system/entrypoint"
+          chmod 0755 "$source/system/entrypoint"
+          printf '%s\n' "$commit" > "$source/system/source-commit"
+          chmod 0644 "$source/system/source-commit"
+
+          "$bundle" --root "$source" --out "$work/public/system.tar" | tee "$work/bundle.txt"
+          "$manifest_tool" \
+            --artifact "$work/public/system.tar" \
+            --source-commit "$commit" \
+            --artifact-url "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/ci-proof/system.tar" \
+            --out "$work/public/release-manifest.json" | tee "$work/manifest.txt"
+          "$signer" generate-key \
+            --private-key "$work/private.pem" \
+            --trust "$work/public/release-trust.json" \
+            --key-id ci-pipeline-1
+          "$signer" sign \
+            --manifest "$work/public/release-manifest.json" \
+            --private-key "$work/private.pem" \
+            --trust "$work/public/release-trust.json" \
+            --key-id ci-pipeline-1 \
+            --out "$work/public/release-envelope.json" | tee "$work/sign.txt"
+
+          verify_output="$("$agent" verify-envelope \
+            --envelope "$work/public/release-envelope.json" \
+            --trust "$work/public/release-trust.json")"
+          printf '%s\n' "$verify_output"
+          grep -q '"status": "verified"' <<<"$verify_output"
+          grep -q "\"source_commit\": \"$commit\"" <<<"$verify_output"
+
+          python - "$work/public/release-manifest.json" "$work/public/system.tar" <<'PY'
+          import hashlib, json, pathlib, sys, tarfile
+          manifest_path, tar_path = map(pathlib.Path, sys.argv[1:])
+          manifest = json.loads(manifest_path.read_text())
+          payload = tar_path.read_bytes()
+          artifact = manifest['artifacts'][0]
+          assert artifact['sha256'] == hashlib.sha256(payload).hexdigest()
+          assert artifact['size'] == len(payload)
+          with tarfile.open(tar_path, 'r:') as archive:
+              names = archive.getnames()
+              assert 'system/entrypoint' in names
+              entry = archive.getmember('system/entrypoint')
+              assert entry.isfile()
+              assert entry.mode == 0o755
+          print('BUNDLE_MANIFEST_IDENTITY=PASS')
+          PY
+
+          rm -f "$work/private.pem"
+          test ! -e "$work/private.pem"
+          test ! -e "$work/public/private.pem"
+          echo 'SOURCE_TO_BUNDLE=PASS'
+          echo 'BUNDLE_TO_MANIFEST=PASS'
+          echo 'MANIFEST_TO_SIGNED_ENVELOPE=PASS'
+          echo 'SIGNED_ENVELOPE_TO_AGENT=PASS'
+          echo 'CI_TEST_KEY_REMOVED=YES'
+          echo 'CANONICAL_TRUST_ANCHOR=NO'
+          echo 'RELEASE_PUBLISHED=NO'
+          echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
