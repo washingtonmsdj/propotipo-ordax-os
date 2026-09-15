@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/creator-code-signing.json'
+      - 'docs/contracts/creator-app-channel.json'
       - 'tools/creator/windows/Verify-OrdaXCreatorSignature.ps1'
+      - 'tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1'
       - 'tools/creator/cmd/ordax-creator-app/**'
       - 'tools/creator/cmd/ordax-creator-launcher/**'
       - 'tools/creator/appchannel/**'
       - 'tools/creator/componentchannel/**'
       - 'tools/creator/physicalchannel/**'
+      - 'tools/release-signing/cmd/ordax-creator-app-manifest/**'
+      - 'tools/release-signing/cmd/ordax-creator-app-signing/**'
       - '.github/workflows/creator-code-signing-boundary.yml'
   workflow_dispatch:
 
@@ -58,7 +62,7 @@ jobs:
           Write-Host 'CREATOR_CODE_SIGNING_ARTIFACTS=LAUNCHER_AND_APP_ONLY'
           Write-Host 'CREATOR_OFFICIAL_PUBLISH_ALLOWED=NO'
 
-      - name: Build disposable unsigned launcher and application
+      - name: Build disposable unsigned launcher application and publisher tools
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -73,6 +77,18 @@ jobs:
             go build -trimpath -buildvcs=false -ldflags='-s -w -H=windowsgui' `
               -o ../../out/code-signing-boundary/OrdaX-Creator-App.exe `
               ./cmd/ordax-creator-app
+          } finally {
+            Pop-Location
+          }
+          Push-Location tools/release-signing
+          try {
+            go test -count=1 ./cmd/ordax-creator-app-manifest ./cmd/ordax-creator-app-signing
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/code-signing-boundary/ordax-creator-app-manifest.exe `
+              ./cmd/ordax-creator-app-manifest
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/code-signing-boundary/ordax-creator-app-signing.exe `
+              ./cmd/ordax-creator-app-signing
           } finally {
             Pop-Location
           }
@@ -143,3 +159,57 @@ jobs:
           Write-Host 'UNSIGNED_APP_FAIL_CLOSED=PASS'
           Write-Host 'UNLISTED_EXECUTABLE_FAIL_CLOSED=PASS'
           Write-Host 'CREATOR_CODE_SIGNING_BOUNDARY=PASS'
+
+      - name: Prove publisher finalizer cannot create release before Authenticode
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $PWD 'out/code-signing-boundary'
+          Copy-Item -LiteralPath docs/contracts/creator-code-signing.json -Destination (Join-Path $root 'creator-code-signing.json')
+          Copy-Item -LiteralPath docs/contracts/creator-app-channel.json -Destination (Join-Path $root 'creator-app-channel.json')
+          Copy-Item -LiteralPath tools/creator/windows/Verify-OrdaXCreatorSignature.ps1 -Destination (Join-Path $root 'Verify-OrdaXCreatorSignature.ps1')
+          Copy-Item -LiteralPath tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1 -Destination (Join-Path $root 'Finalize-OrdaXCreatorRelease.ps1')
+
+          $trustPath = Join-Path $root 'release-ed25519.json'
+          $trust = [ordered]@{
+            '$schema' = 'prototype-ordax.release-trust/1'
+            key_id = 'ordax-prototype-release-v1'
+            public_key_base64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          }
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText($trustPath, (($trust | ConvertTo-Json -Depth 5) + "`n"), $utf8)
+          $trustSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $trustPath).Hash.ToLowerInvariant()
+          $appContract = Get-Content -LiteralPath docs/contracts/creator-app-channel.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $provenance = [ordered]@{
+            '$schema' = 'prototype-ordax.creator-official-candidate/2'
+            source_commit = '0123456789abcdef0123456789abcdef01234567'
+            app_version = [string]$appContract.version
+            app_release_sequence = [int64]$appContract.release_sequence
+            canonical_trust_sha256 = $trustSha
+            authenticode_signed = $false
+            publishable_to_end_users = $false
+            app_manifest_may_be_generated_before_authenticode_verification = $false
+          }
+          [IO.File]::WriteAllText((Join-Path $root 'provenance.json'), (($provenance | ConvertTo-Json -Depth 5) + "`n"), $utf8)
+          $dummyPrivate = Join-Path $env:RUNNER_TEMP 'ordax-disposable-private.pem'
+          [IO.File]::WriteAllText($dummyPrivate, "not-a-real-private-key`n", $utf8)
+          $output = Join-Path $root 'final-release'
+
+          $failed = $false
+          try {
+            & (Join-Path $root 'Finalize-OrdaXCreatorRelease.ps1') `
+              -CandidateDirectory $root `
+              -PrivateKeyPath $dummyPrivate `
+              -OutputDirectory $output | Out-Host
+          } catch {
+            $failed = $true
+            if ($_.Exception.Message -notmatch 'not configured') { throw }
+          }
+          Remove-Item -LiteralPath $dummyPrivate -Force
+          if (-not $failed) { throw 'publisher finalizer unexpectedly passed without configured Authenticode' }
+          if (Test-Path -LiteralPath (Join-Path $output 'creator-app-manifest.json')) { throw 'finalizer created manifest before Authenticode gate' }
+          if (Test-Path -LiteralPath (Join-Path $output 'creator-app-envelope.json')) { throw 'finalizer created envelope before Authenticode gate' }
+          Write-Host 'FINALIZER_PRE_AUTHENTICODE_FAIL_CLOSED=PASS'
+          Write-Host 'FINALIZER_PREMATURE_MANIFEST=NO'
+          Write-Host 'FINALIZER_PREMATURE_ENVELOPE=NO'
