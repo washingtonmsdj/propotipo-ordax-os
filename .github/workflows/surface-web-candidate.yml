@@ -1,0 +1,75 @@
+name: Surface Web Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'system/contracts/surface-host.mjs'
+      - 'system/surface/**'
+      - 'system/adapters/web/**'
+      - 'system/composition/web/**'
+      - 'tools/surface-web/**'
+      - 'tests/test_surface_ui_contract.py'
+      - 'tests/test_surface_web_builder.py'
+      - '.github/workflows/surface-web-candidate.yml'
+  pull_request:
+    paths:
+      - 'system/contracts/surface-host.mjs'
+      - 'system/surface/**'
+      - 'system/adapters/web/**'
+      - 'system/composition/web/**'
+      - 'tools/surface-web/**'
+      - 'tests/test_surface_ui_contract.py'
+      - 'tests/test_surface_web_builder.py'
+      - '.github/workflows/surface-web-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Validate shared Surface source graph
+        run: python tools/surface-web/build.py check
+
+      - name: Run Surface and Web bundle regressions
+        run: |
+          python -m unittest tests.test_surface_ui_contract -v
+          python -m unittest tests.test_surface_web_builder -v
+
+      - name: Build and verify deterministic Web client
+        run: |
+          set -euo pipefail
+          python tools/surface-web/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir out/web-client
+          python tools/surface-web/build.py verify --out-dir out/web-client
+          python tools/surface-web/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir "$RUNNER_TEMP/web-client-repeat"
+          python tools/surface-web/build.py verify --out-dir "$RUNNER_TEMP/web-client-repeat"
+          diff -qr out/web-client "$RUNNER_TEMP/web-client-repeat"
+          echo 'WEB_CLIENT_REPEATABILITY=PASS'
+          echo 'KERNEL_REBUILD_REQUIRED=NO'
+
+      - name: Upload Web client candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-web-client-${{ github.sha }}
+          path: out/web-client/
+          if-no-files-found: error
+          retention-days: 14
