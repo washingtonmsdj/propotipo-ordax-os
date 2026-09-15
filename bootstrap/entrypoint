@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+CURRENT_ENTRYPOINT=/ordax/current/system/entrypoint
+NETWORK_BRINGUP=/ordax/bootstrap/network/bring-up
+RELEASE_AGENT=/ordax/bootstrap/release-acquisition/ordax-release-agent
+RELEASE_TRUST=/ordax/bootstrap/trust/release-ed25519.json
+RELEASE_CHANNEL=/ordax/bootstrap/config/release-envelope-url
+RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
+
+log() {
+    echo "ordax-bootstrap: $*" >&2
+}
+
+recovery() {
+    log "$*"
+    if [ -x "$RECOVERY_ENTRYPOINT" ]; then
+        exec "$RECOVERY_ENTRYPOINT"
+    fi
+    log "recovery entrypoint unavailable; entering initramfs shell"
+    exec sh
+}
+
+boot_current() {
+    [ -x "$CURRENT_ENTRYPOINT" ] || return 1
+    log "booting current verified release without requiring network"
+    exec "$CURRENT_ENTRYPOINT"
+}
+
+# A known-good current release is the primary boot path. Network is not a
+# normal boot dependency once the device has activated its first release.
+boot_current || true
+
+[ -x "$NETWORK_BRINGUP" ] || recovery "network bootstrap is missing"
+[ -x "$RELEASE_AGENT" ] || recovery "release acquisition agent is missing"
+[ -f "$RELEASE_TRUST" ] || recovery "release trust anchor is missing"
+[ -f "$RELEASE_CHANNEL" ] || recovery "release channel configuration is missing"
+
+log "no active release; bringing up minimum network for first acquisition"
+"$NETWORK_BRINGUP" || recovery "minimum network bring-up failed"
+
+IFS= read -r RELEASE_URL < "$RELEASE_CHANNEL" || recovery "cannot read release channel"
+case "$RELEASE_URL" in
+    https://*) ;;
+    *) recovery "release channel must use HTTPS" ;;
+esac
+
+log "acquiring first verified release"
+"$RELEASE_AGENT" install --envelope-url "$RELEASE_URL" --trust "$RELEASE_TRUST" --root /ordax \
+    || recovery "release acquisition failed"
+
+[ -x "$CURRENT_ENTRYPOINT" ] || recovery "release activation did not create a bootable current entrypoint"
+log "first verified release activated"
+exec "$CURRENT_ENTRYPOINT"

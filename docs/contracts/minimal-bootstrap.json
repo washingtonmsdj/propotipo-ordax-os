@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.minimal-bootstrap/3",
+  "$schema": "prototype-ordax.minimal-bootstrap/4",
   "status": "design-bounded-unresolved",
   "physical_write_allowed": false,
   "all_artifacts_resolved": false,
@@ -27,6 +27,13 @@
     "ordax-remote-core",
     "control-plane"
   ],
+  "boot_policy": {
+    "known_good_current_before_network": true,
+    "network_required_when_current_bootable": false,
+    "first_release_requires_network": true,
+    "release_channel_scheme": "https",
+    "recovery_on_acquisition_failure": true
+  },
   "artifact_groups": [
     {
       "id": "uefi-boot",
@@ -48,6 +55,23 @@
       "source_owner": "bootstrap/initramfs",
       "resolved": false,
       "artifacts": []
+    },
+    {
+      "id": "bootstrap-orchestrator",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap",
+      "source_owner": "bootstrap/entrypoint",
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/entrypoint",
+          "target_path": "/ordax/bootstrap/entrypoint",
+          "sha256": "9151b706e4444a06475968fe54db460344a85efad5af0ab0979d26082a31b9c7",
+          "mode": "0755",
+          "logical_owner": "bootstrap-orchestrator",
+          "reason": "Prefer known-good offline current release, otherwise acquire the first signed release through bounded network/bootstrap owners"
+        }
+      ]
     },
     {
       "id": "bootstrap-network",

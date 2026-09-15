@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """Fail-closed regressions for the initial physical USB manifest."""
 
+import hashlib
 import json
 from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "docs" / "contracts" / "minimal-bootstrap.json"
+ENTRYPOINT_PATH = ROOT / "bootstrap" / "entrypoint"
 
 
 class MinimalBootstrapContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+        cls.entrypoint = ENTRYPOINT_PATH.read_text(encoding="utf-8")
 
-    def test_media_policy_is_minimum_release_acquisition_first(self):
+    def test_schema_and_media_policy_are_current(self):
+        self.assertEqual(self.manifest["$schema"], "prototype-ordax.minimal-bootstrap/4")
         self.assertEqual(self.manifest["policy"], "minimum-release-acquisition-first")
         self.assertEqual(
             [partition["name"] for partition in self.manifest["partitions"]],
@@ -70,6 +74,41 @@ class MinimalBootstrapContractTest(unittest.TestCase):
         self.assertNotIn("ordax-remote-core", capabilities)
         self.assertNotIn("minimal-control-plane-and-trust", capabilities)
         self.assertNotIn("stable-device-identity", capabilities)
+
+    def test_boot_policy_prefers_known_good_release_before_network(self):
+        policy = self.manifest["boot_policy"]
+        self.assertTrue(policy["known_good_current_before_network"])
+        self.assertFalse(policy["network_required_when_current_bootable"])
+        self.assertTrue(policy["first_release_requires_network"])
+        self.assertEqual(policy["release_channel_scheme"], "https")
+        self.assertTrue(policy["recovery_on_acquisition_failure"])
+        self.assertLess(
+            self.entrypoint.index("boot_current || true"),
+            self.entrypoint.index('"$NETWORK_BRINGUP" || recovery'),
+        )
+
+    def test_bootstrap_orchestrator_is_source_owned_and_hash_pinned(self):
+        groups = {group["id"]: group for group in self.manifest["artifact_groups"]}
+        orchestrator = groups["bootstrap-orchestrator"]
+        self.assertTrue(orchestrator["resolved"])
+        self.assertEqual(orchestrator["source_owner"], "bootstrap/entrypoint")
+        self.assertEqual(orchestrator["target_root"], "/ordax/bootstrap")
+        self.assertEqual(len(orchestrator["artifacts"]), 1)
+        artifact = orchestrator["artifacts"][0]
+        self.assertEqual(artifact["source_path"], "bootstrap/entrypoint")
+        self.assertEqual(artifact["target_path"], "/ordax/bootstrap/entrypoint")
+        self.assertEqual(artifact["mode"], "0755")
+        digest = hashlib.sha256(ENTRYPOINT_PATH.read_bytes()).hexdigest()
+        self.assertEqual(artifact["sha256"], digest)
+
+    def test_entrypoint_is_offline_first_and_https_fail_closed(self):
+        self.assertIn("/ordax/current/system/entrypoint", self.entrypoint)
+        self.assertIn("https://*", self.entrypoint)
+        self.assertIn("release acquisition failed", self.entrypoint)
+        self.assertIn("exec \"$RECOVERY_ENTRYPOINT\"", self.entrypoint)
+        self.assertIn("exec sh", self.entrypoint)
+        for forbidden in ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex"):
+            self.assertNotIn(forbidden.lower(), self.entrypoint.lower())
 
     def test_release_acquisition_has_one_clean_owner(self):
         groups = {group["id"]: group for group in self.manifest["artifact_groups"]}
