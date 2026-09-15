@@ -9,8 +9,6 @@ export function validateAccountRuntime(surfaceValue, identityValue, actionsValue
   const capabilities = new Set(surface.capabilityIds);
   const identityAvailable = capabilities.has("account.identity");
   const syncAvailable = capabilities.has("sync.safe-state");
-  const canSignIn = actions.supportedActions.includes("sign-in");
-  const canSignOut = actions.supportedActions.includes("sign-out");
 
   if (syncAvailable && !identityAvailable) {
     throw new TypeError("sync.safe-state requires account.identity in the same runtime snapshot");
@@ -24,11 +22,8 @@ export function validateAccountRuntime(surfaceValue, identityValue, actionsValue
   if (identity.state === "unavailable" && actions.supportedActions.length > 0) {
     throw new TypeError("identity actions cannot be advertised while identity is unavailable");
   }
-  if (identity.state === "signed-out" && canSignOut) {
-    throw new TypeError("sign-out action cannot be advertised for a signed-out session");
-  }
-  if (identity.state === "signed-in" && canSignIn) {
-    throw new TypeError("sign-in action cannot be advertised for a signed-in session");
+  if (actions.supportedActions.length > 0 && !identityAvailable) {
+    throw new TypeError("identity actions require account.identity capability");
   }
 
   return Object.freeze({ surface, identity, actions });
