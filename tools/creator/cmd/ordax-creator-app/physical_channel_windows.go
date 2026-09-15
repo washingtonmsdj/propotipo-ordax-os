@@ -31,15 +31,16 @@ func physicalTrustBinding() ([]byte, string, bool) {
 }
 
 // resolvePhysicalBackend returns only a backend that came from the dedicated
-// purpose-bound, Ed25519-signed physical channel. A network failure may fall
-// back to the last signed candidate, but that candidate is rehashed on every
-// use. Any signature/hash/trust failure returns no physical backend.
+// purpose-bound, Ed25519-signed physical channel. Online acquisition persists
+// an offline pointer only after a second signed-envelope verification. Network
+// failure can use that cached envelope, which is reverified and whose five
+// critical files are rehashed before the backend is returned.
 func resolvePhysicalBackend() (string, bool) {
 	trust, trustSHA, ok := physicalTrustBinding()
 	if !ok {
 		return "", false
 	}
-	installed, _, err := physicalchannel.Acquire(nil, "", "", trust, trustSHA)
+	installed, _, err := physicalchannel.AcquireCached(nil, "", "", trust, trustSHA)
 	if err == nil {
 		return installed.Directory, true
 	}
