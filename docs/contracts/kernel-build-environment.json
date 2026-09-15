@@ -1,0 +1,39 @@
+{
+  "$schema": "prototype-ordax.kernel-build-environment/1",
+  "status": "candidate-observation-required",
+  "architecture": "linux/amd64",
+  "base_image": {
+    "repository": "docker.io/library/ubuntu",
+    "tag_reference_only": "24.04",
+    "release_reference_only": "noble-20260905",
+    "manifest_digest": "sha256:a61567bd31828687156d735ea8eb01ba4e37636e225dd6a48ba94136a70d9d61"
+  },
+  "apt": {
+    "snapshot_id": "20260910T000000Z",
+    "packages": [
+      "bc",
+      "binutils",
+      "bison",
+      "ca-certificates",
+      "dwarves",
+      "flex",
+      "gcc-13",
+      "kmod",
+      "libelf-dev",
+      "libssl-dev",
+      "make",
+      "openssl",
+      "perl",
+      "pkg-config",
+      "python3",
+      "xz-utils"
+    ],
+    "expected_versions": {}
+  },
+  "proof": {
+    "first_observation_complete": false,
+    "package_versions_pinned": false,
+    "repeat_build_digest_match": false,
+    "promotable_to_physical": false
+  }
+}

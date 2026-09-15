@@ -1,0 +1,133 @@
+name: Kernel Pinned Environment Observation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/contracts/kernel-build-environment.json'
+      - 'tests/test_kernel_build_environment_contract.py'
+      - '.github/workflows/kernel-pinned-environment.yml'
+  pull_request:
+    paths:
+      - 'docs/contracts/kernel-build-environment.json'
+      - 'tests/test_kernel_build_environment_contract.py'
+      - '.github/workflows/kernel-pinned-environment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observe-pinned-environment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python for contract validation
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Validate environment contract
+        run: |
+          python -m json.tool docs/contracts/kernel-build-environment.json >/dev/null
+          python -m unittest discover -s tests -p 'test_kernel_build_environment_contract.py' -v
+
+      - name: Resolve immutable environment inputs
+        id: env
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, pathlib
+          value = json.loads(pathlib.Path('docs/contracts/kernel-build-environment.json').read_text())
+          base = value['base_image']['repository'] + '@' + value['base_image']['manifest_digest']
+          print('image=' + base)
+          print('snapshot=' + value['apt']['snapshot_id'])
+          print('packages=' + ' '.join(value['apt']['packages']))
+          PY
+
+      - name: Pull image by immutable manifest digest
+        env:
+          IMAGE: ${{ steps.env.outputs.image }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          repo_digests="$(docker image inspect --format '{{json .RepoDigests}}' "$IMAGE")"
+          printf '%s\n' "$repo_digests"
+          grep -Fq "${IMAGE#docker.io/}" <<<"$repo_digests"
+
+      - name: Build kernel inside digest-pinned image and snapshot-pinned archive
+        env:
+          IMAGE: ${{ steps.env.outputs.image }}
+          SNAPSHOT_ID: ${{ steps.env.outputs.snapshot }}
+          PACKAGES: ${{ steps.env.outputs.packages }}
+        run: |
+          set -euo pipefail
+          rm -rf out/kernel-pinned out/kernel-work-pinned
+          mkdir -p out/kernel-pinned-observation
+          docker run --rm \
+            -e GITHUB_SHA="$GITHUB_SHA" \
+            -e SNAPSHOT_ID="$SNAPSHOT_ID" \
+            -e PACKAGES="$PACKAGES" \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            -v "$PWD:/repo" \
+            -w /repo \
+            "$IMAGE" \
+            bash -lc '
+              set -euo pipefail
+              export DEBIAN_FRONTEND=noninteractive
+              printf "APT::Snapshot \"%s\";\n" "$SNAPSHOT_ID" > /etc/apt/apt.conf.d/50ordax-snapshot
+              apt-get update
+              apt-get install -y --no-install-recommends $PACKAGES
+              dpkg-query -W -f="${Package}=${Version}\n" $PACKAGES | LC_ALL=C sort > /repo/out/kernel-pinned-observation/package-versions.txt
+              python3 bootstrap/kernel/build.py check
+              python3 bootstrap/kernel/build.py build --jobs 4 --work-dir out/kernel-work-pinned --out-dir out/kernel-pinned
+              python3 bootstrap/kernel/verify.py out/kernel-pinned
+              chown -R "$HOST_UID:$HOST_GID" /repo/out/kernel-pinned /repo/out/kernel-work-pinned /repo/out/kernel-pinned-observation
+            '
+
+      - name: Emit measured environment observation
+        env:
+          IMAGE: ${{ steps.env.outputs.image }}
+          SNAPSHOT_ID: ${{ steps.env.outputs.snapshot }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path('out')
+          versions_path = root / 'kernel-pinned-observation' / 'package-versions.txt'
+          versions = {}
+          for line in versions_path.read_text(encoding='utf-8').splitlines():
+              name, version = line.split('=', 1)
+              versions[name] = version
+          kernel = root / 'kernel-pinned' / 'vmlinuz-6.6.52'
+          provenance = root / 'kernel-pinned' / 'kernel-provenance.json'
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          data = {
+              '$schema': 'prototype-ordax.kernel-build-environment-observation/1',
+              'status': 'measured-not-yet-promoted',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'base_image': os.environ['IMAGE'],
+              'apt_snapshot_id': os.environ['SNAPSHOT_ID'],
+              'package_versions': dict(sorted(versions.items())),
+              'kernel_sha256': digest(kernel),
+              'kernel_provenance_sha256': digest(provenance),
+              'promotable_to_physical': False,
+          }
+          output = root / 'kernel-pinned-observation' / 'observation.json'
+          output.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(data, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload measured observation and candidate
+        uses: actions/upload-artifact@v6
+        with:
+          name: ordax-kernel-pinned-observation-${{ github.sha }}
+          path: |
+            out/kernel-pinned/
+            out/kernel-pinned-observation/
+          if-no-files-found: error
+          retention-days: 14
