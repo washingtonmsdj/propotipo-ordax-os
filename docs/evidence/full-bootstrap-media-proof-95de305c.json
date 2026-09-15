@@ -1,0 +1,68 @@
+{
+  "$schema": "prototype-ordax.full-bootstrap-media-proof-evidence/1",
+  "status": "pass",
+  "source_commit": "95de305cc05701025ca7c93d574769da6a7fcf95",
+  "workflow": {
+    "name": "Full Bootstrap Media Proof",
+    "run_id": 34998897295,
+    "run_number": 70,
+    "conclusion": "success",
+    "completed_at": "2026-09-15T17:14:40Z"
+  },
+  "artifact": {
+    "id": 10408893638,
+    "name": "ordax-full-bootstrap-media-proof-95de305cc05701025ca7c93d574769da6a7fcf95",
+    "archive_sha256": "606c2f3b0bd0ccd1020ef3ccabd48cc373fee50cb5a1a4241febf36be25bafef"
+  },
+  "trust": {
+    "canonical_trust": false,
+    "ephemeral_ci_trust": true,
+    "canonical_key_material_generated": false
+  },
+  "payload": {
+    "artifact_count": 14,
+    "unresolved_groups": []
+  },
+  "disk": {
+    "partition_table": "gpt",
+    "image_bytes": 536870912,
+    "image_sha256": "95bd9943b3fe65402d9bda06eb7e0d45959f2a18b1671855e5752033659c7bb8",
+    "logical_sector_bytes": 512,
+    "partition_count": 2,
+    "partitions": [
+      {
+        "index": 1,
+        "name": "ORDAX-ESP",
+        "filesystem": "vfat",
+        "first_lba": 2048,
+        "last_lba": 526335,
+        "verified_file_count": 6
+      },
+      {
+        "index": 2,
+        "name": "ORDAX",
+        "filesystem": "ext4",
+        "first_lba": 526336,
+        "last_lba": 1048542,
+        "verified_file_count": 8,
+        "verified_directory_count": 10
+      }
+    ]
+  },
+  "checks": {
+    "filesystem_types_and_labels_match_contract": true,
+    "gpt_valid": true,
+    "partition_count_exactly_two": true,
+    "partition_geometry_matches_contract": true,
+    "physical_write_remains_blocked": true,
+    "raw_partition_bytes_match_filesystem_images": true,
+    "staged_file_hashes_reverified_from_filesystems": true
+  },
+  "cleanup": {
+    "ephemeral_private_key_destroyed": true,
+    "raw_image_published": false,
+    "proof_metadata_only_uploaded": true
+  },
+  "physical_write_authorized": false,
+  "promotion_effect": "evidence-only; does not resolve canonical trust and does not authorize physical media mutation"
+}
