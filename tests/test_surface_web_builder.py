@@ -34,6 +34,29 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         ):
             self.assertIn(expected, graph)
 
+    def test_multiline_es_module_import_is_discovered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            composition = root / "system" / "composition" / "web"
+            composition.mkdir(parents=True)
+            (composition / "index.html").write_text(
+                '<script type="module" src="./main.mjs"></script>', encoding="utf-8"
+            )
+            (composition / "main.mjs").write_text(
+                'import {\n  value,\n} from "../../../services/preferences/value.mjs";\nconsole.log(value);\n',
+                encoding="utf-8",
+            )
+            dependency = root / "system" / "services" / "preferences" / "value.mjs"
+            dependency.parent.mkdir(parents=True)
+            dependency.write_text('export const value = "ok";\n', encoding="utf-8")
+            graph = {
+                path.as_posix()
+                for path in MODULE.discover_graph(
+                    root, PurePosixPath("system/composition/web/index.html")
+                )
+            }
+            self.assertIn("system/services/preferences/value.mjs", graph)
+
     def test_build_is_byte_reproducible_for_same_commit(self):
         commit = "1" * 40
         with tempfile.TemporaryDirectory() as tmp:
