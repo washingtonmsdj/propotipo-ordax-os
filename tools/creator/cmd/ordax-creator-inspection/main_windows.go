@@ -8,7 +8,6 @@ import (
 	"os"
 
 	windowsadapter "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/host/windows"
-	creatortrust "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/trust"
 )
 
 type buildBinding struct {
@@ -67,24 +66,8 @@ func runTargets() error {
 	})
 }
 
-func runTrustStatus() error {
-	status, err := creatortrust.Inspect()
-	if err != nil {
-		return err
-	}
-	return encode(status)
-}
-
-func runTrustInit() error {
-	status, err := creatortrust.Initialize()
-	if err != nil {
-		return err
-	}
-	return encode(status)
-}
-
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-creator-inspection <status|targets|trust-status|trust-init>")
+	fmt.Fprintln(os.Stderr, "usage: ordax-creator-inspection <status|targets>")
 }
 
 func main() {
@@ -98,10 +81,6 @@ func main() {
 		err = runStatus()
 	case "targets":
 		err = runTargets()
-	case "trust-status":
-		err = runTrustStatus()
-	case "trust-init":
-		err = runTrustInit()
 	default:
 		usage()
 		os.Exit(2)

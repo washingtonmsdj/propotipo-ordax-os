@@ -11,15 +11,33 @@
     "may_be_committed": true,
     "pin_only_after_private_custody_ready": true
   },
+  "consumer_creator": {
+    "role": "verify-and-provision-only",
+    "generates_publisher_private_keys": false,
+    "stores_publisher_private_keys": false,
+    "requests_private_key_backup_from_end_user": false,
+    "runs_release_trust_ceremony": false,
+    "public_anchor_is_preprovisioned": true,
+    "signature_verification_is_automatic": true,
+    "normal_user_flow": [
+      "open-creator",
+      "select-usb-target",
+      "create-or-update-ordax-media"
+    ]
+  },
   "private_key": {
     "custody_owner": "repository-owner-developer",
     "generation_host": "developer-windows-machine",
     "generator": "ordax-release-signing.exe generate-key",
     "primary_location_policy": "outside-repository-user-private-storage",
     "offline_encrypted_backup_required": true,
+    "backup_is_publisher_responsibility": true,
+    "end_user_must_never_receive_or_manage_private_key": true,
     "ci_secret_allowed_after_explicit_user_setup": true,
     "ci_secret_is_not_source_authority": true,
     "forbidden_locations": [
+      "consumer-creator-installation",
+      "end-user-profile",
       "git",
       "usb-bootstrap",
       "github-actions-artifacts",
