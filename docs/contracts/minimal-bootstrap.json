@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.minimal-bootstrap/4",
-  "status": "design-bounded-unresolved",
+  "status": "candidate-bytes-resolved-trust-channel-pending",
   "physical_write_allowed": false,
   "all_artifacts_resolved": false,
   "policy": "minimum-release-acquisition-first",
@@ -14,6 +14,8 @@
     "initramfs",
     "minimal-network",
     "release-acquisition",
+    "release-trust",
+    "release-channel",
     "recovery-maintenance"
   ],
   "optional_after_first_release": [
@@ -34,8 +36,16 @@
       "id": "uefi-boot",
       "partition": "ORDAX-ESP",
       "source_owner": "boot/esp",
-      "resolved": false,
+      "resolved": true,
       "artifacts": [
+        {
+          "source_path": "boot/esp/EFI/BOOT/BOOTX64.EFI",
+          "target_path": "/EFI/BOOT/BOOTX64.EFI",
+          "sha256": "9ac1ca03fc52ed2d8c40cea76b84192d718909d561a7bc6cf36d84784b71ada5",
+          "mode": "0644",
+          "logical_owner": "uefi-boot",
+          "reason": "Repository-built systemd-boot fallback executable for x86_64 UEFI"
+        },
         {
           "source_path": "boot/esp/loader/loader.conf",
           "target_path": "/loader/loader.conf",
@@ -66,15 +76,33 @@
       "id": "kernel",
       "partition": "ORDAX-ESP",
       "source_owner": "bootstrap/kernel",
-      "resolved": false,
-      "artifacts": []
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/kernel/vmlinuz-6.6.52",
+          "target_path": "/ordax/vmlinuz",
+          "sha256": "e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1",
+          "mode": "0644",
+          "logical_owner": "kernel",
+          "reason": "Clean Linux 6.6.52 candidate with built-in first-acquisition Ethernet and USB-tether paths"
+        }
+      ]
     },
     {
       "id": "initramfs",
       "partition": "ORDAX-ESP",
       "source_owner": "bootstrap/initramfs",
-      "resolved": false,
-      "artifacts": []
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/initramfs/initramfs.cpio.gz",
+          "target_path": "/ordax/initrd.gz",
+          "sha256": "d8e5155de1e0ff3b1a7faaefde67fcbf3e1114fc208a4b37ab1ba7e562efce67",
+          "mode": "0644",
+          "logical_owner": "initramfs",
+          "reason": "Fixed clean-room capsule that mounts LABEL=ORDAX and hands off to /ordax/bootstrap/entrypoint"
+        }
+      ]
     },
     {
       "id": "bootstrap-orchestrator",
@@ -98,7 +126,7 @@
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/network",
       "source_owner": "bootstrap/network",
-      "resolved": false,
+      "resolved": true,
       "artifacts": [
         {
           "source_path": "bootstrap/network/bring-up",
@@ -115,6 +143,14 @@
           "mode": "0755",
           "logical_owner": "bootstrap-network",
           "reason": "Apply DHCP IPv4 route and resolver state without importing the legacy connectivity stack"
+        },
+        {
+          "source_path": "bootstrap/network/bin/netbox",
+          "target_path": "/ordax/bootstrap/network/bin/netbox",
+          "sha256": "0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba",
+          "mode": "0755",
+          "logical_owner": "bootstrap-network",
+          "reason": "Static BusyBox 1.38.0 multicall binary restricted to ifconfig, route and udhcpc"
         }
       ]
     },
@@ -123,6 +159,31 @@
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/release-acquisition",
       "source_owner": "bootstrap/release-acquisition",
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/release-acquisition/ordax-release-agent",
+          "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+          "sha256": "5dfe04edf83aab293b493066593cbdce32b167acf6b11fa4b705523f3fb436c5",
+          "mode": "0755",
+          "logical_owner": "bootstrap-release-acquisition",
+          "reason": "Static Linux amd64 agent that authenticates signed manifests and atomically activates verified releases"
+        }
+      ]
+    },
+    {
+      "id": "bootstrap-release-trust",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/trust",
+      "source_owner": "bootstrap/trust",
+      "resolved": false,
+      "artifacts": []
+    },
+    {
+      "id": "bootstrap-release-channel",
+      "partition": "ORDAX",
+      "target_root": "/ordax/bootstrap/config",
+      "source_owner": "bootstrap/config",
       "resolved": false,
       "artifacts": []
     },
