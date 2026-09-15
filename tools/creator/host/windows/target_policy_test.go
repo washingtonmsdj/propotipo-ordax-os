@@ -71,6 +71,40 @@ func TestFinalizeTargetBindsSafetyAndToken(t *testing.T) {
 	}
 }
 
+func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
+	target := FinalizeTarget(Target{
+		DriveLetter:  "G:",
+		VolumeSerial: 99,
+		DiskNumber:   8,
+		VolumeBytes:  64 << 30,
+		DriveType:    "removable",
+	}, DriveTypeRemovable, true)
+	matched, err := MatchConfirmedTarget([]Target{target}, target.ConfirmationToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if matched.DiskNumber != target.DiskNumber || matched.VolumeSerial != target.VolumeSerial {
+		t.Fatalf("matched wrong target: %#v", matched)
+	}
+
+	changed := target
+	changed.DiskNumber++
+	changed.ConfirmationToken = ConfirmationToken(changed)
+	if _, err := MatchConfirmedTarget([]Target{changed}, target.ConfirmationToken); err == nil {
+		t.Fatal("stale token must not confirm a changed physical-disk mapping")
+	}
+
+	unsafeTarget := target
+	unsafeTarget.PrototypeSafe = false
+	if _, err := MatchConfirmedTarget([]Target{unsafeTarget}, target.ConfirmationToken); err == nil {
+		t.Fatal("unsafe target must not be confirmable")
+	}
+
+	if _, err := MatchConfirmedTarget([]Target{target}, "not-a-token"); err == nil {
+		t.Fatal("malformed token must be rejected")
+	}
+}
+
 func TestWindowsDiscoverySourceContainsNoWritePrimitive(t *testing.T) {
 	data, err := os.ReadFile("targets_windows.go")
 	if err != nil {
