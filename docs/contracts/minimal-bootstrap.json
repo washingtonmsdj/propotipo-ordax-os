@@ -83,7 +83,7 @@
         {
           "source_path": "bootstrap/network/bring-up",
           "target_path": "/ordax/bootstrap/network/bring-up",
-          "sha256": "222c4838c0e3a4401593653e7f495c61bafaed3bb799fa41642a708c8d9e57d9",
+          "sha256": "daf8ebd084c404427c41f1139b14cee6dc3c89af2b6cf5eaaa4e71d30f6ea1e1",
           "mode": "0755",
           "logical_owner": "bootstrap-network",
           "reason": "Bring up the smallest first-acquisition DHCP path over an Ethernet-like interface"
