@@ -10,6 +10,21 @@ import (
 	"testing"
 )
 
+func realManifestTestDir(t *testing.T) string {
+	t.Helper()
+	root, err := os.MkdirTemp(".", ".ordax-app-manifest-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		_ = os.RemoveAll(root)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(absolute) })
+	return absolute
+}
+
 func writeTestArtifact(t *testing.T, root string, body []byte) string {
 	t.Helper()
 	path := filepath.Join(root, artifactName)
@@ -20,7 +35,7 @@ func writeTestArtifact(t *testing.T, root string, body []byte) string {
 }
 
 func TestGenerateBindsExactSignedAppBytes(t *testing.T) {
-	root := t.TempDir()
+	root := realManifestTestDir(t)
 	body := []byte("authenticode-signed-creator-app-bytes")
 	artifactPath := writeTestArtifact(t, root, body)
 	manifestPath := filepath.Join(root, "creator-app-manifest.json")
@@ -59,7 +74,7 @@ func TestGenerateIsByteDeterministic(t *testing.T) {
 	commit := "0123456789abcdef0123456789abcdef01234567"
 	var first []byte
 	for i := 0; i < 2; i++ {
-		root := t.TempDir()
+		root := realManifestTestDir(t)
 		artifactPath := writeTestArtifact(t, root, body)
 		manifestPath := filepath.Join(root, "creator-app-manifest.json")
 		if _, err := generate(artifactPath, manifestPath, commit, "1.2.3", 9); err != nil {
@@ -78,7 +93,7 @@ func TestGenerateIsByteDeterministic(t *testing.T) {
 }
 
 func TestGenerateRejectsWrongArtifactNameAndOverwrite(t *testing.T) {
-	root := t.TempDir()
+	root := realManifestTestDir(t)
 	wrong := filepath.Join(root, "renamed.exe")
 	if err := os.WriteFile(wrong, []byte("bytes"), 0o600); err != nil {
 		t.Fatal(err)
@@ -110,7 +125,7 @@ func TestGenerateRejectsWrongArtifactNameAndOverwrite(t *testing.T) {
 }
 
 func TestGenerateRejectsInvalidReleaseIdentity(t *testing.T) {
-	root := t.TempDir()
+	root := realManifestTestDir(t)
 	artifactPath := writeTestArtifact(t, root, []byte("signed-app"))
 	cases := []struct {
 		commit   string
