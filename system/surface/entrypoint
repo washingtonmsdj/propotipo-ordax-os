@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+SURFACE_ROOT=${0%/*}
+SURFACE_RUNTIME="$SURFACE_ROOT/bin/ordax-surface"
+RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
+
+log() {
+    echo "ordax-surface: $*" >&2
+}
+
+fail_closed() {
+    log "$*"
+    if [ -x "$RECOVERY_ENTRYPOINT" ]; then
+        exec "$RECOVERY_ENTRYPOINT"
+    fi
+    log "recovery entrypoint unavailable"
+    exit 1
+}
+
+[ -n "${ORDAX_SYSTEM_ROOT:-}" ] || fail_closed "system root contract is missing"
+[ -x "$SURFACE_RUNTIME" ] || fail_closed "surface runtime is missing"
+
+ORDAX_SURFACE_MODE=bootstrap-console
+export ORDAX_SURFACE_MODE
+log "starting bootstrap Surface runtime"
+exec "$SURFACE_RUNTIME"
