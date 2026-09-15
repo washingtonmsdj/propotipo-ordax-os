@@ -1,0 +1,168 @@
+name: Creator Official Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/trust/release-ed25519.json'
+      - 'docs/contracts/release-trust-policy.json'
+      - 'tools/creator/**'
+      - '.github/workflows/creator-official-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trust-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      trust_sha256: ${{ steps.gate.outputs.trust_sha256 }}
+      trust_base64: ${{ steps.gate.outputs.trust_base64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Require canonical public trust only
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          trust_sha=''
+          trust_b64=''
+          if [ -f bootstrap/trust/release-ed25519.json ]; then
+            python - <<'PY'
+          import base64, json, pathlib
+          trust_path = pathlib.Path('bootstrap/trust/release-ed25519.json')
+          policy_path = pathlib.Path('docs/contracts/release-trust-policy.json')
+          trust = json.loads(trust_path.read_text(encoding='utf-8'))
+          policy = json.loads(policy_path.read_text(encoding='utf-8'))
+          assert trust['$schema'] == 'prototype-ordax.release-trust/1'
+          assert trust['key_id'] == policy['canonical_key_id'] == 'ordax-prototype-release-v1'
+          raw = base64.b64decode(trust['public_key_base64'], validate=True)
+          assert len(raw) == 32
+          assert policy['consumer_creator']['generates_publisher_private_keys'] is False
+          assert policy['consumer_creator']['stores_publisher_private_keys'] is False
+          assert policy['consumer_creator']['requests_private_key_backup_from_end_user'] is False
+          assert policy['private_key']['end_user_must_never_receive_or_manage_private_key'] is True
+          assert policy['gates']['key_material_generated'] is True
+          assert policy['gates']['public_anchor_pinned'] is True
+          PY
+            ready=true
+            trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
+            trust_b64="$(base64 -w0 bootstrap/trust/release-ed25519.json)"
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "trust_sha256=$trust_sha" >> "$GITHUB_OUTPUT"
+          echo "trust_base64=$trust_b64" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = true ]; then
+            echo 'CREATOR_OFFICIAL_TRUST_GATE=READY'
+          else
+            echo 'CREATOR_OFFICIAL_TRUST_GATE=BLOCKED'
+            echo 'CREATOR_OFFICIAL_BINARY_BUILT=NO'
+          fi
+
+  build-windows-candidate:
+    needs: trust-gate
+    if: ${{ needs.trust-gate.outputs.ready == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator before official build
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          Push-Location tools/creator
+          try {
+            go test -count=1 ./...
+            go test -count=1 ./host/windows
+          } finally {
+            Pop-Location
+          }
+
+      - name: Build official candidate with public trust compiled in
+        shell: pwsh
+        env:
+          TRUST_SHA256: ${{ needs.trust-gate.outputs.trust_sha256 }}
+          TRUST_BASE64: ${{ needs.trust-gate.outputs.trust_base64 }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          if ($env:TRUST_SHA256 -notmatch '^[0-9a-f]{64}$') { throw 'canonical trust SHA missing or invalid' }
+          if ([string]::IsNullOrWhiteSpace($env:TRUST_BASE64)) { throw 'canonical public trust bytes missing' }
+          $out = Join-Path $PWD 'out/creator-official-candidate'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Push-Location tools/creator
+          try {
+            $ld = "-s -w -H=windowsgui -X main.buildPhysicalTrustBase64=$env:TRUST_BASE64 -X main.buildPhysicalTrustSHA256=$env:TRUST_SHA256"
+            go build -trimpath -buildvcs=false -ldflags=$ld `
+              -o ../../out/creator-official-candidate/OrdaX-Creator.exe `
+              ./cmd/ordax-creator-app
+          } finally {
+            Pop-Location
+          }
+          $exe = Join-Path $out 'OrdaX-Creator.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'official Creator executable missing' }
+          $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+          @(
+            "$sha  OrdaX-Creator.exe"
+          ) | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
+          $provenance = [ordered]@{
+            '$schema' = 'prototype-ordax.creator-official-candidate/1'
+            source_commit = '${{ github.sha }}'
+            canonical_trust_sha256 = $env:TRUST_SHA256
+            private_key_embedded = $false
+            publisher_key_generation_available = $false
+            physical_channel_requires_ed25519_signature = $true
+            development_channel_can_authorize_physical_write = $false
+            authenticode_signed = $false
+            publishable_to_end_users = $false
+            remaining_release_gate = 'Authenticode signing/reputation and explicit official publication'
+          }
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText((Join-Path $out 'provenance.json'), (($provenance | ConvertTo-Json -Depth 5) + "`n"), $utf8)
+          Write-Host 'CREATOR_OFFICIAL_PUBLIC_TRUST_EMBEDDED=YES'
+          Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_EMBEDDED=NO'
+          Write-Host 'CREATOR_OFFICIAL_AUTHENTICODE_SIGNED=NO'
+          Write-Host 'CREATOR_OFFICIAL_PUBLISHABLE=NO'
+
+      - name: Prove no private signing material entered candidate
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD 'out/creator-official-candidate'
+          $forbidden = @(Get-ChildItem -LiteralPath $out -Recurse -File | Where-Object {
+            $_.Extension -in @('.pem', '.key', '.p12', '.pfx', '.dpapi')
+          })
+          if ($forbidden.Count -ne 0) { throw 'private signing material entered official Creator candidate' }
+          if (Get-ChildItem -LiteralPath $out -Recurse -File | Select-String -SimpleMatch 'PRIVATE KEY' -Quiet) {
+            throw 'private-key marker entered official Creator candidate'
+          }
+          Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_MATERIAL=ABSENT'
+
+      - name: Upload non-publishable official candidate for review
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-creator-official-candidate-${{ github.sha }}
+          path: out/creator-official-candidate/
+          if-no-files-found: error
+          retention-days: 7
