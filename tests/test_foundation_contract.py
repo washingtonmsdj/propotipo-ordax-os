@@ -45,6 +45,21 @@ class FoundationContractTest(unittest.TestCase):
         self.assertEqual(release["activation"], "atomic-current-pointer")
         self.assertTrue(release["rollback_required"])
 
+    def test_surface_has_one_source_for_device_and_web(self):
+        surface = self.contract["surface"]
+        self.assertTrue(surface["single_source_tree_required"])
+        self.assertFalse(surface["device_and_web_ui_forks_allowed"])
+        self.assertTrue(surface["shared_components_required"])
+        self.assertTrue(surface["shared_design_tokens_required"])
+        self.assertTrue(surface["shared_application_source_required"])
+        self.assertTrue(surface["platform_differences_via_adapters_only"])
+        self.assertEqual(
+            surface["targets"],
+            ["ordax-device", "local-web", "hosted-web"],
+        )
+        self.assertTrue(surface["same_source_commit_for_equivalent_surface"])
+        self.assertFalse(surface["manual_web_to_device_port_required"])
+
     def test_remote_access_is_fail_closed(self):
         security = self.contract["security"]
         self.assertTrue(security["ssh_public_key_only"])
@@ -60,6 +75,8 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(development["usb_reflash_per_edit"])
         self.assertFalse(development["routine_reboot_per_edit"])
         self.assertTrue(development["delta_or_release_update_preferred"])
+        self.assertTrue(development["browser_hmr_for_surface_allowed"])
+        self.assertTrue(development["surface_change_should_reach_web_and_device"])
 
 
 if __name__ == "__main__":
