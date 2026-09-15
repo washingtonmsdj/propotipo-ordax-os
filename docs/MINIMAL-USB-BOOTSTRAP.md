@@ -4,7 +4,7 @@ Status: CANONICAL FOR PROTOTYPE
 
 ## Goal
 
-The first physical USB must contain only the minimum trusted substrate required to boot the notebook, establish network/identity/control, acquire a verified system release, and recover if acquisition fails.
+The first physical USB must contain only the minimum trusted substrate required to boot, reach the network, acquire a verified system release and recover if acquisition fails.
 
 The initial USB is not a preinstalled copy of the complete OrdaX product.
 
@@ -15,7 +15,7 @@ ORDAX-ESP
 ORDAX
 ```
 
-Exactly two physical partitions are required by the prototype contract.
+Exactly two physical partitions.
 
 ## Initial USB payload
 
@@ -28,122 +28,98 @@ UEFI bootloader
 loader configuration
 verified kernel
 verified initramfs
-normal/recovery boot entries when required
+recovery entry when required
 ```
-
-The ESP must not contain the Surface, applications, normal services, user files, package caches, source trees, developer tooling, or historical artifacts.
 
 ### ORDAX main partition
 
-Only the pre-release bootstrap substrate and empty runtime roots:
+Only the mandatory pre-release bootstrap and empty runtime roots:
 
 ```text
 /ordax/bootstrap/
   network/
-  identity/
-  remote/
-  control-plane/
   release-acquisition/
   recovery/
-  trust/
 
-/ordax/releases/        # initially empty unless an explicitly verified emergency seed is approved
-/ordax/current          # unset until a release is verified/activated
-/ordax/state/           # runtime-local state; secrets generated/enrolled locally
-/ordax/home/            # user-data root; no personal payload from Git by default
+/ordax/releases/        # initially empty
+/ordax/current          # unset until first release is verified
+/ordax/state/           # empty/minimal runtime root
+/ordax/home/            # user-data root
 ```
-
-The concrete files under `/ordax/bootstrap` must be bounded by a machine-readable manifest before physical provisioning is authorized.
 
 ## Explicitly absent from the first USB
 
-The initial media must not be bloated with components that can arrive safely after network acquisition:
-
 ```text
-full Surface/desktop = NO
-normal first-party apps = NO
-marketplace/catalog = NO
+Surface/desktop = NO
+normal apps = NO
 high-level services = NO
+stable device identity service = NO
+Remote Core = NO
+Control Plane = NO
+SSH = NO
 complete source checkout = NO
 build toolchain = NO
-WSL/QEMU/tooling payload = NO
+WSL/QEMU payload = NO
 legacy repository dump = NO
 ```
 
-Only a tiny bootstrap/recovery presentation is allowed if needed to show network, acquisition, verification, recovery, or diagnostics state before the first release is available.
+A tiny local status/recovery presentation is allowed only if required to show network, acquisition, verification or failure state.
 
 ## First boot
-
-Target chain:
 
 ```text
 UEFI
  -> kernel/initramfs
- -> bootstrap
+ -> minimal bootstrap
  -> network
- -> stable device identity
- -> OrdaX Remote Core
- -> minimal Control Plane/trust
- -> acquire exact release commit
+ -> Git/GitHub release acquisition
  -> verify integrity/authenticity
  -> materialize /ordax/releases/<commit>
  -> atomically activate /ordax/current
- -> launch OrdaX system/Surface
+ -> launch OrdaX
 ```
 
-The complete user-facing OS therefore arrives from the release channel after the minimal bootstrap is alive.
+Remote access is not needed for this path.
 
 ## After the first successful release
 
-Once at least one release has been verified and activated, it must remain locally available for offline boot and rollback.
-
-Normal later boots do not require Git/network when a verified `current` release already exists.
+At least one known-good verified release remains local.
 
 ```text
-NETWORK_AVAILABLE=optional_for_known_good_boot
+NETWORK_REQUIRED_FOR_KNOWN_GOOD_BOOT=NO
 KNOWN_GOOD_RELEASE_PRESERVED=YES
 ROLLBACK_LOCAL=YES
 ```
 
-Network/Git are required to acquire new releases, not to make an already verified installation fundamentally bootable.
+Network/Git are required to acquire new releases, not to boot an already verified current release.
 
 ## Development model
 
-The physical base should change rarely.
-
 ```text
-bootstrap/boot change
- -> separately gated base update
- -> verification
- -> reboot when required
-
 system/Surface/app change
- -> Git/release or delta
+ -> Git push
+ -> Web receives same source change
+ -> OrdaX updater acquires release/delta
+ -> verify + activate
  -> no USB reflash
- -> no full image rebuild
- -> no routine reboot
-```
 
-This keeps initial provisioning small and makes most future work happen through Git/network rather than repeated pendrive rewriting.
+boot/kernel/initramfs change
+ -> separately gated base update
+ -> reboot only when required
+```
 
 ## Source/media relationship
 
-Everything needed to reproduce the bootstrap is represented by source, manifests, configuration, provenance, and build recipes in this repository.
+Everything needed to reproduce the bootstrap is represented in this repository through source, manifests, configuration, provenance and build recipes.
 
-Generated machine-private state is not backed up to public Git:
-
-- device private identity keys;
-- credentials/tokens;
-- machine-specific secrets;
-- user-private files;
-- ephemeral caches.
-
-The repository is the software source/backup authority; device-private state requires a separate safe synchronization/backup policy.
+Private/runtime data is not committed to public Git.
 
 ## Prototype rule
 
 ```text
-INITIAL_USB_POLICY=MINIMUM_NETWORK_FIRST
+INITIAL_USB_POLICY=MINIMUM_GIT_ACQUISITION_FIRST
+REMOTE_CONTROL_PRESEEDED=NO
+SSH_PRESEEDED=NO
 FULL_SYSTEM_PRESEEDED=NO
 SURFACE_PRESEEDED=NO
 APPS_PRESEEDED=NO
@@ -151,4 +127,4 @@ FIRST_FULL_RELEASE_ACQUIRED_AFTER_BOOT=YES
 REFLASH_FOR_NORMAL_SYSTEM_CHANGES=NO
 ```
 
-A future optional offline/full installer may preseed a signed release, but it must not become a requirement for the clean-room bootstrap architecture.
+If a future requirement proves that device identity, Remote Core or Control Plane is necessary, it must be introduced deliberately through an architectural decision rather than added preemptively.
