@@ -1,0 +1,48 @@
+{
+  "$schema": "prototype-ordax.release-trust-policy/1",
+  "status": "policy-resolved-key-material-pending",
+  "scope": "prototype-first-physical-proof",
+  "algorithm": "ed25519",
+  "canonical_key_id": "ordax-prototype-release-v1",
+  "public_anchor": {
+    "schema": "prototype-ordax.release-trust/1",
+    "repository_path": "bootstrap/trust/release-ed25519.json",
+    "runtime_path": "/ordax/bootstrap/trust/release-ed25519.json",
+    "may_be_committed": true,
+    "pin_only_after_private_custody_ready": true
+  },
+  "private_key": {
+    "custody_owner": "repository-owner-developer",
+    "generation_host": "developer-windows-machine",
+    "generator": "ordax-release-signing.exe generate-key",
+    "primary_location_policy": "outside-repository-user-private-storage",
+    "offline_encrypted_backup_required": true,
+    "ci_secret_allowed_after_explicit_user_setup": true,
+    "ci_secret_is_not_source_authority": true,
+    "forbidden_locations": [
+      "git",
+      "usb-bootstrap",
+      "github-actions-artifacts",
+      "logs",
+      "chat"
+    ]
+  },
+  "recovery": {
+    "minimum_offline_backups": 1,
+    "loss_before_distribution": "generate-new-key-and-repin-before-first-physical-write",
+    "loss_after_prototype_provisioning": "reprovision-prototype-media-with-new-trust",
+    "silent_key_replacement_allowed": false
+  },
+  "rotation": {
+    "prototype_policy": "reprovision-required-until-signed-trust-transition-is-implemented",
+    "signed_trust_transition_required_for_production": true,
+    "old_key_must_authorize_new_key": true,
+    "production_rotation_implemented": false
+  },
+  "gates": {
+    "key_material_generated": false,
+    "public_anchor_pinned": false,
+    "minimal_bootstrap_resolved": false,
+    "physical_write_allowed": false
+  }
+}
