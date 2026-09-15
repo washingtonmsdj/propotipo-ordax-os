@@ -25,7 +25,7 @@ func BuildBlockedRawDiskWritePlan(target Target, confirmationToken string) (RawD
 	if err != nil {
 		return RawDiskWritePlan{}, err
 	}
-	if confirmed.SystemDisk || confirmed.BusType != "usb" || !confirmed.PrototypeSafe {
+	if confirmed.SystemDisk || confirmed.BusType != "usb" || !confirmed.PrototypeSafe || confirmed.PhysicalDiskBytes == 0 {
 		return RawDiskWritePlan{}, fmt.Errorf("target is not eligible for a raw-disk plan")
 	}
 	return RawDiskWritePlan{
@@ -42,10 +42,12 @@ func BuildBlockedRawDiskWritePlan(target Target, confirmationToken string) (RawD
 		Preconditions: []string{
 			"target-reenumerated-and-confirmation-token-matched",
 			"physicaldrive-transport-proven-usb",
+			"physical-disk-capacity-measured",
 			"windows-system-disk-excluded",
 			"creator-payload-byte-complete-and-hash-verified",
 			"canonical-release-trust-resolved",
 			"full-disk-image-verified-before-open",
+			"full-disk-image-size-equals-physical-device",
 			"explicit-destructive-authorization-collected-at-apply-boundary",
 		},
 		FutureOperations: []string{
