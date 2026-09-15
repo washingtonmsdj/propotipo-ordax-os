@@ -51,15 +51,31 @@ func (d *memoryRawDiskDevice) Close() error {
 	return nil
 }
 
+type fakeRawVolumeLease struct {
+	events *[]string
+	closed bool
+}
+
+func (l *fakeRawVolumeLease) Close() error {
+	*l.events = append(*l.events, "unlock")
+	l.closed = true
+	return nil
+}
+
 type fakeRawDiskRuntime struct {
-	elevated     bool
-	elevationErr error
-	targets      []Target
-	enumerateErr error
-	device       rawDiskDevice
-	openErr      error
-	openCount    int
-	openedTarget Target
+	elevated       bool
+	elevationErr   error
+	targets        []Target
+	enumerateErr   error
+	device         rawDiskDevice
+	openErr        error
+	openCount      int
+	openedTarget   Target
+	lease          rawVolumeLease
+	leaseErr       error
+	leaseCount     int
+	leasedTarget   Target
+	leaseEvents    *[]string
 }
 
 func (r *fakeRawDiskRuntime) IsElevated() (bool, error) {
@@ -71,6 +87,21 @@ func (r *fakeRawDiskRuntime) EnumerateTargets() ([]Target, error) {
 		return nil, r.enumerateErr
 	}
 	return append([]Target(nil), r.targets...), nil
+}
+
+func (r *fakeRawDiskRuntime) AcquireTargetVolumeLease(expected Target) (rawVolumeLease, error) {
+	r.leaseCount++
+	r.leasedTarget = expected
+	if r.leaseErr != nil {
+		return nil, r.leaseErr
+	}
+	if r.leaseEvents != nil {
+		*r.leaseEvents = append(*r.leaseEvents, "lock")
+	}
+	if r.lease != nil {
+		return r.lease, nil
+	}
+	return &fakeRawVolumeLease{events: r.leaseEvents}, nil
 }
 
 func (r *fakeRawDiskRuntime) OpenVerifiedPhysicalDrive(expected Target) (rawDiskDevice, error) {
@@ -104,16 +135,23 @@ func eventIndex(events []string, value string) int {
 	return -1
 }
 
+func runtimeWithLease(target Target, device rawDiskDevice, events *[]string) *fakeRawDiskRuntime {
+	lease := &fakeRawVolumeLease{events: events}
+	return &fakeRawDiskRuntime{
+		elevated:    true,
+		targets:     []Target{target},
+		device:      device,
+		lease:       lease,
+		leaseEvents: events,
+	}
+}
+
 func TestApplyRawDiskInternalWritesFlushesAndReadsBackExactImage(t *testing.T) {
 	data := []byte("ordax internal raw writer fixture")
 	request, target := authorizedRawApplyRequest(t, data)
 	events := []string{}
 	device := &memoryRawDiskDevice{data: make([]byte, len(data)), events: &events}
-	runtime := &fakeRawDiskRuntime{
-		elevated: true,
-		targets:  []Target{target},
-		device:   device,
-	}
+	runtime := runtimeWithLease(target, device, &events)
 
 	result, err := applyRawDiskInternal(runtime, request)
 	if err != nil {
@@ -125,34 +163,39 @@ func TestApplyRawDiskInternalWritesFlushesAndReadsBackExactImage(t *testing.T) {
 	if !reflect.DeepEqual(device.data, data) {
 		t.Fatalf("fake physical bytes = %q, want %q", device.data, data)
 	}
+	if runtime.leaseCount != 1 || runtime.leasedTarget.ConfirmationToken != target.ConfirmationToken {
+		t.Fatalf("writer leased unexpected target: count=%d target=%#v", runtime.leaseCount, runtime.leasedTarget)
+	}
 	if runtime.openCount != 1 || runtime.openedTarget.ConfirmationToken != target.ConfirmationToken {
 		t.Fatalf("writer opened unexpected target: count=%d target=%#v", runtime.openCount, runtime.openedTarget)
 	}
+	lockAt := eventIndex(events, "lock")
 	writeAt := eventIndex(events, "write")
 	syncAt := eventIndex(events, "sync")
 	readAt := eventIndex(events, "read")
 	closeAt := eventIndex(events, "close")
-	if writeAt < 0 || syncAt <= writeAt || readAt <= syncAt || closeAt <= readAt {
-		t.Fatalf("unsafe I/O order: %v", events)
+	unlockAt := eventIndex(events, "unlock")
+	if lockAt < 0 || writeAt <= lockAt || syncAt <= writeAt || readAt <= syncAt || closeAt <= readAt || unlockAt <= closeAt {
+		t.Fatalf("unsafe I/O/lease order: %v", events)
 	}
 	if !device.closed {
 		t.Fatal("device must be closed before success returns")
+	}
+	if lease, ok := runtime.lease.(*fakeRawVolumeLease); !ok || !lease.closed {
+		t.Fatal("target volume lease must be released after device close")
 	}
 }
 
 func TestApplyRawDiskInternalRequiresElevationBeforeOpening(t *testing.T) {
 	request, target := authorizedRawApplyRequest(t, []byte("elevation gate"))
 	events := []string{}
-	runtime := &fakeRawDiskRuntime{
-		elevated: false,
-		targets:  []Target{target},
-		device:   &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events},
-	}
+	runtime := runtimeWithLease(target, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
+	runtime.elevated = false
 	if _, err := applyRawDiskInternal(runtime, request); err == nil {
 		t.Fatal("non-elevated runtime must be blocked")
 	}
-	if runtime.openCount != 0 || len(events) != 0 {
-		t.Fatalf("non-elevated runtime touched device: opens=%d events=%v", runtime.openCount, events)
+	if runtime.leaseCount != 0 || runtime.openCount != 0 || len(events) != 0 {
+		t.Fatalf("non-elevated runtime touched target: leases=%d opens=%d events=%v", runtime.leaseCount, runtime.openCount, events)
 	}
 }
 
@@ -162,16 +205,12 @@ func TestApplyRawDiskInternalReenumeratesAndRejectsSwappedTarget(t *testing.T) {
 	swapped.DiskNumber++
 	swapped.ConfirmationToken = ConfirmationToken(swapped)
 	events := []string{}
-	runtime := &fakeRawDiskRuntime{
-		elevated: true,
-		targets:  []Target{swapped},
-		device:   &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events},
-	}
+	runtime := runtimeWithLease(swapped, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
 	if _, err := applyRawDiskInternal(runtime, request); err == nil {
 		t.Fatal("swapped target must invalidate destructive boundary")
 	}
-	if runtime.openCount != 0 || len(events) != 0 {
-		t.Fatalf("swapped target touched device: opens=%d events=%v", runtime.openCount, events)
+	if runtime.leaseCount != 0 || runtime.openCount != 0 || len(events) != 0 {
+		t.Fatalf("swapped target touched device: leases=%d opens=%d events=%v", runtime.leaseCount, runtime.openCount, events)
 	}
 }
 
@@ -179,33 +218,56 @@ func TestApplyRawDiskInternalRejectsTamperedRequestTargetWithOldToken(t *testing
 	request, target := authorizedRawApplyRequest(t, []byte("tampered target gate"))
 	request.Target.DiskNumber++
 	events := []string{}
-	runtime := &fakeRawDiskRuntime{
-		elevated: true,
-		targets:  []Target{target},
-		device:   &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events},
-	}
+	runtime := runtimeWithLease(target, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
 	if _, err := applyRawDiskInternal(runtime, request); err == nil {
 		t.Fatal("tampered request Target retaining an old token must fail")
 	}
-	if runtime.openCount != 0 || len(events) != 0 {
-		t.Fatalf("tampered request touched device: opens=%d events=%v", runtime.openCount, events)
+	if runtime.leaseCount != 0 || runtime.openCount != 0 || len(events) != 0 {
+		t.Fatalf("tampered request touched device: leases=%d opens=%d events=%v", runtime.leaseCount, runtime.openCount, events)
 	}
 }
 
-func TestApplyRawDiskInternalKeepsTrustGateAheadOfDeviceOpen(t *testing.T) {
+func TestApplyRawDiskInternalKeepsTrustGateAheadOfTargetLease(t *testing.T) {
 	request, target := authorizedRawApplyRequest(t, []byte("trust gate"))
 	request.CanonicalTrustResolved = false
 	events := []string{}
-	runtime := &fakeRawDiskRuntime{
-		elevated: true,
-		targets:  []Target{target},
-		device:   &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events},
-	}
+	runtime := runtimeWithLease(target, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
 	if _, err := applyRawDiskInternal(runtime, request); err == nil {
 		t.Fatal("unresolved canonical trust must block writer")
 	}
-	if runtime.openCount != 0 || len(events) != 0 {
-		t.Fatalf("unresolved trust touched device: opens=%d events=%v", runtime.openCount, events)
+	if runtime.leaseCount != 0 || runtime.openCount != 0 || len(events) != 0 {
+		t.Fatalf("unresolved trust touched target: leases=%d opens=%d events=%v", runtime.leaseCount, runtime.openCount, events)
+	}
+}
+
+func TestApplyRawDiskInternalBlocksDeviceOpenWhenTargetLeaseFails(t *testing.T) {
+	request, target := authorizedRawApplyRequest(t, []byte("lease gate"))
+	events := []string{}
+	runtime := runtimeWithLease(target, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
+	runtime.leaseErr = errors.New("volume lock unavailable")
+
+	if _, err := applyRawDiskInternal(runtime, request); err == nil {
+		t.Fatal("target-volume lease failure must block device open")
+	}
+	if runtime.leaseCount != 1 || runtime.openCount != 0 || len(events) != 0 {
+		t.Fatalf("lease failure crossed device-open boundary: leases=%d opens=%d events=%v", runtime.leaseCount, runtime.openCount, events)
+	}
+}
+
+func TestApplyRawDiskInternalReleasesLeaseWhenDeviceOpenFails(t *testing.T) {
+	request, target := authorizedRawApplyRequest(t, []byte("open failure"))
+	events := []string{}
+	runtime := runtimeWithLease(target, &memoryRawDiskDevice{data: make([]byte, request.Image.SizeBytes), events: &events}, &events)
+	runtime.openErr = errors.New("physical drive unavailable")
+
+	if _, err := applyRawDiskInternal(runtime, request); err == nil {
+		t.Fatal("device-open failure must fail writer")
+	}
+	if runtime.leaseCount != 1 || runtime.openCount != 1 {
+		t.Fatalf("unexpected boundary counts: leases=%d opens=%d", runtime.leaseCount, runtime.openCount)
+	}
+	if !reflect.DeepEqual(events, []string{"lock", "unlock"}) {
+		t.Fatalf("lease was not safely released after device-open failure: %v", events)
 	}
 }
 
@@ -218,12 +280,17 @@ func TestApplyRawDiskInternalFailsOnReadBackDigestMismatch(t *testing.T) {
 		events:      &events,
 		corruptRead: true,
 	}
-	runtime := &fakeRawDiskRuntime{elevated: true, targets: []Target{target}, device: device}
+	runtime := runtimeWithLease(target, device, &events)
 	if _, err := applyRawDiskInternal(runtime, request); err == nil {
 		t.Fatal("corrupt physical read-back must fail")
 	}
 	if eventIndex(events, "sync") < 0 || eventIndex(events, "read") < 0 {
 		t.Fatalf("read-back verification did not run: %v", events)
+	}
+	closeAt := eventIndex(events, "close")
+	unlockAt := eventIndex(events, "unlock")
+	if closeAt < 0 || unlockAt <= closeAt {
+		t.Fatalf("target lease did not outlive device on read-back failure: %v", events)
 	}
 	if !device.closed {
 		t.Fatal("device must close after read-back failure")
