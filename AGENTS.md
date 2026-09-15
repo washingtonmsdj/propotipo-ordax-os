@@ -118,6 +118,8 @@ Regras:
 - Codex pode ser parceiro opcional para revisao, investigacao fisica ou segunda opiniao;
 - um build que depende de estado local nao documentado e defeito arquitetural.
 
+O ambiente do kernel 6.6.52 ja possui imagem OCI por digest, snapshot APT, 17 versoes exatas de pacotes e prova repetida de hashes identicos. Isso fecha apenas o gate de ambiente reproduzivel; `physical_artifact_authorized` continua separado e fail-closed.
+
 Ver `docs/BUILD-AUTONOMY.md` e `docs/contracts/build-autonomy.json`.
 
 ## 8. Desenvolvimento diario
@@ -200,6 +202,8 @@ Antes de formatar ou escrever em pendrive/notebook:
 7. somente depois aplicar;
 8. verificar leitura/hashes/layout depois da escrita.
 
+O token de confirmacao do Creator deve estar ligado a identidade atual do USB, incluindo capacidade fisica medida. Uma autorizacao de escrita RAW deve ainda estar ligada ao SHA-256 e tamanho exato da imagem, e uma imagem de disco completa deve ter exatamente o mesmo tamanho do `PhysicalDrive` confirmado.
+
 OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario final nao compila kernel para instalar o sistema.
 
 ## 14. Qualidade
@@ -215,13 +219,17 @@ OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario fi
 
 O clean-room ja possui receitas e provas para kernel, initramfs, rede minima, release acquisition, release bundle, Creator Core, descoberta segura de alvo Windows e composicao descartavel de midia. O `system/` real tambem possui um entrypoint compartilhado e bundling deterministico.
 
+O ambiente do kernel esta fechado por prova repetida: imagem OCI por digest, snapshot APT, pacotes fixados e os tres artefatos do kernel reproduziram hashes identicos em execucoes independentes. Esse fato nao autoriza por si so uso fisico.
+
+O Creator Windows ja mede a capacidade real do `PhysicalDrive`, inclui essa capacidade no token de confirmacao, verifica imagem RAW por tamanho/hash e possui uma autorizacao destrutiva calculada sobre alvo + imagem. O writer fisico Win32 continua propositalmente nao exposto.
+
 Ainda permanecem abertos antes da escrita fisica e promocao:
 
 ```text
-pinned kernel build environment repeat proof
 canonical Ed25519 release trust ceremony/public anchor
 raw-disk physical writer implementation + tests
-destructive authorization at execution time
+executable destructive authorization at execution time
+byte-complete proof with canonical public trust
 real notebook boot/network/release/recovery evidence
 graphical shared Surface and remaining product-mode continuity
 ```
