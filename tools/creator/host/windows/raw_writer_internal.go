@@ -21,18 +21,21 @@ type rawDiskDevice interface {
 // rawVolumeLease represents exclusive ownership of every Windows volume that
 // belongs to the confirmed target disk. The production Windows implementation
 // is intentionally not connected yet; fake runtimes use this boundary to prove
-// ordering and lifetime before any native lock/dismount primitive exists.
+// ordering and lifetime before any native lock/dismount primitive is wired.
 type rawVolumeLease interface {
 	Close() error
 }
 
 // rawDiskRuntime deliberately separates destructive host I/O from policy.
-// Production Windows bindings are not connected to a public command yet.
+// OpenVerifiedPhysicalDrive receives the exact lease acquired immediately
+// before it; this makes it impossible for a future native runtime to satisfy
+// the interface while silently opening a writable disk outside the lease
+// boundary. Production Windows bindings are not connected to a public command.
 type rawDiskRuntime interface {
 	IsElevated() (bool, error)
 	EnumerateTargets() ([]Target, error)
 	AcquireTargetVolumeLease(expected Target) (rawVolumeLease, error)
-	OpenVerifiedPhysicalDrive(expected Target) (rawDiskDevice, error)
+	OpenVerifiedPhysicalDrive(expected Target, lease rawVolumeLease) (rawDiskDevice, error)
 }
 
 type rawDiskApplyResult struct {
@@ -102,8 +105,7 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 
 	// A future Windows runtime must lock/dismount the complete, isolated volume
 	// inventory here and keep that lease until the exact physical device has
-	// been closed after byte-complete read-back. Today this is exercised only by
-	// fake runtimes; no native FSCTL lock/dismount calls are connected.
+	// been closed after byte-complete read-back.
 	lease, err := runtime.AcquireTargetVolumeLease(confirmed)
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("acquire PhysicalDrive%d target-volume lease: %w", confirmed.DiskNumber, err)
@@ -117,7 +119,11 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		}
 	}()
 
-	device, err := runtime.OpenVerifiedPhysicalDrive(confirmed)
+	// The acquired lease is explicitly passed into the physical-device open.
+	// This compile-time boundary prevents a native implementation from opening a
+	// writable PhysicalDrive without acknowledging the exact lease held by the
+	// orchestrator.
+	device, err := runtime.OpenVerifiedPhysicalDrive(confirmed, lease)
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("open verified PhysicalDrive%d: %w", confirmed.DiskNumber, err)
 	}
