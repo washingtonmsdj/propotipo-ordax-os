@@ -32,12 +32,15 @@ class FoundationContractTest(unittest.TestCase):
         self.assertIn("ORDAX-HOME", media["forbidden_required_partitions"])
         self.assertIn("ORDAX-PLATFORM", media["forbidden_required_partitions"])
 
-    def test_initial_usb_is_minimum_network_first(self):
+    def test_initial_usb_is_minimum_git_acquisition_first(self):
         seed = self.contract["initial_media"]
-        self.assertEqual(seed["policy"], "minimum-network-first")
+        self.assertEqual(seed["policy"], "minimum-git-acquisition-first")
         self.assertFalse(seed["full_system_preseeded"])
         self.assertFalse(seed["surface_preseeded"])
         self.assertFalse(seed["normal_apps_preseeded"])
+        self.assertFalse(seed["remote_core_preseeded"])
+        self.assertFalse(seed["control_plane_preseeded"])
+        self.assertFalse(seed["stable_device_identity_preseeded"])
         self.assertFalse(seed["legacy_repository_dump_allowed"])
         self.assertFalse(seed["build_toolchain_preseeded"])
         self.assertFalse(seed["complete_source_checkout_preseeded"])
@@ -46,8 +49,26 @@ class FoundationContractTest(unittest.TestCase):
         self.assertTrue(seed["known_good_release_persisted_after_first_activation"])
         self.assertTrue(seed["known_good_offline_boot_required"])
         self.assertFalse(seed["normal_system_changes_require_usb_reflash"])
-        self.assertIn("ordax-remote-core", seed["allowed_initial_payload_classes"])
+        self.assertNotIn("ordax-remote-core", seed["allowed_initial_payload_classes"])
+        self.assertNotIn("minimal-control-plane", seed["allowed_initial_payload_classes"])
         self.assertIn("release-acquisition", seed["allowed_initial_payload_classes"])
+
+    def test_pre_git_path_contains_only_boot_network_release_and_recovery(self):
+        self.assertEqual(
+            self.contract["pre_git_capabilities"],
+            [
+                "uefi-boot",
+                "kernel",
+                "initramfs",
+                "minimal-network",
+                "git-release-acquisition",
+                "recovery-maintenance",
+            ],
+        )
+        optional = self.contract["post_release_optional_capabilities"]
+        self.assertIn("stable-device-identity", optional)
+        self.assertIn("ordax-remote-core", optional)
+        self.assertIn("control-plane", optional)
 
     def test_user_data_is_logical_inside_main_partition(self):
         layout = self.contract["logical_main_layout"]
@@ -61,6 +82,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertTrue(release["immutable_after_verification"])
         self.assertEqual(release["activation"], "atomic-current-pointer")
         self.assertTrue(release["rollback_required"])
+        self.assertFalse(release["remote_shell_required"])
 
     def test_three_modes_are_one_product(self):
         modes = self.contract["product_modes"]
@@ -99,37 +121,32 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(host["platform_policy_forks_allowed"])
         self.assertFalse(host["end_user_kernel_toolchain_required"])
 
-    def test_ordax_remote_core_replaces_required_ssh_dependency(self):
+    def test_remote_control_is_optional_and_ssh_is_not_required(self):
         remote = self.contract["remote_control"]
-        self.assertTrue(remote["product_owned_remote_core_required"])
-        self.assertFalse(remote["external_ssh_executable_required"])
-        self.assertFalse(remote["ssh_required_for_product"])
-        self.assertFalse(remote["ssh_required_for_daily_development"])
-        self.assertTrue(remote["structured_capability_rpc_preferred"])
-        self.assertFalse(remote["arbitrary_shell_is_primary_control_path"])
-        self.assertTrue(remote["browser_compatible_transport_desired"])
+        self.assertFalse(remote["required_for_bootstrap"])
+        self.assertFalse(remote["required_for_product"])
+        self.assertFalse(remote["required_for_daily_development"])
+        self.assertFalse(remote["ssh_required"])
+        self.assertTrue(remote["product_owned_remote_core_may_be_added_later"])
         self.assertFalse(remote["custom_cryptographic_primitives_allowed"])
-        self.assertTrue(remote["mature_secure_transport_required"])
-        self.assertTrue(remote["device_private_identity_stays_local"])
-        self.assertIn("ordax-remote-core", self.contract["pre_git_capabilities"])
-        self.assertNotIn("remote-core-ssh", self.contract["pre_git_capabilities"])
 
     def test_security_stays_fail_closed_without_custom_crypto(self):
         security = self.contract["security"]
         self.assertFalse(security["private_keys_in_repository_allowed"])
         self.assertTrue(security["fail_closed_identity_and_integrity"])
-        self.assertTrue(security["device_identity_persistent"])
-        self.assertTrue(security["multiple_operator_authorizations_allowed"])
         self.assertFalse(security["custom_crypto_allowed"])
 
-    def test_daily_development_does_not_require_reflash_or_emulator(self):
+    def test_daily_development_is_git_driven_without_remote_shell(self):
         development = self.contract["development"]
+        self.assertEqual(development["normal_change_path"], "git-push-to-release-update")
         self.assertFalse(development["full_image_rebuild_per_edit"])
         self.assertFalse(development["usb_reflash_per_edit"])
         self.assertFalse(development["routine_reboot_per_edit"])
         self.assertTrue(development["delta_or_release_update_preferred"])
         self.assertTrue(development["browser_hmr_for_surface_allowed"])
         self.assertTrue(development["surface_change_should_reach_web_and_device"])
+        self.assertFalse(development["remote_shell_required"])
+        self.assertFalse(development["remote_control_service_required"])
         self.assertFalse(development["emulator_mandatory"])
         self.assertTrue(development["real_hardware_validation_required_before_final_promotion"])
 
