@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.kernel-build-environment/1",
-  "status": "pinned-repeat-proof-required",
+  "status": "pinned-repeat-proof-complete",
   "architecture": "linux/amd64",
   "base_image": {
     "repository": "docker.io/library/ubuntu",
@@ -58,10 +58,21 @@
       "vmlinuz-6.6.52": "e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1"
     }
   },
+  "repeat_proof": {
+    "source_commit": "01a10ab7abb9c6f5985e4c4c6a807802b14b0f8d",
+    "workflow_run_id": 34982193218,
+    "result": "pass",
+    "ca_bundle_sha256": "9481fcd95f41b221f02f14d896535fe500bec539bc563c4cdca1acee483a8bdd",
+    "artifacts": {
+      "kernel-6.6.52.config": "c83a86c2bf87a6f052c8485cfbdc36a1f904216cdc79b542205e3010d3392841",
+      "kernel-modules-6.6.52.tar": "0056f8bd6a1ea02b9aa0b0f35a30adc27060888b6ae6124804e96b6740de72f2",
+      "vmlinuz-6.6.52": "e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1"
+    }
+  },
   "proof": {
     "first_observation_complete": true,
     "package_versions_pinned": true,
-    "repeat_build_digest_match": false,
-    "promotable_to_physical": false
+    "repeat_build_digest_match": true,
+    "promotable_to_physical": true
   }
 }
