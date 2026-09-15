@@ -33,9 +33,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             meson ninja-build gcc binutils pkg-config gperf \
-            python3-jinja2 python3-pyelftools \
             libcap-dev libmount-dev libblkid-dev libssl-dev \
             liblz4-dev libzstd-dev liblzma-dev libpcre2-dev
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            jinja2 pyelftools
 
       - name: Validate ESP source contract
         run: python boot/esp/build.py check
