@@ -34,6 +34,8 @@ Antes de alterar codigo, contratos ou midia:
 12. `docs/PROMOTION-GATES.md`
 13. `docs/DECISIONS.md`
 
+Quando um snapshot de estado conflitar com texto historico, `docs/CURRENT-STATE.md` e os contratos arquiteturais canonicos vencem.
+
 ## 4. Arquitetura fisica alvo
 
 ```text
@@ -45,15 +47,17 @@ SEPARATE_HOME_PARTITION=NO
 
 Nao reintroduzir uma terceira particao HOME sem uma decisao arquitetural registrada.
 
-## 5. Um produto, tres modos
+## 5. Um produto, cinco modos
 
 ```text
 OrdaX Web
+ -> OrdaX Mobile (Android / iPhone)
+ -> OrdaX Desktop
  -> OrdaX USB
  -> OrdaX Native (SSD/HD)
 ```
 
-Web, USB e instalacao nativa sao modos do mesmo produto, nao forks.
+Sao modos de capacidade do mesmo produto, nao forks.
 
 Surface, apps e logica compartilhada possuem uma unica fonte em `system/`. Diferencas de ambiente vivem apenas em adapters de capacidade.
 
@@ -67,7 +71,7 @@ UEFI
  -> kernel/initramfs
  -> bootstrap minimo
  -> rede minima
- -> aquisicao de release via Git/GitHub
+ -> aquisicao de release assinada
  -> verificacao
  -> recovery
 ```
@@ -124,10 +128,10 @@ Fluxo normal:
 editar source
  -> preview Web/HMR quando aplicavel
  -> testar
- -> commit/push em main
+ -> commit/push main
  -> CI gera/verifica apenas artefatos afetados
- -> Web recebe o mesmo commit
- -> OrdaX detecta/puxa release ou delta
+ -> Web/Mobile/Desktop recebem o commit aplicavel
+ -> OrdaX USB/Native detecta release ou delta
  -> verifica
  -> ativa
 ```
@@ -172,7 +176,7 @@ Para portar qualquer componente antigo, registrar em `docs/SOURCE-MIGRATION.md`:
 - por que ainda e necessario;
 - dependencias;
 - testes;
-- decisao: ADOPTED / REIMPLEMENTED / REJECTED.
+- decisao: ADOPTED / REIMPLEMENTED / REJECTED / REFERENCE_ONLY.
 
 Nao copiar pastas inteiras, history, tmp, backups, scripts antigos, stack SSH/QEMU/F7 ou contratos obsoletos.
 
@@ -192,8 +196,9 @@ Antes de formatar ou escrever em pendrive/notebook:
 3. executar dry-run ou teste descartavel quando aplicavel;
 4. registrar o payload minimo exato;
 5. registrar o que sera apagado/criado;
-6. somente depois aplicar;
-7. verificar leitura/hashes/layout depois da escrita.
+6. exigir autorizacao destrutiva explicita no momento da escrita;
+7. somente depois aplicar;
+8. verificar leitura/hashes/layout depois da escrita.
 
 OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario final nao compila kernel para instalar o sistema.
 
@@ -208,12 +213,25 @@ OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario fi
 
 ## 15. Estado atual
 
-Kernel/initramfs e provisioning ainda nao foram implementados no clean-room. O primeiro objetivo tecnico de build e transformar o kernel 6.6.52 conhecido em uma receita reproduzivel executada pelo CI, sem depender de Codex ou da maquina local.
+O clean-room ja possui receitas e provas para kernel, initramfs, rede minima, release acquisition, release bundle, Creator Core, descoberta segura de alvo Windows e composicao descartavel de midia. O `system/` real tambem possui um entrypoint compartilhado e bundling deterministico.
+
+Ainda permanecem abertos antes da escrita fisica e promocao:
+
+```text
+pinned kernel build environment repeat proof
+canonical Ed25519 release trust ceremony/public anchor
+raw-disk physical writer implementation + tests
+destructive authorization at execution time
+real notebook boot/network/release/recovery evidence
+graphical shared Surface and remaining product-mode continuity
+```
+
+`PHYSICAL_USB_WRITE=NO` ate os gates correspondentes estarem fechados.
 
 O menor caminho fisico continua:
 
 ```text
-boot -> rede -> adquirir release do Git/GitHub -> verificar -> ativar -> boot offline posterior
+boot -> rede -> adquirir release assinada -> verificar -> ativar -> boot offline posterior
 ```
 
 Todo componente extra deve justificar sua existencia antes de entrar no bootstrap.
