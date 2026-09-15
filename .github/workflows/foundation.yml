@@ -24,6 +24,7 @@ jobs:
         run: |
           python -m json.tool docs/contracts/foundation.json >/dev/null
           python -m json.tool docs/contracts/minimal-bootstrap.json >/dev/null
+          python -m json.tool docs/contracts/build-autonomy.json >/dev/null
 
       - name: Run foundation regressions
         run: python -m unittest discover -s tests -p 'test_*.py' -v
