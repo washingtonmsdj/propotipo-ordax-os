@@ -14,15 +14,23 @@ SPEC.loader.exec_module(MODULE)
 class SurfaceWebBuilderTests(unittest.TestCase):
     def test_current_source_graph_discovers_shared_surface_apps_adapter_and_contract(self):
         graph = {path.as_posix() for path in MODULE.discover_graph(ROOT)}
-        self.assertIn("system/composition/web/index.html", graph)
-        self.assertIn("system/composition/web/main.mjs", graph)
-        self.assertIn("system/surface/ui/surface.mjs", graph)
-        self.assertIn("system/surface/ui/surface-state.mjs", graph)
-        self.assertIn("system/apps/catalog.mjs", graph)
-        self.assertIn("system/adapters/web/runtime.mjs", graph)
-        self.assertIn("system/contracts/surface-host.mjs", graph)
-        self.assertIn("system/surface/ui/tokens.css", graph)
-        self.assertIn("system/surface/ui/surface.css", graph)
+        for expected in (
+            "system/composition/web/index.html",
+            "system/composition/web/main.mjs",
+            "system/surface/ui/surface.mjs",
+            "system/surface/ui/surface-state.mjs",
+            "system/apps/catalog.mjs",
+            "system/apps/app-contract.mjs",
+            "system/apps/files/app.mjs",
+            "system/apps/settings/app.mjs",
+            "system/apps/account/app.mjs",
+            "system/apps/system/app.mjs",
+            "system/adapters/web/runtime.mjs",
+            "system/contracts/surface-host.mjs",
+            "system/surface/ui/tokens.css",
+            "system/surface/ui/surface.css",
+        ):
+            self.assertIn(expected, graph)
 
     def test_build_is_byte_reproducible_for_same_commit(self):
         commit = "1" * 40

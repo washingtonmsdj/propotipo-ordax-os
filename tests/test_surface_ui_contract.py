@@ -5,6 +5,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SURFACE = ROOT / "system" / "surface" / "ui"
 APPS = ROOT / "system" / "apps"
 APP_CATALOG = APPS / "catalog.mjs"
+APP_CONTRACT = APPS / "app-contract.mjs"
+APP_OWNERS = {
+    "files": APPS / "files" / "app.mjs",
+    "settings": APPS / "settings" / "app.mjs",
+    "account": APPS / "account" / "app.mjs",
+    "system": APPS / "system" / "app.mjs",
+}
 COMPOSITION = ROOT / "system" / "composition" / "web"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
@@ -19,6 +26,8 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             APP_CATALOG,
+            APP_CONTRACT,
+            *APP_OWNERS.values(),
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
             WEB_ADAPTER,
@@ -36,22 +45,37 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("contracts/surface-host.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
 
-    def test_app_catalog_is_platform_neutral_and_first_party(self):
-        text = APP_CATALOG.read_text(encoding="utf-8")
-        for app_id in ("files", "settings", "account", "system"):
-            self.assertIn(f'id: "{app_id}"', text)
+    def test_first_party_apps_have_independent_owners_and_thin_catalog(self):
+        catalog = APP_CATALOG.read_text(encoding="utf-8")
+        self.assertIn("./app-contract.mjs", catalog)
+        for app_id, path in APP_OWNERS.items():
+            owner = path.read_text(encoding="utf-8")
+            self.assertIn(f'id: "{app_id}"', owner)
+            self.assertIn("defineFirstPartyApp", owner)
+            self.assertIn(f'./{app_id}/app.mjs', catalog)
+        self.assertIn("listFirstPartyApps", catalog)
+        self.assertIn("getFirstPartyApp", catalog)
+        self.assertLess(len(catalog.splitlines()), 40, "catalog should stay composition-only")
+
+    def test_app_contract_is_capability_driven_and_fail_closed(self):
+        text = APP_CONTRACT.read_text(encoding="utf-8")
         self.assertIn("requiredCapabilities", text)
-        self.assertIn("listFirstPartyApps", text)
         self.assertIn("isAppAvailable", text)
-        for forbidden in (
-            "adapters/web",
-            "adapters/mobile",
-            "adapters/desktop",
-            "adapters/native",
-            "navigator.",
-            "window.",
-        ):
-            self.assertNotIn(forbidden, text)
+        self.assertIn("every((capabilityId)", text)
+        self.assertIn("PANEL_KINDS", text)
+
+    def test_app_source_is_platform_neutral(self):
+        for path in APPS.rglob("*.mjs"):
+            text = path.read_text(encoding="utf-8")
+            for forbidden in (
+                "adapters/web",
+                "adapters/mobile",
+                "adapters/desktop",
+                "adapters/native",
+                "navigator.",
+                "window.",
+            ):
+                self.assertNotIn(forbidden, text, path)
 
     def test_workspace_state_has_real_window_lifecycle_without_platform_branching(self):
         text = (SURFACE / "surface-state.mjs").read_text(encoding="utf-8")

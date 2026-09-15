@@ -6,14 +6,25 @@ Apps are product modules, not Web/Mobile/Desktop forks. The Surface imports the 
 
 ## Current baseline
 
-`catalog.mjs` is the canonical first-party registry for the graphical prototype. It currently defines:
+Each first-party app has one explicit owner:
+
+```text
+system/apps/files/app.mjs
+system/apps/settings/app.mjs
+system/apps/account/app.mjs
+system/apps/system/app.mjs
+```
+
+`app-contract.mjs` validates the stable first-party app shape. `catalog.mjs` is deliberately thin: it composes the current owners, rejects duplicate IDs and exposes lookup/list operations to the Surface.
+
+The initial owners are:
 
 - Arquivos;
 - Configurações;
 - Conta;
 - Sistema.
 
-The catalog contains platform-neutral metadata, capability requirements and declarative panels. It does not import browser/native adapters and it does not decide which platform is running.
+App definitions contain platform-neutral metadata, capability requirements and declarative panels. They do not import browser/native adapters and they do not decide which platform is running.
 
 Application availability is capability-driven. A future app that requires a capability declares that capability in `requiredCapabilities`; the Surface fails closed when the host does not expose it.
 
@@ -23,4 +34,4 @@ Apps may depend on shared contracts and services according to `docs/contracts/mo
 
 Do not create `apps-web`, `apps-mobile`, `apps-desktop`, Android/iOS copies or host-specific UI trees. Genuine host operations belong behind capability contracts and adapters.
 
-The current catalog is intentionally small. It is a first-party registry, not a plugin marketplace or arbitrary code-loading framework.
+The current registry is intentionally first-party and bounded. It is not a plugin marketplace or arbitrary code-loading framework; extension mechanics should only be introduced when there is a concrete product requirement and an explicit trust boundary.
