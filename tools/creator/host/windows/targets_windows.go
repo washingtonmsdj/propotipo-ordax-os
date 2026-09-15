@@ -24,14 +24,14 @@ type storageDeviceNumber struct {
 }
 
 var (
-	kernel32                   = syscall.NewLazyDLL("kernel32.dll")
-	procGetLogicalDrives       = kernel32.NewProc("GetLogicalDrives")
-	procGetDriveTypeW          = kernel32.NewProc("GetDriveTypeW")
-	procGetVolumeInformationW  = kernel32.NewProc("GetVolumeInformationW")
-	procGetDiskFreeSpaceExW    = kernel32.NewProc("GetDiskFreeSpaceExW")
-	procCreateFileW            = kernel32.NewProc("CreateFileW")
-	procDeviceIoControl        = kernel32.NewProc("DeviceIoControl")
-	procCloseHandle            = kernel32.NewProc("CloseHandle")
+	kernel32                  = syscall.NewLazyDLL("kernel32.dll")
+	procGetLogicalDrives      = kernel32.NewProc("GetLogicalDrives")
+	procGetDriveTypeW         = kernel32.NewProc("GetDriveTypeW")
+	procGetVolumeInformationW = kernel32.NewProc("GetVolumeInformationW")
+	procGetDiskFreeSpaceExW   = kernel32.NewProc("GetDiskFreeSpaceExW")
+	procCreateFileW           = kernel32.NewProc("CreateFileW")
+	procDeviceIoControl       = kernel32.NewProc("DeviceIoControl")
+	procCloseHandle           = kernel32.NewProc("CloseHandle")
 )
 
 func utf16Ptr(value string) (*uint16, error) {
@@ -50,22 +50,24 @@ func driveType(root string) (uint32, error) {
 	return uint32(value), nil
 }
 
-func volumeLabel(root string) string {
+func volumeIdentity(root string) (string, uint32) {
 	ptr, err := utf16Ptr(root)
 	if err != nil {
-		return ""
+		return "", 0
 	}
 	buffer := make([]uint16, 261)
+	var serial uint32
 	result, _, _ := procGetVolumeInformationW.Call(
 		uintptr(unsafe.Pointer(ptr)),
 		uintptr(unsafe.Pointer(&buffer[0])),
 		uintptr(len(buffer)),
-		0, 0, 0, 0, 0,
+		uintptr(unsafe.Pointer(&serial)),
+		0, 0, 0, 0,
 	)
 	if result == 0 {
-		return ""
+		return "", 0
 	}
-	return syscall.UTF16ToString(buffer)
+	return syscall.UTF16ToString(buffer), serial
 }
 
 func volumeBytes(root string) uint64 {
@@ -158,14 +160,16 @@ func EnumerateRemovableTargets() ([]Target, error) {
 			continue
 		}
 		seenDisk[diskNumber] = true
-		targets = append(targets, Target{
-			DriveLetter:   letter,
-			VolumeLabel:   volumeLabel(root),
-			DiskNumber:    diskNumber,
-			VolumeBytes:   volumeBytes(root),
-			DriveType:     "removable",
-			PrototypeSafe: IsPrototypeCandidate(letter, typeValue, true),
-		})
+		label, serial := volumeIdentity(root)
+		target := Target{
+			DriveLetter: letter,
+			VolumeLabel: label,
+			VolumeSerial: serial,
+			DiskNumber:  diskNumber,
+			VolumeBytes: volumeBytes(root),
+			DriveType:   "removable",
+		}
+		targets = append(targets, FinalizeTarget(target, typeValue, true))
 	}
 	sort.Slice(targets, func(i, j int) bool {
 		if targets[i].DiskNumber == targets[j].DiskNumber {
