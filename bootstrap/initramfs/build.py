@@ -9,7 +9,6 @@ lives on the ORDAX partition and is intentionally outside this fixed archive.
 from __future__ import annotations
 
 import argparse
-import bz2
 import gzip
 import hashlib
 import io
@@ -34,6 +33,7 @@ REQUIRED_APPLETS = {
     "reboot", "sh", "sleep", "switch_root", "sync", "umount",
 }
 REQUESTED_CONFIG = {
+    "CONFIG_BUSYBOX": "y",
     "CONFIG_STATIC": "y",
     "CONFIG_ASH": "y",
     "CONFIG_SH_IS_ASH": "y",
@@ -125,6 +125,32 @@ def resolve_program(name: str) -> str:
     if not value:
         raise BuildError(f"required build program not found: {name}")
     return value
+
+
+def capture(argv: list[str], *, cwd: Path | None = None) -> str:
+    try:
+        return subprocess.run(
+            argv,
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BuildError(f"command failed: {' '.join(argv)}") from exc
+
+
+def musl_identity(musl_cc: str) -> dict:
+    target = capture([musl_cc, "-dumpmachine"])
+    libc_value = capture([musl_cc, "-print-file-name=libc.a"])
+    libc = Path(libc_value).resolve()
+    if not libc.is_file() or "musl" not in libc.as_posix().lower():
+        raise BuildError(f"musl-gcc did not resolve a musl libc archive: {libc_value}")
+    return {
+        "compiler": Path(musl_cc).name,
+        "target": target,
+        "libc_archive_sha256": sha256_file(libc),
+    }
 
 
 def download(contract: dict, destination: Path) -> Path:
@@ -281,24 +307,36 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     source = extract(archive, work_dir / "source", contract["busybox"]["version"])
     env = dict(os.environ)
     env.update(FIXED_ENV)
-    env["CC"] = resolve_program("musl-gcc")
-    run(["make", "allnoconfig"], cwd=source, env=env)
+    musl_cc = resolve_program("musl-gcc")
+    toolchain = musl_identity(musl_cc)
+    make = ["make", f"CC={musl_cc}"]
+    run(make + ["allnoconfig"], cwd=source, env=env)
     set_config(source / ".config", REQUESTED_CONFIG)
-    run(["make", "oldconfig"], cwd=source, env=env)
+    run(make + ["oldconfig"], cwd=source, env=env)
     verify_config(source / ".config")
-    run(["make", f"-j{max(1, jobs)}"], cwd=source, env=env)
+    run(make + [f"-j{max(1, jobs)}"], cwd=source, env=env)
     busybox = source / "busybox"
     if not busybox.is_file():
         raise BuildError("BusyBox build did not produce busybox")
-    elf = subprocess.run([resolve_program("readelf"), "-l", str(busybox)], check=True, capture_output=True, text=True).stdout
+    elf = capture([resolve_program("readelf"), "-l", str(busybox)])
     if "Requesting program interpreter" in elf:
         raise BuildError("BusyBox is dynamically linked; fixed initramfs requires static userspace")
-    applets = set(subprocess.run([str(busybox), "--list"], check=True, capture_output=True, text=True).stdout.splitlines())
+    try:
+        applet_result = subprocess.run(
+            [str(busybox), "--list"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        raise BuildError(f"built BusyBox cannot enumerate applets (exit={exc.returncode}): {stderr}") from exc
+    applets = set(applet_result.stdout.splitlines())
     missing = sorted(REQUIRED_APPLETS - applets)
     if missing:
         raise BuildError(f"required BusyBox applets are missing: {missing}")
     rootfs = work_dir / "rootfs"
-    run(["make", f"CONFIG_PREFIX={rootfs}", "install"], cwd=source, env=env)
+    run(make + [f"CONFIG_PREFIX={rootfs}", "install"], cwd=source, env=env)
     for directory in ("dev", "proc", "sys", "run", "ordax", "tmp"):
         (rootfs / directory).mkdir(parents=True, exist_ok=True)
     shutil.copy2(init, rootfs / "init")
@@ -315,6 +353,8 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         "busybox_version": contract["busybox"]["version"],
         "busybox_archive_sha256": sha256_file(archive),
         "busybox_applet_count": len(applets),
+        "busybox_sha256": sha256_file(busybox),
+        "toolchain": toolchain,
         "root_init_sha256": sha256_file(init),
         "static_userspace": True,
         "network_inside_fixed_initramfs": False,
