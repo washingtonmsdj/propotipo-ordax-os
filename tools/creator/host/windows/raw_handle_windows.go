@@ -5,8 +5,11 @@ package windowsadapter
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"unsafe"
 )
+
+const genericReadPhysicalDrive uintptr = 0x80000000
 
 // queryOpenedPhysicalIdentity reads identity from an already-opened
 // PhysicalDrive handle. It is deliberately metadata-only: callers remain
@@ -99,6 +102,59 @@ func verifyOpenedPhysicalHandle(expected Target, handle uintptr) error {
 	}
 	if err := validateOpenedPhysicalIdentity(expected, actual); err != nil {
 		return fmt.Errorf("opened PhysicalDrive identity verification failed: %w", err)
+	}
+	return nil
+}
+
+// openVerifiedPhysicalDriveReadOnly opens the exact target with GENERIC_READ
+// only and validates identity from that same handle before returning it. This
+// is an intentionally non-destructive bridge toward the future native backend:
+// it never requests GENERIC_WRITE and never locks, dismounts or mutates media.
+func openVerifiedPhysicalDriveReadOnly(expected Target) (*os.File, error) {
+	if err := validateExpectedPhysicalTarget(expected); err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf(`\\.\PhysicalDrive%d`, expected.DiskNumber)
+	ptr, err := utf16Ptr(path)
+	if err != nil {
+		return nil, err
+	}
+	handle, _, callErr := procCreateFileW.Call(
+		uintptr(unsafe.Pointer(ptr)),
+		genericReadPhysicalDrive,
+		fileShareRead|fileShareWrite,
+		0,
+		openExisting,
+		0,
+		0,
+	)
+	if handle == ^uintptr(0) {
+		return nil, fmt.Errorf("open PhysicalDrive%d read-only: %v", expected.DiskNumber, callErr)
+	}
+
+	if err := verifyOpenedPhysicalHandle(expected, handle); err != nil {
+		procCloseHandle.Call(handle)
+		return nil, err
+	}
+
+	file := os.NewFile(handle, path)
+	if file == nil {
+		procCloseHandle.Call(handle)
+		return nil, fmt.Errorf("wrap verified PhysicalDrive%d read-only handle", expected.DiskNumber)
+	}
+	return file, nil
+}
+
+// verifyPhysicalDriveReadOnly performs a complete open/identity/close probe.
+// It is kept internal and is not connected to any public Creator apply command.
+func verifyPhysicalDriveReadOnly(expected Target) (retErr error) {
+	file, err := openVerifiedPhysicalDriveReadOnly(expected)
+	if err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close verified PhysicalDrive%d read-only handle: %w", expected.DiskNumber, err)
 	}
 	return nil
 }
