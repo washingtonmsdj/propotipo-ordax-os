@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -166,33 +168,27 @@ func validateManifest(m Manifest, expectedRepo string) error {
 	if !recipePattern.MatchString(m.CreatedFromCIRecipe) {
 		return errors.New("invalid created_from_ci_recipe")
 	}
-	if len(m.Artifacts) == 0 || len(m.Artifacts) > 128 {
-		return errors.New("release must contain between 1 and 128 artifacts")
+	if len(m.Artifacts) != 1 {
+		return errors.New("release-manifest/1 requires exactly one system.tar artifact")
 	}
-	seen := make(map[string]struct{}, len(m.Artifacts))
-	for _, a := range m.Artifacts {
-		if !namePattern.MatchString(a.Name) || a.Name == "release-manifest.json" {
-			return fmt.Errorf("unsafe artifact name: %q", a.Name)
-		}
-		if filepath.Base(a.Name) != a.Name || strings.ContainsAny(a.Name, `/\\`) {
-			return fmt.Errorf("artifact name must be a basename: %q", a.Name)
-		}
-		if _, ok := seen[a.Name]; ok {
-			return fmt.Errorf("duplicate artifact name: %q", a.Name)
-		}
-		seen[a.Name] = struct{}{}
-		if !rolePattern.MatchString(a.Role) {
-			return fmt.Errorf("invalid artifact role: %q", a.Role)
-		}
-		if !shaPattern.MatchString(a.SHA256) {
-			return fmt.Errorf("invalid artifact SHA-256 for %q", a.Name)
-		}
-		if a.Size <= 0 || a.Size > maxArtifact {
-			return fmt.Errorf("artifact size outside allowed range for %q", a.Name)
-		}
-		if err := validateHTTPSURL(a.URL); err != nil {
-			return fmt.Errorf("artifact %q: %w", a.Name, err)
-		}
+	a := m.Artifacts[0]
+	if a.Name != "system.tar" || a.Role != "system" {
+		return errors.New("release-manifest/1 artifact must be system.tar with role=system")
+	}
+	if !namePattern.MatchString(a.Name) || filepath.Base(a.Name) != a.Name || strings.ContainsAny(a.Name, `/\\`) {
+		return fmt.Errorf("unsafe artifact name: %q", a.Name)
+	}
+	if !rolePattern.MatchString(a.Role) {
+		return fmt.Errorf("invalid artifact role: %q", a.Role)
+	}
+	if !shaPattern.MatchString(a.SHA256) {
+		return fmt.Errorf("invalid artifact SHA-256 for %q", a.Name)
+	}
+	if a.Size <= 0 || a.Size > maxArtifact {
+		return fmt.Errorf("artifact size outside allowed range for %q", a.Name)
+	}
+	if err := validateHTTPSURL(a.URL); err != nil {
+		return fmt.Errorf("artifact %q: %w", a.Name, err)
 	}
 	return nil
 }
@@ -304,33 +300,260 @@ func downloadArtifact(client *http.Client, a Artifact, dst string) error {
 	return nil
 }
 
+func systemArchivePathName(header *tar.Header) (string, os.FileMode, error) {
+	name := strings.TrimSuffix(header.Name, "/")
+	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "\\") || pathpkg.Clean(name) != name {
+		return "", 0, fmt.Errorf("unsafe system archive path: %q", header.Name)
+	}
+	if name != "system" && !strings.HasPrefix(name, "system/") {
+		return "", 0, fmt.Errorf("system archive entry escapes system/: %q", header.Name)
+	}
+	mode := os.FileMode(header.Mode) & os.ModePerm
+	switch header.Typeflag {
+	case tar.TypeDir:
+		if mode != 0o755 {
+			return "", 0, fmt.Errorf("system archive directory mode must be 0755: %s", name)
+		}
+	case tar.TypeReg, tar.TypeRegA:
+		if name == "system" {
+			return "", 0, errors.New("system archive root must be a directory")
+		}
+		if mode != 0o644 && mode != 0o755 {
+			return "", 0, fmt.Errorf("system archive file mode must be 0644 or 0755: %s", name)
+		}
+		if header.Size < 0 || header.Size > maxArtifact {
+			return "", 0, fmt.Errorf("system archive entry size outside allowed range: %s", name)
+		}
+	default:
+		return "", 0, fmt.Errorf("system archive entry type is forbidden: %s", name)
+	}
+	return name, mode, nil
+}
+
+func extractSystemArchive(archivePath, releaseRoot string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	reader := tar.NewReader(file)
+	seen := map[string]bool{}
+	var total int64
+	entrypointSeen := false
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read system archive: %w", err)
+		}
+		name, mode, err := systemArchivePathName(header)
+		if err != nil {
+			return err
+		}
+		if seen[name] {
+			return fmt.Errorf("duplicate system archive path: %s", name)
+		}
+		seen[name] = true
+		target := filepath.Join(releaseRoot, filepath.FromSlash(name))
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := ensureDir(target, mode); err != nil {
+				return err
+			}
+			if err := os.Chmod(target, mode); err != nil {
+				return err
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			total += header.Size
+			if total > maxArtifact {
+				return errors.New("system archive extracted size exceeds allowed maximum")
+			}
+			if err := ensureDir(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			output, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+			if err != nil {
+				return err
+			}
+			n, copyErr := io.Copy(output, reader)
+			syncErr := output.Sync()
+			closeErr := output.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if syncErr != nil {
+				return syncErr
+			}
+			if closeErr != nil {
+				return closeErr
+			}
+			if n != header.Size {
+				return fmt.Errorf("system archive entry size mismatch: %s", name)
+			}
+			if name == "system/entrypoint" {
+				if mode != 0o755 || header.Size == 0 {
+					return errors.New("system/entrypoint must be a non-empty 0755 regular file")
+				}
+				entrypointSeen = true
+			}
+		}
+	}
+	if !entrypointSeen {
+		return errors.New("system archive does not contain executable system/entrypoint")
+	}
+	if err := syncDir(filepath.Join(releaseRoot, "system")); err != nil {
+		return err
+	}
+	return verifySystemArchiveAgainstTree(archivePath, releaseRoot)
+}
+
+func hashFile(path string) (string, int64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", 0, err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", 0, errors.New("path is not a regular non-symlink file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, file)
+	if err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)), n, nil
+}
+
+func verifySystemArchiveAgainstTree(archivePath, releaseRoot string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	reader := tar.NewReader(file)
+	expectedFiles := map[string]bool{}
+	expectedDirs := map[string]bool{"system": true}
+	entrypointSeen := false
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read system archive for verification: %w", err)
+		}
+		name, mode, err := systemArchivePathName(header)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(releaseRoot, filepath.FromSlash(name))
+		switch header.Typeflag {
+		case tar.TypeDir:
+			expectedDirs[name] = true
+			info, err := os.Lstat(target)
+			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != mode {
+				return fmt.Errorf("materialized system directory differs: %s", name)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			expectedFiles[name] = true
+			for parent := pathpkg.Dir(name); parent != "." && strings.HasPrefix(parent, "system"); parent = pathpkg.Dir(parent) {
+				expectedDirs[parent] = true
+				if parent == "system" {
+					break
+				}
+			}
+			expectedHash := sha256.New()
+			n, err := io.Copy(expectedHash, reader)
+			if err != nil || n != header.Size {
+				return fmt.Errorf("cannot hash archive entry %s", name)
+			}
+			actualHash, actualSize, err := hashFile(target)
+			if err != nil || actualSize != header.Size || actualHash != hex.EncodeToString(expectedHash.Sum(nil)) {
+				return fmt.Errorf("materialized system file differs: %s", name)
+			}
+			info, err := os.Lstat(target)
+			if err != nil || info.Mode().Perm() != mode {
+				return fmt.Errorf("materialized system file mode differs: %s", name)
+			}
+			if name == "system/entrypoint" {
+				if mode != 0o755 || header.Size == 0 {
+					return errors.New("materialized system/entrypoint is not bootable")
+				}
+				entrypointSeen = true
+			}
+		}
+	}
+	if !entrypointSeen {
+		return errors.New("materialized release lacks system/entrypoint")
+	}
+	systemRoot := filepath.Join(releaseRoot, "system")
+	return filepath.WalkDir(systemRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, err := filepath.Rel(releaseRoot, path)
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(relative)
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("materialized system contains symlink: %s", name)
+		}
+		if entry.IsDir() {
+			if !expectedDirs[name] {
+				return fmt.Errorf("materialized system contains unexpected directory: %s", name)
+			}
+			return nil
+		}
+		if !info.Mode().IsRegular() || !expectedFiles[name] {
+			return fmt.Errorf("materialized system contains unexpected file: %s", name)
+		}
+		return nil
+	})
+}
+
 func verifyExistingRelease(path string, m Manifest, payload []byte) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	allowed := map[string]bool{"artifacts": true, "release-manifest.json": true, "system": true}
+	for _, entry := range entries {
+		if !allowed[entry.Name()] {
+			return fmt.Errorf("existing release contains unexpected top-level entry: %s", entry.Name())
+		}
+	}
 	manifestPath := filepath.Join(path, "release-manifest.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil || !bytes.Equal(data, payload) {
 		return errors.New("existing release manifest differs from signed payload")
 	}
+	artifactRoot := filepath.Join(path, "artifacts")
+	artifactEntries, err := os.ReadDir(artifactRoot)
+	if err != nil || len(artifactEntries) != len(m.Artifacts) {
+		return errors.New("existing release artifact directory differs from signed manifest")
+	}
 	for _, a := range m.Artifacts {
-		p := filepath.Join(path, a.Name)
-		info, err := os.Lstat(p)
-		if err != nil || !info.Mode().IsRegular() || info.Size() != a.Size {
+		p := filepath.Join(artifactRoot, a.Name)
+		actualHash, actualSize, err := hashFile(p)
+		if err != nil || actualSize != a.Size {
 			return fmt.Errorf("existing artifact invalid: %s", a.Name)
 		}
-		f, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		h := sha256.New()
-		_, copyErr := io.Copy(h, f)
-		closeErr := f.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		if closeErr != nil {
-			return closeErr
-		}
-		if hex.EncodeToString(h.Sum(nil)) != a.SHA256 {
+		if actualHash != a.SHA256 {
 			return fmt.Errorf("existing artifact digest mismatch: %s", a.Name)
+		}
+		if err := verifySystemArchiveAgainstTree(p, path); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -436,13 +659,24 @@ func install(client *http.Client, envelopeURL, root string, trust TrustAnchor, k
 			_ = os.RemoveAll(stage)
 		}
 	}()
+	artifactRoot := filepath.Join(stage, "artifacts")
+	if err := os.Mkdir(artifactRoot, 0o755); err != nil {
+		return Receipt{}, err
+	}
 	for _, a := range manifest.Artifacts {
-		if err := downloadArtifact(client, a, filepath.Join(stage, a.Name)); err != nil {
+		archivePath := filepath.Join(artifactRoot, a.Name)
+		if err := downloadArtifact(client, a, archivePath); err != nil {
 			return Receipt{}, err
+		}
+		if err := extractSystemArchive(archivePath, stage); err != nil {
+			return Receipt{}, fmt.Errorf("materialize %s: %w", a.Name, err)
 		}
 	}
 	if err := writeSynced(filepath.Join(stage, "release-manifest.json"), payload, 0o644); err != nil {
 		return Receipt{}, err
+	}
+	if err := verifyExistingRelease(stage, manifest, payload); err != nil {
+		return Receipt{}, fmt.Errorf("verify staged release: %w", err)
 	}
 	if err := syncDir(stage); err != nil {
 		return Receipt{}, err
