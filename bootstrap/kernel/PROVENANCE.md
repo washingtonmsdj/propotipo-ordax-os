@@ -1,6 +1,6 @@
 # Kernel Provenance
 
-Status: CLEAN-ROOM BUILD ENTRYPOINT IMPLEMENTED / PINNED BUILD ENVIRONMENT PENDING
+Status: CLEAN-ROOM BUILD ENTRYPOINT IMPLEMENTED / PINNED REPEAT PROOF COMPLETE
 
 ## Canonical prototype source
 
@@ -15,6 +15,8 @@ OFFICIAL_SOURCE_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0
 BASE_CONFIG=defconfig
 ORDAX_FRAGMENT=bootstrap/kernel/config/ordax.fragment
 BUILD_ENTRYPOINT=bootstrap/kernel/build.py
+PINNED_ENVIRONMENT_RESOLVED=YES
+PHYSICAL_ARTIFACT_AUTHORIZED=NO
 ```
 
 The official 6.6.52 archive remains available from kernel.org. The repository build entrypoint downloads it when needed, verifies the pinned SHA-256 before extraction, builds only from a fresh isolated source tree, and never trusts a pre-extracted developer-machine kernel tree.
@@ -75,28 +77,60 @@ python bootstrap/kernel/build.py build
 
 No Codex execution is involved.
 
-## CI
+## Immutable build environment
 
-`.github/workflows/kernel-candidate.yml` runs the build directly from repository source.
-
-The current workflow uses an Ubuntu 24.04 GitHub runner and measured GCC 13 packages. This is enough for autonomous candidate builds, but is **not yet the final promotion environment** because its full container/toolchain identity has not been pinned to an immutable digest.
-
-Therefore current CI kernel output is intentionally labeled:
+The canonical environment contract is `docs/contracts/kernel-build-environment.json`.
 
 ```text
-status=candidate-unpinned-build-environment
-promotable_to_physical=false
+STATUS=pinned-repeat-proof-complete
+ARCHITECTURE=linux/amd64
+BASE_IMAGE=docker.io/library/ubuntu:24.04
+BASE_IMAGE_MANIFEST_DIGEST=sha256:a61567bd31828687156d735ea8eb01ba4e37636e225dd6a48ba94136a70d9d61
+APT_SNAPSHOT=20260910T000000Z
+EXACT_APT_PACKAGE_VERSIONS=17
+CA_BUNDLE_SHA256=9481fcd95f41b221f02f14d896535fe500bec539bc563c4cdca1acee483a8bdd
 ```
 
-A future source change will pin the immutable build environment, repeat the build, compare provenance and then allow the build-autonomy promotion gate to close.
+The image tag is informational only; the manifest digest is the immutable image identity. The build environment verifier requires exact architecture, snapshot, package set, package versions and CA-bundle digest before the build is accepted.
+
+## Repeat proof
+
+The first measured observation and the independent repeat build produced identical output digests:
+
+```text
+FIRST_OBSERVATION_SOURCE_COMMIT=6537ddc1a6947de6257f3111ca7ffad3ee9d574d
+REPEAT_PROOF_SOURCE_COMMIT=01a10ab7abb9c6f5985e4c4c6a807802b14b0f8d
+REPEAT_PROOF_WORKFLOW_RUN_ID=34982193218
+REPEAT_PROOF_RESULT=PASS
+KERNEL_CONFIG_SHA256=c83a86c2bf87a6f052c8485cfbdc36a1f904216cdc79b542205e3010d3392841
+KERNEL_MODULES_SHA256=0056f8bd6a1ea02b9aa0b0f35a30adc27060888b6ae6124804e96b6740de72f2
+VMLINUX_SHA256=e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1
+```
+
+Therefore the pinned build environment is no longer a blocker. The environment contract may mark the reproducible build output as promotable to the physical-media pipeline, but that is not the same as authorizing a physical artifact. `bootstrap/kernel/source.json` intentionally keeps `physical_artifact_authorized=false` until the independent physical-media gates are closed.
+
+## CI
+
+`.github/workflows/kernel-candidate.yml` runs the build directly from repository source. Repository-owned verifiers enforce the immutable environment contract and repeat-proof expectations rather than relying on workflow YAML alone.
+
+Current semantic split:
+
+```text
+PINNED_BUILD_ENVIRONMENT=PASS
+REPEAT_BUILD_DIGEST_MATCH=PASS
+BUILD_OUTPUT_ELIGIBLE_FOR_PHYSICAL_PIPELINE=YES
+PHYSICAL_KERNEL_AUTHORIZED=NO
+```
+
+This distinction is mandatory: reproducibility proves what bytes are built; it does not grant permission to mutate a physical USB device.
 
 ## Creator payload handoff
 
-A successful kernel CI candidate is an input to the deterministic Creator payload, not a direct physical-media source path.
+A successful kernel CI output is an input to the deterministic Creator payload, not a direct physical-media source path.
 
 ```text
-kernel CI candidate
- -> candidate SHA-256 + provenance
+kernel CI output
+ -> SHA-256 + provenance
  -> exact bzImage copied into Creator payload
  -> bundle-relative source_path pinned in media manifest
  -> Creator Core re-hashes local payload bytes
@@ -106,7 +140,7 @@ kernel CI candidate
 
 Workflow artifact IDs, runner paths and `out/` paths are provenance only. They must never appear as runtime `source_path` values in the canonical physical media contract.
 
-The payload assembler must preserve the exact candidate bytes. Rebuilding the kernel implicitly while assembling the payload is forbidden; rebuilds belong to the kernel candidate pipeline and must produce new provenance.
+The payload assembler must preserve the exact proven bytes. Rebuilding the kernel implicitly while assembling the payload is forbidden; rebuilds belong to the kernel candidate pipeline and must produce new provenance.
 
 ## Prototype decision
 
@@ -124,10 +158,9 @@ The known-good legacy bzImage digest is a comparison baseline, not a permanent b
 
 ## Remaining gates
 
-1. current clean-room CI kernel candidate succeeds and publishes provenance;
-2. inspect resolved `.config` and module closure;
-3. pin the build environment/toolchain by immutable identity;
-4. reproduce the build under that pinned environment;
-5. integrate the resulting kernel with the new minimal initramfs;
-6. prove boot in disposable media;
-7. only later authorize physical media use.
+1. resolve canonical Ed25519 release trust through the local key ceremony and pin only the public trust anchor;
+2. rerun the byte-complete bootstrap media proof using canonical public trust;
+3. keep `physical_artifact_authorized=false` until the physical-media owner explicitly promotes the exact artifact set;
+4. finish the native Windows raw-disk backend behind the already tested internal fail-closed orchestration;
+5. require explicit destructive authorization immediately before any future physical write;
+6. prove physical notebook boot, first release acquisition, known-good offline boot and recovery.
