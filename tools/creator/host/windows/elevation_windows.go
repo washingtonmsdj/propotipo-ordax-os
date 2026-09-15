@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	tokenQueryAccess       uintptr = 0x0008
+	tokenQueryAccess        uintptr = 0x0008
 	tokenElevationInfoClass uintptr = 20
 )
 
@@ -28,9 +28,9 @@ func decodeTokenElevation(value uint32, returned uint32) (bool, error) {
 }
 
 // currentProcessElevated reports whether the process token itself is elevated.
-// This intentionally does not test mere membership in the Administrators
-// group: under UAC an administrator can run with a limited token, which is not
-// sufficient for the future direct-volume/raw-disk boundary.
+// It is part of the explicitly tagged raw backend and intentionally does not
+// test mere Administrators-group membership: under UAC an administrator can run
+// with a limited token, which is insufficient for direct-volume/raw-disk work.
 func currentProcessElevated() (bool, error) {
 	process, _, _ := procGetCurrentProcess.Call()
 	if process == 0 {
