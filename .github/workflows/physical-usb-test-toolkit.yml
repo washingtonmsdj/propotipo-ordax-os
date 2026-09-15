@@ -1,16 +1,14 @@
-name: Physical USB Test Toolkit
+name: Physical USB Backend Safety
 
 on:
   push:
     branches: [main]
     paths:
       - 'tools/creator/**'
-      - 'tools/release-signing/**'
       - '.github/workflows/physical-usb-test-toolkit.yml'
   pull_request:
     paths:
       - 'tools/creator/**'
-      - 'tools/release-signing/**'
       - '.github/workflows/physical-usb-test-toolkit.yml'
   workflow_dispatch:
 
@@ -18,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  windows-physical-test-toolkit:
+  windows-physical-backend-safety:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -34,202 +32,68 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test Creator signer and tagged Windows raw backend
+      - name: Test Creator and tagged raw backend
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $ciTemp = Join-Path $PWD '.ci-windows-temp'
-          New-Item -ItemType Directory -Force -Path $ciTemp | Out-Null
-          $oldTemp = $env:TEMP
-          $oldTmp = $env:TMP
-          $env:TEMP = $ciTemp
-          $env:TMP = $ciTemp
+          Push-Location tools/creator
           try {
-            Push-Location tools/creator
-            try {
-              go test -count=1 ./...
-              go test -count=1 -tags ordax_raw_backend ./host/windows
-            } finally {
-              Pop-Location
-            }
-            Push-Location tools/release-signing
-            try {
-              go test -count=1 ./...
-            } finally {
-              Pop-Location
-            }
+            go test -count=1 ./...
+            go test -count=1 -tags ordax_raw_backend ./host/windows
           } finally {
-            $env:TEMP = $oldTemp
-            $env:TMP = $oldTmp
-            Remove-Item -LiteralPath $ciTemp -Force -Recurse -ErrorAction SilentlyContinue
+            Pop-Location
           }
 
-      - name: Build inspection-only physical test and signing executables
+      - name: Build unbound raw backend test executable
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
+          $out = Join-Path $PWD 'out/physical-backend-safety'
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           Push-Location tools/creator
           try {
             go build -trimpath -buildvcs=false -tags ordax_raw_backend `
               -ldflags='-s -w' `
-              -o ../../out/physical-usb-test-toolkit/ordax-creator-physical-test.exe `
+              -o ../../out/physical-backend-safety/ordax-creator-physical-test.exe `
               ./cmd/ordax-creator-physical-test
           } finally {
             Pop-Location
           }
-          Push-Location tools/release-signing
-          try {
-            go build -trimpath -buildvcs=false -ldflags='-s -w' `
-              -o ../../out/physical-usb-test-toolkit/ordax-release-signing.exe .
-          } finally {
-            Pop-Location
-          }
-          Copy-Item tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1')
-          Copy-Item tools/creator/windows/1-Inspect-OrdaXUSB.cmd (Join-Path $out '1-Inspect-OrdaXUSB.cmd')
-          Copy-Item tools/release-signing/windows/2-Initialize-OrdaXTrust.cmd (Join-Path $out '2-Initialize-OrdaXTrust.cmd')
 
-      - name: Prove unresolved build cannot prepare or apply
+      - name: Prove unbound backend remains fail closed
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $exe = Join-Path $out 'ordax-creator-physical-test.exe'
-          $statusPath = Join-Path $out 'status.json'
-          & $exe status | Set-Content -Encoding utf8 $statusPath
-          $status = Get-Content -Raw $statusPath | ConvertFrom-Json
-          if (-not $status.raw_backend_linked) { throw 'raw backend was not linked' }
-          if ($status.build.ready) { throw 'unbound inspection build unexpectedly reports ready' }
-          if ($status.build.physical_write_authorized) { throw 'inspection build unexpectedly reports physical authorization' }
+          $exe = Join-Path $PWD 'out/physical-backend-safety/ordax-creator-physical-test.exe'
+          $status = & $exe status | ConvertFrom-Json
+          if ($status.raw_backend_linked -ne $true) { throw 'tagged raw backend is not linked' }
+          if ($status.build.ready -ne $false) { throw 'unbound backend unexpectedly reports ready' }
+          if ($status.build.physical_write_authorized -ne $false) { throw 'unbound backend unexpectedly authorizes physical write' }
 
           $prepareOutput = & $exe prepare --confirm ('0' * 64) --seed missing.raw --out missing-out.raw 2>&1
           if ($LASTEXITCODE -eq 0) { throw 'unbound prepare unexpectedly succeeded' }
-          if (($prepareOutput -join "`n") -notmatch 'inspection-only') { throw 'prepare did not fail closed on missing build binding' }
+          if (($prepareOutput -join "`n") -notmatch 'inspection-only') { throw 'prepare did not fail closed' }
 
           $applyOutput = & $exe apply --confirm ('0' * 64) --image missing.raw --sha256 ('0' * 64) --size 512 --authorize ('0' * 64) 2>&1
           if ($LASTEXITCODE -eq 0) { throw 'unbound apply unexpectedly succeeded' }
-          if (($applyOutput -join "`n") -notmatch 'inspection-only') { throw 'apply did not fail closed on missing build binding' }
+          if (($applyOutput -join "`n") -notmatch 'inspection-only') { throw 'apply did not fail closed' }
           $global:LASTEXITCODE = 0
 
-      - name: Smoke test double-click trust ceremony on real Windows user profile path
+          Write-Host 'RAW_BACKEND_INTERNAL_CI=PASS'
+          Write-Host 'RAW_BACKEND_READY=NO'
+          Write-Host 'PHYSICAL_WRITE_AUTHORIZED=NO'
+          Write-Host 'END_USER_TOOLKIT_PUBLISHED=NO'
+          Write-Host 'PUBLISHER_SIGNING_TOOL_IN_CONSUMER_ARTIFACT=NO'
+
+      - name: Ensure no end-user toolkit is emitted
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $toolkit = Join-Path $PWD '.ci-trust-toolkit'
-          $privateRoot = Join-Path $env:USERPROFILE 'OrdaX-Private'
-          $private = Join-Path $privateRoot 'release-signing\ordax-release-private.pem'
-          New-Item -ItemType Directory -Force -Path $toolkit | Out-Null
-          if (Test-Path -LiteralPath $privateRoot) {
-            throw "unexpected pre-existing CI private root: $privateRoot"
+          if (Test-Path -LiteralPath 'out/physical-usb-test-toolkit') {
+            throw 'legacy end-user physical toolkit was unexpectedly recreated'
           }
-          Copy-Item (Join-Path $out 'ordax-release-signing.exe') (Join-Path $toolkit 'ordax-release-signing.exe')
-          Copy-Item (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1') (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
-          try {
-            & (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
-            $review = Join-Path $toolkit 'trust-review'
-            if (-not (Test-Path -LiteralPath $private -PathType Leaf)) { throw 'default ceremony did not create private key in USERPROFILE' }
-            $result = Get-Content -Raw (Join-Path $review 'ceremony-result.json') | ConvertFrom-Json
-            if ($result.key_id -ne 'ordax-prototype-release-v1') { throw 'unexpected ceremony key id' }
-            if (-not $result.independent_derivation_byte_equal) { throw 'independent trust derivation did not match' }
-            if (-not $result.proof_signature_created) { throw 'proof signature was not created' }
-            if ($result.ready_to_pin_public_anchor) { throw 'ceremony must remain blocked until offline backup' }
-            if ([IO.Path]::GetFullPath([string]$result.private_key_location) -ne [IO.Path]::GetFullPath($private)) { throw 'ceremony used unexpected private-key path' }
-          } finally {
-            Remove-Item -LiteralPath $toolkit -Force -Recurse -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $privateRoot -Force -Recurse -ErrorAction SilentlyContinue
-          }
-          if (Test-Path -LiteralPath $toolkit) { throw 'disposable CI toolkit was not destroyed' }
-          if (Test-Path -LiteralPath $privateRoot) { throw 'disposable CI private storage was not destroyed' }
-          Write-Host 'CI_TRUST_USERPROFILE_DOUBLE_CLICK_SMOKE_TEST=PASS'
-          Write-Host 'CI_PRIVATE_KEY_DESTROYED=YES'
-          Write-Host 'CI_KEY_CANONICAL=NO'
-
-      - name: Emit hashes provenance and usage
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $files = @(
-            'ordax-creator-physical-test.exe',
-            'ordax-release-signing.exe',
-            'Initialize-OrdaXReleaseTrust.ps1',
-            '1-Inspect-OrdaXUSB.cmd',
-            '2-Initialize-OrdaXTrust.cmd'
-          )
-          $hashes = [ordered]@{}
-          $sumLines = @()
-          foreach ($name in $files) {
-            $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $out $name)).Hash.ToLowerInvariant()
-            $hashes[$name] = $hash
-            $sumLines += "$hash  $name"
-          }
-          $sumLines | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
-          @"
-          OrdaX physical USB test toolkit
-
-          PRIORITY: first real USB and notebook boot proof.
-
-          FIRST SAFE TEST - double click:
-            1-Inspect-OrdaXUSB.cmd
-
-          CANONICAL TRUST - double click only when ready to create the key:
-            2-Initialize-OrdaXTrust.cmd
-
-          The inspection step NEVER writes or formats a disk.
-
-          The trust ceremony creates the private Ed25519 key under the user's
-          direct profile path at OrdaX-Private/release-signing, OUTSIDE this
-          toolkit. Never upload or commit the PEM. Before the public anchor can
-          be pinned, create and verify at least one encrypted offline recovery copy.
-
-          prepare/apply are compiled but fail closed until a later physical-test build is bound to:
-          - canonical Ed25519 public trust SHA-256
-          - authorized canonical manifest SHA-256 with physical write allowed
-          - authorized canonical seed RAW SHA-256 and size
-          - exact source commit
-
-          No physical write is authorized by this inspection artifact.
-          "@ | Set-Content -Encoding utf8 (Join-Path $out 'README.txt')
-          $provenance = [ordered]@{
-            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/5'
-            status = 'inspection-only'
-            source_commit = '${{ github.sha }}'
-            raw_backend_linked = $true
-            canonical_trust_bound = $false
-            canonical_manifest_bound = $false
-            seed_image_bound = $false
-            prepare_enabled = $false
-            physical_apply_enabled = $false
-            double_click_usb_inspection = $true
-            double_click_trust_ceremony = $true
-            trust_ceremony_script_included = $true
-            trust_ceremony_ci_smoke_test = 'PASS'
-            trust_private_storage = 'USERPROFILE/OrdaX-Private/release-signing'
-            ci_key_canonical = $false
-            private_key_in_artifact = $false
-            components = [ordered]@{
-              physical_test = [ordered]@{ name = 'ordax-creator-physical-test.exe'; sha256 = $hashes['ordax-creator-physical-test.exe'] }
-              release_signer = [ordered]@{ name = 'ordax-release-signing.exe'; sha256 = $hashes['ordax-release-signing.exe'] }
-              trust_ceremony = [ordered]@{ name = 'Initialize-OrdaXReleaseTrust.ps1'; sha256 = $hashes['Initialize-OrdaXReleaseTrust.ps1'] }
-              inspect_launcher = [ordered]@{ name = '1-Inspect-OrdaXUSB.cmd'; sha256 = $hashes['1-Inspect-OrdaXUSB.cmd'] }
-              trust_launcher = [ordered]@{ name = '2-Initialize-OrdaXTrust.cmd'; sha256 = $hashes['2-Initialize-OrdaXTrust.cmd'] }
-            }
-          }
-          $provenance | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $out 'provenance.json')
-          $secret = Get-ChildItem -LiteralPath $out -Recurse -File | Where-Object { $_.Extension -in '.pem', '.key', '.p12', '.pfx' } | Select-Object -First 1
-          if ($null -ne $secret) { throw "secret material unexpectedly entered artifact: $($secret.FullName)" }
-
-      - name: Upload physical USB test toolkit
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: ordax-physical-usb-test-toolkit-${{ github.sha }}
-          path: out/physical-usb-test-toolkit/
-          if-no-files-found: error
-          retention-days: 14
+          Write-Host 'LEGACY_PHYSICAL_USB_TOOLKIT=RETIRED'
