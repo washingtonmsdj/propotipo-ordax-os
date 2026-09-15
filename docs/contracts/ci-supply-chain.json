@@ -45,7 +45,8 @@
     "explicit_permissions_required": true,
     "write_all_allowed": false,
     "pull_request_target_allowed": false,
-    "external_reusable_workflow_requires_same_sha_policy": true
+    "external_reusable_workflow_requires_same_sha_policy": true,
+    "checkout_persist_credentials_allowed": false
   },
   "evolution": {
     "new_external_action_requires_explicit_contract_entry": true,

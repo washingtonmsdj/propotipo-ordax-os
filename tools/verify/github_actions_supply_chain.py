@@ -13,6 +13,7 @@ CONTRACT_PATH = ROOT / "docs" / "contracts" / "ci-supply-chain.json"
 USES_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)(?:\s+#.*)?$")
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 DOCKER_DIGEST_RE = re.compile(r"^docker://.+@sha256:[0-9a-f]{64}$")
+CHECKOUT_ACTION = "actions/checkout"
 
 
 def workflow_files(root: Path, contract: dict) -> list[Path]:
@@ -37,6 +38,31 @@ def approved_refs(contract: dict) -> set[tuple[str, str]]:
     }
 
 
+def checkout_disables_persisted_credentials(lines: list[str], uses_index: int) -> bool:
+    uses_line = lines[uses_index]
+    uses_indent = len(uses_line) - len(uses_line.lstrip())
+    in_with = False
+
+    for line in lines[uses_index + 1 :]:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent < uses_indent:
+            break
+        if indent == uses_indent:
+            if stripped == "with:":
+                in_with = True
+                continue
+            if in_with:
+                break
+            continue
+        if in_with and stripped.startswith("persist-credentials:"):
+            value = stripped.split(":", 1)[1].strip().strip("'\"").lower()
+            return value == "false"
+    return False
+
+
 def find_violations(root: Path, contract: dict) -> list[str]:
     violations: list[str] = []
     approved = approved_refs(contract)
@@ -59,12 +85,12 @@ def find_violations(root: Path, contract: dict) -> list[str]:
             ):
                 violations.append(f"{rel}: pull_request_target is forbidden by default")
 
-        for lineno, line in enumerate(lines, start=1):
+        for index, line in enumerate(lines):
             match = USES_RE.match(line)
             if not match:
                 continue
             value = match.group(1)
-            location = f"{rel}:{lineno}"
+            location = f"{rel}:{index + 1}"
 
             if value.startswith("./"):
                 if not contract["external_actions"]["local_repository_action_allowed"]:
@@ -87,6 +113,15 @@ def find_violations(root: Path, contract: dict) -> list[str]:
 
             if not contract["external_actions"]["unknown_external_action_allowed"] and (source, ref) not in approved:
                 violations.append(f"{location}: external action/ref is not approved: {value}")
+
+            if (
+                source == CHECKOUT_ACTION
+                and not policy["checkout_persist_credentials_allowed"]
+                and not checkout_disables_persisted_credentials(lines, index)
+            ):
+                violations.append(
+                    f"{location}: actions/checkout must set persist-credentials: false"
+                )
 
     return violations
 

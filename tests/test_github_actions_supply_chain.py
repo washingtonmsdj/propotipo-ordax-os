@@ -22,13 +22,20 @@ class GithubActionsSupplyChainTests(unittest.TestCase):
         path.write_text(body, encoding="utf-8")
         return path
 
-    def base(self, uses_line: str, trigger: str = "push:") -> str:
+    def base(self, uses_line: str, trigger: str = "push:", persist_credentials: str | None = "false") -> str:
+        checkout_with = ""
+        if uses_line.startswith("actions/checkout@") and persist_credentials is not None:
+            checkout_with = (
+                "        with:\n"
+                f"          persist-credentials: {persist_credentials}\n"
+            )
         return (
             "name: test\n"
             f"on:\n  {trigger}\n"
             "permissions:\n  contents: read\n"
             "jobs:\n  test:\n    runs-on: ubuntu-24.04\n    steps:\n"
             f"      - uses: {uses_line}\n"
+            f"{checkout_with}"
         )
 
     def test_current_repository_has_no_supply_chain_violations(self):
@@ -56,6 +63,32 @@ class GithubActionsSupplyChainTests(unittest.TestCase):
                 self.base("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"),
             )
             self.assertEqual(MODULE.find_violations(root, CONTRACT), [])
+
+    def test_checkout_missing_persist_credentials_false_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.seed(
+                root,
+                self.base(
+                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+                    persist_credentials=None,
+                ),
+            )
+            violations = MODULE.find_violations(root, CONTRACT)
+            self.assertTrue(any("persist-credentials: false" in item for item in violations))
+
+    def test_checkout_persist_credentials_true_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.seed(
+                root,
+                self.base(
+                    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+                    persist_credentials="true",
+                ),
+            )
+            violations = MODULE.find_violations(root, CONTRACT)
+            self.assertTrue(any("persist-credentials: false" in item for item in violations))
 
     def test_local_repository_action_is_allowed(self):
         with tempfile.TemporaryDirectory() as tmp:
