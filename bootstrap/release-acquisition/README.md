@@ -87,6 +87,25 @@ The CI pins Go 1.27.1, runs the protocol regression suite, builds with `CGO_ENAB
 
 No candidate is automatically authorized for physical USB use.
 
+## Creator payload boundary
+
+The CI output is a candidate input to the OrdaX Creator payload; it is never a direct permission to write physical media.
+
+The payload assembler copies the exact verified `ordax-release-agent` bytes into its bundle-relative release-agent location. The canonical media manifest then pins the SHA-256 of those copied bytes. Before a future physical `apply`, Creator Core hashes the assembled local file again and rejects any mismatch, traversal, symlink substitution or missing file.
+
+```text
+release-agent CI candidate
+ -> verified candidate SHA-256 + provenance
+ -> deterministic Creator payload
+ -> bundle-relative source_path
+ -> Creator Core local SHA-256 recheck
+ -> disposable media proof
+ -> explicit destructive authorization
+ -> physical write
+```
+
+Temporary CI runner paths and workflow artifact IDs are evidence/provenance only; they are never runtime `source_path` values in the physical media contract.
+
 ## CLI
 
 Verify a downloaded envelope without installing it:
