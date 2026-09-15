@@ -1,0 +1,88 @@
+name: Release Manifest Tooling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/release-manifest/**'
+      - 'docs/RELEASE-MANIFEST.md'
+      - '.github/workflows/release-manifest.yml'
+  pull_request:
+    paths:
+      - 'tools/release-manifest/**'
+      - 'docs/RELEASE-MANIFEST.md'
+      - '.github/workflows/release-manifest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  release-manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test manifest generation policy
+        working-directory: tools/release-manifest
+        run: go test -count=1 ./...
+
+      - name: Build Linux and Windows tooling
+        run: |
+          set -euo pipefail
+          mkdir -p out/release-manifest
+          (
+            cd tools/release-manifest
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-manifest/ordax-release-manifest-linux-amd64 .
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-manifest/ordax-release-manifest-windows-amd64.exe .
+          )
+
+      - name: Prove manifest pins exact system tar
+        run: |
+          set -euo pipefail
+          tool="$PWD/out/release-manifest/ordax-release-manifest-linux-amd64"
+          work="$RUNNER_TEMP/release-manifest-proof"
+          mkdir -p "$work"
+          printf 'ci-system-tar\n' > "$work/system.tar"
+          "$tool" \
+            --artifact "$work/system.tar" \
+            --source-commit 0123456789abcdef0123456789abcdef01234567 \
+            --artifact-url https://example.invalid/system.tar \
+            --out "$work/release-manifest.json" | tee "$work/output.txt"
+          python - "$work/release-manifest.json" "$work/system.tar" <<'PY'
+          import hashlib, json, pathlib, sys
+          manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          payload = pathlib.Path(sys.argv[2]).read_bytes()
+          artifact = manifest['artifacts'][0]
+          assert manifest['source_commit'] == '0123456789abcdef0123456789abcdef01234567'
+          assert manifest['release_id'] == manifest['source_commit']
+          assert artifact['name'] == 'system.tar'
+          assert artifact['role'] == 'system'
+          assert artifact['size'] == len(payload)
+          assert artifact['sha256'] == hashlib.sha256(payload).hexdigest()
+          print('RELEASE_MANIFEST_IDENTITY=PASS')
+          PY
+          echo 'RELEASE_SIGNED=NO'
+          echo 'RELEASE_PUBLISHED=NO'
+          echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
+
+      - name: Upload public tooling candidates only
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-manifest-tooling-${{ github.sha }}
+          path: |
+            out/release-manifest/ordax-release-manifest-linux-amd64
+            out/release-manifest/ordax-release-manifest-windows-amd64.exe
+          if-no-files-found: error
+          retention-days: 14
