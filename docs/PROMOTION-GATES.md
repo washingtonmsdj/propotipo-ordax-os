@@ -129,24 +129,28 @@ WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
 TARGET_CONFIRMATION_TOKEN=PASS
 TARGET_IDENTITY_RECOMPUTED_AT_CONFIRMATION=PASS
 TARGET_REENUMERATION=PASS
-BLOCKED_RAW_DISK_PLAN=PASS
+BLOCKED_RAW_DISK_PLAN=PASS_SCHEMA_V2
 INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
 RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
-INTERNAL_TARGET_VOLUME_LEASE=PASS_FAKE_BACKEND_ONLY
+INTERNAL_TARGET_VOLUME_LEASE=PASS
 WINDOWS_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
 WINDOWS_VOLUME_EXTENT_INVENTORY=PASS
 WINDOWS_TARGET_VOLUME_ISOLATION=PASS
-WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_UNWIRED
-WINDOWS_VOLUME_LOCK_DISMOUNT_CONNECTED=NO
+WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS
+WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE=PASS_UNBOUND
+WINDOWS_PROCESS_ELEVATION_PROBE=PASS
+WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_UNBOUND
 WINDOWS_NATIVE_HOST_TESTS=PASS
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
-WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE=NO
-PHYSICAL_WRITE_IMPLEMENTED=NO
+CREATOR_PUBLIC_PHYSICAL_APPLY=NO
+PHYSICAL_WRITE_AUTHORIZED=NO
 ```
 
-The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Target confirmation recomputes the token from the current identity instead of trusting a stored token. The Windows adapter can open the selected `PhysicalDrive` with `GENERIC_READ` only, verify identity from that exact handle, enumerate all volume GUIDs touching the disk through physical disk extents and reject cross-disk/spanned ownership.
+The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Target confirmation recomputes the token from the current identity instead of trusting a stored token. The Windows adapter re-proves target identity on exact raw-device handles, maps every Windows volume through physical extents and rejects cross-disk/spanned ownership.
 
-The internal raw writer now requires a target-volume lease before opening a fake physical device and holds the lease through full write, flush, read-back verification and device close. The native Win32 adapter implements but does not connect direct-volume primitives for `FSCTL_LOCK_VOLUME`, same-handle extent verification, `FSCTL_DISMOUNT_VOLUME` and unlock/close. Host-neutral policy requires all target volumes to be locked, rechecks the global volume-name set for newly appearing target volumes, and re-proves extent identity after dismount. These guard paths compile and test on native Windows CI without accessing a real target. No production raw-disk runtime, writable `PhysicalDrive` handle or public apply command is connected in this gate.
+The internal writer requires an exact managed target-volume lease before device open and holds it through write, flush, full read-back verification and device close. Native Win32 code implements volume lock/dismount, same-handle extent verification, a lease-bound writable `PhysicalDrive` open, same-handle disk identity verification and current-process token elevation detection. Those parts are assembled in an unexported `windowsRawDiskRuntimeUnbound` and pass native Windows CI.
+
+This gate intentionally stops before public reachability. `ordax-creator` exposes only `check`, `verify-payload`, `stage-tree` and `plan`; CI fails if `apply`, `write`, `flash` or direct unbound-runtime markers appear in that command owner. Candidate provenance therefore records `native_windows_raw_disk_backend_source_implemented=true` while keeping `native_windows_raw_disk_backend_publicly_reachable=false`, `public_physical_apply_implemented=false` and `physical_write_authorized=false`.
 
 ## Gate 6 - Physical USB reprovisioning
 
@@ -157,24 +161,25 @@ Before write:
 ```text
 TARGET_IDENTITY=PASS
 TARGET_REENUMERATION_IMMEDIATELY_BEFORE_WRITE=REQUIRED
-TARGET_HANDLE_IDENTITY_PROOF=PASS_READ_ONLY
-TARGET_VOLUME_EXTENT_INVENTORY=PASS_READ_ONLY
+TARGET_HANDLE_IDENTITY_PROOF=PASS
+TARGET_VOLUME_EXTENT_INVENTORY=PASS
 TARGET_VOLUME_ISOLATION=PASS
-TARGET_VOLUME_LEASE_POLICY=PASS_FAKE_BACKEND_ONLY
-TARGET_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_UNWIRED
-TARGET_VOLUME_LOCK_DISMOUNT_CONNECTED=NO
-WRITABLE_PHYSICALDRIVE_HANDLE=NO
+TARGET_VOLUME_LEASE_POLICY=PASS
+TARGET_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS
+WRITABLE_PHYSICALDRIVE_HANDLE=PASS_UNBOUND
+PROCESS_ELEVATION_PROBE=PASS
+NATIVE_WINDOWS_RAW_DISK_BACKEND=PASS_UNBOUND
+PUBLIC_PHYSICAL_APPLY=NO
 SOURCE_LAYOUT_CONTRACT=PASS
 MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PENDING_CANONICAL_TRUST
 RELEASE_TRUST=PENDING_CANONICAL_KEY
 PINNED_BOOT_BUILD_ENVIRONMENT=PASS
 DISPOSABLE_LAYOUT_TEST=PASS
 FULL_BOOTSTRAP_BYTE_COMPLETE_PROOF=PENDING_WORKFLOW_RESULT
-CREATOR_INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
-CREATOR_NATIVE_WINDOWS_RAW_DISK_BACKEND=NO
-CREATOR_PUBLIC_PHYSICAL_APPLY=NO
 DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=NO
 ```
+
+`PASS_UNBOUND` is not an authorization state. It means the implementation exists in source behind internal-only boundaries but the public Creator cannot reach it. No physical-media mutation is permitted until canonical release trust is pinned, the byte-complete canonical-trust media proof passes, a deliberate public apply boundary is implemented and the user explicitly authorizes the exact target operation.
 
 After a future authorized write:
 
@@ -289,4 +294,4 @@ Only if Remote Core or another remote-management feature is later adopted as a s
 
 ## Promotion decision
 
-Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate. In particular, no physical write is permitted while canonical release trust, the connected native raw-disk backend/public apply path, physical artifact authorization or explicit destructive authorization remain open.
+Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate. In particular, the existence of an unbound native raw-disk backend does not authorize physical mutation. No physical write is permitted while canonical release trust, canonical-trust media proof, public apply reachability, physical artifact authorization or explicit destructive authorization remain open.
