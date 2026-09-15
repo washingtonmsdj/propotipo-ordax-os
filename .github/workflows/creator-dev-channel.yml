@@ -1,0 +1,192 @@
+name: Creator Development Update Channel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/creator/**'
+      - 'tools/release-signing/main.go'
+      - 'tools/release-signing/windows/**'
+      - '.github/workflows/creator-dev-channel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish-creator-dev:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator update core and physical inspection build
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $ciTemp = Join-Path $PWD '.ci-creator-dev-temp'
+          New-Item -ItemType Directory -Force -Path $ciTemp | Out-Null
+          $oldTemp = $env:TEMP
+          $oldTmp = $env:TMP
+          $env:TEMP = $ciTemp
+          $env:TMP = $ciTemp
+          try {
+            Push-Location tools/creator
+            try {
+              go test -count=1 ./...
+              go test -count=1 -tags ordax_raw_backend ./host/windows
+            } finally {
+              Pop-Location
+            }
+            Push-Location tools/release-signing
+            try {
+              go test -count=1 ./...
+            } finally {
+              Pop-Location
+            }
+          } finally {
+            $env:TEMP = $oldTemp
+            $env:TMP = $oldTmp
+            Remove-Item -LiteralPath $ciTemp -Force -Recurse -ErrorAction SilentlyContinue
+          }
+
+      - name: Build stable bootstrap and development payload
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $PWD 'out/creator-dev-release'
+          $payload = Join-Path $PWD 'out/creator-dev-payload'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          New-Item -ItemType Directory -Force -Path $payload | Out-Null
+
+          Push-Location tools/creator
+          try {
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/creator-dev-release/OrdaX-Creator.exe `
+              ./cmd/ordax-creator-bootstrap
+            go build -trimpath -buildvcs=false -tags ordax_raw_backend `
+              -ldflags='-s -w' `
+              -o ../../out/creator-dev-payload/ordax-creator-physical-test.exe `
+              ./cmd/ordax-creator-physical-test
+          } finally {
+            Pop-Location
+          }
+
+          Push-Location tools/release-signing
+          try {
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/creator-dev-payload/ordax-release-signing.exe .
+          } finally {
+            Pop-Location
+          }
+
+          Copy-Item tools/creator/windows/1-Inspect-OrdaXUSB.cmd (Join-Path $payload '1-Inspect-OrdaXUSB.cmd')
+          Copy-Item tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 (Join-Path $payload 'Initialize-OrdaXReleaseTrust.ps1')
+          Copy-Item tools/release-signing/windows/2-Initialize-OrdaXTrust.cmd (Join-Path $payload '2-Initialize-OrdaXTrust.cmd')
+
+          @"
+          OrdaX Creator - development update payload
+
+          This rolling development channel is for iteration and hardware inspection.
+          It may update automatically from GitHub.
+
+          PHYSICAL WRITE: BLOCKED.
+          The included physical-test executable is deliberately unbound and cannot
+          prepare or apply a physical image until canonical trust + manifest + seed
+          bindings are approved in a separate physical-test build.
+          "@ | Set-Content -Encoding utf8 (Join-Path $payload 'README.txt')
+
+          $zip = Join-Path $release 'ordax-creator-dev-windows-amd64.zip'
+          Compress-Archive -Path (Join-Path $payload '*') -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $zip).Length
+          $sha = '${{ github.sha }}'
+          $version = 'dev-' + $sha.Substring(0, 12)
+          $manifest = [ordered]@{
+            '$schema' = 'prototype-ordax.creator-update-channel/1'
+            channel = 'development'
+            version = $version
+            source_commit = $sha
+            payload = [ordered]@{
+              url = 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/ordax-creator-dev-windows-amd64.zip'
+              sha256 = $hash
+              size = $size
+            }
+            entrypoints = [ordered]@{
+              inspect = '1-Inspect-OrdaXUSB.cmd'
+              trust = '2-Initialize-OrdaXTrust.cmd'
+              status = 'ordax-creator-physical-test.exe'
+            }
+          }
+          $utf8NoBom = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText((Join-Path $release 'creator-dev-manifest.json'), (($manifest | ConvertTo-Json -Depth 6) + "`n"), $utf8NoBom)
+
+          $bootstrapHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $release 'OrdaX-Creator.exe')).Hash.ToLowerInvariant()
+          @(
+            "$bootstrapHash  OrdaX-Creator.exe",
+            "$hash  ordax-creator-dev-windows-amd64.zip"
+          ) | Set-Content -Encoding ascii (Join-Path $release 'SHA256SUMS')
+
+      - name: Prove bootstrap starts fail-closed before channel publication
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $PWD 'out/creator-dev-release/OrdaX-Creator.exe'
+          $version = & $exe version
+          if ($LASTEXITCODE -ne 0) { throw 'bootstrap version command failed' }
+          if (($version -join "`n") -notmatch 'ORDAX_CREATOR_BOOTSTRAP_VERSION=1') { throw 'unexpected bootstrap version output' }
+          if (($version -join "`n") -notmatch 'INSTALLED_VERSION=NONE') { throw 'CI bootstrap unexpectedly found an installed Creator' }
+          Write-Host 'CREATOR_BOOTSTRAP_COLD_START=PASS'
+          Write-Host 'DEVELOPMENT_CHANNEL_PHYSICAL_WRITE=BLOCKED'
+
+      - name: Publish rolling creator-dev release with manifest last
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $release = Join-Path $PWD 'out/creator-dev-release'
+          gh release view creator-dev --repo washingtonmsdj/prototipo-ordax-os *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $global:LASTEXITCODE = 0
+            gh release create creator-dev `
+              --repo washingtonmsdj/prototipo-ordax-os `
+              --target '${{ github.sha }}' `
+              --title 'OrdaX Creator Development Channel' `
+              --prerelease `
+              --notes 'Rolling development channel for the self-updating OrdaX Creator. Physical write remains blocked unless a separately bound canonical build authorizes it.'
+            if ($LASTEXITCODE -ne 0) { throw 'failed to create creator-dev release' }
+          }
+
+          gh release upload creator-dev `
+            (Join-Path $release 'OrdaX-Creator.exe') `
+            (Join-Path $release 'ordax-creator-dev-windows-amd64.zip') `
+            (Join-Path $release 'SHA256SUMS') `
+            --repo washingtonmsdj/prototipo-ordax-os `
+            --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'failed to upload Creator payload/bootstrap' }
+
+          # Publish the manifest LAST: it is the atomic pointer the bootstrap follows.
+          gh release upload creator-dev `
+            (Join-Path $release 'creator-dev-manifest.json') `
+            --repo washingtonmsdj/prototipo-ordax-os `
+            --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'failed to publish Creator update manifest' }
+
+          Write-Host 'CREATOR_DEV_CHANNEL_PUBLISHED=YES'
+          Write-Host 'CREATOR_DEV_MANIFEST_PUBLISHED_LAST=YES'
+          Write-Host 'CREATOR_DEV_CHANNEL_CAN_AUTHORIZE_PHYSICAL_WRITE=NO'
