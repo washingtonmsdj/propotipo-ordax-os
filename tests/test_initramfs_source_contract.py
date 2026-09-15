@@ -24,9 +24,34 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertEqual(CONTRACT["main_partition_label"], "ORDAX")
         self.assertEqual(CONTRACT["bootstrap_entrypoint"], "/ordax/bootstrap/entrypoint")
 
+    def test_storage_growth_contract_is_explicit_and_recovery_stays_read_only(self):
+        growth = CONTRACT["storage_growth"]
+        self.assertEqual(growth["normal_boot"], "online-ext4-grow-only")
+        self.assertEqual(growth["helper_source"], "bootstrap/initramfs/grow_ext4.c")
+        self.assertEqual(growth["helper_runtime_path"], "/sbin/ordax-grow-ext4")
+        self.assertEqual(growth["target"], "largest-valid-ext4-size-within-ORDAX-block-device")
+        self.assertTrue(growth["exact_mounted_block_device_required"])
+        self.assertTrue(growth["read_write_mount_required"])
+        self.assertFalse(growth["bigalloc_supported"])
+        self.assertEqual(growth["failure_policy"], "warn-and-continue")
+        self.assertEqual(growth["runtime_proof"], "bootstrap/initramfs/prove_ext4_growth.sh")
+        self.assertEqual(growth["runtime_oracle"], "upstream-resize2fs-on-disposable-twin-media")
+        self.assertFalse(growth["physical_write_authorized"])
+
+        recovery = CONTRACT["recovery"]
+        self.assertEqual(recovery["main_partition_mount"], "read-only")
+        self.assertFalse(recovery["filesystem_growth"])
+        self.assertFalse(recovery["network_started"])
+
     def test_pid1_understands_only_new_storage_handoff(self):
         self.assertIn("findfs LABEL=ORDAX", INIT)
+        self.assertIn("mount -t ext4 -o ro \"$ORDAX_DEVICE\" /ordax", INIT)
+        self.assertIn("mount -t ext4 -o rw \"$ORDAX_DEVICE\" /ordax", INIT)
+        self.assertIn('/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax', INIT)
         self.assertIn("/ordax/bootstrap/entrypoint", INIT)
+        recovery_pos = INIT.index('if [ "$RECOVERY_MODE" -eq 1 ]')
+        grow_pos = INIT.index('/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax')
+        self.assertLess(recovery_pos, grow_pos)
         for forbidden in ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden.lower(), INIT.lower())
 
@@ -71,6 +96,7 @@ class InitramfsSourceContractTests(unittest.TestCase):
 
     def test_physical_use_remains_fail_closed(self):
         self.assertFalse(CONTRACT["build"]["physical_artifact_authorized"])
+        self.assertFalse(CONTRACT["storage_growth"]["physical_write_authorized"])
         self.assertEqual(CONTRACT["build"]["static_userspace"], "busybox-musl")
         self.assertEqual(CONTRACT["build"]["deterministic_cpio"], "newc")
 
