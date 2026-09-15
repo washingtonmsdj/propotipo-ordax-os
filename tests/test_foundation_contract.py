@@ -32,15 +32,16 @@ class FoundationContractTest(unittest.TestCase):
         self.assertIn("ORDAX-HOME", media["forbidden_required_partitions"])
         self.assertIn("ORDAX-PLATFORM", media["forbidden_required_partitions"])
 
-    def test_initial_usb_is_minimum_git_acquisition_first(self):
+    def test_initial_usb_is_minimum_release_acquisition_first(self):
         seed = self.contract["initial_media"]
-        self.assertEqual(seed["policy"], "minimum-git-acquisition-first")
+        self.assertEqual(seed["policy"], "minimum-release-acquisition-first")
         self.assertFalse(seed["full_system_preseeded"])
         self.assertFalse(seed["surface_preseeded"])
         self.assertFalse(seed["normal_apps_preseeded"])
         self.assertFalse(seed["remote_core_preseeded"])
         self.assertFalse(seed["control_plane_preseeded"])
         self.assertFalse(seed["stable_device_identity_preseeded"])
+        self.assertFalse(seed["full_git_client_preseeded"])
         self.assertFalse(seed["legacy_repository_dump_allowed"])
         self.assertFalse(seed["build_toolchain_preseeded"])
         self.assertFalse(seed["complete_source_checkout_preseeded"])
@@ -51,17 +52,17 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(seed["normal_system_changes_require_usb_reflash"])
         self.assertNotIn("ordax-remote-core", seed["allowed_initial_payload_classes"])
         self.assertNotIn("minimal-control-plane", seed["allowed_initial_payload_classes"])
-        self.assertIn("release-acquisition", seed["allowed_initial_payload_classes"])
+        self.assertIn("https-release-acquisition", seed["allowed_initial_payload_classes"])
 
-    def test_pre_git_path_contains_only_boot_network_release_and_recovery(self):
+    def test_pre_release_path_contains_only_boot_network_release_and_recovery(self):
         self.assertEqual(
-            self.contract["pre_git_capabilities"],
+            self.contract["pre_release_capabilities"],
             [
                 "uefi-boot",
                 "kernel",
                 "initramfs",
                 "minimal-network",
-                "git-release-acquisition",
+                "release-acquisition",
                 "recovery-maintenance",
             ],
         )
@@ -76,12 +77,15 @@ class FoundationContractTest(unittest.TestCase):
         self.assertEqual(layout["state"], "/ordax/state")
         self.assertEqual(layout["releases"], "/ordax/releases")
 
-    def test_release_model_is_commit_addressed_and_rollback_safe(self):
+    def test_release_model_is_commit_addressed_and_compiler_free_on_device(self):
         release = self.contract["release_model"]
         self.assertEqual(release["addressing"], "source-commit")
         self.assertTrue(release["immutable_after_verification"])
         self.assertEqual(release["activation"], "atomic-current-pointer")
         self.assertTrue(release["rollback_required"])
+        self.assertFalse(release["device_full_git_client_required"])
+        self.assertFalse(release["device_source_checkout_required"])
+        self.assertFalse(release["device_compiler_required"])
         self.assertFalse(release["remote_shell_required"])
 
     def test_three_modes_are_one_product(self):
@@ -138,7 +142,7 @@ class FoundationContractTest(unittest.TestCase):
 
     def test_daily_development_is_git_driven_without_remote_shell(self):
         development = self.contract["development"]
-        self.assertEqual(development["normal_change_path"], "git-push-to-release-update")
+        self.assertEqual(development["normal_change_path"], "git-push-to-ci-release-update")
         self.assertFalse(development["full_image_rebuild_per_edit"])
         self.assertFalse(development["usb_reflash_per_edit"])
         self.assertFalse(development["routine_reboot_per_edit"])
