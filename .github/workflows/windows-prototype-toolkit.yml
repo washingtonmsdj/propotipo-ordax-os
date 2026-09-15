@@ -62,12 +62,35 @@ jobs:
           PY
           pushd tools/creator >/dev/null
           deps="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -deps ./cmd/ordax-creator)"
-          popd >/dev/null
           if grep -qx 'github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/host/windows' <<<"$deps"; then
             echo 'Windows toolkit Creator unexpectedly links the native raw-disk host package' >&2
             exit 1
           fi
+
+          public_files="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -f '{{range .GoFiles}}{{println .}}{{end}}' ./host/windows)"
+          tagged_files="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -tags ordax_raw_backend -f '{{range .GoFiles}}{{println .}}{{end}}' ./host/windows)"
+          for file in \
+            raw_handle_write_windows.go \
+            volume_lease_windows.go \
+            elevation_windows.go \
+            raw_runtime_windows.go; do
+            if grep -qx "$file" <<<"$public_files"; then
+              echo "public Windows build unexpectedly includes tagged raw backend file: $file" >&2
+              exit 1
+            fi
+            if ! grep -qx "$file" <<<"$tagged_files"; then
+              echo "tagged Windows raw backend build is missing expected file: $file" >&2
+              exit 1
+            fi
+          done
+
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go test -c -tags ordax_raw_backend \
+            -o "$RUNNER_TEMP/ordax-raw-backend.test.exe" ./host/windows
+          rm -f "$RUNNER_TEMP/ordax-raw-backend.test.exe"
+          popd >/dev/null
           echo 'TOOLKIT_CREATOR_LINKS_NATIVE_RAW_BACKEND=NO'
+          echo 'TOOLKIT_RAW_BACKEND_BUILD_TAG_ISOLATION=PASS'
 
       - name: Build Windows toolkit
         run: |
@@ -115,6 +138,8 @@ jobs:
               'source_commit': os.environ['GITHUB_SHA'],
               'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
               'native_windows_raw_disk_backend_source_implemented': True,
+              'native_windows_raw_disk_backend_build_tag': 'ordax_raw_backend',
+              'native_windows_raw_disk_backend_in_public_build': False,
               'native_windows_raw_disk_backend_publicly_reachable': False,
               'public_creator_binary_links_native_raw_backend': False,
               'public_physical_apply_implemented': False,
@@ -141,6 +166,8 @@ jobs:
           root = pathlib.Path('out/windows-prototype-toolkit')
           provenance = json.loads((root / 'provenance.json').read_text(encoding='utf-8'))
           assert provenance['native_windows_raw_disk_backend_source_implemented'] is True
+          assert provenance['native_windows_raw_disk_backend_build_tag'] == 'ordax_raw_backend'
+          assert provenance['native_windows_raw_disk_backend_in_public_build'] is False
           assert provenance['native_windows_raw_disk_backend_publicly_reachable'] is False
           assert provenance['public_creator_binary_links_native_raw_backend'] is False
           assert provenance['public_physical_apply_implemented'] is False
@@ -150,6 +177,7 @@ jobs:
           assert provenance['key_generation_requires_local_user_action'] is True
           print('TOOLKIT_SECRET_MATERIAL=NONE')
           print('TOOLKIT_PUBLIC_PHYSICAL_APPLY=BLOCKED')
+          print('TOOLKIT_RAW_BACKEND_IN_PUBLIC_BUILD=NO')
           print('TOOLKIT_PHYSICAL_WRITE_AUTHORIZED=NO')
           PY
 
@@ -178,6 +206,10 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test Creator Windows host adapter natively
+      - name: Test public/default Creator Windows host adapter natively
         shell: pwsh
         run: go test -count=1 ./...
+
+      - name: Test tagged native raw backend guards
+        shell: pwsh
+        run: go test -count=1 -tags ordax_raw_backend ./host/windows
