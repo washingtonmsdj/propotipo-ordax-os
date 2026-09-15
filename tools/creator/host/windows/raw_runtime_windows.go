@@ -1,13 +1,11 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
 // windowsRawDiskRuntimeUnbound assembles the native Windows pieces behind the
-// already-tested rawDiskRuntime policy surface. The type is deliberately
-// unexported and no CLI, desktop action or package API constructs it today.
-// Merely implementing this interface does not authorize or execute a physical
-// write; applyRawDiskInternal remains unexported and all public apply paths stay
-// absent.
+// already-tested rawDiskRuntime policy surface. It is compiled only when the
+// explicit ordax_raw_backend tag is selected. The type remains unexported and
+// no CLI, desktop action or package API constructs it today.
 type windowsRawDiskRuntimeUnbound struct{}
 
 var _ rawDiskRuntime = windowsRawDiskRuntimeUnbound{}
