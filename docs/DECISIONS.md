@@ -58,11 +58,24 @@ Decision: user/workspace data lives logically under the main partition. Backup, 
 
 A future physical HOME partition requires a new ADR and evidence that logical isolation is insufficient.
 
-## ADR-007 - Secure remote access is bootstrap infrastructure
+## ADR-007 - OrdaX Remote Core is bootstrap infrastructure
 
-Decision: Remote Core/SSH and minimal Control Plane functionality belong to the pre-Git substrate because they are required to safely evolve and recover a development target.
+Decision: an OrdaX-owned Remote/Control Core and minimal Control Plane functionality belong to the pre-Git substrate because they are required to safely evolve and recover a development target.
 
-Requirements include persistent host identity, public-key-only operator access and fail-closed host trust.
+Requirements:
+
+- persistent device identity;
+- explicit authorization;
+- mature authenticated/encrypted transport;
+- structured capability RPC;
+- file/delta transfer;
+- logs/events;
+- release operations;
+- fail-closed trust.
+
+SSH is not a required final product dependency. It may remain temporarily only as documented break-glass compatibility until Remote Core proves equivalent physical recovery.
+
+Custom cryptographic primitives are forbidden.
 
 ## ADR-008 - Legacy components are selected, not inherited
 
@@ -75,3 +88,47 @@ Working behavior alone is not sufficient provenance. Source commit, role and val
 Decision: once the new two-partition provisioner and disposable tests pass, an obsolete physical USB may be wiped and recreated rather than permanently supporting migration from every historical layout.
 
 This ADR does not itself authorize a physical write. Execution still requires the destructive-operation gate.
+
+## ADR-010 - One OrdaX product across Web, USB and native disk
+
+Decision:
+
+```text
+OrdaX Web
+ -> OrdaX USB
+ -> OrdaX Native (SSD/HD)
+```
+
+These are capability modes of one product, not separate forks.
+
+They share account model, Surface source, app source and safe synchronizable user state. Device-local secrets and hardware state remain local.
+
+## ADR-011 - Single-source Surface and applications
+
+Decision: Web and native OrdaX must render/execute shared user-facing code from the same source trees.
+
+Platform-specific differences are capability adapters only.
+
+Copied CSS, copied screens, Web-specific app forks and native-specific visual forks are forbidden.
+
+## ADR-012 - Host-independent architecture
+
+Decision: WSL, QEMU, PowerShell, Bash, one Linux distribution or one desktop OS cannot be mandatory architectural dependencies.
+
+Canonical product/tooling logic is portable and shared. Thin host adapters are allowed only where raw disk, elevation or other host APIs genuinely differ.
+
+QEMU is optional test infrastructure, never source authority or a product prerequisite.
+
+## ADR-013 - OrdaX Creator is the single provisioning product
+
+Decision: users create USB media and later native installations through one OrdaX Creator product with a shared policy/core.
+
+Host adapters may integrate with Windows/Linux/macOS disk APIs but cannot fork layout, artifact or security policy.
+
+End users must not need WSL, QEMU or a kernel toolchain to install OrdaX.
+
+## ADR-014 - Standard cryptography, OrdaX-owned protocol
+
+Decision: OrdaX owns its Remote/Control application protocol and authorization semantics, but does not invent cryptographic algorithms.
+
+Use mature audited transport/crypto implementations. A proprietary or custom protocol layer must still rely on standard cryptographic primitives and fail-closed identity/authentication.
