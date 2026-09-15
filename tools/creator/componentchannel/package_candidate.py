@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import stat
@@ -31,28 +32,58 @@ class PackagingError(RuntimeError):
     pass
 
 
+def _absolute_lexical(path: Path) -> Path:
+    return Path(os.path.abspath(os.fspath(path.expanduser())))
+
+
+def _assert_no_reparse_ancestry(path: Path, label: str) -> None:
+    current = _absolute_lexical(path)
+    while True:
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            info = None
+        except OSError as exc:
+            raise PackagingError(f"cannot inspect {label} path {current}: {exc}") from exc
+        if info is not None:
+            is_junction = False
+            junction_probe = getattr(current, "is_junction", None)
+            if callable(junction_probe):
+                try:
+                    is_junction = bool(junction_probe())
+                except OSError as exc:
+                    raise PackagingError(f"cannot inspect {label} junction state {current}: {exc}") from exc
+            if stat.S_ISLNK(info.st_mode) or is_junction:
+                raise PackagingError(f"{label} path may not traverse symlinks or junctions: {current}")
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
 def _regular_file(path: Path) -> Path:
-    absolute = path.expanduser().resolve(strict=False)
+    absolute = _absolute_lexical(path)
+    _assert_no_reparse_ancestry(absolute, "component executable")
     try:
-        info = path.lstat()
+        info = absolute.lstat()
     except OSError as exc:
-        raise PackagingError(f"component executable is unavailable: {path}: {exc}") from exc
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise PackagingError(f"component executable is unavailable: {absolute}: {exc}") from exc
+    if not stat.S_ISREG(info.st_mode):
         raise PackagingError("component executable must be a regular non-symlink file")
     if info.st_size <= 0 or info.st_size > MAX_COMPONENT_BYTES:
         raise PackagingError(f"component executable size outside allowed range: {info.st_size}")
-    resolved = path.resolve(strict=True)
-    if resolved != absolute:
-        raise PackagingError("component executable path resolution changed unexpectedly")
-    return resolved
+    return absolute
 
 
 def _real_output_dir(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    info = path.lstat()
-    if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+    absolute = _absolute_lexical(path)
+    _assert_no_reparse_ancestry(absolute, "output directory")
+    absolute.mkdir(parents=True, exist_ok=True)
+    _assert_no_reparse_ancestry(absolute, "output directory")
+    info = absolute.lstat()
+    if not stat.S_ISDIR(info.st_mode):
         raise PackagingError("output directory must be a real non-symlink directory")
-    return path.resolve(strict=True)
+    return absolute
 
 
 def _digest(path: Path) -> tuple[str, int]:
