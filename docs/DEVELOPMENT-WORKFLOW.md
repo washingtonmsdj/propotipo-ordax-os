@@ -11,14 +11,35 @@ The intended daily loop is:
 ```text
 edit source
   -> run affected tests
+  -> preview in browser when Surface/app work is affected
   -> commit to main
-  -> materialize/sync only the delta when target is online
-  -> restart/reconcile only the affected owner
+  -> materialize/sync only the delta when native target is online
+  -> reconcile only the affected owner
   -> verify health/readiness
   -> record evidence
 ```
 
 A full image rebuild, USB reflash or notebook reboot is not the default development action.
+
+## Host independence
+
+Development must not require WSL, QEMU, PowerShell, Bash or one desktop OS as a mandatory substrate.
+
+Canonical tools must have portable cores. Host-specific adapters are allowed only for operations where the host OS genuinely controls access, such as raw disks, elevation or device enumeration.
+
+QEMU is optional test infrastructure. It can improve disposable boot coverage, but source development and product correctness must not depend on its presence.
+
+## Product targets
+
+The same shared product source serves:
+
+```text
+Web preview / hosted Web
+USB OrdaX
+Native SSD/HD OrdaX
+```
+
+A normal Surface change should be visible through browser HMR before commit and then reach hosted Web and native OrdaX from the same source commit. No manual Web-to-device port is allowed.
 
 ## Phases
 
@@ -27,23 +48,26 @@ A full image rebuild, USB reflash or notebook reboot is not the default developm
 Work that can be completed without the notebook:
 
 - architecture/contracts;
-- provisioning logic;
+- shared Surface/apps/services;
+- browser preview/HMR;
+- provisioning core logic;
 - release layout;
 - security policy;
 - unit/fixture tests;
-- disposable image/QEMU tests;
-- static verification.
+- deterministic artifact tests;
+- static image/filesystem verification;
+- optional emulator-based tests when available.
 
 ### Phase B - physical bootstrap
 
-Once provisioning is proven against a disposable target:
+Once provisioning is proven against safe disposable/fixture targets:
 
 - identify the physical USB;
 - clean-provision the two-partition layout;
 - install only the pre-Git bootstrap;
 - verify physical bytes/layout;
 - boot the notebook;
-- prove network + identity + Remote Core/SSH + Control Plane + Git.
+- prove network + identity + OrdaX Remote Core + Control Plane + Git.
 
 ### Phase C - live evolution
 
@@ -54,7 +78,7 @@ Git main
  -> build/test affected component
  -> publish/materialize release or delta
  -> notebook target
- -> owner-local restart/reconcile
+ -> owner-local reconcile
  -> readiness/health evidence
 ```
 
@@ -84,17 +108,37 @@ Rules:
 
 ## Remote development
 
-Expected development transport:
+Primary development/control transport is the OrdaX Remote Core described in `docs/REMOTE-CONTROL.md`.
 
-- root-capable developer target only where explicitly allowed;
-- SSH public-key authentication only;
-- persistent device host key;
-- strict host-key checking;
-- multiple authorized public keys may coexist;
-- Control Plane is preferred for audited remote actions when available;
-- SSH remains a bootstrap/fallback path.
+Expected properties:
 
-Never use `StrictHostKeyChecking=no` or `UserKnownHostsFile=/dev/null` in an active workflow.
+- persistent device identity;
+- explicit operator/device authorization;
+- mature encrypted/authenticated transport;
+- structured capability RPC;
+- file/delta transfer;
+- logs/events streaming;
+- release stage/activate/rollback operations;
+- health/readiness queries;
+- auditable privileged changes.
+
+An external SSH executable is not required for the product or daily development. During migration only, SSH may remain as break-glass compatibility until Remote Core recovery is proven on real hardware.
+
+## OrdaX Creator development
+
+`tools/creator/` must expose one shared product core.
+
+Platform-specific code is limited to adapters needed for host APIs:
+
+```text
+tools/creator/platform/windows/
+tools/creator/platform/linux/
+tools/creator/platform/macos/
+```
+
+These adapters do not own layout policy, artifact choice, verification rules or user-visible product behavior.
+
+End users must not need WSL, QEMU or a kernel toolchain to create/install OrdaX.
 
 ## Evidence
 
@@ -112,6 +156,6 @@ REBOOT_REQUIRED=YES|NO
 
 Evidence is not a substitute for tests, but makes the state of the prototype auditable by another conversation or agent.
 
-## When the target is offline
+## When the native target is offline
 
-Do not block source work that is independently testable. Mark physical validation explicitly as pending and continue source/QEMU/fixture work.
+Do not block source work that is independently testable. Continue contracts, browser preview, fixtures, static artifact validation and other host-neutral work. Mark real-hardware validation explicitly as pending.
