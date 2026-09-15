@@ -4,75 +4,62 @@ Status: CANONICAL FOR PROTOTYPE
 
 ## Goal
 
-`main` remains the source authority, but an OrdaX device must not need a compiler, source checkout, Codex, or a full Git client in the pre-release bootstrap.
+`main` remains source authority, while an OrdaX device consumes prebuilt immutable releases without needing a compiler, source checkout, Codex or a full Git client in the pre-release bootstrap.
 
-Repository CI materializes immutable releases from exact source commits. The device consumes a compact signed release envelope and immutable artifacts over standard HTTPS.
+Repository CI owns build/sign/publication. The device consumes a compact signed release envelope and immutable artifacts over HTTPS.
 
 ## Source vs delivery
 
 ```text
-GitHub main                     device
-    |                              |
-    | source authority             | no source build
-    v                              |
-CI build graph                     |
-    |                              |
-    +-> kernel                     |
-    +-> initramfs/bootstrap        |
-    +-> system/native release      |
-    +-> shared Surface/Web         |
-    +-> Desktop package            |
-    |                              |
-    v                              |
-signed envelope + artifacts -------+
-          HTTPS + signature/hash verification
-```
-
-Git owns *what* OrdaX is. The release channel owns only immutable delivery of a specific Git commit.
-
-## Minimal first-boot chain
-
-```text
-UEFI
- -> kernel/initramfs
- -> mount ORDAX
- -> minimal network
- -> HTTPS release acquisition agent
- -> local public release trust anchor
- -> verified release
+GitHub main
+ -> CI build graph
+ -> exact source commit
+ -> immutable release artifacts
+ -> signed release envelope
+ -> HTTPS publication
+ -> OrdaX release acquisition agent
+ -> signature/hash verification
+ -> /ordax/releases/<commit>
  -> /ordax/current
 ```
 
-A full `git` executable and complete repository checkout are not mandatory before the first system release.
+Git owns what OrdaX is. Delivery only selects bytes for a particular source commit.
 
-## Release identity
+## Canonical bootstrap selector
 
-Every prototype release is bound to one exact lowercase 40-hex source commit and uses that commit as `release_id` and the immutable directory name:
+The prototype seed now pins this source-controlled channel file:
 
 ```text
-/ordax/releases/<source_commit>
+bootstrap/config/release-envelope-url
 ```
 
-Rebuilding the same release identity with different bytes is forbidden. Changed bytes require a different source/release identity.
+with exactly:
 
-## Signed-envelope protocol
-
-HTTPS transport is mandatory but is not the authenticity authority.
-
-The release endpoint serves an envelope:
-
-```json
-{
-  "$schema": "prototype-ordax.release-envelope/1",
-  "payload": "<base64 exact manifest bytes>",
-  "signature": "<base64 Ed25519 signature over the exact payload bytes>",
-  "key_id": "prototype-1"
-}
+```text
+https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json
 ```
 
-The signature is standard Ed25519 over the decoded `payload` bytes exactly as carried. The protocol intentionally avoids inventing canonical-JSON signing rules.
+GitHub documents `/releases/latest/download/<asset>` as a direct download form for an asset on the latest Release. The `latest` pointer is intentionally mutable as a **selector**, while the release identity and authenticated payload remain immutable after verification.
 
-The device carries only a public trust anchor:
+Runtime path:
+
+```text
+/ordax/bootstrap/config/release-envelope-url
+```
+
+The exact file bytes are SHA-256 bound in `docs/contracts/minimal-bootstrap.json`.
+
+## Security model
+
+HTTPS is mandatory transport but not the authenticity authority.
+
+The device must carry a local Ed25519 public trust anchor at:
+
+```text
+/ordax/bootstrap/trust/release-ed25519.json
+```
+
+Expected schema:
 
 ```json
 {
@@ -82,11 +69,37 @@ The device carries only a public trust anchor:
 }
 ```
 
-Private signing material never belongs in Git, the USB bootstrap, OrdaX Desktop, a native installation or any downloadable client bundle.
+The corresponding private key must never be committed to Git, embedded in Creator/USB media, bundled in Desktop, or published as an artifact.
+
+Current state:
+
+```text
+RELEASE_CHANNEL=RESOLVED
+RELEASE_TRUST=UNRESOLVED
+PRIVATE_SIGNING_KEY_CUSTODY=NOT_YET_ESTABLISHED
+PHYSICAL_WRITE_ALLOWED=NO
+```
+
+No placeholder key may satisfy the trust gate.
+
+## Signed envelope
+
+The release endpoint serves:
+
+```json
+{
+  "$schema": "prototype-ordax.release-envelope/1",
+  "payload": "<base64 exact manifest bytes>",
+  "signature": "<base64 Ed25519 signature over exact payload bytes>",
+  "key_id": "prototype-1"
+}
+```
+
+The signature is over the decoded payload bytes exactly as carried. No custom canonical-JSON signing algorithm is used.
 
 ## Signed manifest
 
-The decoded signed payload uses:
+Decoded payload schema:
 
 ```json
 {
@@ -107,87 +120,77 @@ The decoded signed payload uses:
 }
 ```
 
-Unknown fields are rejected by the bootstrap agent. Artifact names are safe basenames, URLs are absolute HTTPS without embedded credentials, hashes and sizes must match exactly, and the expected source repository is pinned by policy.
+The release agent rejects unknown fields, unsafe names, non-HTTPS artifact URLs, malformed commits/hashes, duplicate artifact names, repository mismatch, key-id mismatch, signature failure, size mismatch and SHA-256 mismatch.
+
+## Release identity
+
+Each prototype release is tied to exactly one lowercase 40-hex source commit and uses that commit as both `release_id` and directory identity:
+
+```text
+/ordax/releases/<source_commit>
+```
+
+Reusing the same release identity for different bytes is forbidden.
 
 ## Transactional materialization
 
-The acquisition agent never downloads directly into the active release.
-
 ```text
-fetch + verify signed manifest
+fetch signed envelope
+ -> verify signature + manifest policy
  -> create /ordax/releases/.staging-<commit>-*
- -> download each artifact
+ -> download artifacts
  -> verify exact size + SHA-256
- -> fsync files + staging directory
- -> write exact signed release-manifest.json
- -> rename staging -> /ordax/releases/<commit>
- -> fsync releases directory
- -> atomically replace /ordax/current symlink
+ -> fsync files/staging
+ -> store exact signed manifest payload
+ -> rename staging -> releases/<commit>
+ -> fsync releases
+ -> atomically replace current symlink
  -> fsync /ordax
 ```
 
-`current` is changed only after every byte of the new release has passed policy and integrity checks.
+`current` changes only after every candidate byte has passed authentication and integrity checks.
 
-An already materialized release may be reactivated only when its stored signed manifest bytes and every artifact still match the requested signed release. Existing divergent bytes fail closed.
+An existing release may be reactivated only when its stored manifest and all artifact bytes still match; divergence fails closed.
 
-## Failure and offline behavior
+## Failure/offline behavior
 
 ```text
-network unavailable       -> boot current known-good release
-release service unavailable -> boot current known-good release
-signature invalid         -> reject candidate; retain current
-artifact invalid          -> reject candidate; retain current
-activation precondition fails -> retain current
+network unavailable before first release -> recovery
+release endpoint unavailable before first release -> recovery
+signature invalid -> reject candidate + recovery/current preserved
+artifact invalid -> reject candidate + recovery/current preserved
+known-good current exists -> boot it without requiring network
 ```
 
-After first successful provisioning, network is an update dependency, not a normal boot dependency.
-
-## Cryptography
-
-- Ed25519 uses the platform/standard-library implementation; no custom signing algorithm.
-- SHA-256 verifies downloaded artifact bytes.
-- HTTPS provides transport confidentiality/server authentication but does not replace release signing.
-- Trust failure is fail-closed.
-- Key rotation must be an explicit future trust-policy protocol; silently accepting an untrusted replacement key is forbidden.
+After the first verified release, network is an update dependency rather than a normal boot dependency.
 
 ## Publication target
 
-GitHub Releases is the natural prototype host for generated immutable assets, but the protocol is deliberately host-neutral. The signed manifest contains ordinary HTTPS artifact URLs, so the delivery host can later move to another immutable object store/CDN without changing source authority.
+GitHub Releases is the current prototype host. The protocol remains host-neutral because signed manifests carry ordinary HTTPS artifact URLs.
 
-## Product-mode relationship
+The next source-side step is to implement repository-owned signing/publication that:
 
-Web, Desktop, USB and Native are one product but have distinct delivery mechanics:
+- reads private signing material only from an external CI secret or similarly protected signer;
+- derives/validates the corresponding public key identity;
+- signs exact manifest bytes with standard Ed25519;
+- publishes immutable assets for the exact source commit;
+- publishes `release-envelope.json` under the GitHub Release;
+- refuses publication when provenance, hashes, source commit or signing material are incomplete.
+
+Publication must not be enabled by committing a private key.
+
+## Product modes
 
 ```text
-Web       -> deployment refresh from the shared source commit
+Web       -> deployment refresh from shared source commit
 Desktop   -> signed desktop application update
 USB       -> signed OrdaX release acquisition/activation
 Native    -> signed OrdaX release acquisition/activation
 ```
 
-OrdaX Desktop may download and verify bootable/native artifacts and may create USB media through its narrow Creator capability. Its own application updater remains a separate trust/update channel and must never silently write removable media or alter the Windows boot configuration.
-
-## Development semantics
-
-A normal system change becomes:
-
-```text
-edit source
- -> tests
- -> push main
- -> CI builds affected deliverables
- -> CI signs/publishes release material for exact commit
- -> Web/Desktop consume applicable shared source
- -> bootable/native updater sees an eligible signed release
- -> download + verify
- -> atomically activate
-```
-
-The device does not recompile the kernel because source changed. Kernel and bootstrap compilation belong to repository CI.
+The Desktop application updater is a separate trust/update concern and must not silently mutate removable media.
 
 ## Codex independence
-
-Codex is not part of release publication or consumption.
 
 ```text
 CODEX_REQUIRED_FOR_BUILD=NO
@@ -195,11 +198,11 @@ CODEX_REQUIRED_FOR_PUBLICATION=NO
 CODEX_REQUIRED_FOR_DEVICE_UPDATE=NO
 ```
 
-Any repository-capable engineering workflow can modify source and diagnose CI. A running device consumes the release protocol, not an AI-specific channel.
+A running device consumes the release protocol, not an AI-specific transport.
 
 ## Promotion boundary
 
-The current acquisition agent and all emitted artifacts remain **candidates** until virtual boot, rollback, offline known-good and real-hardware gates pass.
+The acquisition agent, channel and generated artifacts remain candidates until signed publication, disposable acquisition/activation, virtual/physical boot, rollback and offline-known-good gates pass.
 
 ```text
 PHYSICAL_ARTIFACT_AUTHORIZED=NO

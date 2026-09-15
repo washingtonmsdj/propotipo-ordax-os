@@ -126,11 +126,11 @@ Decision: any future OrdaX-owned remote/control protocol may own application sem
 
 Use mature audited transport/crypto implementations and fail-closed identity/authentication.
 
-## ADR-015 - Initial physical media is minimum Git-acquisition-first
+## ADR-015 - Initial physical media is minimum release-acquisition-first
 
 Decision: the first USB contains only boot-critical artifacts and the minimal substrate required to reach, verify and activate a complete release.
 
-The initial media does not preseed the normal Surface, applications, high-level services, Remote Core, Control Plane, full source checkout or build toolchain.
+The initial media does not preseed the normal Surface, applications, high-level services, Remote Core, Control Plane, SSH, full source checkout or build toolchain.
 
 Target:
 
@@ -139,15 +139,15 @@ UEFI
  -> kernel/initramfs
  -> minimal bootstrap
  -> minimal network
- -> release acquisition
+ -> signed release acquisition
  -> verify
  -> releases/<commit>
  -> current
 ```
 
-Recovery remains available if acquisition fails. After the first verified release is activated, it remains local for normal offline boot and rollback. Git/network are needed for acquiring new releases, not for booting an already known-good system.
+Recovery remains available if acquisition fails. After the first verified release is activated, it remains local for normal offline boot and rollback. Network is needed for acquiring new releases, not for booting an already known-good system.
 
-Reason: keep physical provisioning small, stable and infrequent while almost all future system development happens through Git/network.
+Reason: keep physical provisioning small, stable and infrequent while almost all future system development happens through Git/CI/release delivery.
 
 See `docs/MINIMAL-USB-BOOTSTRAP.md`.
 
@@ -174,3 +174,33 @@ GitHub Actions is the current executor, not source authority. Build entrypoints 
 Codex may be used as an optional reviewer, investigator or parallel engineering partner. It is not build authority, release authority, source authority or a required solver.
 
 See `docs/BUILD-AUTONOMY.md` and `docs/contracts/build-autonomy.json`.
+
+## ADR-017 - Mutable release selector, immutable signed release identity
+
+Decision: the bootstrap release channel uses the stable GitHub Releases selector:
+
+```text
+https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json
+```
+
+This URL is a **delivery selector only**. It is allowed to move when a newer release is published. It is not trusted as an authenticity source.
+
+Authenticity remains exclusively bound by:
+
+```text
+local Ed25519 public trust anchor
+ -> signed release envelope
+ -> exact source repository
+ -> exact source commit / release_id
+ -> exact artifact size + SHA-256
+```
+
+Consequences:
+
+- changing the `latest` target cannot make an invalid signature acceptable;
+- the private signing key must remain outside Git, USB bootstrap and distributable clients;
+- only the public trust anchor is embedded in the minimal bootstrap;
+- key rotation requires an explicit future trust-policy ADR/protocol;
+- the channel URL is source-controlled and hash-bound in `minimal-bootstrap.json`;
+- a missing release endpoint fails closed into recovery on first acquisition;
+- physical write remains blocked until a real public trust anchor and the remaining promotion gates are satisfied.

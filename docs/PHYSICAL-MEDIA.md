@@ -8,10 +8,23 @@ The prototype targets exactly two GPT partitions:
 
 ```text
 1. ORDAX-ESP  - EFI System Partition, FAT32
-2. ORDAX      - main OrdaX partition, Linux filesystem
+2. ORDAX      - main OrdaX partition, ext4
 ```
 
-No separate HOME partition is created in the prototype.
+No separate `ORDAX-HOME` or `ORDAX-PLATFORM` partition is permitted.
+
+The byte-level prototype contract is `docs/contracts/physical-media.json`:
+
+```text
+LOGICAL_SECTOR_BYTES=512
+ALIGNMENT=1_MiB
+ORDAX_ESP_START_LBA=2048
+ORDAX_ESP_SIZE=256_MiB
+ORDAX_START_LBA=526336
+ORDAX_SIZE_POLICY=fill-remaining-usable
+```
+
+The 512 MiB RAW size used by CI is only a disposable-proof capacity. It is **not** the capacity contract for a real USB device.
 
 ## Main partition logical layout
 
@@ -24,71 +37,103 @@ No separate HOME partition is created in the prototype.
   home/
 ```
 
-Directory names may later move behind mount points or links, but the responsibility split must remain.
+`home/` is a logical directory inside `ORDAX`; it is not a third physical partition.
+
+## Disposable proof already implemented
+
+The canonical non-destructive proof path is:
+
+```text
+Creator Core
+ -> transactional stage-tree
+ -> regular sparse RAW file
+ -> GPT
+ -> ORDAX-ESP/FAT32
+ -> ORDAX/ext4
+ -> filesystem labels
+ -> re-extract staged files
+ -> SHA-256 reverify
+ -> compare embedded partition bytes
+```
+
+Current source/CI evidence:
+
+```text
+DISPOSABLE_GPT=PASS
+PARTITION_COUNT=2
+FILESYSTEMS=FAT32,EXT4
+PROVISION_VERIFY=PASS
+POST_MATERIALIZATION_HASH_VERIFY=PASS
+RAW_PARTITION_BYTES_VERIFY=PASS
+PHYSICAL_WRITE_AUTHORIZED=NO
+```
+
+The RAW image exists only inside the ephemeral CI runner. CI publishes proof metadata, not a bootable image artifact.
 
 ## Reprovisioning policy
 
-If the connected USB contains an obsolete three-partition layout or incompatible historical contents, prefer clean reprovisioning over indefinite reconciliation, but only after the following gates pass:
+If connected media contains an obsolete three-partition layout or incompatible historical contents, prefer clean reprovisioning over indefinite compatibility layers, but only after all destructive gates pass:
 
 ```text
 TARGET_IDENTITY=PASS
 SOURCE_LAYOUT_CONTRACT=PASS
 DISPOSABLE_LAYOUT_TEST=PASS
+MINIMAL_BOOTSTRAP_FULLY_RESOLVED=PASS
 DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=YES
 ```
 
-A destructive operation may then:
+Only then may a physical operation delete the old GPT, create the two target partitions, format filesystems, install the minimal bootstrap and verify every written byte.
 
-- delete old GPT/partitions;
-- create a new GPT;
-- create the two target partitions;
-- format filesystems;
-- install the minimal bootstrap;
-- verify layout and written artifacts.
+## What may exist before the first full release
 
-## What may exist before Git
-
-Only artifacts necessary to boot, recover and reach a verified release:
+Only the minimum substrate required to boot, acquire a signed release and recover from failure:
 
 - UEFI bootloader;
 - kernel;
-- initramfs;
-- minimal bootstrap userspace;
-- network support required by target hardware;
-- device identity support;
-- Remote Core / SSH support;
-- Control Plane bootstrap support;
-- Git/release acquisition support;
-- recovery/maintenance support.
+- fixed initramfs;
+- bootstrap orchestrator;
+- minimal first-acquisition network owner;
+- release-acquisition agent;
+- public release trust anchor;
+- release-channel pointer;
+- local recovery/maintenance entrypoint.
 
-Do not preinstall the complete desktop, applications or general high-level services just because they existed in a previous image.
+The initial seed **does not** preinstall:
+
+- normal Surface/apps/high-level services;
+- full source checkout or compiler/build toolchain;
+- SSH;
+- Remote Core;
+- Control Plane;
+- mandatory device-identity service.
+
+Those are normal post-release capabilities if later required by the product. This matches ADR-004, ADR-007 and ADR-015.
 
 ## Artifact provenance
 
-A file that already works on the old USB is not automatically canonical.
-
-Before reusing an artifact, record:
-
-- repository and source path;
-- source commit;
-- version/release where meaningful;
-- SHA256 of the exact built artifact when applicable;
-- test/evidence that justifies reuse.
-
-Prefer rebuilding from canonical source. Copy bytes from old media only when the artifact cannot yet be reproduced and the exception is explicitly documented.
+A file that works on historical media is not automatically canonical. Before reuse, source ownership, exact version/commit, SHA-256 and validation evidence must be known. Prefer reproducible repository builds; copying unexplained bytes from old media is not a clean-room implementation.
 
 ## Write safety
 
 Before any physical write:
 
-1. identify the target disk independently from drive letters;
-2. ensure the operation cannot select a system/internal disk by ambiguity;
-3. collect pre-write geometry/identity evidence;
-4. run the same layout logic against a disposable image when possible;
-5. show the exact planned partition/write scope;
-6. apply only after authorization;
-7. re-read the physical target and verify the resulting GPT/filesystems/artifact hashes.
+1. independently identify the target disk rather than trusting a drive letter;
+2. fail closed if an internal/system disk could match;
+3. record pre-write device identity and geometry;
+4. require the canonical two-partition disposable proof;
+5. require a fully resolved minimal-bootstrap manifest, including release trust;
+6. show the exact destructive scope;
+7. require explicit destructive authorization at execution time;
+8. re-read GPT/filesystems after writing and verify artifact hashes from the physical target.
 
-## Current USB state
+## Current physical state
 
-At repository creation time, the physical USB is connected to the Windows development host. This document does not authorize a write by itself. The old repository/mission may continue read-only inventory until a clean provisioning implementation from this repository is ready and explicitly authorized.
+```text
+USB_LOCATION=WINDOWS
+PHYSICAL_USB_WRITTEN=NO
+PHYSICAL_LAYOUT_CHANGED=NO
+CREATOR_APPLY_IMPLEMENTED=NO
+WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
+```
+
+No source file or successful disposable test implicitly authorizes a physical write.

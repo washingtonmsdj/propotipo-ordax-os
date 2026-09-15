@@ -54,7 +54,10 @@ Required:
 - initramfs provenance identified;
 - minimal userspace source/build reproducible;
 - no private secrets in repository;
-- exact pre-Git dependency/file manifest explicit before physical write;
+- exact pre-release dependency/file manifest explicit before physical write;
+- release channel source-controlled and hash-bound;
+- real public release trust anchor pinned before physical write;
+- corresponding private signing key remains outside Git/media/client bundles;
 - bootstrap build has deterministic/verified artifact hashes where practical;
 - no legacy `ORDAX-HOME`/`ORDAX-PLATFORM` physical dependency;
 - no mandatory WSL/QEMU/host-shell dependency;
@@ -62,10 +65,12 @@ Required:
 
 ```text
 BOOTSTRAP_SOURCE=PASS
-MINIMAL_BOOTSTRAP_MANIFEST=PASS
+MINIMAL_BOOTSTRAP_MANIFEST=PARTIAL_UNTIL_RELEASE_TRUST
 KERNEL_PROVENANCE=PASS
 INITRAMFS_PROVENANCE=PASS
-SECRET_SCAN=PASS
+RELEASE_CHANNEL=PASS
+RELEASE_TRUST=BLOCKED_UNTIL_REAL_PUBLIC_ANCHOR
+PRIVATE_SIGNING_KEY_IN_GIT=NO
 FULL_SYSTEM_PRESEEDED=NO
 SURFACE_PRESEEDED=NO
 NORMAL_APPS_PRESEEDED=NO
@@ -89,7 +94,17 @@ SEPARATE_HOME_PARTITION=NO
 PROVISION_VERIFY=PASS
 ```
 
-Provisioning must start from a blank/disposable representation, select targets safely and not require a particular emulator.
+Current source/CI evidence additionally proves:
+
+```text
+FILESYSTEMS=FAT32,EXT4
+FILESYSTEM_LABELS=PASS
+POST_MATERIALIZATION_HASH_VERIFY=PASS
+RAW_PARTITION_BYTES_VERIFY=PASS
+PHYSICAL_WRITE_AUTHORIZED=NO
+```
+
+This gate is now proven against a disposable regular RAW representation through Creator Core staging plus `tools/creator/proof/disposable_media.py`. It does **not** authorize or imply a physical write.
 
 ## Gate 4 - Boot artifact and bootstrap proof
 
@@ -101,12 +116,14 @@ KERNEL_BOOT=PASS
 BOOTSTRAP_ENTRY=PASS
 NETWORK_READY=PASS
 RELEASE_ACQUISITION_ENTRY=PASS
+RELEASE_TRUST_VALIDATION=PASS
+RELEASE_CHANNEL_VALIDATION=PASS
 LEGACY_MEDIA_DEPENDENCY=NO
 EMULATOR_SPECIFIC_DEPENDENCY=NO
 REMOTE_CONTROL_DEPENDENCY=NO
 ```
 
-The bootstrap must be able to reach release acquisition without a full system preseed.
+The bootstrap must be able to reach authenticated release acquisition without a full-system preseed.
 
 ## Gate 5 - OrdaX Creator host independence
 
@@ -118,6 +135,7 @@ WINDOWS_WITHOUT_WSL=PASS
 HOST_POLICY_FORKS=NO
 END_USER_KERNEL_TOOLCHAIN_REQUIRED=NO
 CREATOR_VERIFY=PASS
+CREATOR_STAGE_TREE_TRANSACTIONAL=PASS
 CREATOR_MINIMAL_PAYLOAD_ONLY=PASS
 ```
 
@@ -132,8 +150,10 @@ Before write:
 ```text
 TARGET_IDENTITY=PASS
 SOURCE_LAYOUT_CONTRACT=PASS
-MINIMAL_BOOTSTRAP_MANIFEST=PASS
+MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PASS
+RELEASE_TRUST=PASS
 DISPOSABLE_LAYOUT_TEST=PASS
+CREATOR_APPLY_IMPLEMENTED_AND_TESTED=PASS
 DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=YES
 ```
 
@@ -147,6 +167,14 @@ PHYSICAL_PAYLOAD_MATCHES_MANIFEST=PASS
 UNAPPROVED_FULL_SYSTEM_PRESEED=NO
 ```
 
+Current status:
+
+```text
+PHYSICAL_USB_WRITE=NO
+PHYSICAL_LAYOUT_CHANGED=NO
+DESTRUCTIVE_AUTHORIZATION=NO
+```
+
 ## Gate 7 - Physical notebook minimal bootstrap
 
 Required:
@@ -155,6 +183,7 @@ Required:
 NOTEBOOK_UEFI_BOOT=PASS
 NETWORK_READY=PASS
 RELEASE_CHANNEL_REACHABLE=PASS
+RELEASE_SIGNATURE_VERIFY=PASS
 RECOVERY_PATH=PASS
 SSH_REQUIRED=NO
 REMOTE_CORE_REQUIRED=NO
@@ -175,7 +204,7 @@ KNOWN_GOOD_OFFLINE_BOOT=PASS
 ROLLBACK=PASS
 ```
 
-A release must be tied to an exact source commit and verified before activation.
+A release must be tied to an exact source commit and authenticated before activation.
 
 ## Gate 9 - Single-source Surface across Web and native
 
@@ -228,9 +257,10 @@ DEVICE_SECRETS_STAY_LOCAL=PASS
 Simulate at least:
 
 - first-release acquisition unavailable;
+- invalid signature/wrong release key;
 - bad/unavailable new release;
 - network unavailable after a known-good release exists;
-- Git/release channel unavailable;
+- release channel unavailable;
 - interrupted release acquisition;
 - failed release activation.
 
@@ -242,6 +272,7 @@ KNOWN_GOOD_PRESERVED=PASS
 OFFLINE_BOOT=PASS
 INTERRUPTED_UPDATE_SAFE=PASS
 RELEASE_INTEGRITY_FAIL_CLOSED=PASS
+RELEASE_SIGNATURE_FAIL_CLOSED=PASS
 ```
 
 ## Optional future remote-management gate

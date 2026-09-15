@@ -2,7 +2,7 @@
 
 Status date: 2026-09-15
 
-This is the canonical handoff snapshot for another AI/conversation. Architecture/contracts win if this file ever conflicts with them.
+This is the canonical handoff snapshot. Architecture/contracts win if another document conflicts with it.
 
 ## Repository
 
@@ -13,40 +13,24 @@ DEFAULT_BRANCH=main
 PROMOTED_TO_OFFICIAL=NO
 LEGACY_REPOSITORY=washingtonmsdj/novo-ordax-os
 LEGACY_REPOSITORY_IS_REFERENCE_ONLY=YES
+GIT_MAIN_IS_SOURCE_AUTHORITY=YES
+USB_IS_SOURCE_AUTHORITY=NO
 ```
 
 ## Product model
 
 ```text
 ONE_PRODUCT=YES
-ONE_ACCOUNT_MODEL=YES
 MODES=WEB,MOBILE,DESKTOP,USB,NATIVE_DISK
-MOBILE_PLATFORMS=ANDROID,IOS
+ONE_ACCOUNT_MODEL=YES
 ONE_SURFACE_SOURCE=YES
-ONE_APP_SOURCE=YES
 CAPABILITY_DIFFERENCES_VIA_ADAPTERS=YES
-BASIC_CROSS_DEVICE_SYNC_PLAN_GATED=NO
 ```
-
-Canonical product progression:
-
-```text
-OrdaX Web
- -> OrdaX Mobile
- -> OrdaX Desktop
- -> OrdaX USB
- -> OrdaX Native
-```
-
-Plans may expand storage/history/backup/collaboration/AI/recovery, but identity and basic cross-device continuity are not separate account silos.
 
 ## Build autonomy
 
 ```text
 CODEX_REQUIRED=NO
-CODEX_IS_OPTIONAL_PARTNER=YES
-CODEX_IS_BUILD_AUTHORITY=NO
-CODEX_IS_RELEASE_AUTHORITY=NO
 LOCAL_DEVELOPER_TOOLCHAIN_REQUIRED=NO
 MANUAL_KERNEL_BUILD_REQUIRED=NO
 CI_BUILD_REQUIRED=YES
@@ -54,16 +38,30 @@ ARTIFACT_PROVENANCE_REQUIRED=YES
 ARTIFACT_SHA256_REQUIRED=YES
 ```
 
-GitHub Actions is the current executor. The repository remains source authority.
+GitHub Actions is the current executor; source recipes remain the authority.
 
 ## Physical architecture
 
 ```text
 PHYSICAL_PARTITIONS=2
 PARTITION_1=ORDAX-ESP
+PARTITION_1_FILESYSTEM=FAT32
 PARTITION_2=ORDAX
+PARTITION_2_FILESYSTEM=EXT4
 SEPARATE_HOME_PARTITION=NO
-USB_IS_SOURCE_AUTHORITY=NO
+LEGACY_ORDAX_PLATFORM_PARTITION=FORBIDDEN
+LEGACY_ORDAX_HOME_PARTITION=FORBIDDEN
+```
+
+Canonical geometry is in `docs/contracts/physical-media.json`:
+
+```text
+SECTOR_BYTES=512
+ALIGNMENT=1_MiB
+ESP_START_LBA=2048
+ESP_SIZE=256_MiB
+ORDAX_START_LBA=526336
+ORDAX_SIZE=FILL_REMAINING_USABLE
 ```
 
 Logical main layout:
@@ -77,8 +75,6 @@ Logical main layout:
 ```
 
 ## Minimal USB policy
-
-The first media remains deliberately small.
 
 ```text
 FULL_SYSTEM_PRESEEDED=NO
@@ -94,134 +90,115 @@ KNOWN_GOOD_OFFLINE_BOOT_REQUIRED=YES
 PHYSICAL_WRITE_ALLOWED=NO
 ```
 
-Boot policy now exists in source:
+Boot chain:
 
 ```text
 UEFI
  -> kernel/initramfs
  -> mount LABEL=ORDAX
  -> /ordax/bootstrap/entrypoint
- -> if /ordax/current is bootable: boot offline immediately
- -> otherwise: minimal network
- -> signed HTTPS release acquisition
- -> verified /ordax/releases/<commit>
- -> atomic current
+ -> boot /ordax/current immediately when known-good exists
+ -> otherwise bring up minimum network
+ -> fetch signed release envelope over HTTPS
+ -> verify local Ed25519 trust anchor
+ -> materialize /ordax/releases/<commit>
+ -> atomically activate current
  -> boot release
 ```
 
-## ESP / bootloader
+## Boot artifacts
 
-The seed ESP is deliberately bounded to normal boot plus recovery:
-
-```text
-EFI/BOOT/BOOTX64.EFI
-loader/loader.conf
-loader/entries/ordax.conf
-loader/entries/ordax-recovery.conf
-ordax/vmlinuz
-ordax/initrd.gz
-```
-
-Bootloader candidate:
+### ESP
 
 ```text
 BOOTLOADER=systemd-boot
 UPSTREAM_VERSION=261.2
-UPSTREAM_TAG=v261.2
 UPSTREAM_SOURCE_COMMIT=4925d9f07fc697efccd98a93046ff535b8832445
-UPSTREAM_TAG_SIGNATURE_VERIFIED=YES
-ESP_BOOTLOADER_CANDIDATE_CI=SUCCESS
 SYSTEMD_BOOT_X64_SHA256=9ac1ca03fc52ed2d8c40cea76b84192d718909d561a7bc6cf36d84784b71ada5
-SYSTEMD_BOOT_X64_SIZE=177152
 PHYSICAL_BOOTLOADER_AUTHORIZED=NO
 ```
 
-The bootloader is built through the canonical upstream Meson/Ninja `systemd-boot` target. No legacy developer/maintenance boot entries are carried into the clean-room ESP.
+Seed entries are limited to normal boot and explicit recovery.
 
-## Kernel
+### Kernel
 
 ```text
 KERNEL_VERSION=6.6.52
 UPSTREAM_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8
-CANONICAL_BUILD_ENTRYPOINT=bootstrap/kernel/build.py
-KERNEL_SOURCE_CONTRACT=bootstrap/kernel/source.json
+KERNEL_ARTIFACT_SHA256=e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1
 KERNEL_BUILD_IN_CI=PROVEN
-KERNEL_CANDIDATE_BUILD=SUCCESS
 PHYSICAL_KERNEL_AUTHORIZED=NO
 ```
 
-The old repository's known-good kernel is evidence only; it is not copied as source authority.
-
-## Initramfs
+### Initramfs
 
 ```text
-INITRAMFS_DECISION=CLEAN_ROOM_REIMPLEMENTED
-BUSYBOX_STATIC=YES
-MUSL_BUILD=YES
-NETWORK_INSIDE_FIXED_INITRAMFS=NO
+INITRAMFS=CLEAN_ROOM_REIMPLEMENTED
 CANONICAL_HANDOFF=/ordax/bootstrap/entrypoint
-INITRAMFS_CANDIDATE_CI=SUCCESS
+NETWORK_INSIDE_FIXED_INITRAMFS=NO
+SSH_INSIDE_FIXED_INITRAMFS=NO
+INITRAMFS_ARTIFACT_SHA256=d8e5155de1e0ff3b1a7faaefde67fcbf3e1114fc208a4b37ab1ba7e562efce67
 PHYSICAL_INITRAMFS_AUTHORIZED=NO
 ```
 
-The fixed initramfs only mounts the ORDAX partition and hands control to the partition bootstrap. It does not contain SSH, Remote Core, Control Plane or the full networking stack.
-
-## Bootstrap orchestrator
-
-Implemented at:
-
-`bootstrap/entrypoint`
-
-Properties:
+## First-acquisition network
 
 ```text
-KNOWN_GOOD_BEFORE_NETWORK=YES
-NETWORK_REQUIRED_FOR_NORMAL_KNOWN_GOOD_BOOT=NO
-FIRST_RELEASE_REQUIRES_NETWORK=YES
-HTTPS_REQUIRED=YES
-RECOVERY_ON_ACQUISITION_FAILURE=YES
+NETWORK_BOOTSTRAP_IMPLEMENTED=YES
+PROTOTYPE_SCOPE=ETHERNET_USB_TETHER_DHCP
+BUSYBOX_VERSION=1.38.0
+STATIC_MUSL=YES
+NETBOX_APPLETS=ifconfig,route,udhcpc
+NETBOX_SHA256=0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba
+WIFI_IN_PROTOTYPE_SEED=NO
+CONSUMER_WIFI_REQUIRED_BEFORE_PRODUCT_PROMOTION=YES
+PHYSICAL_NETWORK_ARTIFACT_AUTHORIZED=NO
 ```
 
 ## Release acquisition
 
-Implemented clean-room in Go at:
-
-`bootstrap/release-acquisition/`
+Implemented clean-room in `bootstrap/release-acquisition/`.
 
 ```text
 FULL_GIT_CLIENT_ON_DEVICE=NO
 SOURCE_CHECKOUT_ON_DEVICE=NO
 DEVICE_COMPILER_REQUIRED=NO
-HTTPS=YES
+HTTPS_REQUIRED=YES
 ED25519_MANIFEST_SIGNATURE=YES
 SHA256_ARTIFACT_VERIFICATION=YES
+EXACT_SOURCE_COMMIT_REQUIRED=YES
 ATOMIC_RELEASE_ACTIVATION=YES
 KNOWN_GOOD_PRESERVED_ON_FAILURE=YES
-STATIC_LINUX_AGENT_CI=SUCCESS
+RELEASE_AGENT_SHA256=5dfe04edf83aab293b493066593cbdce32b167acf6b11fa4b705523f3fb436c5
 PHYSICAL_AGENT_AUTHORIZED=NO
 ```
 
-## Network bootstrap
+### Release channel
 
-The prototype first-acquisition network owner is implemented clean-room and CI-proven:
+Resolved in source and hash-bound in the minimal-bootstrap manifest:
 
 ```text
-NETWORK_BOOTSTRAP_IMPLEMENTED=YES
-NETWORK_BOOTSTRAP_CANDIDATE_CI=SUCCESS
-PROTOTYPE_SCOPE=ETHERNET_USB_TETHER_DHCP
-BUSYBOX_VERSION=1.38.0
-STATIC_MUSL=YES
-NETBOX_APPLETS=ifconfig,route,udhcpc
-NETBOX_SHELL_APPLET=NO
-NETBOX_SHA256=0b8eb465f533d13ebcbc4275c5d4beafddb75f04c9a86930db3bc66d6ce243ba
-NETBOX_SIZE=128536
-NETWORK_CANDIDATE_SOURCE_COMMIT=7e44986aa1d09bd205939d7ae613c328ea81b16c
-WIFI_IN_PROTOTYPE_SEED=NO
-CONSUMER_WIFI_REQUIRED_BEFORE_PROMOTION=YES
-PHYSICAL_NETWORK_ARTIFACT_AUTHORIZED=NO
+RELEASE_CHANNEL=RESOLVED
+RELEASE_ENVELOPE_ASSET=release-envelope.json
+RELEASE_ENVELOPE_URL=https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json
+RELEASE_CHANNEL_SHA256=ea1f3bae328a1c1e7aca1474d4930f84b2dd6da1702dcc11b08c01ed63a6ee5b
+LATEST_POINTER_IS_AUTHENTICITY_AUTHORITY=NO
 ```
 
-The build uses Linux UAPI headers only as compile-time inputs for BusyBox DHCP. The resulting netbox is static and has no runtime host dependency. Legacy networking is evidence only and is not bulk-copied.
+The URL chooses what to fetch. The Ed25519 signature decides whether fetched bytes are trusted.
+
+### Release trust
+
+```text
+RELEASE_TRUST=UNRESOLVED
+EXPECTED_RUNTIME_PATH=/ordax/bootstrap/trust/release-ed25519.json
+PRIVATE_SIGNING_KEY_IN_GIT=FORBIDDEN
+PRIVATE_SIGNING_KEY_IN_USB=FORBIDDEN
+MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=NO
+PHYSICAL_WRITE_ALLOWED=NO
+```
+
+This is now the only unresolved artifact group in `docs/contracts/minimal-bootstrap.json`. It must not be replaced with a generated placeholder or a public key whose corresponding private-key custody is undefined.
 
 ## Recovery
 
@@ -233,75 +210,43 @@ RECOVERY_SSH=NO
 RECOVERY_AUTOMATIC_MUTATION=NO
 ```
 
-Recovery uses the same kernel/initramfs seed and a local read-only recovery path.
-
-## Creator / physical installer
+## Creator
 
 Permanent architecture:
 
 ```text
 OrdaX Desktop UI
- -> same Creator Core
- -> narrow host adapter/helper
- -> verified USB
+ -> shared Creator Core
+ -> narrow host raw-device/elevation adapter
+ -> verified target
 ```
 
-To avoid waiting for the full Desktop UI, a small prototype `ordax-creator.exe` is allowed as an early shell around the exact same Core.
-
-Implemented now:
+Implemented:
 
 ```text
 CREATOR_CORE_IMPLEMENTED=YES
-CREATOR_CHECK_IMPLEMENTED=YES
 CREATOR_VERIFY_PAYLOAD_IMPLEMENTED=YES
-CREATOR_PLAN_IMPLEMENTED=YES_BUT_FAIL_CLOSED_WHILE_MANIFEST_UNAUTHORIZED
-CREATOR_WINDOWS_CANDIDATE_BUILD=SUCCESS
-CREATOR_LINUX_CANDIDATE_BUILD=SUCCESS
+CREATOR_STAGE_TREE=IMPLEMENTED_TRANSACTIONAL
+CREATOR_DISPOSABLE_GPT_FILESYSTEM_PROOF=PASS
+CREATOR_PLAN=FAIL_CLOSED
 CREATOR_APPLY_IMPLEMENTED=NO
 CREATOR_WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
 PHYSICAL_USB_WRITE=NO
 ```
 
-Creator payload contract:
+The stage tree is built in a sibling temporary directory and published only after complete copy/hash validation. Failed staging does not publish partial payload bytes.
+
+Disposable media proof creates only an ephemeral regular RAW file and proves:
 
 ```text
-SOURCE_PATH_MEANS=BUNDLE_RELATIVE_PATH
-ABSOLUTE_SOURCE_PATH_ALLOWED=NO
-PATH_TRAVERSAL_ALLOWED=NO
-SYMLINK_TRAVERSAL_ALLOWED=NO
-NON_REGULAR_SOURCE_ALLOWED=NO
-DUPLICATE_PARTITION_TARGET_ALLOWED=NO
-LOCAL_SHA256_RECHECK_BEFORE_APPLY=YES
-PAYLOAD_CAN_BE_VERIFIED_BEFORE_DESTRUCTIVE_AUTHORIZATION=YES
+DISPOSABLE_GPT=PASS
+PARTITION_COUNT=2
+FILESYSTEMS=FAT32,EXT4
+FILESYSTEM_LABELS=PASS
+POST_MATERIALIZATION_HASH_VERIFY=PASS
+RAW_EMBEDDED_PARTITION_BYTES=PASS
+PHYSICAL_WRITE_AUTHORIZED=NO
 ```
-
-Canonical docs/source:
-
-- `docs/CREATOR-INSTALLATION.md`
-- `tools/creator/core/`
-- `tools/creator/cmd/ordax-creator/`
-- `.github/workflows/creator-candidate.yml`
-
-Creator Candidate passed again after adding the `verify-payload` integrity gate. The candidate intentionally cannot write disks yet.
-
-## Mobile / account sync
-
-```text
-MOBILE_FIRST_CLASS=YES
-ANDROID=YES
-iOS=YES
-MOBILE_RAW_DISK_AUTHORITY=NO
-SAME_ACCOUNT_ALL_MODES=YES
-BASIC_SYNC_AVAILABLE_ALL_ACCOUNTS=YES
-DEVICE_PRIVATE_SECRETS_SYNC=NO
-PRICING_DEFINED=NO
-```
-
-Canonical docs:
-
-- `docs/PRODUCT-MODES.md`
-- `docs/ACCOUNT-SYNC-AND-PLANS.md`
-- `system/adapters/mobile/`
 
 ## Remote access
 
@@ -311,7 +256,7 @@ REMOTE_CORE_REQUIRED=NO
 CONTROL_PLANE_REQUIRED=NO
 ```
 
-They may be added later only if a real post-release product need is demonstrated. Do not reintroduce them merely because the legacy repository used them.
+They may return later as ordinary post-release capabilities only if product requirements justify them.
 
 ## Host independence
 
@@ -325,8 +270,6 @@ END_USER_KERNEL_TOOLCHAIN_REQUIRED=NO
 THIN_HOST_ADAPTERS_ALLOWED=YES
 ```
 
-Host-specific APIs are allowed only behind narrow adapters where unavoidable, such as Windows raw removable-disk access.
-
 ## Physical state
 
 ```text
@@ -334,35 +277,22 @@ USB_LOCATION=WINDOWS
 PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 PHYSICAL_NOTEBOOK_BOOT_PROVEN=NO
-LIVE_GIT_UPDATE_PROVEN=NO
+CREATOR_APPLY_IMPLEMENTED=NO
+DESTRUCTIVE_AUTHORIZATION=NO
 ```
 
-No destructive USB authorization exists yet.
+## Current priorities
 
-## Legacy/Codex evidence
-
-Legacy repository SSH reconciliation finished at:
-
-```text
-LEGACY_MAIN_AFTER_CODEX=49fe41fa67d9032f2e349e86592304e64d6c2d88
-OLD_OPERATOR_KEY_PRESERVED=YES
-```
-
-This remains historical evidence only and must not cause SSH/QEMU/F7 architecture to be imported.
-
-## Current main priorities
-
-1. retrieve and pin the actual CI hashes/provenance for kernel, initramfs and release-agent candidates;
-2. bind bootloader, kernel, initramfs, network and release-agent artifacts into one deterministic Creator payload contract;
-3. implement the CI payload assembler and verify the assembled bytes again through Creator Core;
-4. resolve `minimal-bootstrap.json` without enabling physical write;
-5. build the disposable two-partition media representation and prove GPT/filesystems/file hashes/recovery;
-6. implement Creator target identity and the narrow Windows removable-device adapter;
-7. only after disposable proof, add Creator APPLY and request explicit physical destructive authorization;
-8. build the shared Surface/runtime for Web/Mobile/Desktop/USB/Native in parallel;
-9. implement real account sync/conflict handling before product promotion;
-10. prove first physical boot and later Git-driven release updates.
+1. define real custody for the Ed25519 release-signing private key and pin only its public trust anchor in source;
+2. implement and test repository-owned release signing/publication without exposing the private key;
+3. resolve `bootstrap-release-trust`, making the minimal bootstrap byte-complete while keeping physical write disabled;
+4. prove signed-envelope acquisition, artifact verification, transactional activation, idempotency and failure preservation against disposable storage;
+5. implement Creator target identity and the narrow Windows removable-disk adapter;
+6. add physical APPLY only after all non-destructive gates pass;
+7. request explicit destructive authorization only at the actual physical write boundary;
+8. boot the notebook and prove first release acquisition, offline known-good boot and recovery;
+9. continue shared Surface/runtime and account continuity in parallel.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file, and the canonical architecture/contracts before changing source. Never assume an unresolved physical artifact is safe to write merely because a CI candidate exists.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. A successful CI artifact or disposable proof never implicitly authorizes physical media mutation.
