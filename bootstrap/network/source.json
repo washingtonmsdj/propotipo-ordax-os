@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.network-bootstrap-source/1",
-  "status": "userspace-unresolved",
+  "status": "candidate-build-defined",
   "prototype_scope": "ethernet-and-usb-tether-dhcp",
   "wifi_in_bootstrap": false,
   "consumer_wifi_required_before_promotion": true,
@@ -18,13 +18,16 @@
   },
   "runtime": {
     "bring_up": "bootstrap/network/bring-up",
+    "bring_up_sha256": "222c4838c0e3a4401593653e7f495c61bafaed3bb799fa41642a708c8d9e57d9",
     "dhcp_script": "bootstrap/network/udhcpc.script",
+    "dhcp_script_sha256": "3fbb9ed0cdf1df84e1bfffc6de5a2190e676dc3816a0a856b557b3da0500f5a0",
     "target_netbox": "/ordax/bootstrap/network/bin/netbox",
     "network_success_condition": "ipv4-address-present",
     "https_verified_by_release_agent": true
   },
   "build": {
-    "canonical_entrypoint": null,
+    "canonical_entrypoint": "bootstrap/network/build.py",
+    "static_userspace": "busybox-musl",
     "physical_artifact_authorized": false
   }
 }

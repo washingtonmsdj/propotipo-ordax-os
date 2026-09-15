@@ -21,6 +21,11 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         self.assertTrue(SOURCE["consumer_wifi_required_before_promotion"])
         self.assertFalse(SOURCE["build"]["physical_artifact_authorized"])
 
+    def test_network_builder_is_repository_owned(self):
+        self.assertEqual(SOURCE["build"]["canonical_entrypoint"], "bootstrap/network/build.py")
+        self.assertTrue((ROOT / SOURCE["build"]["canonical_entrypoint"]).is_file())
+        self.assertEqual(SOURCE["build"]["static_userspace"], "busybox-musl")
+
     def test_network_userspace_is_bounded(self):
         self.assertEqual(
             SOURCE["busybox"]["required_applets"],
@@ -28,9 +33,19 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         )
         text = (NETWORK / "bring-up").read_text(encoding="utf-8").lower()
         dhcp = (NETWORK / "udhcpc.script").read_text(encoding="utf-8").lower()
+        builder = (NETWORK / "build.py").read_text(encoding="utf-8").lower()
         for forbidden in ("wpa_supplicant", "sshd", "dropbear", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden, text)
             self.assertNotIn(forbidden, dhcp)
+        self.assertNotIn("config_httpd\": \"y", builder)
+        self.assertNotIn("config_telnetd\": \"y", builder)
+
+    def test_runtime_sources_match_source_contract_hashes(self):
+        runtime = SOURCE["runtime"]
+        for path_key, hash_key in (("bring_up", "bring_up_sha256"), ("dhcp_script", "dhcp_script_sha256")):
+            path = ROOT / runtime[path_key]
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            self.assertEqual(runtime[hash_key], digest)
 
     def test_network_scripts_are_partially_pinned_while_netbox_remains_unresolved(self):
         groups = {g["id"]: g for g in MANIFEST["artifact_groups"]}

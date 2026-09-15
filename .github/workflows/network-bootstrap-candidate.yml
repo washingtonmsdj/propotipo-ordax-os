@@ -1,0 +1,58 @@
+name: Network Bootstrap Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/network/**'
+      - 'bootstrap/kernel/config/ordax.fragment'
+      - 'tests/test_network_bootstrap_contract.py'
+      - '.github/workflows/network-bootstrap-candidate.yml'
+  pull_request:
+    paths:
+      - 'bootstrap/network/**'
+      - 'bootstrap/kernel/config/ordax.fragment'
+      - 'tests/test_network_bootstrap_contract.py'
+      - '.github/workflows/network-bootstrap-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network-bootstrap:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install network build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends make musl-tools binutils bzip2
+
+      - name: Validate network source contract
+        run: python bootstrap/network/build.py check
+
+      - name: Run network regressions
+        run: python -m unittest discover -s tests -p 'test_network_bootstrap_contract.py' -v
+
+      - name: Build static network bootstrap candidate
+        run: python bootstrap/network/build.py build --jobs 4
+
+      - name: Verify network bootstrap candidate
+        run: python bootstrap/network/build.py verify
+
+      - name: Upload network bootstrap candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordax-network-bootstrap-${{ github.sha }}
+          path: out/network-bootstrap/
+          if-no-files-found: error
+          retention-days: 14
