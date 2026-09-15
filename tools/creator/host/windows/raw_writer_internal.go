@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 )
 
 // rawDiskDevice is the narrow I/O surface required by the internal writer.
@@ -74,12 +73,17 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		return rawDiskApplyResult{}, err
 	}
 
-	// ValidateRawDiskApplyRequest hashes the complete image before the device is
-	// opened. Re-open only after that proof; streamRawImageVerified re-hashes the
-	// bytes actually sent to the device and detects shrink/growth during I/O.
-	source, err := os.Open(validated.Image.Path)
+	// Re-open and revalidate the exact source handle before the device is
+	// opened. On Windows this handle denies write sharing for its lifetime, so a
+	// path replacement or concurrent writer cannot mutate the authorized source
+	// between this proof and streaming.
+	source, streamImage, err := openVerifiedRawImageForApply(
+		validated.Image.Path,
+		validated.Image.SHA256,
+		validated.Image.SizeBytes,
+	)
 	if err != nil {
-		return rawDiskApplyResult{}, fmt.Errorf("open verified raw image for streaming: %w", err)
+		return rawDiskApplyResult{}, fmt.Errorf("open stable verified raw image for streaming: %w", err)
 	}
 	defer func() {
 		if err := source.Close(); err != nil && retErr == nil {
@@ -101,12 +105,12 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 	// an inherited file cursor. streamRawImageVerified caps writes at the exact
 	// authorized image size and refuses any changed source identity.
 	destination := io.NewOffsetWriter(device, 0)
-	written, err := streamRawImageVerified(source, destination, validated.Image.SHA256, validated.Image.SizeBytes)
+	written, err := streamRawImageVerified(source, destination, streamImage.SHA256, streamImage.SizeBytes)
 	if err != nil {
 		return rawDiskApplyResult{}, err
 	}
-	if written != validated.Image.SizeBytes {
-		return rawDiskApplyResult{}, fmt.Errorf("raw write length mismatch: expected=%d actual=%d", validated.Image.SizeBytes, written)
+	if written != streamImage.SizeBytes {
+		return rawDiskApplyResult{}, fmt.Errorf("raw write length mismatch: expected=%d actual=%d", streamImage.SizeBytes, written)
 	}
 
 	if err := device.Sync(); err != nil {
@@ -117,17 +121,17 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 	// physical device. The full authorized extent is hashed and must match the
 	// source digest before the operation can report success.
 	digest := sha256.New()
-	reader := io.NewSectionReader(device, 0, validated.Image.SizeBytes)
+	reader := io.NewSectionReader(device, 0, streamImage.SizeBytes)
 	readBytes, err := io.Copy(digest, reader)
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("read back PhysicalDrive%d: %w", confirmed.DiskNumber, err)
 	}
-	if readBytes != validated.Image.SizeBytes {
-		return rawDiskApplyResult{}, fmt.Errorf("physical read-back length mismatch: expected=%d actual=%d", validated.Image.SizeBytes, readBytes)
+	if readBytes != streamImage.SizeBytes {
+		return rawDiskApplyResult{}, fmt.Errorf("physical read-back length mismatch: expected=%d actual=%d", streamImage.SizeBytes, readBytes)
 	}
 	actual := hex.EncodeToString(digest.Sum(nil))
-	if actual != validated.Image.SHA256 {
-		return rawDiskApplyResult{}, fmt.Errorf("physical read-back SHA-256 mismatch: expected=%s actual=%s", validated.Image.SHA256, actual)
+	if actual != streamImage.SHA256 {
+		return rawDiskApplyResult{}, fmt.Errorf("physical read-back SHA-256 mismatch: expected=%s actual=%s", streamImage.SHA256, actual)
 	}
 
 	return rawDiskApplyResult{
