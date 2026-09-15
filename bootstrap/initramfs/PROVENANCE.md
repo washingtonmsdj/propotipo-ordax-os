@@ -39,6 +39,22 @@ ORDAX
 
 `ORDAX-HOME` and `ORDAX-PLATFORM` are forbidden legacy partition assumptions.
 
+## Creator payload handoff
+
+A successful initramfs CI candidate is copied byte-for-byte into the deterministic Creator payload. Its workflow artifact path is not a physical media source path.
+
+```text
+initramfs CI candidate
+ -> candidate SHA-256 + provenance
+ -> exact initramfs.cpio.gz copied into Creator payload
+ -> bundle-relative source_path pinned in media manifest
+ -> Creator Core re-hashes local payload bytes
+ -> disposable boot proof with the selected kernel
+ -> later explicit destructive authorization
+```
+
+The payload assembler may not silently rebuild or mutate the archive. If initramfs source changes, its own candidate pipeline must produce a new artifact and provenance first.
+
 ## Promotion gate
 
 A successful CI build is still a candidate until the build environment is pinned and the resulting kernel + initramfs pair passes disposable boot/media tests. No current initramfs candidate is yet authorized for destructive physical provisioning.
