@@ -24,7 +24,9 @@ Todos compartilham a mesma Surface, apps e logica de produto. O modo nativo adic
 - O pendrive/notebook sao alvos materializados, nao source authority.
 - O layout fisico alvo possui apenas duas particoes: `ORDAX-ESP` + `ORDAX`.
 - HOME e estado de usuario sao separacoes logicas dentro de `ORDAX`, nao uma terceira particao obrigatoria.
-- Antes do Git deve existir somente o substrato necessario para boot, rede, identidade, OrdaX Remote Core, recuperacao e aquisicao da release.
+- O primeiro USB e minimo: boot + bootstrap + rede + identidade + Remote Core + trust/release acquisition + recovery.
+- Surface, apps e o sistema de alto nivel chegam depois por release, em vez de serem pregravados por padrao.
+- Depois da primeira release verificada, ela permanece local para boot offline e rollback.
 - Web, USB e SSD/HD sao modos do mesmo produto, nao forks.
 - Surface e apps possuem uma unica arvore source.
 - WSL, QEMU, PowerShell, Bash e SSH externo nao sao dependencias arquiteturais obrigatorias.
@@ -41,13 +43,14 @@ Leia, nesta ordem:
 2. `docs/CURRENT-STATE.md`
 3. `docs/ARCHITECTURE.md`
 4. `docs/PRODUCT-MODES.md`
-5. `docs/HOST-INDEPENDENCE.md`
-6. `docs/REMOTE-CONTROL.md`
-7. `docs/PHYSICAL-MEDIA.md`
-8. `docs/DEVELOPMENT-WORKFLOW.md`
-9. `docs/SOURCE-MIGRATION.md`
-10. `docs/PROMOTION-GATES.md`
-11. `docs/DECISIONS.md`
+5. `docs/MINIMAL-USB-BOOTSTRAP.md`
+6. `docs/HOST-INDEPENDENCE.md`
+7. `docs/REMOTE-CONTROL.md`
+8. `docs/PHYSICAL-MEDIA.md`
+9. `docs/DEVELOPMENT-WORKFLOW.md`
+10. `docs/SOURCE-MIGRATION.md`
+11. `docs/PROMOTION-GATES.md`
+12. `docs/DECISIONS.md`
 
 `CURRENT-STATE.md` e o snapshot de handoff. Os demais documentos definem contratos duraveis e vencem em caso de conflito.
 
@@ -84,6 +87,26 @@ tests/
 docs/
 ```
 
+## Pendrive inicial
+
+O fluxo padrao do prototipo e **minimum network-first**:
+
+```text
+USB inicial
+ -> boot
+ -> rede
+ -> identidade
+ -> OrdaX Remote Core
+ -> trust/Control Plane minimo
+ -> buscar release exata
+ -> verificar
+ -> releases/<commit>
+ -> current
+ -> Surface/apps
+```
+
+Nao gravar o sistema completo no pendrive inicial apenas por conveniencia. Isso reduz o trabalho fisico e faz quase toda evolucao posterior acontecer por Git/rede.
+
 ## Modelo de instalacao
 
 O usuario pode iniciar na Web e, quando quiser mais capacidade:
@@ -91,9 +114,9 @@ O usuario pode iniciar na Web e, quando quiser mais capacidade:
 ```text
 OrdaX Web
  -> baixar OrdaX Creator
- -> criar USB
+ -> criar USB minimo
  -> bootar OrdaX
- -> sincronizar ambiente
+ -> adquirir/sincronizar ambiente
  -> opcionalmente instalar no SSD/HD
 ```
 
@@ -110,7 +133,7 @@ UEFI
  -> rede
  -> identidade
  -> OrdaX Remote Core
- -> Git
+ -> aquisicao de release
  -> release/<commit>
  -> current
  -> Surface compartilhada
