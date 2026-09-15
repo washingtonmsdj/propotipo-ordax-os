@@ -13,7 +13,8 @@ edit source
   -> run affected tests
   -> preview in browser when Surface/app work is affected
   -> commit to main
-  -> materialize/sync only the delta when native target is online
+  -> CI builds/verifies only affected owners
+  -> publish/materialize a verified release or delta when applicable
   -> reconcile only the affected owner
   -> verify health/readiness
   -> record evidence
@@ -35,11 +36,13 @@ The same shared product source serves:
 
 ```text
 Web preview / hosted Web
+Mobile application
+Desktop application
 USB OrdaX
 Native SSD/HD OrdaX
 ```
 
-A normal Surface change should be visible through browser HMR before commit and then reach hosted Web and native OrdaX from the same source commit. No manual Web-to-device port is allowed.
+A normal Surface change should be visible through browser HMR before commit and then reach the applicable product modes from the same source commit. No manual Web-to-device port or copied UI fork is allowed.
 
 ## Phases
 
@@ -50,6 +53,7 @@ Work that can be completed without the notebook:
 - architecture/contracts;
 - shared Surface/apps/services;
 - browser preview/HMR;
+- Web/Mobile/Desktop capability adapters;
 - provisioning core logic;
 - release layout;
 - security policy;
@@ -60,27 +64,35 @@ Work that can be completed without the notebook:
 
 ### Phase B - physical bootstrap
 
-Once provisioning is proven against safe disposable/fixture targets:
+Once provisioning, canonical release trust and pinned boot artifacts are proven against safe disposable/fixture targets:
 
-- identify the physical USB;
+- identify the physical USB independently from drive letters;
+- require explicit destructive authorization;
 - clean-provision the two-partition layout;
-- install only the pre-Git bootstrap;
-- verify physical bytes/layout;
+- install only the minimal pre-release bootstrap;
+- verify physical bytes/layout/hashes;
 - boot the notebook;
-- prove network + identity + OrdaX Remote Core + Control Plane + Git.
+- prove UEFI boot + minimum network + signed release acquisition + verification + activation;
+- prove recovery when first acquisition cannot complete.
+
+SSH, Remote Core and Control Plane are not prerequisites for this phase.
 
 ### Phase C - live evolution
 
-Once the notebook can safely reach source/releases:
+Once the notebook can safely consume verified releases:
 
 ```text
 Git main
  -> build/test affected component
- -> publish/materialize release or delta
- -> notebook target
+ -> publish release or delta
+ -> OrdaX updater acquires it
+ -> verify
+ -> activate
  -> owner-local reconcile
  -> readiness/health evidence
 ```
+
+Ordinary system changes must not require USB reflash, a remote shell or Codex. Boot/kernel/initramfs changes remain separately gated and may require a base update plus reboot.
 
 ## Branching
 
@@ -106,27 +118,28 @@ Rules:
 - rollback selects a previously verified release;
 - persistent mutable state never lives inside a release directory.
 
-## Remote development
+## Remote capability
 
-Primary development/control transport is the OrdaX Remote Core described in `docs/REMOTE-CONTROL.md`.
+Remote management is optional and is not part of the normal development/update path.
 
-Expected properties:
+The normal path is repository/release driven:
 
-- persistent device identity;
-- explicit operator/device authorization;
-- mature encrypted/authenticated transport;
-- structured capability RPC;
-- file/delta transfer;
-- logs/events streaming;
-- release stage/activate/rollback operations;
-- health/readiness queries;
-- auditable privileged changes.
+```text
+Git/GitHub
+ -> build/test
+ -> signed release or delta
+ -> OrdaX updater
+ -> verify
+ -> activate
+```
 
-An external SSH executable is not required for the product or daily development. During migration only, SSH may remain as break-glass compatibility until Remote Core recovery is proven on real hardware.
+If a future product requirement justifies Remote Core or another remote-management capability, it must be delivered as a normal versioned release component behind explicit authorization. It must not become a hidden prerequisite for daily development, bootstrap, recovery or source authority. SSH remains optional and is not the default fallback.
+
+See `docs/REMOTE-CONTROL.md` and ADR-007.
 
 ## OrdaX Creator development
 
-`tools/creator/` must expose one shared product core.
+`tools/creator/` exposes one shared product core.
 
 Platform-specific code is limited to adapters needed for host APIs:
 
@@ -138,11 +151,11 @@ tools/creator/platform/macos/
 
 These adapters do not own layout policy, artifact choice, verification rules or user-visible product behavior.
 
-End users must not need WSL, QEMU or a kernel toolchain to create/install OrdaX.
+End users must not need WSL, QEMU or a kernel toolchain to create/install OrdaX. The Creator consumes prebuilt verified artifacts and keeps destructive disk access behind a narrow, explicit host boundary.
 
 ## Evidence
 
-For changes that affect boot, storage, identity, remote access or release activation, record at least:
+For changes that affect boot, storage, identity, optional remote access or release activation, record at least:
 
 ```text
 SOURCE_SHA=
