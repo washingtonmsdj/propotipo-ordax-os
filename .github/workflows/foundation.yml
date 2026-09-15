@@ -25,6 +25,7 @@ jobs:
           python -m json.tool docs/contracts/foundation.json >/dev/null
           python -m json.tool docs/contracts/minimal-bootstrap.json >/dev/null
           python -m json.tool docs/contracts/build-autonomy.json >/dev/null
+          python -m json.tool docs/contracts/release-channel.json >/dev/null
           python -m json.tool bootstrap/kernel/source.json >/dev/null
 
       - name: Validate kernel build contract without compiling
