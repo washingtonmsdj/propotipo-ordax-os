@@ -31,6 +31,7 @@ class ModuleBoundaryVerifierTests(unittest.TestCase):
             "system/adapters/mobile",
             "system/adapters/desktop",
             "system/adapters/native",
+            "system/composition",
             "bootstrap",
             "tools/creator",
         ):
@@ -77,6 +78,29 @@ class ModuleBoundaryVerifierTests(unittest.TestCase):
             )
             violations = MODULE.find_violations(root, CONTRACT)
             self.assertTrue(any("adapter mode web may not import mobile" in item for item in violations))
+
+    def test_composition_may_wire_surface_and_adapter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.seed_roots(root)
+            self.write(
+                root,
+                "system/composition/web/main.mjs",
+                'import "../../surface/ui/surface.mjs";\nimport "../../adapters/web/runtime.mjs";\n',
+            )
+            self.assertEqual(MODULE.find_violations(root, CONTRACT), [])
+
+    def test_composition_may_not_import_apps_directly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.seed_roots(root)
+            self.write(
+                root,
+                "system/composition/web/main.mjs",
+                'import "../../apps/files/index.mjs";\n',
+            )
+            violations = MODULE.find_violations(root, CONTRACT)
+            self.assertTrue(any("composition may not import apps" in item for item in violations))
 
     def test_ordax_alias_is_resolved_to_shared_layer(self):
         with tempfile.TemporaryDirectory() as tmp:

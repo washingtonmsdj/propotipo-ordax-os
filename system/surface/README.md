@@ -14,7 +14,15 @@ Native disk
 
 Those modes may host/render the Surface differently, but they do not own separate screens, CSS, design systems or application policy.
 
-## Stable boundary
+## Visual source
+
+The first graphical source now lives under `system/surface/ui/` as standards-first HTML/CSS/JavaScript modules with no remote asset or framework dependency. This is an implementation baseline, not a permanent framework choice.
+
+`surface-state.mjs` keeps interaction state independent from DOM rendering. `surface.mjs` mounts the shared UI against the platform-neutral `ordax.surface-host/1` contract. Design tokens and responsive behavior remain shared CSS.
+
+Environment wiring is intentionally outside the Surface under `system/composition/`. The Web composition combines the shared Surface with `system/adapters/web/runtime.mjs`; future Desktop/Mobile/native composition roots may select different adapters without copying the UI.
+
+## Stable native boundary
 
 The native verified-release handoff remains intentionally simple:
 
@@ -24,9 +32,9 @@ system/entrypoint
  -> system/surface/bin/ordax-surface
 ```
 
-`system/surface/entrypoint` is the stable native launch boundary. The current `bin/ordax-surface` is only the bootstrap-console implementation and may later be replaced by the graphical runtime without changing the release handoff contract.
+`system/surface/entrypoint` is the stable native launch boundary. The current `bin/ordax-surface` is still the bootstrap-console implementation and remains the safe native fallback until the graphical host/runtime is proven on the booted OS. Adding the shared visual source does not falsely claim native graphical boot support.
 
-Do not add a plugin/launcher framework merely to prepare for that replacement; the stable entrypoint already supplies the required indirection.
+Do not add a plugin/launcher framework merely to prepare for runtime replacement; the stable entrypoint already supplies the required indirection.
 
 ## Capability rule
 

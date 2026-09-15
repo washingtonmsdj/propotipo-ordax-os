@@ -22,6 +22,9 @@ class ModuleBoundariesContractTests(unittest.TestCase):
     def load(self):
         return json.loads(CONTRACT.read_text(encoding="utf-8"))
 
+    def test_contract_schema_is_current(self):
+        self.assertEqual(self.load()["$schema"], "prototype-ordax.module-boundaries/2")
+
     def test_layer_roots_exist_and_ids_are_unique(self):
         contract = self.load()
         layers = contract["layers"]
@@ -77,6 +80,17 @@ class ModuleBoundariesContractTests(unittest.TestCase):
         self.assertIn("adapters", surface["forbidden_dependencies"])
         self.assertIn("adapters", apps["forbidden_dependencies"])
         self.assertIn("adapters", services["forbidden_dependencies"])
+
+    def test_composition_is_thin_outer_wiring_layer(self):
+        contract = self.load()
+        composition = next(layer for layer in contract["layers"] if layer["id"] == "composition")
+        self.assertIn("surface", composition["allowed_dependencies"])
+        self.assertIn("adapters", composition["allowed_dependencies"])
+        self.assertIn("apps", composition["forbidden_dependencies"])
+        self.assertFalse(contract["principles"]["composition_owns_product_policy"])
+        self.assertFalse(contract["principles"]["composition_owns_shared_visual_assets"])
+        self.assertFalse(contract["evolution"]["composition_specific_ui_fork_allowed"])
+        self.assertTrue(contract["evolution"]["new_execution_target_adds_wiring_not_shared_product_copy"])
 
     def test_creator_and_bootstrap_stay_outside_shared_product_policy(self):
         external = self.load()["external_boundaries"]

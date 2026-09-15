@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.module-boundaries/1",
+  "$schema": "prototype-ordax.module-boundaries/2",
   "status": "canonical-prototype-contract",
   "principles": {
     "dependency_cycles_allowed": false,
@@ -8,6 +8,8 @@
     "cross_module_internal_imports_allowed": false,
     "public_contract_boundary_required": true,
     "composition_selects_adapter_implementation": true,
+    "composition_owns_product_policy": false,
+    "composition_owns_shared_visual_assets": false,
     "new_module_requires_named_owner": true,
     "adapter_modes_may_import_each_other": false
   },
@@ -21,7 +23,8 @@
         "services",
         "apps",
         "surface",
-        "adapters"
+        "adapters",
+        "composition"
       ]
     },
     {
@@ -34,7 +37,8 @@
       "forbidden_dependencies": [
         "apps",
         "surface",
-        "adapters"
+        "adapters",
+        "composition"
       ]
     },
     {
@@ -47,20 +51,22 @@
       ],
       "forbidden_dependencies": [
         "surface",
-        "adapters"
+        "adapters",
+        "composition"
       ]
     },
     {
       "id": "surface",
       "root": "system/surface",
-      "responsibility": "shared presentation shell and interaction composition",
+      "responsibility": "shared presentation shell and interaction behavior",
       "allowed_dependencies": [
         "contracts",
         "services",
         "apps"
       ],
       "forbidden_dependencies": [
-        "adapters"
+        "adapters",
+        "composition"
       ]
     },
     {
@@ -72,7 +78,22 @@
         "services"
       ],
       "forbidden_dependencies": [
+        "apps",
         "surface",
+        "composition"
+      ]
+    },
+    {
+      "id": "composition",
+      "root": "system/composition",
+      "responsibility": "thin target wiring that selects adapters and mounts shared product entrypoints",
+      "allowed_dependencies": [
+        "contracts",
+        "services",
+        "surface",
+        "adapters"
+      ],
+      "forbidden_dependencies": [
         "apps"
       ]
     }
@@ -104,6 +125,8 @@
     "temporary_bridge_requires_owner_and_removal_condition": true,
     "permanent_compatibility_bridge_without_owner_allowed": false,
     "adapter_specific_ui_fork_allowed": false,
+    "composition_specific_ui_fork_allowed": false,
+    "new_execution_target_adds_wiring_not_shared_product_copy": true,
     "backend_provider_may_change_without_domain_layer_rewrite": true
   }
 }
