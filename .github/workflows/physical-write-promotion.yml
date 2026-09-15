@@ -14,6 +14,8 @@ on:
       - 'tools/creator/core/**'
       - 'tools/creator/proof/**'
       - 'tools/creator/cmd/ordax-creator-physical-test/**'
+      - 'tools/creator/physicalchannel/**'
+      - 'tools/release-signing/cmd/ordax-physical-release-signing/**'
       - '.github/workflows/physical-write-promotion.yml'
   workflow_dispatch:
 
@@ -83,6 +85,12 @@ jobs:
 
       - name: Recheck promotion immediately before materialization
         run: python tools/creator/physical_promotion.py --require-ready
+
+      - name: Test physical channel verifier and purpose-bound signer
+        run: |
+          set -euo pipefail
+          (cd tools/creator && go test -count=1 ./physicalchannel)
+          (cd tools/release-signing && go test -count=1 ./cmd/ordax-physical-release-signing)
 
       - name: Install bounded bootstrap image dependencies
         run: |
@@ -228,10 +236,104 @@ jobs:
           echo 'PRIVATE_KEY_IN_CANDIDATE=NO'
           echo 'PHYSICAL_CANDIDATE_PUBLISHED=NO'
 
-      - name: Upload authorized candidate for publisher signing review only
+      - name: Package exact physical release bytes and unsigned manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="$GITHUB_WORKSPACE/out/physical-write-candidate"
+          release="$GITHUB_WORKSPACE/out/physical-write-release"
+          mkdir -p "$release"
+          bundle="$release/ordax-creator-physical-windows-amd64.zip"
+          manifest="$release/creator-physical-manifest.json"
+
+          python - "$candidate" "$bundle" "$manifest" <<'PY'
+          import hashlib, json, os, pathlib, sys, zipfile
+
+          candidate = pathlib.Path(sys.argv[1])
+          bundle = pathlib.Path(sys.argv[2])
+          manifest_path = pathlib.Path(sys.argv[3])
+          names = [
+              'ordax-creator-physical-test.exe',
+              'ordax-bootstrap-seed.raw',
+              'release-ed25519.json',
+              'provenance.json',
+              'SHA256SUMS',
+          ]
+
+          def binding(path: pathlib.Path):
+              h = hashlib.sha256()
+              size = 0
+              with path.open('rb') as stream:
+                  while True:
+                      chunk = stream.read(1024 * 1024)
+                      if not chunk:
+                          break
+                      h.update(chunk)
+                      size += len(chunk)
+              return h.hexdigest(), size
+
+          for name in names:
+              path = candidate / name
+              if not path.is_file():
+                  raise SystemExit(f'missing physical candidate file: {name}')
+
+          with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              for name in names:
+                  path = candidate / name
+                  info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.external_attr = (0o100755 if name.endswith('.exe') else 0o100644) << 16
+                  with path.open('rb') as source, archive.open(info, 'w', force_zip64=True) as target:
+                      while True:
+                          chunk = source.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          target.write(chunk)
+
+          bundle_sha, bundle_size = binding(bundle)
+          files = []
+          for name in names:
+              digest, size = binding(candidate / name)
+              files.append({'name': name, 'sha256': digest, 'size': size})
+
+          manifest = {
+              '$schema': 'prototype-ordax.creator-physical-manifest/1',
+              'purpose': 'creator-physical-windows-amd64',
+              'source_repository': 'washingtonmsdj/prototipo-ordax-os',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'created_from_recipe': 'creator/physical/windows/1',
+              'bundle': {
+                  'url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-physical/ordax-creator-physical-windows-amd64.zip',
+                  'sha256': bundle_sha,
+                  'size': bundle_size,
+              },
+              'files': files,
+          }
+          manifest_path.write_text(json.dumps(manifest, indent=2, separators=(',', ': ')) + '\n', encoding='utf-8', newline='\n')
+          PY
+
+          (cd tools/release-signing && go run ./cmd/ordax-physical-release-signing --help >/dev/null 2>&1 || true)
+          python - "$manifest" <<'PY'
+          import json, pathlib, sys
+          m = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert m['$schema'] == 'prototype-ordax.creator-physical-manifest/1'
+          assert m['purpose'] == 'creator-physical-windows-amd64'
+          assert len(m['files']) == 5
+          assert {x['name'] for x in m['files']} == {
+              'ordax-creator-physical-test.exe', 'ordax-bootstrap-seed.raw',
+              'release-ed25519.json', 'provenance.json', 'SHA256SUMS'
+          }
+          PY
+          echo 'PHYSICAL_RELEASE_PACKAGE_READY_FOR_OFFLINE_SIGNING=YES'
+          echo 'PHYSICAL_RELEASE_ENVELOPE_PRESENT=NO'
+          echo 'PRIVATE_KEY_REQUIRED_IN_CI=NO'
+
+      - name: Upload authorized candidate and signing inputs for publisher review only
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-authorized-physical-candidate-${{ github.sha }}
-          path: out/physical-write-candidate/
+          path: |
+            out/physical-write-candidate/
+            out/physical-write-release/
           if-no-files-found: error
           retention-days: 7
