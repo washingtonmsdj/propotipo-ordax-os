@@ -15,7 +15,7 @@ class FoundationContractTest(unittest.TestCase):
         cls.contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
 
     def test_contract_schema_is_current(self):
-        self.assertEqual(self.contract["$schema"], "prototype-ordax.foundation/6")
+        self.assertEqual(self.contract["$schema"], "prototype-ordax.foundation/7")
 
     def test_git_main_is_source_authority(self):
         source = self.contract["source_authority"]
@@ -91,16 +91,37 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(release["device_compiler_required"])
         self.assertFalse(release["remote_shell_required"])
 
-    def test_four_modes_are_one_product(self):
+    def test_five_modes_are_one_product(self):
         modes = self.contract["product_modes"]
         self.assertTrue(modes["single_product"])
-        self.assertEqual(modes["modes"], ["web", "desktop", "usb", "native-disk"])
-        self.assertEqual(modes["capability_progression"], ["web", "desktop", "usb", "native-disk"])
+        self.assertEqual(modes["modes"], ["web", "mobile", "desktop", "usb", "native-disk"])
+        self.assertEqual(
+            modes["capability_progression"],
+            ["web", "mobile", "desktop", "usb", "native-disk"],
+        )
         self.assertTrue(modes["same_account_model"])
         self.assertTrue(modes["same_surface_source"])
         self.assertTrue(modes["same_application_source"])
         self.assertTrue(modes["web_is_first_class_mode"])
+        self.assertTrue(modes["mobile_is_first_class_mode"])
         self.assertTrue(modes["desktop_is_first_class_mode"])
+
+    def test_mobile_is_first_class_but_not_privileged_host_or_os(self):
+        mobile = self.contract["mobile"]
+        self.assertEqual(mobile["platforms"], ["android", "ios"])
+        self.assertTrue(mobile["normal_user_install"])
+        self.assertFalse(mobile["is_ordax_operating_system"])
+        self.assertTrue(mobile["shared_surface_required"])
+        self.assertTrue(mobile["platform_differences_via_adapter_only"])
+        self.assertTrue(mobile["secure_device_storage_required"])
+        self.assertTrue(mobile["offline_capability_allowed"])
+        self.assertTrue(mobile["native_notifications_allowed"])
+        self.assertTrue(mobile["camera_and_media_capabilities_allowed"])
+        self.assertTrue(mobile["biometric_gate_allowed"])
+        self.assertFalse(mobile["raw_disk_access_allowed"])
+        self.assertFalse(mobile["usb_creator_capability"])
+        self.assertFalse(mobile["arbitrary_privileged_command_api_allowed"])
+        self.assertTrue(mobile["store_or_signed_platform_updates_required"])
 
     def test_desktop_is_intermediate_mode_with_narrow_privilege_boundary(self):
         desktop = self.contract["desktop"]
@@ -115,6 +136,32 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(desktop["arbitrary_privileged_command_api_allowed"])
         self.assertTrue(desktop["desktop_update_and_os_release_channels_separate"])
 
+    def test_one_account_syncs_safe_state_across_modes(self):
+        sync = self.contract["account_sync"]
+        self.assertTrue(sync["single_identity_across_all_modes"])
+        self.assertTrue(sync["core_cross_device_sync_available_to_all_accounts"])
+        self.assertFalse(sync["account_access_may_be_blocked_by_plan"])
+        self.assertTrue(sync["plan_entitlements_may_expand_sync"])
+        self.assertTrue(sync["offline_first_clients_allowed"])
+        self.assertTrue(sync["encrypted_transport_required"])
+        self.assertTrue(sync["server_side_authorization_required"])
+        self.assertTrue(sync["conflict_resolution_required"])
+        self.assertTrue(sync["device_local_secrets_never_sync"])
+        self.assertIn("appearance", sync["syncable_categories"])
+        self.assertIn("user-selected-cloud-content", sync["syncable_categories"])
+        self.assertIn("device-private-keys", sync["never_sync_categories"])
+        self.assertIn("machine-identity-secrets", sync["never_sync_categories"])
+
+    def test_plans_expand_entitlements_without_fragmenting_identity(self):
+        plans = self.contract["plans"]
+        self.assertFalse(plans["pricing_defined"])
+        self.assertFalse(plans["identity_is_plan_gated"])
+        self.assertFalse(plans["basic_cross_device_sync_is_plan_gated"])
+        self.assertTrue(plans["entitlements_are_server_authoritative"])
+        self.assertIn("cloud-storage-quota", plans["paid_tiers_may_expand"])
+        self.assertIn("sync-history-retention", plans["paid_tiers_may_expand"])
+        self.assertIn("device-backup", plans["paid_tiers_may_expand"])
+
     def test_surface_has_one_source_for_every_product_mode(self):
         surface = self.contract["surface"]
         self.assertTrue(surface["single_source_tree_required"])
@@ -125,7 +172,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertTrue(surface["platform_differences_via_adapters_only"])
         self.assertEqual(
             surface["targets"],
-            ["ordax-device", "desktop-host", "local-web", "hosted-web"],
+            ["ordax-device", "desktop-host", "android-host", "ios-host", "local-web", "hosted-web"],
         )
         self.assertTrue(surface["same_source_commit_for_equivalent_surface"])
         self.assertFalse(surface["manual_web_to_device_port_required"])
@@ -167,7 +214,7 @@ class FoundationContractTest(unittest.TestCase):
         self.assertFalse(development["routine_reboot_per_edit"])
         self.assertTrue(development["delta_or_release_update_preferred"])
         self.assertTrue(development["browser_hmr_for_surface_allowed"])
-        self.assertTrue(development["surface_change_should_reach_web_desktop_and_device"])
+        self.assertTrue(development["surface_change_should_reach_web_mobile_desktop_and_device"])
         self.assertFalse(development["remote_shell_required"])
         self.assertFalse(development["remote_control_service_required"])
         self.assertFalse(development["emulator_mandatory"])
