@@ -1,0 +1,22 @@
+{
+  "$schema": "prototype-ordax.kernel-source/1",
+  "version": "6.6.52",
+  "archive_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.52.tar.xz",
+  "signature_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.52.tar.sign",
+  "archive_sha256": "1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8",
+  "configuration": {
+    "base": "defconfig",
+    "fragment": "bootstrap/kernel/config/ordax.fragment",
+    "embedded_initramfs": false
+  },
+  "legacy_evidence_only": {
+    "repository": "washingtonmsdj/novo-ordax-os",
+    "commit": "49fe41fa67d9032f2e349e86592304e64d6c2d88",
+    "known_good_bzimage_sha256": "351941db619b7e93a4dc87010dbf39d3b8bf07262c73342381021385398a277d"
+  },
+  "build": {
+    "canonical_entrypoint": "bootstrap/kernel/build.py",
+    "pinned_environment_resolved": false,
+    "physical_artifact_authorized": false
+  }
+}
