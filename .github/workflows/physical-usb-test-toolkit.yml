@@ -1,0 +1,130 @@
+name: Physical USB Test Toolkit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/creator/**'
+      - '.github/workflows/physical-usb-test-toolkit.yml'
+  pull_request:
+    paths:
+      - 'tools/creator/**'
+      - '.github/workflows/physical-usb-test-toolkit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-physical-test-toolkit:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator and tagged Windows raw backend
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          Push-Location tools/creator
+          try {
+            go test -count=1 ./...
+            go test -count=1 -tags ordax_raw_backend ./host/windows
+          } finally {
+            Pop-Location
+          }
+
+      - name: Build inspection-only physical test executable
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Push-Location tools/creator
+          try {
+            go build -trimpath -buildvcs=false -tags ordax_raw_backend `
+              -ldflags='-s -w' `
+              -o ../../out/physical-usb-test-toolkit/ordax-creator-physical-test.exe `
+              ./cmd/ordax-creator-physical-test
+          } finally {
+            Pop-Location
+          }
+
+      - name: Prove unresolved build cannot prepare or apply
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
+          $exe = Join-Path $out 'ordax-creator-physical-test.exe'
+          $statusPath = Join-Path $out 'status.json'
+          & $exe status | Set-Content -Encoding utf8 $statusPath
+          $status = Get-Content -Raw $statusPath | ConvertFrom-Json
+          if (-not $status.raw_backend_linked) { throw 'raw backend was not linked' }
+          if ($status.build.ready) { throw 'unbound inspection build unexpectedly reports ready' }
+
+          $prepareOutput = & $exe prepare --confirm ('0' * 64) --seed missing.raw --out missing-out.raw 2>&1
+          if ($LASTEXITCODE -eq 0) { throw 'unbound prepare unexpectedly succeeded' }
+          if (($prepareOutput -join "`n") -notmatch 'inspection-only') { throw 'prepare did not fail closed on missing build binding' }
+
+          $applyOutput = & $exe apply --confirm ('0' * 64) --image missing.raw --sha256 ('0' * 64) --size 512 --authorize ('0' * 64) 2>&1
+          if ($LASTEXITCODE -eq 0) { throw 'unbound apply unexpectedly succeeded' }
+          if (($applyOutput -join "`n") -notmatch 'inspection-only') { throw 'apply did not fail closed on missing build binding' }
+          $global:LASTEXITCODE = 0
+
+      - name: Emit hashes provenance and usage
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
+          $exe = Join-Path $out 'ordax-creator-physical-test.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          "$hash  ordax-creator-physical-test.exe" | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
+          @"
+          OrdaX physical USB test toolkit
+
+          This candidate is intentionally INSPECTION ONLY.
+          Safe commands now:
+            ordax-creator-physical-test.exe status
+            ordax-creator-physical-test.exe targets
+
+          prepare/apply are compiled but fail closed until a later physical-test build is bound to:
+          - canonical Ed25519 public trust SHA-256
+          - authorized canonical seed RAW SHA-256 and size
+          - exact source commit
+
+          No physical write is authorized by this artifact.
+          "@ | Set-Content -Encoding utf8 (Join-Path $out 'README.txt')
+          $provenance = [ordered]@{
+            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/1'
+            status = 'inspection-only'
+            source_commit = '${{ github.sha }}'
+            raw_backend_linked = $true
+            canonical_trust_bound = $false
+            seed_image_bound = $false
+            prepare_enabled = $false
+            physical_apply_enabled = $false
+            executable_sha256 = $hash
+          }
+          $provenance | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $out 'provenance.json')
+
+      - name: Upload physical USB test toolkit
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-physical-usb-test-toolkit-${{ github.sha }}
+          path: out/physical-usb-test-toolkit/
+          if-no-files-found: error
+          retention-days: 14
