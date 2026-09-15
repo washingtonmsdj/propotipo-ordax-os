@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'system/**'
       - 'tools/release-bundle/**'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
@@ -12,6 +13,7 @@ on:
       - '.github/workflows/release-pipeline.yml'
   pull_request:
     paths:
+      - 'system/**'
       - 'tools/release-bundle/**'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
