@@ -19,6 +19,21 @@
 #define EXT4_SUPER_MAGIC 0xEF53
 #endif
 
+#define EXT4_DISK_SUPER_OFFSET 1024
+#define EXT4_DISK_SUPER_BYTES 1024
+#define EXT4_INCOMPAT_64BIT 0x80U
+#define EXT4_RO_COMPAT_BIGALLOC 0x200U
+
+/* ext4 on-disk superblock offsets; see Documentation/filesystems/ext4/super.rst. */
+#define EXT4_SB_BLOCKS_COUNT_LO 0x04
+#define EXT4_SB_FIRST_DATA_BLOCK 0x14
+#define EXT4_SB_LOG_BLOCK_SIZE 0x18
+#define EXT4_SB_BLOCKS_PER_GROUP 0x20
+#define EXT4_SB_MAGIC 0x38
+#define EXT4_SB_FEATURE_INCOMPAT 0x60
+#define EXT4_SB_FEATURE_RO_COMPAT 0x64
+#define EXT4_SB_BLOCKS_COUNT_HI 0x150
+
 /*
  * Keep the fixed initramfs self-contained: musl-gcc does not ship Linux UAPI
  * headers on every builder. These are stable Linux UAPI request definitions:
@@ -36,6 +51,13 @@
 
 _Static_assert(sizeof(uint64_t) == 8, "uint64_t must be 64-bit");
 
+struct ext4_disk_info {
+    uint64_t blocks_count;
+    uint64_t block_size;
+    uint32_t blocks_per_group;
+    uint32_t first_data_block;
+};
+
 static void fail_errno(const char *message) {
     fprintf(stderr, "ordax-grow-ext4: %s: %s\n", message, strerror(errno));
     exit(1);
@@ -44,6 +66,17 @@ static void fail_errno(const char *message) {
 static void fail(const char *message) {
     fprintf(stderr, "ordax-grow-ext4: %s\n", message);
     exit(1);
+}
+
+static uint16_t read_le16(const unsigned char *p) {
+    return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
+}
+
+static uint32_t read_le32(const unsigned char *p) {
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
 }
 
 static struct stat require_block_device(const char *path) {
@@ -68,6 +101,47 @@ static struct stat require_mountpoint_directory(const char *path) {
     return st;
 }
 
+static struct ext4_disk_info read_ext4_disk_info(int fd) {
+    unsigned char raw[EXT4_DISK_SUPER_BYTES];
+    ssize_t got = pread(fd, raw, sizeof(raw), EXT4_DISK_SUPER_OFFSET);
+    if (got < 0) {
+        fail_errno("cannot read ext4 superblock");
+    }
+    if ((size_t)got != sizeof(raw)) {
+        fail("ext4 superblock read was truncated");
+    }
+    if (read_le16(raw + EXT4_SB_MAGIC) != EXT4_SUPER_MAGIC) {
+        fail("block device does not contain an ext4 primary superblock");
+    }
+
+    uint32_t log_block_size = read_le32(raw + EXT4_SB_LOG_BLOCK_SIZE);
+    if (log_block_size > 6) {
+        fail("ext4 superblock declares an unsupported block size");
+    }
+
+    uint32_t incompat = read_le32(raw + EXT4_SB_FEATURE_INCOMPAT);
+    uint32_t ro_compat = read_le32(raw + EXT4_SB_FEATURE_RO_COMPAT);
+    if ((ro_compat & EXT4_RO_COMPAT_BIGALLOC) != 0) {
+        fail("bigalloc ext4 is not supported by the fixed growth helper");
+    }
+
+    uint64_t blocks = read_le32(raw + EXT4_SB_BLOCKS_COUNT_LO);
+    if ((incompat & EXT4_INCOMPAT_64BIT) != 0) {
+        blocks |= (uint64_t)read_le32(raw + EXT4_SB_BLOCKS_COUNT_HI) << 32;
+    }
+
+    struct ext4_disk_info info = {
+        .blocks_count = blocks,
+        .block_size = 1024ULL << log_block_size,
+        .blocks_per_group = read_le32(raw + EXT4_SB_BLOCKS_PER_GROUP),
+        .first_data_block = read_le32(raw + EXT4_SB_FIRST_DATA_BLOCK),
+    };
+    if (info.blocks_count == 0 || info.blocks_per_group == 0) {
+        fail("ext4 superblock contains invalid sizing metadata");
+    }
+    return info;
+}
+
 int main(int argc, char **argv) {
     if (argc != 3) {
         fprintf(stderr, "usage: ordax-grow-ext4 BLOCK_DEVICE MOUNTPOINT\n");
@@ -90,23 +164,25 @@ int main(int argc, char **argv) {
         fail("mounted filesystem is read-only");
     }
 
-    struct statfs before;
-    if (statfs(mountpoint, &before) != 0) {
+    struct statfs mounted;
+    if (statfs(mountpoint, &mounted) != 0) {
         fail_errno("cannot inspect mounted filesystem");
     }
-    if ((unsigned long)before.f_type != (unsigned long)EXT4_SUPER_MAGIC) {
+    if ((unsigned long)mounted.f_type != (unsigned long)EXT4_SUPER_MAGIC) {
         fail("mounted filesystem is not ext4");
-    }
-
-    uint64_t block_size = (uint64_t)before.f_bsize;
-    if (block_size < 1024 || block_size > 65536 || (block_size & (block_size - 1)) != 0) {
-        fail("ext4 block size is outside the supported range");
     }
 
     int device_fd = open(device, O_RDONLY | O_CLOEXEC);
     if (device_fd < 0) {
         fail_errno("cannot open ORDAX block device");
     }
+
+    struct ext4_disk_info before = read_ext4_disk_info(device_fd);
+    if ((uint64_t)mounted.f_bsize != before.block_size) {
+        close(device_fd);
+        fail("mounted ext4 block size disagrees with its primary superblock");
+    }
+
     uint64_t device_bytes = 0;
     if (ioctl(device_fd, BLKGETSIZE64, &device_bytes) != 0) {
         int saved = errno;
@@ -114,46 +190,79 @@ int main(int argc, char **argv) {
         errno = saved;
         fail_errno("cannot read ORDAX block-device size");
     }
-    if (close(device_fd) != 0) {
-        fail_errno("cannot close ORDAX block device");
-    }
 
-    uint64_t target_blocks = device_bytes / block_size;
-    uint64_t current_blocks = (uint64_t)before.f_blocks;
+    uint64_t target_blocks = device_bytes / before.block_size;
+    uint64_t current_blocks = before.blocks_count;
     if (target_blocks == 0) {
+        close(device_fd);
         fail("computed target filesystem size is zero");
     }
     if (target_blocks <= current_blocks) {
+        if (close(device_fd) != 0) {
+            fail_errno("cannot close ORDAX block device");
+        }
         printf("ORDAX_EXT4_GROWTH=NOT_NEEDED current_blocks=%" PRIu64 " target_blocks=%" PRIu64 " block_size=%" PRIu64 " device_bytes=%" PRIu64 "\n",
-               current_blocks, target_blocks, block_size, device_bytes);
+               current_blocks, target_blocks, before.block_size, device_bytes);
         return 0;
     }
 
     int mount_fd = open(mountpoint, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (mount_fd < 0) {
+        close(device_fd);
         fail_errno("cannot open ORDAX mountpoint");
     }
     if (ioctl(mount_fd, EXT4_IOC_RESIZE_FS, &target_blocks) != 0) {
         int saved = errno;
         close(mount_fd);
+        close(device_fd);
         errno = saved;
         fail_errno("kernel rejected online ext4 resize");
     }
+    if (syncfs(mount_fd) != 0) {
+        int saved = errno;
+        close(mount_fd);
+        close(device_fd);
+        errno = saved;
+        fail_errno("cannot persist resized ext4 metadata");
+    }
     if (close(mount_fd) != 0) {
+        int saved = errno;
+        close(device_fd);
+        errno = saved;
         fail_errno("cannot close ORDAX mountpoint");
     }
-    sync();
 
-    struct statfs after;
-    if (statfs(mountpoint, &after) != 0) {
-        fail_errno("cannot verify resized filesystem");
+    struct ext4_disk_info after = read_ext4_disk_info(device_fd);
+    if (close(device_fd) != 0) {
+        fail_errno("cannot close ORDAX block device");
     }
-    uint64_t final_blocks = (uint64_t)after.f_blocks;
-    if (final_blocks < current_blocks || final_blocks < target_blocks) {
-        fail("online ext4 resize returned success without reaching the block-device capacity");
+    if (after.block_size != before.block_size ||
+        after.blocks_per_group != before.blocks_per_group ||
+        after.first_data_block != before.first_data_block) {
+        fail("ext4 geometry changed unexpectedly during online resize");
     }
 
-    printf("ORDAX_EXT4_GROWTH=PASS previous_blocks=%" PRIu64 " final_blocks=%" PRIu64 " target_blocks=%" PRIu64 " block_size=%" PRIu64 " device_bytes=%" PRIu64 "\n",
-           current_blocks, final_blocks, target_blocks, block_size, device_bytes);
+    uint64_t final_blocks = after.blocks_count;
+    if (final_blocks <= current_blocks || final_blocks > target_blocks) {
+        fail("online ext4 resize returned success without a valid filesystem growth");
+    }
+
+    uint64_t unused_tail_blocks = target_blocks - final_blocks;
+    if (unused_tail_blocks != 0) {
+        /*
+         * ext4_resize_fs intentionally drops an undersized final block group
+         * when that group cannot hold its required metadata. Accept only that
+         * documented shape: less than one group remains and the filesystem
+         * ends exactly on the preceding group boundary.
+         */
+        if (unused_tail_blocks >= before.blocks_per_group ||
+            final_blocks < before.first_data_block ||
+            ((final_blocks - before.first_data_block) % before.blocks_per_group) != 0) {
+            fail("online ext4 resize left an unexplained unused device tail");
+        }
+    }
+
+    printf("ORDAX_EXT4_GROWTH=PASS previous_blocks=%" PRIu64 " final_blocks=%" PRIu64 " target_blocks=%" PRIu64 " unused_tail_blocks=%" PRIu64 " block_size=%" PRIu64 " device_bytes=%" PRIu64 "\n",
+           current_blocks, final_blocks, target_blocks, unused_tail_blocks, before.block_size, device_bytes);
     return 0;
 }
