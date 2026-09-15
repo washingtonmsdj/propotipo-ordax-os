@@ -60,6 +60,25 @@ jobs:
           fi
           test -z "$(find "$output_root" -mindepth 1 -print -quit)"
 
+      - name: Assert public Creator command has no physical apply route
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('cmd/ordax-creator/main.go').read_text(encoding='utf-8')
+          forbidden = [
+              'case "apply"',
+              'case "write"',
+              'case "flash"',
+              'applyRawDiskInternal',
+              'windowsRawDiskRuntimeUnbound',
+          ]
+          found = [item for item in forbidden if item in source]
+          if found:
+              raise SystemExit(f'public Creator command exposes forbidden physical route markers: {found}')
+          print('CREATOR_PUBLIC_PHYSICAL_APPLY=BLOCKED')
+          PY
+
       - name: Build Windows and Linux candidates
         run: |
           set -euo pipefail
@@ -83,10 +102,15 @@ jobs:
               h.update(path.read_bytes())
               return h.hexdigest()
           data = {
-              '$schema': 'prototype-ordax.creator-provenance/3',
+              '$schema': 'prototype-ordax.creator-provenance/4',
               'status': 'candidate',
-              'physical_write_implemented': False,
+              'native_windows_raw_disk_backend_source_implemented': True,
+              'native_windows_raw_disk_backend_publicly_reachable': False,
+              'public_physical_apply_implemented': False,
               'physical_write_authorized': False,
+              'windows_writable_physicaldrive_open_implemented_unbound': True,
+              'windows_volume_lock_dismount_implemented_unbound': True,
+              'windows_process_elevation_probe_implemented': True,
               'windows_target_discovery_implemented': True,
               'windows_target_discovery_mode': 'read-only-usb-physicaldrive',
               'windows_fixed_media_usb_supported': True,
@@ -94,6 +118,7 @@ jobs:
               'windows_system_disk_exclusion': True,
               'target_reenumeration_confirmation': True,
               'blocked_raw_disk_plan_implemented': True,
+              'raw_disk_plan_schema': 'prototype-ordax.creator-windows-raw-disk-plan/2',
               'raw_disk_plan_strategy': 'verified-full-disk-image',
               'disposable_tree_staging_implemented': True,
               'gpt_filesystem_proof_implemented': True,
