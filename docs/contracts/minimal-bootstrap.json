@@ -41,6 +41,7 @@
     {
       "id": "uefi-boot",
       "partition": "ORDAX-ESP",
+      "role": "uefi-boot",
       "source_owner": "boot/esp",
       "resolved": true,
       "artifacts": [
@@ -81,6 +82,7 @@
     {
       "id": "kernel",
       "partition": "ORDAX-ESP",
+      "role": "kernel",
       "source_owner": "bootstrap/kernel",
       "resolved": true,
       "artifacts": [
@@ -97,6 +99,7 @@
     {
       "id": "initramfs",
       "partition": "ORDAX-ESP",
+      "role": "initramfs",
       "source_owner": "bootstrap/initramfs",
       "resolved": true,
       "artifacts": [
@@ -113,6 +116,7 @@
     {
       "id": "bootstrap-orchestrator",
       "partition": "ORDAX",
+      "role": "bootstrap-orchestrator",
       "target_root": "/ordax/bootstrap",
       "source_owner": "bootstrap/entrypoint",
       "resolved": true,
@@ -130,6 +134,7 @@
     {
       "id": "bootstrap-network",
       "partition": "ORDAX",
+      "role": "minimal-network",
       "target_root": "/ordax/bootstrap/network",
       "source_owner": "bootstrap/network",
       "resolved": true,
@@ -163,6 +168,7 @@
     {
       "id": "bootstrap-release-acquisition",
       "partition": "ORDAX",
+      "role": "release-acquisition",
       "target_root": "/ordax/bootstrap/release-acquisition",
       "source_owner": "bootstrap/release-acquisition",
       "resolved": true,
@@ -170,16 +176,17 @@
         {
           "source_path": "bootstrap/release-acquisition/ordax-release-agent",
           "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
-          "sha256": "5dfe04edf83aab293b493066593cbdce32b167acf6b11fa4b705523f3fb436c5",
+          "sha256": "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4",
           "mode": "0755",
           "logical_owner": "bootstrap-release-acquisition",
-          "reason": "Static Linux amd64 agent that authenticates signed manifests and atomically activates verified releases"
+          "reason": "Static Linux amd64 agent that authenticates signed manifests, safely materializes system.tar and atomically activates verified releases"
         }
       ]
     },
     {
       "id": "bootstrap-release-trust",
       "partition": "ORDAX",
+      "role": "release-trust",
       "target_root": "/ordax/bootstrap/trust",
       "source_owner": "bootstrap/trust",
       "resolved": false,
@@ -188,6 +195,7 @@
     {
       "id": "bootstrap-release-channel",
       "partition": "ORDAX",
+      "role": "release-channel",
       "target_root": "/ordax/bootstrap/config",
       "source_owner": "bootstrap/config",
       "resolved": true,
@@ -205,6 +213,7 @@
     {
       "id": "bootstrap-recovery",
       "partition": "ORDAX",
+      "role": "recovery-maintenance",
       "target_root": "/ordax/bootstrap/recovery",
       "source_owner": "bootstrap/recovery",
       "resolved": true,
