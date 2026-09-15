@@ -123,14 +123,14 @@ Before any physical write:
 4. open the selected physical disk read-only first and re-prove disk number, USB transport, capacity and stable device identity from that exact handle;
 5. enumerate every Windows volume by GUID and map it to physical disks through volume disk extents rather than assuming the original drive letter is the only mounted volume;
 6. fail closed if any volume touching the target also spans another physical disk; destructive scope must never cross the confirmed target disk boundary;
-7. before any future writable disk handle is opened, require every target-owned volume to be locked/dismounted through a fail-closed sequence and revalidate the volume-to-disk inventory;
+7. before any future writable disk handle is opened, require every target-owned volume to be locked/dismounted through a fail-closed sequence, prove each locked volume's extents through the same handle, re-enumerate volume identities to detect newly appearing target volumes, dismount only after all locks succeed, and keep all locked handles alive until the physical-device operation ends;
 8. require the canonical two-partition disposable proof;
 9. require a fully resolved minimal-bootstrap manifest, including release trust;
 10. show the exact destructive scope;
 11. require explicit destructive authorization at execution time;
 12. re-read GPT/filesystems after writing and verify artifact hashes from the physical target.
 
-Read-only implementation evidence currently exists for steps 1-5. Steps 6-7 are the next policy/native-backend boundary; neither authorizes mutation by itself.
+Implementation evidence exists for steps 1-6. Step 7 has a fully tested host-neutral/fake-backend orchestration and compiled Win32 primitives for `FSCTL_LOCK_VOLUME`, extent verification on the same handle, `FSCTL_DISMOUNT_VOLUME` and unlock/close. Those native primitives remain deliberately unbound from `rawDiskRuntime` and from every CLI/public apply path, so they cannot currently initiate a physical operation.
 
 ## Current physical state
 
@@ -140,8 +140,13 @@ PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 CREATOR_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
 CREATOR_VOLUME_EXTENT_INVENTORY=PASS
+CREATOR_TARGET_VOLUME_ISOLATION_POLICY=PASS
+CREATOR_VOLUME_LEASE_POLICY=PASS_FAKE_BACKEND
+WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_UNWIRED
+WINDOWS_VOLUME_LOCK_DISMOUNT_CONNECTED=NO
+WRITABLE_PHYSICALDRIVE_HANDLE_IMPLEMENTED=NO
 CREATOR_APPLY_IMPLEMENTED=NO
 WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
 ```
 
-No source file or successful disposable test implicitly authorizes a physical write.
+No source file, native primitive, successful CI run or disposable test implicitly authorizes a physical write.
