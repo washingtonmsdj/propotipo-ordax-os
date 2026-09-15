@@ -7,6 +7,7 @@
   "bundle_name": "ordax-creator-components-windows-amd64.zip",
   "envelope_name": "creator-component-envelope.json",
   "created_from_recipe": "creator/component/windows/1",
+  "version": "0.1.0",
   "release_sequence": 1,
   "canonical_public_trust_required": true,
   "ed25519_signature_required": true,
