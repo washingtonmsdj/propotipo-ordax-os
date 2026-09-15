@@ -16,9 +16,11 @@ APP_OWNERS = {
 APPEARANCE = PREFERENCES / "appearance.mjs"
 PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
 PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
+IDENTITY_SESSION_CONTRACT = ROOT / "system" / "contracts" / "identity-session.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "web"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
 WEB_PREFERENCE_ADAPTER = ROOT / "system" / "adapters" / "web" / "preferences.mjs"
+WEB_IDENTITY_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -36,10 +38,12 @@ class SurfaceUiContractTests(unittest.TestCase):
             APPEARANCE,
             PREFERENCE_CATALOG,
             PREFERENCE_STORE_CONTRACT,
+            IDENTITY_SESSION_CONTRACT,
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
             WEB_ADAPTER,
             WEB_PREFERENCE_ADAPTER,
+            WEB_IDENTITY_ADAPTER,
             HOST_CONTRACT,
         ):
             self.assertTrue(path.is_file(), path)
@@ -53,6 +57,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         self.assertIn("contracts/surface-host.mjs", surface)
         self.assertIn("contracts/preference-store.mjs", surface)
+        self.assertIn("contracts/identity-session.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
 
@@ -68,12 +73,13 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("getFirstPartyApp", catalog)
         self.assertLess(len(catalog.splitlines()), 40, "catalog should stay composition-only")
 
-    def test_app_contract_is_capability_and_preference_driven(self):
+    def test_app_contract_is_capability_preference_and_session_driven(self):
         text = APP_CONTRACT.read_text(encoding="utf-8")
         self.assertIn("requiredCapabilities", text)
         self.assertIn("isAppAvailable", text)
         self.assertIn("every((capabilityId)", text)
         self.assertIn('"preference-choice"', text)
+        self.assertIn('"identity-session"', text)
         self.assertIn("preferenceId", text)
         self.assertIn("PANEL_KINDS", text)
 
@@ -89,6 +95,15 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("createPreferenceSnapshot", preferences)
         self.assertIn("recoverPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
+
+    def test_account_uses_neutral_identity_session_panel(self):
+        account = APP_OWNERS["account"].read_text(encoding="utf-8")
+        contract = IDENTITY_SESSION_CONTRACT.read_text(encoding="utf-8")
+        adapter = WEB_IDENTITY_ADAPTER.read_text(encoding="utf-8")
+        self.assertIn('kind: "identity-session"', account)
+        self.assertIn("ordax.identity-session/1", contract)
+        self.assertIn('state: "unavailable"', adapter)
+        self.assertNotIn("surface/ui", adapter)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
@@ -122,7 +137,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('"ordax.preferences.v1"', adapter)
         self.assertIn("ordax.preference-store/1", contract)
         self.assertIn("createWebPreferenceStore", composition)
-        self.assertIn("mountSurface(root, host, preferenceStore)", composition)
+        self.assertIn("mountSurface(root, host, preferenceStore, identitySession)", composition)
         self.assertIn("assertPreferenceStore", surface)
         self.assertIn("store.save(state.preferences)", surface)
 
@@ -163,6 +178,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/surface.mjs", main)
         self.assertIn("../../adapters/web/runtime.mjs", main)
         self.assertIn("../../adapters/web/preferences.mjs", main)
+        self.assertIn("../../adapters/web/identity.mjs", main)
+        self.assertIn("createWebIdentitySession", main)
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertNotIn("<style", html.lower())
@@ -194,6 +211,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('event.key === "Escape"', surface)
         self.assertIn("root.dataset.ordaxTheme", surface)
         self.assertIn("data-preference-id", surface)
+        self.assertIn("IDENTITY_LABELS", surface)
         self.assertIn('[data-ordax-theme="dark"]', tokens)
         self.assertIn('[data-ordax-theme="light"]', tokens)
         self.assertIn("color-scheme: light", tokens)
@@ -207,7 +225,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/apps/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/services/preferences/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_surface_preferences.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'tests/test_identity_session.mjs'"), 2)
 
 
 if __name__ == "__main__":
