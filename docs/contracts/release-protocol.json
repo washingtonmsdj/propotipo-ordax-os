@@ -1,0 +1,58 @@
+{
+  "$schema": "prototype-ordax.release-protocol/1",
+  "status": "canonical-prototype-contract",
+  "current": {
+    "envelope_schema": "prototype-ordax.release-envelope/1",
+    "manifest_schema": "prototype-ordax.release-manifest/1",
+    "trust_schema": "prototype-ordax.release-trust/1",
+    "release_addressing": "source-commit",
+    "manifest_v1": {
+      "release_id_equals_source_commit": true,
+      "artifact_count": 1,
+      "artifact_name": "system.tar",
+      "artifact_role": "system",
+      "artifact_url_scheme": "https",
+      "artifact_sha256_required": true,
+      "artifact_size_required": true
+    }
+  },
+  "compatibility": {
+    "published_schema_semantics_are_immutable": true,
+    "breaking_change_requires_new_schema_major": true,
+    "future_schema_versions_may_coexist": true,
+    "unknown_required_schema": "fail-closed",
+    "silent_schema_upgrade_allowed": false,
+    "manifest_v1_may_gain_multiple_artifacts": false,
+    "manifest_v1_may_gain_delta_semantics": false,
+    "manifest_v1_may_change_release_addressing": false,
+    "envelope_and_manifest_versions_evolve_independently": true,
+    "trust_rotation_is_separate_versioned_protocol": true,
+    "old_schema_removal_requires_explicit_migration_policy": true
+  },
+  "future_release_rules": {
+    "delta_update_requires_new_manifest_schema": true,
+    "multiple_artifacts_require_new_manifest_schema": true,
+    "new_required_manifest_fields_require_new_manifest_schema": true,
+    "optional_delta_must_preserve_verified_full_release_fallback": true,
+    "new_release_schema_requires_explicit_consumer_support": true,
+    "new_release_schema_requires_signer_support": true,
+    "new_release_schema_requires_generator_support": true,
+    "new_release_schema_requires_acquisition_agent_support": true,
+    "new_release_schema_requires_cross_component_regression": true,
+    "new_trust_transition_requires_explicit_protocol": true
+  },
+  "owners": {
+    "generator": "tools/release-manifest",
+    "signer": "tools/release-signing",
+    "consumer": "bootstrap/release-acquisition",
+    "channel_contract": "docs/contracts/release-channel.json",
+    "trust_policy": "docs/contracts/release-trust-policy.json"
+  },
+  "migration_principles": [
+    "keep release-manifest/1 byte and semantic expectations stable for existing consumers",
+    "add a new schema instead of teaching an old schema a new incompatible meaning",
+    "support old and new schemas side by side during an explicit migration window when required",
+    "prefer a verified full release fallback while delta delivery remains optional",
+    "remove old protocol support only through a recorded migration decision with compatibility evidence"
+  ]
+}
