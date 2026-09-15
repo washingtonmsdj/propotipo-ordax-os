@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.foundation/4",
+  "$schema": "prototype-ordax.foundation/5",
   "status": "prototype-not-promoted",
   "source_authority": {
     "kind": "git",
@@ -30,13 +30,14 @@
     "separate_home_partition": false
   },
   "initial_media": {
-    "policy": "minimum-git-acquisition-first",
+    "policy": "minimum-release-acquisition-first",
     "full_system_preseeded": false,
     "surface_preseeded": false,
     "normal_apps_preseeded": false,
     "remote_core_preseeded": false,
     "control_plane_preseeded": false,
     "stable_device_identity_preseeded": false,
+    "full_git_client_preseeded": false,
     "legacy_repository_dump_allowed": false,
     "build_toolchain_preseeded": false,
     "complete_source_checkout_preseeded": false,
@@ -50,7 +51,7 @@
       "kernel",
       "initramfs",
       "minimal-network",
-      "release-acquisition",
+      "https-release-acquisition",
       "public-release-trust",
       "recovery-maintenance",
       "empty-runtime-roots"
@@ -70,15 +71,18 @@
     "immutable_after_verification": true,
     "activation": "atomic-current-pointer",
     "rollback_required": true,
-    "normal_update_source": "git-or-published-release",
+    "normal_update_source": "git-driven-published-release",
+    "device_full_git_client_required": false,
+    "device_source_checkout_required": false,
+    "device_compiler_required": false,
     "remote_shell_required": false
   },
-  "pre_git_capabilities": [
+  "pre_release_capabilities": [
     "uefi-boot",
     "kernel",
     "initramfs",
     "minimal-network",
-    "git-release-acquisition",
+    "release-acquisition",
     "recovery-maintenance"
   ],
   "post_release_optional_capabilities": [
@@ -144,7 +148,7 @@
     "custom_crypto_allowed": false
   },
   "development": {
-    "normal_change_path": "git-push-to-release-update",
+    "normal_change_path": "git-push-to-ci-release-update",
     "full_image_rebuild_per_edit": false,
     "usb_reflash_per_edit": false,
     "routine_reboot_per_edit": false,
