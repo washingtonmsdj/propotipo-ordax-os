@@ -33,48 +33,90 @@ func validLowerSHA256(value string) bool {
 	return err == nil && len(decoded) == sha256.Size
 }
 
-func VerifyRawImage(path string, expectedSHA256 string, expectedSizeBytes int64) (VerifiedRawImage, error) {
+// openVerifiedRawImageForApply binds verification to the exact file handle that
+// will later be streamed. On Windows openRawImageReadLocked also denies write
+// sharing for the lifetime of this handle, closing the path-reopen TOCTOU gap
+// before any physical device can be opened.
+func openVerifiedRawImageForApply(path string, expectedSHA256 string, expectedSizeBytes int64) (*os.File, VerifiedRawImage, error) {
 	if path == "" {
-		return VerifiedRawImage{}, errors.New("raw image path is required")
+		return nil, VerifiedRawImage{}, errors.New("raw image path is required")
 	}
 	if !validLowerSHA256(expectedSHA256) {
-		return VerifiedRawImage{}, errors.New("expected raw image SHA-256 must be lowercase 64-hex")
+		return nil, VerifiedRawImage{}, errors.New("expected raw image SHA-256 must be lowercase 64-hex")
 	}
 	if expectedSizeBytes <= 0 {
-		return VerifiedRawImage{}, errors.New("expected raw image size must be positive")
+		return nil, VerifiedRawImage{}, errors.New("expected raw image size must be positive")
 	}
 
-	info, err := os.Lstat(path)
+	pathInfo, err := os.Lstat(path)
 	if err != nil {
-		return VerifiedRawImage{}, fmt.Errorf("stat raw image: %w", err)
+		return nil, VerifiedRawImage{}, fmt.Errorf("stat raw image: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return VerifiedRawImage{}, errors.New("raw image must be a regular non-symlink file")
-	}
-	if info.Size() != expectedSizeBytes {
-		return VerifiedRawImage{}, fmt.Errorf("raw image size mismatch: expected=%d actual=%d", expectedSizeBytes, info.Size())
+	if pathInfo.Mode()&os.ModeSymlink != 0 || !pathInfo.Mode().IsRegular() {
+		return nil, VerifiedRawImage{}, errors.New("raw image must be a regular non-symlink file")
 	}
 
-	file, err := os.Open(path)
+	file, err := openRawImageReadLocked(path)
 	if err != nil {
-		return VerifiedRawImage{}, fmt.Errorf("open raw image: %w", err)
+		return nil, VerifiedRawImage{}, fmt.Errorf("open raw image: %w", err)
 	}
-	defer file.Close()
+	closeOnError := func(cause error) (*os.File, VerifiedRawImage, error) {
+		_ = file.Close()
+		return nil, VerifiedRawImage{}, cause
+	}
+
+	handleInfo, err := file.Stat()
+	if err != nil {
+		return closeOnError(fmt.Errorf("stat opened raw image: %w", err))
+	}
+	if !handleInfo.Mode().IsRegular() {
+		return closeOnError(errors.New("opened raw image handle is not a regular file"))
+	}
+	if !os.SameFile(pathInfo, handleInfo) {
+		return closeOnError(errors.New("raw image path changed while opening verified handle"))
+	}
+	if handleInfo.Size() != expectedSizeBytes {
+		return closeOnError(fmt.Errorf("raw image size mismatch: expected=%d actual=%d", expectedSizeBytes, handleInfo.Size()))
+	}
 
 	digest := sha256.New()
-	if _, err := io.Copy(digest, file); err != nil {
-		return VerifiedRawImage{}, fmt.Errorf("hash raw image: %w", err)
+	hashed, err := io.CopyN(digest, file, expectedSizeBytes)
+	if err != nil {
+		return closeOnError(fmt.Errorf("hash raw image: expected=%d actual=%d: %w", expectedSizeBytes, hashed, err))
 	}
-	actual := hex.EncodeToString(digest.Sum(nil))
-	if actual != expectedSHA256 {
-		return VerifiedRawImage{}, fmt.Errorf("raw image SHA-256 mismatch: expected=%s actual=%s", expectedSHA256, actual)
+	var extra [1]byte
+	extraCount, extraErr := file.Read(extra[:])
+	if extraCount != 0 {
+		return closeOnError(errors.New("raw image grew beyond authorized size while hashing"))
+	}
+	if extraErr != nil && !errors.Is(extraErr, io.EOF) {
+		return closeOnError(fmt.Errorf("check raw image end: %w", extraErr))
 	}
 
-	return VerifiedRawImage{
+	actual := hex.EncodeToString(digest.Sum(nil))
+	if actual != expectedSHA256 {
+		return closeOnError(fmt.Errorf("raw image SHA-256 mismatch: expected=%s actual=%s", expectedSHA256, actual))
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return closeOnError(fmt.Errorf("rewind verified raw image: %w", err))
+	}
+
+	return file, VerifiedRawImage{
 		Path:      path,
-		SizeBytes: info.Size(),
+		SizeBytes: handleInfo.Size(),
 		SHA256:    actual,
 	}, nil
+}
+
+func VerifyRawImage(path string, expectedSHA256 string, expectedSizeBytes int64) (VerifiedRawImage, error) {
+	file, verified, err := openVerifiedRawImageForApply(path, expectedSHA256, expectedSizeBytes)
+	if err != nil {
+		return VerifiedRawImage{}, err
+	}
+	if err := file.Close(); err != nil {
+		return VerifiedRawImage{}, fmt.Errorf("close verified raw image: %w", err)
+	}
+	return verified, nil
 }
 
 func DestructiveAuthorizationToken(target Target, image VerifiedRawImage) string {
