@@ -8,7 +8,8 @@
     "cross_module_internal_imports_allowed": false,
     "public_contract_boundary_required": true,
     "composition_selects_adapter_implementation": true,
-    "new_module_requires_named_owner": true
+    "new_module_requires_named_owner": true,
+    "adapter_modes_may_import_each_other": false
   },
   "layers": [
     {
@@ -76,16 +77,24 @@
       ]
     }
   ],
+  "adapter_modes": [
+    "web",
+    "mobile",
+    "desktop",
+    "native"
+  ],
   "external_boundaries": {
     "creator": {
       "root": "tools/creator",
       "shared_surface_direct_dependency_allowed": false,
       "shared_apps_direct_dependency_allowed": false,
+      "system_source_direct_import_allowed": false,
       "desktop_access": "explicit creator capability contract only"
     },
     "bootstrap": {
       "root": "bootstrap",
       "shared_product_source_dependency_allowed": false,
+      "system_source_direct_import_allowed": false,
       "verified_runtime_handoff_allowed": true
     }
   },

@@ -45,5 +45,8 @@ jobs:
           python bootstrap/network/build.py check
           python boot/esp/build.py check
 
+      - name: Validate module import boundaries
+        run: python tools/verify/module_boundaries.py
+
       - name: Run foundation regressions
         run: python -m unittest discover -s tests -p 'test_*.py' -v
