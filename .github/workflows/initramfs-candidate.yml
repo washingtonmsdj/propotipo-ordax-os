@@ -32,10 +32,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install initramfs build dependencies
+      - name: Install initramfs build and runtime-proof dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends make musl-tools binutils bzip2
+          sudo apt-get install -y --no-install-recommends make musl-tools binutils bzip2 e2fsprogs util-linux
 
       - name: Validate initramfs source contract
         run: python bootstrap/initramfs/build.py check
@@ -49,10 +49,24 @@ jobs:
       - name: Verify initramfs candidate
         run: python bootstrap/initramfs/build.py verify
 
+      - name: Prove ext4 online growth and read-only refusal
+        run: |
+          bash bootstrap/initramfs/prove_ext4_growth.sh \
+            out/initramfs-work/ordax-grow-ext4 \
+            out/initramfs-proof/ext4-growth-runtime-proof.json
+
       - name: Upload initramfs candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-initramfs-${{ github.sha }}
           path: out/initramfs/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload ext4 growth runtime proof
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-ext4-growth-runtime-proof-${{ github.sha }}
+          path: out/initramfs-proof/ext4-growth-runtime-proof.json
           if-no-files-found: error
           retention-days: 14
