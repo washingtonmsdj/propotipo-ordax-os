@@ -28,7 +28,7 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test stable GUI read-only updater and USB discovery
+      - name: Test stable GUI updater and USB discovery
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
@@ -74,6 +74,15 @@ jobs:
           "%~dp0ordax-creator-physical-test.exe" targets
           '@ | Set-Content -Encoding ascii (Join-Path $payload '1-Inspect-OrdaXUSB.cmd')
 
+          # Protocol /1 required a third entrypoint named "trust". Keep a harmless
+          # compatibility file so already-downloaded launchers continue updating.
+          # It contains no key generation, signing, backup, or trust ceremony.
+          @'
+          @echo off
+          rem Legacy updater protocol compatibility only. No user action is required.
+          exit /b 0
+          '@ | Set-Content -Encoding ascii (Join-Path $payload '2-Legacy-Protocol-Compatibility.cmd')
+
           @"
           OrdaX Creator - development payload
 
@@ -83,10 +92,12 @@ jobs:
           DEVELOPMENT CHANNEL:
           - USB discovery: enabled
           - publisher key generation/custody: NO
+          - end-user key or backup setup: NO
           - raw private key material: NO
           - release signing tool: NO
           - raw-disk writer linked: NO
           - physical write: NO
+          - legacy updater compatibility: non-privileged no-op only
           "@ | Set-Content -Encoding utf8 (Join-Path $payload 'README.txt')
 
           $zip = Join-Path $release 'ordax-creator-dev-windows-amd64.zip'
@@ -94,8 +105,10 @@ jobs:
           $payloadHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
           $payloadSize = (Get-Item -LiteralPath $zip).Length
 
+          # Keep the rolling endpoint on protocol /1 until all already-distributed
+          # launchers have crossed a future explicit bootstrap compatibility boundary.
           $manifest = [ordered]@{
-            '$schema' = 'prototype-ordax.creator-update-channel/2'
+            '$schema' = 'prototype-ordax.creator-update-channel/1'
             channel = 'development'
             version = $version
             source_commit = $sha
@@ -106,6 +119,7 @@ jobs:
             }
             entrypoints = [ordered]@{
               inspect = '1-Inspect-OrdaXUSB.cmd'
+              trust = '2-Legacy-Protocol-Compatibility.cmd'
               status = 'ordax-creator-physical-test.exe'
             }
           }
@@ -127,11 +141,13 @@ jobs:
           $release = Join-Path $PWD 'out/creator-dev-release'
           $payload = Join-Path $PWD 'out/creator-dev-payload'
           $backend = Join-Path $payload 'ordax-creator-physical-test.exe'
+          $compat = Join-Path $payload '2-Legacy-Protocol-Compatibility.cmd'
 
           foreach ($required in @(
             (Join-Path $release 'OrdaX-Creator.exe'),
             (Join-Path $release 'creator-dev-manifest.json'),
-            $backend
+            $backend,
+            $compat
           )) {
             if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
               throw "required Creator artifact is missing: $required"
@@ -155,9 +171,16 @@ jobs:
             }
           }
 
+          $compatText = Get-Content -LiteralPath $compat -Raw
+          foreach ($forbiddenText in @('generate-key','release-signing.exe','private.pem','trust-init')) {
+            if ($compatText -match [regex]::Escape($forbiddenText)) {
+              throw "legacy compatibility entrypoint gained forbidden key capability: $forbiddenText"
+            }
+          }
+
           $manifest = Get-Content -LiteralPath (Join-Path $release 'creator-dev-manifest.json') -Raw | ConvertFrom-Json
-          if ($manifest.'$schema' -ne 'prototype-ordax.creator-update-channel/2') { throw 'unexpected Creator manifest schema' }
-          if ($null -ne $manifest.entrypoints.PSObject.Properties['trust']) { throw 'consumer manifest unexpectedly exposes a trust entrypoint' }
+          if ($manifest.'$schema' -ne 'prototype-ordax.creator-update-channel/1') { throw 'rolling compatibility manifest must remain schema /1' }
+          if ($manifest.entrypoints.trust -ne '2-Legacy-Protocol-Compatibility.cmd') { throw 'legacy protocol entrypoint is not the approved no-op' }
 
           $status = & $backend status | ConvertFrom-Json
           if ($status.raw_backend_linked -ne $false) { throw 'development backend unexpectedly links raw writer' }
@@ -168,6 +191,7 @@ jobs:
           Write-Host 'CREATOR_SELF_REPLACEMENT=ABSENT'
           Write-Host 'CREATOR_CONSUMER_PUBLISHER_KEY_CAPABILITY=ABSENT'
           Write-Host 'CREATOR_CONSUMER_KEY_SETUP=NO'
+          Write-Host 'CREATOR_UPDATE_PROTOCOL_LEGACY_COMPAT=PASS'
           Write-Host 'CREATOR_DEV_RAW_DISK_BACKEND=ABSENT'
           Write-Host 'CREATOR_DEV_PHYSICAL_WRITE=BLOCKED'
 
