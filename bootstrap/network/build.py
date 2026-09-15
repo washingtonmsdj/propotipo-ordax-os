@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / "bootstrap" / "network"
 CONTRACT = HERE / "source.json"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-REQUIRED_APPLETS = {"busybox", "ifconfig", "route", "udhcpc"}
+MULTICALL_BINARY = "busybox"
+REQUIRED_APPLETS = {"ifconfig", "route", "udhcpc"}
 REQUESTED_CONFIG = {
     "CONFIG_BUSYBOX": "y",
     "CONFIG_STATIC": "y",
@@ -61,6 +62,8 @@ def load_contract() -> dict:
     busybox = value.get("busybox", {})
     if not SHA256_RE.fullmatch(str(busybox.get("archive_sha256", ""))):
         raise BuildError("invalid BusyBox archive SHA-256")
+    if busybox.get("multicall_binary") != MULTICALL_BINARY:
+        raise BuildError("unexpected network multicall binary")
     if set(busybox.get("required_applets", [])) != REQUIRED_APPLETS:
         raise BuildError("network applet contract changed unexpectedly")
     if value.get("wifi_in_bootstrap") is not False:
@@ -91,6 +94,7 @@ def check_contract() -> dict:
     return {
         "busybox_version": contract["busybox"]["version"],
         "busybox_archive_sha256": contract["busybox"]["archive_sha256"],
+        "multicall_binary": MULTICALL_BINARY,
         "required_applets": sorted(REQUIRED_APPLETS),
         "runtime": checked,
     }
@@ -233,18 +237,30 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     verify_config(source / ".config")
     run(make + [f"-j{max(1, jobs)}"], source, env)
 
-    built = source / "busybox"
+    built = source / MULTICALL_BINARY
     if not built.is_file():
-        raise BuildError("BusyBox did not produce a binary")
+        raise BuildError("BusyBox did not produce its multicall binary")
     if "Requesting program interpreter" in capture([resolve("readelf"), "-l", str(built)]):
         raise BuildError("netbox is dynamically linked")
     try:
-        listed = subprocess.run([str(built), "--list"], check=True, capture_output=True, text=True).stdout.splitlines()
+        listed = {
+            line.strip()
+            for line in subprocess.run(
+                [str(built), "--list"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+            if line.strip()
+        }
     except subprocess.CalledProcessError as exc:
         raise BuildError("netbox cannot enumerate applets") from exc
-    missing = REQUIRED_APPLETS - set(listed)
+    missing = REQUIRED_APPLETS - listed
     if missing:
         raise BuildError(f"missing applets: {sorted(missing)}")
+    unexpected = listed - REQUIRED_APPLETS
+    if unexpected:
+        raise BuildError(f"unexpected applets expanded netbox surface: {sorted(unexpected)}")
 
     netbox = out_dir / "netbox"
     shutil.copy2(built, netbox)
@@ -260,6 +276,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         "busybox_archive_sha256": sha256_file(archive),
         "compiler_target": capture([compiler, "-dumpmachine"]),
         "static_userspace": True,
+        "multicall_binary": MULTICALL_BINARY,
         "required_applets": sorted(REQUIRED_APPLETS),
         "artifacts": {
             "netbox": sha256_file(netbox),
@@ -282,6 +299,12 @@ def verify(out_dir: Path) -> dict:
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
     if provenance.get("$schema") != "prototype-ordax.network-bootstrap-provenance/1":
         raise BuildError("unexpected provenance schema")
+    if provenance.get("physical_artifact_authorized") is not False:
+        raise BuildError("network candidate must not authorize physical media")
+    if provenance.get("multicall_binary") != MULTICALL_BINARY:
+        raise BuildError("network provenance has unexpected multicall binary")
+    if set(provenance.get("required_applets", [])) != REQUIRED_APPLETS:
+        raise BuildError("network provenance applet surface changed")
     entries = {}
     for line in checksum_file.read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)", line)
