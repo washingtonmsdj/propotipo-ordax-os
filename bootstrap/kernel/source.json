@@ -16,7 +16,7 @@
   },
   "build": {
     "canonical_entrypoint": "bootstrap/kernel/build.py",
-    "pinned_environment_resolved": false,
+    "pinned_environment_resolved": true,
     "physical_artifact_authorized": false
   }
 }
