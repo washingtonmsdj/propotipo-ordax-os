@@ -12,8 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
-
-	creatorupdate "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/update"
 )
 
 const (
@@ -263,40 +261,7 @@ func loadTargets(directory string) ([]physicalTarget, bool, error) {
 
 func refreshAsync() {
 	go func() {
-		result := appRefreshState{}
-		installed, changed, err := creatorupdate.Ensure(nil, "", "")
-		if err != nil {
-			current, currentErr := creatorupdate.Current("")
-			if currentErr != nil {
-				result.Error = fmt.Sprintf("Não foi possível atualizar o Creator e nenhuma versão válida está instalada: %v", err)
-			} else {
-				installed = current
-				result.Error = fmt.Sprintf("Sem atualização de rede; usando a última versão válida. %v", err)
-			}
-		}
-		if installed.Version != "" {
-			result.Version = installed.Version
-			result.SourceCommit = installed.SourceCommit
-			result.Updated = changed
-
-			backendDirectory := installed.Directory
-			if physicalDirectory, ok := resolvePhysicalBackend(); ok {
-				backendDirectory = physicalDirectory
-			}
-			result.BackendDirectory = backendDirectory
-
-			targets, ready, targetErr := loadTargets(backendDirectory)
-			if targetErr != nil {
-				if result.Error == "" {
-					result.Error = targetErr.Error()
-				} else {
-					result.Error += "\n" + targetErr.Error()
-				}
-			} else {
-				result.Targets = targets
-				result.PhysicalReady = ready
-			}
-		}
+		result := resolveRefreshState()
 		stateMu.Lock()
 		refreshState = result
 		stateMu.Unlock()
