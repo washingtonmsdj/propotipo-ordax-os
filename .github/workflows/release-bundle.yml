@@ -1,0 +1,79 @@
+name: Release Bundle Tooling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/release-bundle/**'
+      - 'docs/RELEASE-BUNDLE.md'
+      - '.github/workflows/release-bundle.yml'
+  pull_request:
+    paths:
+      - 'tools/release-bundle/**'
+      - 'docs/RELEASE-BUNDLE.md'
+      - '.github/workflows/release-bundle.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  release-bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test deterministic bundle policy
+        working-directory: tools/release-bundle
+        run: go test -count=1 ./...
+
+      - name: Build Linux and Windows tooling
+        run: |
+          set -euo pipefail
+          mkdir -p out/release-bundle
+          (
+            cd tools/release-bundle
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-bundle/ordax-release-bundle-linux-amd64 .
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-bundle/ordax-release-bundle-windows-amd64.exe .
+          )
+
+      - name: Prove byte-identical bundle output
+        run: |
+          set -euo pipefail
+          tool="$PWD/out/release-bundle/ordax-release-bundle-linux-amd64"
+          work="$RUNNER_TEMP/release-bundle-proof"
+          mkdir -p "$work/source/system" "$work/out-a" "$work/out-b"
+          chmod 0755 "$work/source" "$work/source/system"
+          printf '#!/bin/sh\necho ordax-release\n' > "$work/source/system/entrypoint"
+          chmod 0755 "$work/source/system/entrypoint"
+          printf 'ci-proof\n' > "$work/source/system/version"
+          chmod 0644 "$work/source/system/version"
+          "$tool" --root "$work/source" --out "$work/out-a/system.tar" | tee "$work/first.txt"
+          "$tool" --root "$work/source" --out "$work/out-b/system.tar" | tee "$work/second.txt"
+          cmp "$work/out-a/system.tar" "$work/out-b/system.tar"
+          sha256sum "$work/out-a/system.tar"
+          tar -tf "$work/out-a/system.tar"
+          echo 'SYSTEM_TAR_REPRODUCIBLE=PASS'
+          echo 'RELEASE_PUBLISHED=NO'
+          echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
+
+      - name: Upload public tooling candidates only
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-bundle-tooling-${{ github.sha }}
+          path: |
+            out/release-bundle/ordax-release-bundle-linux-amd64
+            out/release-bundle/ordax-release-bundle-windows-amd64.exe
+          if-no-files-found: error
+          retention-days: 14
