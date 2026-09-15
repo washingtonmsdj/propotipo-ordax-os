@@ -1,0 +1,113 @@
+{
+  "$schema": "prototype-ordax.runtime-configuration/1",
+  "status": "canonical-prototype-contract",
+  "authority": {
+    "domain_owner": "system/services/config",
+    "platform_secret_storage_owner": "system/adapters",
+    "bootstrap_config_is_product_config_authority": false,
+    "environment_variables_are_global_override_authority": false,
+    "configuration_source_precedence_is_universal": false,
+    "each_key_declares_its_authority_chain": true
+  },
+  "configuration_classes": [
+    {
+      "id": "release-default",
+      "mutable_at_runtime": false,
+      "source": "verified-release",
+      "purpose": "versioned safe defaults shipped with a release"
+    },
+    {
+      "id": "server-policy",
+      "mutable_at_runtime": true,
+      "source": "authenticated-authorized-service",
+      "purpose": "account or fleet policy within an already authorized product boundary"
+    },
+    {
+      "id": "device-local",
+      "mutable_at_runtime": true,
+      "source": "local-device-state",
+      "purpose": "device-specific non-secret configuration"
+    },
+    {
+      "id": "user-preference",
+      "mutable_at_runtime": true,
+      "source": "account-or-local-user-preference",
+      "purpose": "explicitly user-configurable product behavior"
+    }
+  ],
+  "key_contract": {
+    "stable_key_id_required": true,
+    "type_required": true,
+    "scope_required": true,
+    "authority_chain_required": true,
+    "default_or_required_marker_required": true,
+    "sensitivity_required": true,
+    "runtime_mutability_required": true,
+    "restart_semantics_required": true,
+    "validation_required": true,
+    "unknown_optional_key": "ignore-or-use-declared-default",
+    "unknown_required_key": "fail-closed",
+    "invalid_value": "reject-with-last-known-good-when-available",
+    "implicit_string_coercion_allowed": false
+  },
+  "feature_flags": {
+    "stable_flag_id_required": true,
+    "safe_default_required": true,
+    "owner_required": true,
+    "temporary_flag_requires_expiry_or_removal_condition": true,
+    "flag_may_select_behavior_within_existing_capability": true,
+    "flag_may_grant_new_capability": false,
+    "flag_may_bypass_authorization": false,
+    "flag_may_change_release_trust": false,
+    "flag_may_enable_physical_write": false,
+    "flag_may_disable_safety_gate": false,
+    "experiment_may_change_security_semantics": false,
+    "kill_switch_may_disable_feature": true,
+    "kill_switch_may_grant_privilege": false
+  },
+  "secrets": {
+    "secret_values_are_configuration_values": false,
+    "secret_reference_or_handle_allowed": true,
+    "plaintext_secret_in_repository_allowed": false,
+    "plaintext_secret_in_sync_allowed": false,
+    "plaintext_secret_in_diagnostics_allowed": false,
+    "plaintext_secret_in_provenance_allowed": false,
+    "canonical_release_private_key_is_runtime_config": false,
+    "canonical_public_trust_anchor_is_runtime_toggle": false,
+    "destructive_authorization_token_is_persistent_config": false
+  },
+  "privilege_boundary": {
+    "remote_config_may_enable_host_raw_disk": false,
+    "remote_config_may_enable_creator_physical_apply": false,
+    "remote_config_may_replace_release_trust_anchor": false,
+    "remote_config_may_disable_release_signature_verification": false,
+    "remote_config_may_override_target_identity_checks": false,
+    "remote_config_may_override_explicit_user_authorization": false,
+    "capability_contract_remains_authority": true
+  },
+  "resolution": {
+    "deterministic": true,
+    "resolved_value_records_non_secret_source": true,
+    "last_known_good_supported": true,
+    "partial_invalid_update_may_replace_valid_snapshot": false,
+    "configuration_update_is_atomic_snapshot": true,
+    "server_unavailable_preserves_safe_last_known_good": true,
+    "missing_server_config_must_not_escalate_privilege": true
+  },
+  "diagnostics": {
+    "effective_config_may_be_inspected": true,
+    "secret_values_are_redacted": true,
+    "source_class_per_effective_key_recorded": true,
+    "validation_failure_is_observable": true,
+    "configuration_revision_is_observable": true
+  },
+  "compatibility": {
+    "additive_optional_key_is_backward_compatible": true,
+    "new_required_key_requires_schema_or_migration": true,
+    "changing_key_meaning_requires_new_key_or_contract_major": true,
+    "changing_key_type_is_breaking": true,
+    "temporary_flag_removal_requires_removal_condition_satisfied": true,
+    "storage_provider_change_requires_product_config_migration": false,
+    "platform_adapter_may_redefine_configuration_authority": false
+  }
+}
