@@ -83,32 +83,38 @@ jobs:
 
               test -s /usr/share/keyrings/ubuntu-archive-keyring.gpg
               rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
+              snapshot_uri="https://snapshot.ubuntu.com/ubuntu/$SNAPSHOT_ID"
               printf "%s\n" \
                 "Types: deb" \
-                "URIs: http://archive.ubuntu.com/ubuntu" \
-                "Suites: noble noble-updates noble-backports" \
+                "URIs: $snapshot_uri" \
+                "Suites: noble noble-updates noble-backports noble-security" \
                 "Components: main universe restricted multiverse" \
                 "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" \
-                "Snapshot: $SNAPSHOT_ID" \
-                "" \
-                "Types: deb" \
-                "URIs: http://security.ubuntu.com/ubuntu" \
-                "Suites: noble-security" \
-                "Components: main universe restricted multiverse" \
-                "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" \
-                "Snapshot: $SNAPSHOT_ID" \
                 > /etc/apt/sources.list.d/ordax.sources
-              printf "%s\n" \
-                "APT::Snapshot \"$SNAPSHOT_ID\";" \
-                "Acquire::Snapshots::URI::Origin::Ubuntu \"http://snapshot.ubuntu.com/ubuntu/@SNAPSHOTID@/\";" \
-                "Acquire::Snapshots::URI::Host::archive.ubuntu.com \"http://snapshot.ubuntu.com/@PATH@/@SNAPSHOTID@/\";" \
-                "Acquire::Snapshots::URI::Host::security.ubuntu.com \"http://snapshot.ubuntu.com/@PATH@/@SNAPSHOTID@/\";" \
-                > /etc/apt/apt.conf.d/50ordax-snapshot
 
+              # The digest-pinned minimal Ubuntu image intentionally lacks the
+              # ca-certificates payload. Bootstrap only that package while
+              # apt-secure still authenticates signed Ubuntu Release metadata
+              # and package hashes with the image-bundled archive keyring.
+              printf "%s\n" \
+                "Acquire::https::Verify-Peer::snapshot.ubuntu.com \"false\";" \
+                > /etc/apt/apt.conf.d/49ordax-ca-bootstrap
+              apt-get update --error-on=any
+              apt-get install -y --no-install-recommends ca-certificates
+
+              rm -f /etc/apt/apt.conf.d/49ordax-ca-bootstrap
+              test -s /etc/ssl/certs/ca-certificates.crt
+              apt-get clean
+              rm -rf /var/lib/apt/lists/*
+
+              # Every build dependency is now acquired again with normal TLS
+              # certificate verification plus the same signed snapshot archive.
               apt-get update --error-on=any
               apt-get install -y --no-install-recommends $PACKAGES
-              dpkg-query -W -f="${Package}=${Version}\n" $PACKAGES | LC_ALL=C sort > /repo/out/kernel-pinned-observation/package-versions.txt
+              dpkg-query -W -f="\${Package}=\${Version}\\n" $PACKAGES | LC_ALL=C sort > /repo/out/kernel-pinned-observation/package-versions.txt
               apt-cache policy $PACKAGES > /repo/out/kernel-pinned-observation/package-policy.txt
+              sha256sum /etc/ssl/certs/ca-certificates.crt > /repo/out/kernel-pinned-observation/ca-bundle.sha256
+
               python3 bootstrap/kernel/build.py check
               python3 bootstrap/kernel/build.py build --jobs 4 --work-dir out/kernel-work-pinned --out-dir out/kernel-pinned
               python3 bootstrap/kernel/verify.py out/kernel-pinned
@@ -123,13 +129,16 @@ jobs:
           python - <<'PY'
           import hashlib, json, os, pathlib
           root = pathlib.Path('out')
-          versions_path = root / 'kernel-pinned-observation' / 'package-versions.txt'
+          observation = root / 'kernel-pinned-observation'
+          versions_path = observation / 'package-versions.txt'
           versions = {}
           for line in versions_path.read_text(encoding='utf-8').splitlines():
               name, version = line.split('=', 1)
               versions[name] = version
           kernel = root / 'kernel-pinned' / 'vmlinuz-6.6.52'
           provenance = root / 'kernel-pinned' / 'kernel-provenance.json'
+          ca_line = (observation / 'ca-bundle.sha256').read_text(encoding='utf-8').strip()
+          ca_sha256 = ca_line.split()[0]
           def digest(path):
               return hashlib.sha256(path.read_bytes()).hexdigest()
           data = {
@@ -139,11 +148,12 @@ jobs:
               'base_image': os.environ['IMAGE'],
               'apt_snapshot_id': os.environ['SNAPSHOT_ID'],
               'package_versions': dict(sorted(versions.items())),
+              'ca_bundle_sha256': ca_sha256,
               'kernel_sha256': digest(kernel),
               'kernel_provenance_sha256': digest(provenance),
               'promotable_to_physical': False,
           }
-          output = root / 'kernel-pinned-observation' / 'observation.json'
+          output = observation / 'observation.json'
           output.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           print(json.dumps(data, indent=2, sort_keys=True))
           PY
