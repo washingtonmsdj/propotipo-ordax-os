@@ -197,9 +197,9 @@ func physicalDeviceIdentity(diskNumber uint32) (uint32, bool, string, uint64, er
 	deviceSerial := descriptorString(descriptor, returned, serialOffset)
 
 	// DISK_GEOMETRY_EX begins with a 24-byte DISK_GEOMETRY followed by the
-	// 64-bit DiskSize. We only consume that fixed prefix and keep discovery
-	// read-only.
-	geometry := make([]byte, 32)
+	// 64-bit DiskSize. Keep extra output room for the variable trailing data,
+	// while consuming only the fixed read-only prefix needed for capacity.
+	geometry := make([]byte, 64)
 	returned = 0
 	result, _, ioctlErr = procDeviceIoControl.Call(
 		handle,
