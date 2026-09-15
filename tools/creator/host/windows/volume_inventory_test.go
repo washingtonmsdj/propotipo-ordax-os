@@ -81,6 +81,35 @@ func TestSelectPhysicalDiskVolumesIncludesSpannedVolume(t *testing.T) {
 	}
 }
 
+func TestValidateTargetVolumeIsolationAcceptsTargetOwnedVolumes(t *testing.T) {
+	volumes := []physicalVolume{
+		{VolumeName: `\\?\Volume{target-a}\`, DiskNumbers: []uint32{8}},
+		{VolumeName: `\\?\Volume{target-b}\`, DiskNumbers: []uint32{8}},
+		{VolumeName: `\\?\Volume{other}\`, DiskNumbers: []uint32{3}},
+		{VolumeName: `\\?\Volume{other-span}\`, DiskNumbers: []uint32{4, 5}},
+	}
+	if err := validateTargetVolumeIsolation(volumes, 8); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateTargetVolumeIsolationRejectsCrossDiskTargetVolume(t *testing.T) {
+	volumes := []physicalVolume{
+		{VolumeName: `\\?\Volume{target}\`, DiskNumbers: []uint32{8}},
+		{VolumeName: `\\?\Volume{span}\`, DiskNumbers: []uint32{8, 11}},
+	}
+	if err := validateTargetVolumeIsolation(volumes, 8); err == nil {
+		t.Fatal("volume spanning the target and another physical disk must fail closed")
+	}
+}
+
+func TestValidateTargetVolumeIsolationRejectsMissingDiskIdentity(t *testing.T) {
+	volumes := []physicalVolume{{VolumeName: `\\?\Volume{unknown}\`}}
+	if err := validateTargetVolumeIsolation(volumes, 8); err == nil {
+		t.Fatal("volume without physical disk identity must fail closed")
+	}
+}
+
 func TestVolumeInventoryContainsNameIsCaseInsensitive(t *testing.T) {
 	volumes := []physicalVolume{{VolumeName: `\\?\Volume{ABCDEF}\`, DiskNumbers: []uint32{1}}}
 	if !volumeInventoryContainsName(volumes, `\\?\volume{abcdef}\`) {
