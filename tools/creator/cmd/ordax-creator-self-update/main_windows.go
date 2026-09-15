@@ -12,10 +12,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"syscall"
 	"time"
-	"unsafe"
 )
 
 const (
@@ -121,7 +119,8 @@ func main() {
 	if flag.NArg() != 0 || *parent == 0 || *source == "" || *target == "" || len(*hash) != 64 || *size <= 0 {
 		os.Exit(2)
 	}
-	if _, err := strconv.ParseUint(*hash, 16, 256); err != nil {
+	decoded, err := hex.DecodeString(*hash)
+	if err != nil || len(decoded) != sha256.Size || *hash != hex.EncodeToString(decoded) {
 		os.Exit(2)
 	}
 	if err := waitForProcess(uint32(*parent), 45*time.Second); err != nil {
@@ -139,6 +138,5 @@ func main() {
 			os.Exit(1)
 		}
 		time.Sleep(250 * time.Millisecond)
-		_ = unsafe.Pointer(nil) // keep windows syscall imports explicit for vet/build parity
 	}
 }
