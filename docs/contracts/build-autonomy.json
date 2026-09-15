@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.build-autonomy/1",
+  "$schema": "prototype-ordax.build-autonomy/2",
   "status": "canonical-prototype-contract",
   "source_authority": {
     "repository": "washingtonmsdj/prototipo-ordax-os",
@@ -38,13 +38,54 @@
       "kernel",
       "initramfs",
       "minimal-bootstrap",
-      "surface-web",
+      "shared-system-bundle",
+      "web-client",
+      "mobile-client",
+      "desktop-client",
       "native-system-release",
       "creator",
       "manifests"
     ],
     "surface_change_rebuilds_kernel": false,
-    "kernel_change_rebuilds_unrelated_surface": false
+    "kernel_change_rebuilds_unrelated_surface": false,
+    "kernel_change_rebuilds_client_modes": false,
+    "mode_adapter_change_rebuilds_unrelated_modes": false,
+    "creator_change_rebuilds_kernel": false,
+    "bootstrap_change_rebuilds_client_modes": false,
+    "shared_surface_change_may_rebuild_all_applicable_product_modes": true,
+    "shared_contract_change_runs_cross_mode_validation": true,
+    "affected_build_selection_must_be_dependency_driven": true,
+    "ci_path_filters_are_optimization_not_dependency_authority": true
+  },
+  "target_relationships": {
+    "web-client": [
+      "shared-system-bundle"
+    ],
+    "mobile-client": [
+      "shared-system-bundle"
+    ],
+    "desktop-client": [
+      "shared-system-bundle"
+    ],
+    "native-system-release": [
+      "shared-system-bundle"
+    ],
+    "minimal-bootstrap": [
+      "kernel",
+      "initramfs"
+    ],
+    "creator": [
+      "minimal-bootstrap",
+      "manifests"
+    ]
+  },
+  "graph_rules": {
+    "dependency_cycle_allowed": false,
+    "unrelated_rebuild_is_architectural_regression": true,
+    "missing_required_dependency_build_is_architectural_regression": true,
+    "new_product_mode_requires_explicit_artifact_class_or_documented_shared_target": true,
+    "new_artifact_class_requires_provenance_owner": true,
+    "build_cache_may_accelerate_but_may_not_replace_verification": true
   },
   "physical_boundary": {
     "creator_consumes_prebuilt_verified_artifacts": true,

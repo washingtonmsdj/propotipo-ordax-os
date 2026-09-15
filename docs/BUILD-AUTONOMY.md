@@ -81,23 +81,37 @@ GitHub Actions is the current automation executor because this repository is hos
 
 Linux-based CI may be used to compile the Linux kernel. This is an implementation environment, not a requirement that the OrdaX developer own or configure a Linux/WSL workstation.
 
-## Artifact classes
+## Artifact graph
 
-The repository build graph should eventually produce independently:
+The build graph is dependency-driven rather than one monolithic pipeline. Canonical classes are:
 
 ```text
 kernel
 initramfs
-minimal bootstrap payload
-shared Surface/Web bundle
-native system release
-OrdaX Creator executables
-release/provisioning manifests
+minimal-bootstrap
+shared-system-bundle
+web-client
+mobile-client
+desktop-client
+native-system-release
+creator
+manifests
 ```
 
-An ordinary Surface/application change must not rebuild the kernel.
+The shared product source may feed several delivery modes, but those delivery artifacts remain independently selectable. A shared Surface change may legitimately rebuild all applicable product modes; it must not rebuild the kernel. A mobile-adapter-only change must not rebuild unrelated Web/Desktop/native targets. A kernel change may rebuild the dependent bootstrap, but not client modes.
 
-A kernel/config change may rebuild the kernel and the dependent bootstrap package, but should not require rebuilding unrelated product artifacts.
+`docs/contracts/build-autonomy.json` version 2 records the dependency relationships and the following scaling rules:
+
+- affected-build selection follows the artifact dependency graph;
+- CI path filters are only an optimization and never become dependency authority;
+- shared contract changes trigger cross-mode validation;
+- unrelated rebuilds are architectural regressions, not an accepted cost of growth;
+- missing a required dependent build is also an architectural regression;
+- dependency cycles are forbidden;
+- new artifact classes require a provenance owner;
+- caches may accelerate a verified build but may not replace verification.
+
+This lets future targets and features be added without turning every commit into a kernel/full-product rebuild.
 
 ## Release provenance
 

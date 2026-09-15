@@ -12,6 +12,9 @@ CONTRACT = json.loads(
 
 
 class BuildAutonomyContractTest(unittest.TestCase):
+    def test_contract_schema_is_current(self):
+        self.assertEqual(CONTRACT["$schema"], "prototype-ordax.build-autonomy/2")
+
     def test_codex_and_local_toolchains_are_not_required(self):
         independence = CONTRACT["required_independence"]
         self.assertFalse(independence["codex_required"])
@@ -43,13 +46,55 @@ class BuildAutonomyContractTest(unittest.TestCase):
         self.assertFalse(kernel["developer_machine_compilation_required"])
         self.assertTrue(kernel["provenance_manifest_required"])
 
+    def test_artifact_graph_covers_all_product_delivery_modes(self):
+        graph = CONTRACT["artifact_graph"]
+        classes = set(graph["independent_artifact_classes"])
+        for artifact_class in {
+            "kernel",
+            "initramfs",
+            "minimal-bootstrap",
+            "shared-system-bundle",
+            "web-client",
+            "mobile-client",
+            "desktop-client",
+            "native-system-release",
+            "creator",
+            "manifests",
+        }:
+            self.assertIn(artifact_class, classes)
+        self.assertNotIn("surface-web", classes)
+
     def test_artifact_graph_avoids_unrelated_rebuilds(self):
         graph = CONTRACT["artifact_graph"]
-        self.assertIn("kernel", graph["independent_artifact_classes"])
-        self.assertIn("surface-web", graph["independent_artifact_classes"])
-        self.assertIn("creator", graph["independent_artifact_classes"])
         self.assertFalse(graph["surface_change_rebuilds_kernel"])
         self.assertFalse(graph["kernel_change_rebuilds_unrelated_surface"])
+        self.assertFalse(graph["kernel_change_rebuilds_client_modes"])
+        self.assertFalse(graph["mode_adapter_change_rebuilds_unrelated_modes"])
+        self.assertFalse(graph["creator_change_rebuilds_kernel"])
+        self.assertFalse(graph["bootstrap_change_rebuilds_client_modes"])
+        self.assertTrue(graph["shared_surface_change_may_rebuild_all_applicable_product_modes"])
+        self.assertTrue(graph["shared_contract_change_runs_cross_mode_validation"])
+        self.assertTrue(graph["affected_build_selection_must_be_dependency_driven"])
+        self.assertTrue(graph["ci_path_filters_are_optimization_not_dependency_authority"])
+
+    def test_target_relationships_have_no_unknown_nodes(self):
+        classes = set(CONTRACT["artifact_graph"]["independent_artifact_classes"])
+        relationships = CONTRACT["target_relationships"]
+        for target, dependencies in relationships.items():
+            self.assertIn(target, classes)
+            self.assertTrue(dependencies)
+            for dependency in dependencies:
+                self.assertIn(dependency, classes)
+                self.assertNotEqual(target, dependency)
+
+    def test_graph_rules_keep_growth_incremental(self):
+        rules = CONTRACT["graph_rules"]
+        self.assertFalse(rules["dependency_cycle_allowed"])
+        self.assertTrue(rules["unrelated_rebuild_is_architectural_regression"])
+        self.assertTrue(rules["missing_required_dependency_build_is_architectural_regression"])
+        self.assertTrue(rules["new_product_mode_requires_explicit_artifact_class_or_documented_shared_target"])
+        self.assertTrue(rules["new_artifact_class_requires_provenance_owner"])
+        self.assertTrue(rules["build_cache_may_accelerate_but_may_not_replace_verification"])
 
     def test_codex_is_optional_and_not_an_authority(self):
         model = CONTRACT["ai_operating_model"]
