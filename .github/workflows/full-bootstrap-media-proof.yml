@@ -110,6 +110,33 @@ jobs:
           )
           test -s out/release-acquisition/ordax-release-agent
 
+      - name: Prove initramfs ext4 online growth on disposable twin media
+        run: |
+          set -euo pipefail
+          mkdir -p out/full-media-proof
+          bash bootstrap/initramfs/prove_ext4_growth.sh \
+            out/initramfs-work/ordax-grow-ext4 \
+            out/full-media-proof/ext4-growth-runtime-proof.json
+          python - out/full-media-proof/ext4-growth-runtime-proof.json <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert proof['$schema'] == 'prototype-ordax.ext4-growth-runtime-proof/2'
+          assert proof['status'] == 'pass'
+          assert proof['source_commit'] == __import__('os').environ['GITHUB_SHA']
+          assert proof['checks']['static_helper'] is True
+          assert proof['checks']['mismatched_device_rejected'] is True
+          assert proof['checks']['canonical_superblock_count_used'] is True
+          assert proof['checks']['rw_online_growth_matches_resize2fs_maximum'] is True
+          assert proof['checks']['unused_tail_less_than_one_block_group'] is True
+          assert proof['checks']['read_only_mount_rejected'] is True
+          assert proof['checks']['read_only_size_unchanged'] is True
+          assert proof['fixture']['ordax_final_blocks'] == proof['fixture']['resize2fs_final_blocks']
+          assert proof['fixture']['unused_tail_blocks'] < proof['fixture']['blocks_per_group']
+          assert proof['physical_write_authorized'] is False
+          assert proof['physical_hardware_proven'] is False
+          print('EXT4_RUNTIME_GROWTH_PROOF=PASS')
+          PY
+
       - name: Build signer and create ephemeral proof trust
         run: |
           set -euo pipefail
@@ -200,27 +227,47 @@ jobs:
             --contract docs/contracts/physical-media.json \
             --stage-root "$stage" \
             --output-root "$output"
-          python - "$output/proof.json" "$RUNNER_TEMP/full-media-payload/payload-provenance.json" <<'PY'
+          python - \
+            "$output/proof.json" \
+            "$RUNNER_TEMP/full-media-payload/payload-provenance.json" \
+            "out/full-media-proof/ext4-growth-runtime-proof.json" <<'PY'
           import json, pathlib, sys
-          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          disk_proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
           payload = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
-          assert proof['status'] == 'pass'
-          assert proof['physical_write_authorized'] is False
-          assert all(proof['checks'].values())
+          ext4 = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'))
+          assert disk_proof['status'] == 'pass'
+          assert disk_proof['physical_write_authorized'] is False
+          assert all(disk_proof['checks'].values())
+          assert ext4['$schema'] == 'prototype-ordax.ext4-growth-runtime-proof/2'
+          assert ext4['status'] == 'pass'
+          assert all(ext4['checks'].values())
+          assert ext4['physical_write_authorized'] is False
+          assert ext4['physical_hardware_proven'] is False
+          assert ext4['fixture']['ordax_final_blocks'] == ext4['fixture']['resize2fs_final_blocks']
           summary = {
-              '$schema': 'prototype-ordax.full-bootstrap-media-proof/1',
+              '$schema': 'prototype-ordax.full-bootstrap-media-proof/2',
               'status': 'pass',
               'canonical_trust': False,
               'ephemeral_ci_trust': True,
               'payload_artifact_count': payload['artifact_count'],
               'unresolved_groups': payload['unresolved_groups'],
-              'disk_image_sha256': proof['image_sha256'],
+              'disk_image_sha256': disk_proof['image_sha256'],
+              'ext4_growth_runtime_proven': True,
+              'ext4_growth_matches_resize2fs': True,
+              'ext4_growth_helper_sha256': ext4['helper_sha256'],
+              'ext4_growth_initial_blocks': ext4['fixture']['initial_blocks'],
+              'ext4_growth_raw_target_blocks': ext4['fixture']['raw_target_blocks'],
+              'ext4_growth_final_blocks': ext4['fixture']['ordax_final_blocks'],
+              'ext4_growth_unused_tail_blocks': ext4['fixture']['unused_tail_blocks'],
+              'physical_hardware_proven': False,
               'physical_write_authorized': False,
           }
           pathlib.Path('out/full-media-proof/proof-summary.json').write_text(
               json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           print('REAL_BOOTSTRAP_MEDIA_COMPOSITION=PASS')
+          print('EXT4_RUNTIME_GROWTH_INTEGRATED=PASS')
           print('CANONICAL_TRUST=NO')
+          print('PHYSICAL_HARDWARE_PROVEN=NO')
           print('PHYSICAL_WRITE_AUTHORIZED=NO')
           PY
 
@@ -245,6 +292,7 @@ jobs:
           name: ordax-full-bootstrap-media-proof-${{ github.sha }}
           path: |
             out/full-media-proof/proof-summary.json
+            out/full-media-proof/ext4-growth-runtime-proof.json
             ${{ runner.temp }}/full-media-disk-proof/proof.json
           if-no-files-found: error
           retention-days: 14
