@@ -20,6 +20,7 @@ type Target struct {
 	VolumeSerial      uint32 `json:"volume_serial"`
 	DiskNumber        uint32 `json:"disk_number"`
 	VolumeBytes       uint64 `json:"volume_bytes"`
+	PhysicalDiskBytes uint64 `json:"physical_disk_bytes"`
 	DriveType         string `json:"drive_type"`
 	BusType           string `json:"bus_type"`
 	DeviceRemovable   bool   `json:"device_removable"`
@@ -63,11 +64,12 @@ func IsPrototypeCandidate(driveLetter string, driveType uint32, mappedPhysicalDi
 
 func ConfirmationToken(target Target) string {
 	identity := fmt.Sprintf(
-		"ordax-target-v2|%s|%08x|%d|%d|%s|%s|%t|%s|%t",
+		"ordax-target-v3|%s|%08x|%d|%d|%d|%s|%s|%t|%s|%t",
 		strings.ToUpper(strings.TrimSpace(target.DriveLetter)),
 		target.VolumeSerial,
 		target.DiskNumber,
 		target.VolumeBytes,
+		target.PhysicalDiskBytes,
 		target.DriveType,
 		target.BusType,
 		target.DeviceRemovable,
@@ -82,7 +84,7 @@ func FinalizeTarget(target Target, driveType uint32, mappedPhysicalDisk bool, bu
 	target.DriveType = driveTypeName(driveType)
 	target.BusType = busTypeName(busType)
 	target.SystemDisk = systemDisk
-	target.PrototypeSafe = IsPrototypeCandidate(target.DriveLetter, driveType, mappedPhysicalDisk, busType, systemDisk)
+	target.PrototypeSafe = target.PhysicalDiskBytes > 0 && IsPrototypeCandidate(target.DriveLetter, driveType, mappedPhysicalDisk, busType, systemDisk)
 	target.ConfirmationToken = ConfirmationToken(target)
 	return target
 }
