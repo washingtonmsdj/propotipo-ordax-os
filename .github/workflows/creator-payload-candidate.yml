@@ -1,0 +1,171 @@
+name: Creator Payload Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/network/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'bootstrap/recovery/**'
+      - 'bootstrap/trust/**'
+      - 'bootstrap/config/**'
+      - 'bootstrap/entrypoint'
+      - 'tools/creator/assemble.py'
+      - 'tools/creator/core/**'
+      - 'tools/creator/cmd/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - '.github/workflows/creator-payload-candidate.yml'
+  pull_request:
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/network/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'bootstrap/recovery/**'
+      - 'bootstrap/trust/**'
+      - 'bootstrap/config/**'
+      - 'bootstrap/entrypoint'
+      - 'tools/creator/assemble.py'
+      - 'tools/creator/core/**'
+      - 'tools/creator/cmd/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - '.github/workflows/creator-payload-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  creator-payload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Install bounded build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev
+          python -m pip install --disable-pip-version-check --no-cache-dir \
+            jinja2 pyelftools
+
+      - name: Build and verify ESP bootloader candidate
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+
+      - name: Build and verify kernel candidate
+        run: |
+          set -euo pipefail
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+
+      - name: Build and verify initramfs candidate
+        run: |
+          set -euo pipefail
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+
+      - name: Build and verify network bootstrap candidate
+        run: |
+          set -euo pipefail
+          python bootstrap/network/build.py check
+          python bootstrap/network/build.py build --jobs 4
+          python bootstrap/network/build.py verify
+
+      - name: Build and verify static release acquisition agent
+        run: |
+          set -euo pipefail
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+          )
+          mkdir -p out/release-acquisition
+          (
+            cd bootstrap/release-acquisition
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-acquisition/ordax-release-agent .
+          )
+          test -s out/release-acquisition/ordax-release-agent
+          if readelf -l out/release-acquisition/ordax-release-agent | grep -q 'Requesting program interpreter'; then
+            echo 'release acquisition agent is dynamically linked' >&2
+            exit 1
+          fi
+
+      - name: Assemble and verify resolved Creator payload subset
+        run: |
+          set -euo pipefail
+          python tools/creator/assemble.py build --allow-unresolved
+          python tools/creator/assemble.py verify --allow-unresolved
+
+      - name: Assert only explicit promotion inputs remain unresolved
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          manifest = json.loads(pathlib.Path('docs/contracts/minimal-bootstrap.json').read_text(encoding='utf-8'))
+          unresolved = [g['id'] for g in manifest['artifact_groups'] if not g['resolved']]
+          expected = ['bootstrap-release-trust', 'bootstrap-release-channel']
+          if unresolved != expected:
+              raise SystemExit(f'unexpected unresolved groups: {unresolved!r}')
+          if manifest['all_artifacts_resolved'] is not False:
+              raise SystemExit('partial payload must keep all_artifacts_resolved=false')
+          if manifest['physical_write_allowed'] is not False:
+              raise SystemExit('partial payload must keep physical_write_allowed=false')
+          provenance = json.loads(pathlib.Path('out/creator-payload/payload-provenance.json').read_text(encoding='utf-8'))
+          if provenance['unresolved_groups'] != expected:
+              raise SystemExit('payload provenance lost unresolved promotion inputs')
+          if provenance['physical_write_authorized'] is not False:
+              raise SystemExit('payload provenance unexpectedly authorized physical write')
+          PY
+
+      - name: Prove incomplete payload cannot cross Creator full-payload gates
+        run: |
+          set -euo pipefail
+          manifest='../../docs/contracts/minimal-bootstrap.json'
+          payload='../../out/creator-payload'
+          output="$(mktemp -d)"
+          cd tools/creator
+          if go run ./cmd/ordax-creator verify-payload --manifest "$manifest" --payload-root "$payload"; then
+            echo 'Creator unexpectedly accepted incomplete payload as complete' >&2
+            exit 1
+          fi
+          if go run ./cmd/ordax-creator stage-tree --manifest "$manifest" --payload-root "$payload" --output-root "$output"; then
+            echo 'Creator unexpectedly staged incomplete payload' >&2
+            exit 1
+          fi
+          test -z "$(find "$output" -mindepth 1 -print -quit)"
+
+      - name: Upload unified Creator payload candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: ordax-creator-payload-${{ github.sha }}
+          path: out/creator-payload/
+          if-no-files-found: error
+          retention-days: 14
