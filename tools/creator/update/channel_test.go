@@ -12,7 +12,7 @@ import (
 
 func validManifestForTest() Manifest {
 	return Manifest{
-		Schema:       ChannelSchema,
+		Schema:       ChannelSchemaV2,
 		Channel:      DevelopmentChannel,
 		Version:      "dev-0123456789ab",
 		SourceCommit: "0123456789abcdef0123456789abcdef01234567",
@@ -28,9 +28,40 @@ func validManifestForTest() Manifest {
 	}
 }
 
+func legacyManifestBytesForTest(trust string) []byte {
+	m := validManifestForTest()
+	legacy := legacyManifestV1{
+		Schema: m.Schema, Channel: m.Channel, Version: m.Version,
+		SourceCommit: m.SourceCommit, Payload: m.Payload,
+		Entrypoints: legacyEntrypointsV1{Inspect: m.Entrypoints.Inspect, Trust: trust, Status: m.Entrypoints.Status},
+	}
+	legacy.Schema = ChannelSchemaV1
+	data, _ := json.Marshal(legacy)
+	return data
+}
+
 func TestValidateManifestAcceptsBoundDevelopmentChannel(t *testing.T) {
 	if err := ValidateManifest(validManifestForTest()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDecodeManifestAcceptsLegacyProtocolWithoutExposingTrustCapability(t *testing.T) {
+	manifest, err := decodeManifest(legacyManifestBytesForTest("2-Legacy-Protocol-Compatibility.cmd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Schema != ChannelSchemaV1 {
+		t.Fatalf("schema = %q", manifest.Schema)
+	}
+	if manifest.Entrypoints.Inspect == "" || manifest.Entrypoints.Status == "" {
+		t.Fatal("consumer entrypoints were lost")
+	}
+}
+
+func TestDecodeManifestRejectsUnsafeLegacyCompatibilityEntrypoint(t *testing.T) {
+	if _, err := decodeManifest(legacyManifestBytesForTest("../evil.cmd")); err == nil {
+		t.Fatal("unsafe legacy compatibility entrypoint unexpectedly accepted")
 	}
 }
 
@@ -50,7 +81,7 @@ func TestValidateManifestRejectsTraversalEntrypoint(t *testing.T) {
 	}
 }
 
-func TestDecodeManifestRejectsPublisherTrustField(t *testing.T) {
+func TestDecodeV2RejectsPublisherTrustField(t *testing.T) {
 	m := validManifestForTest()
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -58,7 +89,7 @@ func TestDecodeManifestRejectsPublisherTrustField(t *testing.T) {
 	}
 	text := strings.TrimSuffix(string(data), "}") + `,"trust":"forbidden"}`
 	if _, err := decodeManifest([]byte(text)); err == nil {
-		t.Fatal("publisher trust field unexpectedly accepted in consumer manifest")
+		t.Fatal("publisher trust field unexpectedly accepted in v2 consumer manifest")
 	}
 }
 
