@@ -76,9 +76,9 @@ jobs:
           } finally {
             Pop-Location
           }
-          Copy-Item `
-            tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 `
-            (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1')
+          Copy-Item tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1')
+          Copy-Item tools/creator/windows/1-Inspect-OrdaXUSB.cmd (Join-Path $out '1-Inspect-OrdaXUSB.cmd')
+          Copy-Item tools/release-signing/windows/2-Initialize-OrdaXTrust.cmd (Join-Path $out '2-Initialize-OrdaXTrust.cmd')
 
       - name: Prove unresolved build cannot prepare or apply
         shell: pwsh
@@ -138,32 +138,37 @@ jobs:
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
-          $physicalExe = Join-Path $out 'ordax-creator-physical-test.exe'
-          $signerExe = Join-Path $out 'ordax-release-signing.exe'
-          $ceremony = Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1'
-          $physicalHash = (Get-FileHash -Algorithm SHA256 $physicalExe).Hash.ToLowerInvariant()
-          $signerHash = (Get-FileHash -Algorithm SHA256 $signerExe).Hash.ToLowerInvariant()
-          $ceremonyHash = (Get-FileHash -Algorithm SHA256 $ceremony).Hash.ToLowerInvariant()
-          @(
-            "$physicalHash  ordax-creator-physical-test.exe"
-            "$signerHash  ordax-release-signing.exe"
-            "$ceremonyHash  Initialize-OrdaXReleaseTrust.ps1"
-          ) | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
+          $files = @(
+            'ordax-creator-physical-test.exe',
+            'ordax-release-signing.exe',
+            'Initialize-OrdaXReleaseTrust.ps1',
+            '1-Inspect-OrdaXUSB.cmd',
+            '2-Initialize-OrdaXTrust.cmd'
+          )
+          $hashes = [ordered]@{}
+          $sumLines = @()
+          foreach ($name in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 (Join-Path $out $name)).Hash.ToLowerInvariant()
+            $hashes[$name] = $hash
+            $sumLines += "$hash  $name"
+          }
+          $sumLines | Set-Content -Encoding ascii (Join-Path $out 'SHA256SUMS')
           @"
           OrdaX physical USB test toolkit
 
           PRIORITY: first real USB and notebook boot proof.
 
-          Safe commands in this inspection candidate:
-            ordax-creator-physical-test.exe status
-            ordax-creator-physical-test.exe targets
+          FIRST SAFE TEST - double click:
+            1-Inspect-OrdaXUSB.cmd
 
-          Canonical trust ceremony:
-            powershell -ExecutionPolicy Bypass -File .\Initialize-OrdaXReleaseTrust.ps1
+          CANONICAL TRUST - double click only when ready to create the key:
+            2-Initialize-OrdaXTrust.cmd
 
-          The ceremony creates the private Ed25519 key under the user's local
-          private storage by default, OUTSIDE this toolkit. Never upload or
-          commit the PEM. Before the public anchor can be pinned, create and
+          The inspection step NEVER writes or formats a disk.
+
+          The trust ceremony creates the private Ed25519 key under the user's
+          local private storage by default, OUTSIDE this toolkit. Never upload
+          or commit the PEM. Before the public anchor can be pinned, create and
           verify at least one encrypted offline recovery copy.
 
           prepare/apply are compiled but fail closed until a later physical-test build is bound to:
@@ -174,7 +179,7 @@ jobs:
           No physical write is authorized by this inspection artifact.
           "@ | Set-Content -Encoding utf8 (Join-Path $out 'README.txt')
           $provenance = [ordered]@{
-            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/2'
+            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/3'
             status = 'inspection-only'
             source_commit = '${{ github.sha }}'
             raw_backend_linked = $true
@@ -182,14 +187,18 @@ jobs:
             seed_image_bound = $false
             prepare_enabled = $false
             physical_apply_enabled = $false
+            double_click_usb_inspection = $true
+            double_click_trust_ceremony = $true
             trust_ceremony_script_included = $true
             trust_ceremony_ci_smoke_test = 'PASS'
             ci_key_canonical = $false
             private_key_in_artifact = $false
             components = [ordered]@{
-              physical_test = [ordered]@{ name = 'ordax-creator-physical-test.exe'; sha256 = $physicalHash }
-              release_signer = [ordered]@{ name = 'ordax-release-signing.exe'; sha256 = $signerHash }
-              trust_ceremony = [ordered]@{ name = 'Initialize-OrdaXReleaseTrust.ps1'; sha256 = $ceremonyHash }
+              physical_test = [ordered]@{ name = 'ordax-creator-physical-test.exe'; sha256 = $hashes['ordax-creator-physical-test.exe'] }
+              release_signer = [ordered]@{ name = 'ordax-release-signing.exe'; sha256 = $hashes['ordax-release-signing.exe'] }
+              trust_ceremony = [ordered]@{ name = 'Initialize-OrdaXReleaseTrust.ps1'; sha256 = $hashes['Initialize-OrdaXReleaseTrust.ps1'] }
+              inspect_launcher = [ordered]@{ name = '1-Inspect-OrdaXUSB.cmd'; sha256 = $hashes['1-Inspect-OrdaXUSB.cmd'] }
+              trust_launcher = [ordered]@{ name = '2-Initialize-OrdaXTrust.cmd'; sha256 = $hashes['2-Initialize-OrdaXTrust.cmd'] }
             }
           }
           $provenance | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $out 'provenance.json')
