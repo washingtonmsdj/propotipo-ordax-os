@@ -1,0 +1,50 @@
+{
+  "$schema": "prototype-ordax.physical-media/1",
+  "status": "prototype-proof-only",
+  "physical_write_allowed": false,
+  "partition_table": "gpt",
+  "logical_sector_bytes": 512,
+  "alignment_bytes": 1048576,
+  "disposable_proof": {
+    "image_bytes": 536870912,
+    "sparse_allowed": true,
+    "physical_capacity_policy": "proof-only-not-a-device-capacity-contract"
+  },
+  "partitions": [
+    {
+      "index": 1,
+      "name": "ORDAX-ESP",
+      "role": "uefi-boot",
+      "gpt_type_guid": "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+      "filesystem": "fat32",
+      "filesystem_label": "ORDAX-ESP",
+      "start_lba": 2048,
+      "size_bytes": 268435456
+    },
+    {
+      "index": 2,
+      "name": "ORDAX",
+      "role": "main",
+      "gpt_type_guid": "0fc63daf-8483-4772-8e79-3d69d8477de4",
+      "filesystem": "ext4",
+      "filesystem_label": "ORDAX",
+      "start_lba": 526336,
+      "size_policy": "fill-remaining-usable"
+    }
+  ],
+  "forbidden_partitions": [
+    "ORDAX-HOME",
+    "ORDAX-PLATFORM"
+  ],
+  "proof_requirements": [
+    "gpt-valid",
+    "exactly-two-partitions",
+    "partition-starts-match-contract",
+    "partition-type-guids-match-contract",
+    "filesystem-types-match-contract",
+    "filesystem-labels-match-contract",
+    "staged-files-reverified-after-filesystem-materialization",
+    "raw-image-partition-bytes-match-filesystem-images",
+    "physical-write-remains-blocked"
+  ]
+}

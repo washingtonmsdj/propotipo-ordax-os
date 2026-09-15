@@ -1,0 +1,94 @@
+name: Creator Disposable Media
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/contracts/physical-media.json'
+      - 'tools/creator/proof/**'
+      - 'tests/test_physical_media_contract.py'
+      - '.github/workflows/creator-disposable-media.yml'
+  pull_request:
+    paths:
+      - 'docs/contracts/physical-media.json'
+      - 'tools/creator/proof/**'
+      - 'tests/test_physical_media_contract.py'
+      - '.github/workflows/creator-disposable-media.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-media:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install disposable media tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdisk dosfstools e2fsprogs mtools util-linux
+
+      - name: Validate physical-media regressions
+        run: python -m unittest discover -s tests -p 'test_physical_media_contract.py' -v
+
+      - name: Build synthetic fully resolved staged tree
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/ordax-stage"
+          mkdir -p \
+            "$stage/ORDAX-ESP/EFI/BOOT" \
+            "$stage/ORDAX/bootstrap/recovery" \
+            "$stage/ORDAX/releases" \
+            "$stage/ORDAX/state" \
+            "$stage/ORDAX/home"
+          printf 'synthetic-uefi-proof\n' > "$stage/ORDAX-ESP/EFI/BOOT/BOOTX64.EFI"
+          printf '#!/bin/sh\nexit 0\n' > "$stage/ORDAX/bootstrap/entrypoint"
+          printf '#!/bin/sh\nexit 0\n' > "$stage/ORDAX/bootstrap/recovery/entrypoint"
+          chmod 0755 "$stage/ORDAX/bootstrap/entrypoint" "$stage/ORDAX/bootstrap/recovery/entrypoint"
+          printf '%s\n' "$stage" > "$RUNNER_TEMP/stage-path"
+
+      - name: Prove GPT, FAT32, ext4, labels and post-materialization hashes
+        run: |
+          set -euo pipefail
+          stage="$(cat "$RUNNER_TEMP/stage-path")"
+          output="$RUNNER_TEMP/ordax-proof"
+          python tools/creator/proof/disposable_media.py \
+            --contract docs/contracts/physical-media.json \
+            --stage-root "$stage" \
+            --output-root "$output"
+          python - "$output/proof.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert proof["status"] == "pass"
+          assert proof["physical_write_authorized"] is False
+          assert proof["partition_table"] == "gpt"
+          assert [p["name"] for p in proof["partitions"]] == ["ORDAX-ESP", "ORDAX"]
+          assert [p["filesystem"]["type"] for p in proof["partitions"]] == ["vfat", "ext4"]
+          assert [p["filesystem"]["label"] for p in proof["partitions"]] == ["ORDAX-ESP", "ORDAX"]
+          assert all(proof["checks"].values())
+          print("DISPOSABLE_MEDIA_PROOF=PASS")
+          PY
+
+      - name: Publish proof metadata only
+        uses: actions/upload-artifact@v6
+        with:
+          name: creator-disposable-media-proof
+          path: ${{ runner.temp }}/ordax-proof/proof.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Assert raw image is not published as a CI artifact
+        run: |
+          test -f "$RUNNER_TEMP/ordax-proof/ordax-disposable.raw"
+          echo "RAW_IMAGE_EXISTS_ONLY_IN_EPHEMERAL_RUNNER=YES"
+          rm -f "$RUNNER_TEMP/ordax-proof/ordax-disposable.raw"
