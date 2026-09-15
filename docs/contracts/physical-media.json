@@ -32,6 +32,16 @@
       "size_policy": "fill-remaining-usable"
     }
   ],
+  "filesystem_capacity": {
+    "prepared_partition_policy": "fill-remaining-usable",
+    "seed_ext4_policy": "may-remain-smaller-than-prepared-ORDAX-partition",
+    "normal_boot_growth_owner": "bootstrap/initramfs/source.json#storage_growth",
+    "normal_boot_growth_target": "largest-valid-ext4-size-within-ORDAX-block-device",
+    "maximum_unusable_tail": "less-than-one-ext4-block-group-when-upstream-resize2fs-matches",
+    "recovery_growth_allowed": false,
+    "data_preservation_required": true,
+    "runtime_oracle": "upstream-resize2fs-on-disposable-twin-media"
+  },
   "forbidden_partitions": [
     "ORDAX-HOME",
     "ORDAX-PLATFORM"
@@ -45,6 +55,11 @@
     "filesystem-labels-match-contract",
     "staged-files-reverified-after-filesystem-materialization",
     "raw-image-partition-bytes-match-filesystem-images",
+    "creator-prepared-ordax-partition-fills-new-last-usable-lba",
+    "creator-prepared-ext4-remains-seed-sized-before-boot-growth",
+    "boot-time-ext4-growth-matches-upstream-resize2fs-maximum",
+    "boot-time-ext4-growth-preserves-existing-file-content",
+    "recovery-never-grows-filesystem",
     "physical-write-remains-blocked"
   ]
 }
