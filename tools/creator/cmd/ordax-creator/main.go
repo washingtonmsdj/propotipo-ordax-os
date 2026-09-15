@@ -10,7 +10,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-creator <check|verify-payload|plan> --manifest <path> [--payload-root <dir>]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-creator <check|verify-payload|stage-tree|plan> --manifest <path> [--payload-root <dir>] [--output-root <dir>]")
 }
 
 func loadManifest(path string) (creatorcore.Manifest, error) {
@@ -31,6 +31,7 @@ func main() {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	manifestPath := fs.String("manifest", "docs/contracts/minimal-bootstrap.json", "path to minimal-bootstrap manifest")
 	payloadRoot := fs.String("payload-root", "", "root directory of the assembled Creator payload")
+	outputRoot := fs.String("output-root", "", "empty output directory for disposable filesystem-tree staging")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		os.Exit(2)
 	}
@@ -58,6 +59,17 @@ func main() {
 		}
 		fmt.Printf("PAYLOAD_VERIFIED=YES\n")
 		fmt.Printf("PAYLOAD_ARTIFACTS=%d\n", result.ArtifactCount)
+		fmt.Printf("PHYSICAL_WRITE_STATUS=%s\n", creatorcore.PhysicalWriteStatus(manifest))
+	case "stage-tree":
+		result, err := creatorcore.StageDisposableTree(manifest, *payloadRoot, *outputRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ordax-creator: disposable tree staging failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("DISPOSABLE_TREE_STAGED=YES\n")
+		fmt.Printf("STAGED_ARTIFACTS=%d\n", result.ArtifactCount)
+		fmt.Printf("STAGED_RUNTIME_ROOTS=%d\n", result.RuntimeRootCount)
+		fmt.Printf("GPT_FILESYSTEM_PROOF=NO\n")
 		fmt.Printf("PHYSICAL_WRITE_STATUS=%s\n", creatorcore.PhysicalWriteStatus(manifest))
 	case "plan":
 		plan, err := creatorcore.BuildWritePlan(manifest)
