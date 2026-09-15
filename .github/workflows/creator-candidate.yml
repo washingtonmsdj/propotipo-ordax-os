@@ -60,7 +60,7 @@ jobs:
           fi
           test -z "$(find "$output_root" -mindepth 1 -print -quit)"
 
-      - name: Assert public Creator excludes physical apply and raw backend dependency
+      - name: Assert public Creator excludes physical apply and raw backend build
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -78,12 +78,36 @@ jobs:
               raise SystemExit(f'public Creator command exposes forbidden physical route markers: {found}')
           print('CREATOR_PUBLIC_PHYSICAL_APPLY=BLOCKED')
           PY
+
           deps="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -deps ./cmd/ordax-creator)"
           if grep -qx 'github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/host/windows' <<<"$deps"; then
             echo 'public Windows Creator unexpectedly links the native raw-disk host package' >&2
             exit 1
           fi
+
+          public_files="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -f '{{range .GoFiles}}{{println .}}{{end}}' ./host/windows)"
+          tagged_files="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -tags ordax_raw_backend -f '{{range .GoFiles}}{{println .}}{{end}}' ./host/windows)"
+          for file in \
+            raw_handle_write_windows.go \
+            volume_lease_windows.go \
+            elevation_windows.go \
+            raw_runtime_windows.go; do
+            if grep -qx "$file" <<<"$public_files"; then
+              echo "public Windows build unexpectedly includes tagged raw backend file: $file" >&2
+              exit 1
+            fi
+            if ! grep -qx "$file" <<<"$tagged_files"; then
+              echo "tagged Windows raw backend build is missing expected file: $file" >&2
+              exit 1
+            fi
+          done
+
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go test -c -tags ordax_raw_backend \
+            -o "$RUNNER_TEMP/ordax-raw-backend.test.exe" ./host/windows
+          rm -f "$RUNNER_TEMP/ordax-raw-backend.test.exe"
           echo 'CREATOR_PUBLIC_BINARY_LINKS_NATIVE_RAW_BACKEND=NO'
+          echo 'CREATOR_RAW_BACKEND_BUILD_TAG_ISOLATION=PASS'
 
       - name: Build Windows and Linux candidates
         run: |
@@ -111,6 +135,8 @@ jobs:
               '$schema': 'prototype-ordax.creator-provenance/4',
               'status': 'candidate',
               'native_windows_raw_disk_backend_source_implemented': True,
+              'native_windows_raw_disk_backend_build_tag': 'ordax_raw_backend',
+              'native_windows_raw_disk_backend_in_public_build': False,
               'native_windows_raw_disk_backend_publicly_reachable': False,
               'public_creator_binary_links_native_raw_backend': False,
               'public_physical_apply_implemented': False,
