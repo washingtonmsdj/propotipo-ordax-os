@@ -60,7 +60,7 @@ jobs:
           fi
           test -z "$(find "$output_root" -mindepth 1 -print -quit)"
 
-      - name: Assert public Creator command has no physical apply route
+      - name: Assert public Creator excludes physical apply and raw backend dependency
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -78,6 +78,12 @@ jobs:
               raise SystemExit(f'public Creator command exposes forbidden physical route markers: {found}')
           print('CREATOR_PUBLIC_PHYSICAL_APPLY=BLOCKED')
           PY
+          deps="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -deps ./cmd/ordax-creator)"
+          if grep -qx 'github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/host/windows' <<<"$deps"; then
+            echo 'public Windows Creator unexpectedly links the native raw-disk host package' >&2
+            exit 1
+          fi
+          echo 'CREATOR_PUBLIC_BINARY_LINKS_NATIVE_RAW_BACKEND=NO'
 
       - name: Build Windows and Linux candidates
         run: |
@@ -106,6 +112,7 @@ jobs:
               'status': 'candidate',
               'native_windows_raw_disk_backend_source_implemented': True,
               'native_windows_raw_disk_backend_publicly_reachable': False,
+              'public_creator_binary_links_native_raw_backend': False,
               'public_physical_apply_implemented': False,
               'physical_write_authorized': False,
               'windows_writable_physicaldrive_open_implemented_unbound': True,
