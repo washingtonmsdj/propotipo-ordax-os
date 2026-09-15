@@ -47,8 +47,8 @@ class KernelSourceContractTest(unittest.TestCase):
         ):
             self.assertIn(required, FRAGMENT)
 
-    def test_kernel_is_not_authorized_for_physical_media_yet(self):
-        self.assertFalse(SOURCE["build"]["pinned_environment_resolved"])
+    def test_environment_is_pinned_but_physical_use_remains_fail_closed(self):
+        self.assertTrue(SOURCE["build"]["pinned_environment_resolved"])
         self.assertFalse(SOURCE["build"]["physical_artifact_authorized"])
 
 
