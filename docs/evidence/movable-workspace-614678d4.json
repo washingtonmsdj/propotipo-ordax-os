@@ -1,0 +1,36 @@
+{
+  "$schema": "prototype-ordax.movable-workspace-evidence/1",
+  "status": "pass-shared-window-positioning",
+  "source_commit": "614678d44f90823db99946db0166ed2a6f436460",
+  "web_candidate": {
+    "workflow_run_id": 35013313581,
+    "artifact_id": 10414248998,
+    "artifact_name": "ordax-web-client-614678d44f90823db99946db0166ed2a6f436460",
+    "artifact_sha256": "80e85ca5d9947e0bdf665046864f78db02a0a902d654bdc629336ee77df04aa7"
+  },
+  "gates": {
+    "foundation_run_id": 35013313555,
+    "foundation": "PASS",
+    "web_client": "PASS",
+    "pipeline_contract_run_id": 35013313522,
+    "pipeline_contract": "PASS",
+    "real_system_bundle": "PASS",
+    "source_to_signed_envelope_compatibility": "PASS"
+  },
+  "workspace": {
+    "window_position_is_shared_surface_state": true,
+    "pointer_drag_supported_on_roomy_viewports": true,
+    "keyboard_move_shortcut": "Alt+Arrow",
+    "movement_clamped_to_window_layer": true,
+    "focus_preserves_position": true,
+    "maximize_preserves_restore_position": true,
+    "compact_viewport_keeps_responsive_window_layout": true,
+    "platform_specific_window_policy": false
+  },
+  "safety": {
+    "native_graphical_host_proven": false,
+    "canonical_release_trust_resolved": false,
+    "physical_write_authorized": false,
+    "public_creator_apply_available": false
+  }
+}
