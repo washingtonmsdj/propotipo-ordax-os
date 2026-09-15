@@ -80,10 +80,35 @@ jobs:
             bash -lc '
               set -euo pipefail
               export DEBIAN_FRONTEND=noninteractive
-              printf "APT::Snapshot \"%s\";\n" "$SNAPSHOT_ID" > /etc/apt/apt.conf.d/50ordax-snapshot
-              apt-get update
+
+              test -s /usr/share/keyrings/ubuntu-archive-keyring.gpg
+              rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources
+              cat > /etc/apt/sources.list.d/ordax.sources <<EOF
+Types: deb
+URIs: http://archive.ubuntu.com/ubuntu
+Suites: noble noble-updates noble-backports
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+Snapshot: $SNAPSHOT_ID
+
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu
+Suites: noble-security
+Components: main universe restricted multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+Snapshot: $SNAPSHOT_ID
+EOF
+              cat > /etc/apt/apt.conf.d/50ordax-snapshot <<EOF
+APT::Snapshot "$SNAPSHOT_ID";
+Acquire::Snapshots::URI::Origin::Ubuntu "http://snapshot.ubuntu.com/ubuntu/@SNAPSHOTID@/";
+Acquire::Snapshots::URI::Host::archive.ubuntu.com "http://snapshot.ubuntu.com/@PATH@/@SNAPSHOTID@/";
+Acquire::Snapshots::URI::Host::security.ubuntu.com "http://snapshot.ubuntu.com/@PATH@/@SNAPSHOTID@/";
+EOF
+
+              apt-get update --error-on=any
               apt-get install -y --no-install-recommends $PACKAGES
               dpkg-query -W -f="${Package}=${Version}\n" $PACKAGES | LC_ALL=C sort > /repo/out/kernel-pinned-observation/package-versions.txt
+              apt-cache policy $PACKAGES > /repo/out/kernel-pinned-observation/package-policy.txt
               python3 bootstrap/kernel/build.py check
               python3 bootstrap/kernel/build.py build --jobs 4 --work-dir out/kernel-work-pinned --out-dir out/kernel-pinned
               python3 bootstrap/kernel/verify.py out/kernel-pinned
