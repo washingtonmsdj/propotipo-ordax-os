@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/physical-media.json'
-      - 'tools/creator/proof/**'
+      - 'tools/creator/**'
       - 'tests/test_physical_media_contract.py'
       - '.github/workflows/creator-disposable-media.yml'
   pull_request:
     paths:
       - 'docs/contracts/physical-media.json'
-      - 'tools/creator/proof/**'
+      - 'tools/creator/**'
       - 'tests/test_physical_media_contract.py'
       - '.github/workflows/creator-disposable-media.yml'
 
@@ -30,6 +30,13 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
       - name: Install disposable media tools
         run: |
           sudo apt-get update
@@ -38,20 +45,121 @@ jobs:
       - name: Validate physical-media regressions
         run: python -m unittest discover -s tests -p 'test_physical_media_contract.py' -v
 
-      - name: Build synthetic fully resolved staged tree
+      - name: Build fully resolved Creator fixture payload
         run: |
           set -euo pipefail
+          payload="$RUNNER_TEMP/creator-fixture-payload"
+          mkdir -p "$payload/esp" "$payload/main"
+          printf 'synthetic-uefi-proof\n' > "$payload/esp/BOOTX64.EFI"
+          printf '#!/bin/sh\nexit 0\n' > "$payload/main/entrypoint"
+          printf '#!/bin/sh\nexit 0\n' > "$payload/main/recovery-entrypoint"
+          chmod 0755 "$payload/main/entrypoint" "$payload/main/recovery-entrypoint"
+
+          python - "$payload" "$RUNNER_TEMP/creator-fixture-manifest.json" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          payload = pathlib.Path(sys.argv[1])
+          manifest_path = pathlib.Path(sys.argv[2])
+
+          def digest(relative):
+              return hashlib.sha256((payload / relative).read_bytes()).hexdigest()
+
+          manifest = {
+              "$schema": "prototype-ordax.minimal-bootstrap/4",
+              "status": "disposable-test-fixture",
+              "physical_write_allowed": False,
+              "all_artifacts_resolved": True,
+              "policy": "minimum-release-acquisition-first",
+              "partitions": [
+                  {"name": "ORDAX-ESP", "role": "ESP"},
+                  {"name": "ORDAX", "role": "MAIN"},
+              ],
+              "required_capabilities_before_first_release": [],
+              "optional_after_first_release": [],
+              "boot_policy": {},
+              "artifact_groups": [
+                  {
+                      "id": "esp-test",
+                      "partition": "ORDAX-ESP",
+                      "source_owner": "creator-disposable-media-test",
+                      "resolved": True,
+                      "artifacts": [
+                          {
+                              "source_path": "esp/BOOTX64.EFI",
+                              "target_path": "/EFI/BOOT/BOOTX64.EFI",
+                              "sha256": digest("esp/BOOTX64.EFI"),
+                              "mode": "0644",
+                              "logical_owner": "esp",
+                              "reason": "synthetic disposable GPT/filesystem proof",
+                          }
+                      ],
+                  },
+                  {
+                      "id": "bootstrap-test",
+                      "partition": "ORDAX",
+                      "source_owner": "creator-disposable-media-test",
+                      "resolved": True,
+                      "artifacts": [
+                          {
+                              "source_path": "main/entrypoint",
+                              "target_path": "/ordax/bootstrap/entrypoint",
+                              "sha256": digest("main/entrypoint"),
+                              "mode": "0755",
+                              "logical_owner": "bootstrap",
+                              "reason": "synthetic disposable GPT/filesystem proof",
+                          },
+                          {
+                              "source_path": "main/recovery-entrypoint",
+                              "target_path": "/ordax/bootstrap/recovery/entrypoint",
+                              "sha256": digest("main/recovery-entrypoint"),
+                              "mode": "0755",
+                              "logical_owner": "recovery",
+                              "reason": "synthetic disposable GPT/filesystem proof",
+                          },
+                      ],
+                  },
+              ],
+              "runtime_roots_created_empty": [
+                  "/ordax/releases",
+                  "/ordax/state",
+                  "/ordax/home",
+              ],
+              "current_pointer_initial_state": "unset",
+              "forbidden_initial_payload": [],
+              "resolution_requirements_per_artifact": [],
+              "write_gate": {
+                  "requires_all_groups_resolved": True,
+                  "requires_all_artifact_hashes": True,
+                  "requires_disposable_layout_proof": True,
+                  "requires_explicit_destructive_authorization": True,
+              },
+          }
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Materialize disposable tree through Creator Core
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/creator-fixture-payload"
+          manifest="$RUNNER_TEMP/creator-fixture-manifest.json"
           stage="$RUNNER_TEMP/ordax-stage"
-          mkdir -p \
-            "$stage/ORDAX-ESP/EFI/BOOT" \
-            "$stage/ORDAX/bootstrap/recovery" \
-            "$stage/ORDAX/releases" \
-            "$stage/ORDAX/state" \
-            "$stage/ORDAX/home"
-          printf 'synthetic-uefi-proof\n' > "$stage/ORDAX-ESP/EFI/BOOT/BOOTX64.EFI"
-          printf '#!/bin/sh\nexit 0\n' > "$stage/ORDAX/bootstrap/entrypoint"
-          printf '#!/bin/sh\nexit 0\n' > "$stage/ORDAX/bootstrap/recovery/entrypoint"
-          chmod 0755 "$stage/ORDAX/bootstrap/entrypoint" "$stage/ORDAX/bootstrap/recovery/entrypoint"
+          pushd tools/creator >/dev/null
+          output="$(go run ./cmd/ordax-creator stage-tree \
+            --manifest "$manifest" \
+            --payload-root "$payload" \
+            --output-root "$stage")"
+          popd >/dev/null
+          printf '%s\n' "$output"
+          grep -q '^DISPOSABLE_TREE_STAGED=YES$' <<<"$output"
+          grep -q '^GPT_FILESYSTEM_PROOF=NO$' <<<"$output"
+          grep -q '^PHYSICAL_WRITE_STATUS=blocked$' <<<"$output"
+          test -d "$stage/ORDAX-ESP"
+          test -d "$stage/ORDAX/releases"
+          test -d "$stage/ORDAX/state"
+          test -d "$stage/ORDAX/home"
           printf '%s\n' "$stage" > "$RUNNER_TEMP/stage-path"
 
       - name: Prove GPT, FAT32, ext4, labels and post-materialization hashes
