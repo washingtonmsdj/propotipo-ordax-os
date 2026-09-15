@@ -194,6 +194,22 @@ def source_commit() -> str:
         return "unknown"
 
 
+def kernel_uapi_cflags() -> str:
+    """Return host kernel-UAPI include fallbacks without replacing musl headers.
+
+    BusyBox DHCP includes linux/filter.h. musl-dev intentionally does not ship
+    the Linux UAPI tree, while the CI host does. `-idirafter` keeps musl's libc
+    headers authoritative and consults the host only for missing kernel/asm
+    UAPI headers. These are build-time inputs only; the resulting netbox remains
+    statically linked and carries no host runtime dependency.
+    """
+    candidates = [Path("/usr/include"), Path("/usr/include/x86_64-linux-gnu")]
+    required = [Path("/usr/include/linux/filter.h")]
+    if not all(path.is_file() for path in required):
+        raise BuildError("Linux UAPI headers missing: /usr/include/linux/filter.h")
+    return " ".join(f"-idirafter {path}" for path in candidates if path.is_dir())
+
+
 def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     contract = load_contract()
     check_contract()
@@ -210,7 +226,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     env = dict(os.environ)
     env.update(FIXED_ENV)
     compiler = resolve("musl-gcc")
-    make = ["make", f"CC={compiler}"]
+    make = ["make", f"CC={compiler}", f"EXTRA_CFLAGS={kernel_uapi_cflags()}"]
     run(make + ["allnoconfig"], source, env)
     patch_config(source / ".config")
     run(make + ["oldconfig"], source, env)
