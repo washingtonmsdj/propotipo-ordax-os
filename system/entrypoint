@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+SURFACE_ENTRYPOINT="${0%/*}/surface/entrypoint"
+RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
+
+log() {
+    echo "ordax-system: $*" >&2
+}
+
+fail_closed() {
+    log "$*"
+    if [ -x "$RECOVERY_ENTRYPOINT" ]; then
+        exec "$RECOVERY_ENTRYPOINT"
+    fi
+    log "recovery entrypoint unavailable"
+    exit 1
+}
+
+[ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
+
+ORDAX_SYSTEM_ROOT=${0%/*}
+export ORDAX_SYSTEM_ROOT
+log "starting shared OrdaX Surface"
+exec "$SURFACE_ENTRYPOINT"
