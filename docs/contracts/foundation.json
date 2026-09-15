@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.foundation/1",
+  "$schema": "prototype-ordax.foundation/2",
   "status": "prototype-not-promoted",
   "source_authority": {
     "kind": "git",
@@ -50,11 +50,28 @@
     "initramfs",
     "minimal-network",
     "stable-device-identity",
-    "remote-core-ssh",
+    "ordax-remote-core",
     "minimal-control-plane",
     "git-release-acquisition",
     "recovery-maintenance"
   ],
+  "product_modes": {
+    "single_product": true,
+    "modes": [
+      "web",
+      "usb",
+      "native-disk"
+    ],
+    "same_account_model": true,
+    "same_surface_source": true,
+    "same_application_source": true,
+    "web_is_first_class_mode": true,
+    "capability_progression": [
+      "web",
+      "usb",
+      "native-disk"
+    ]
+  },
   "surface": {
     "single_source_tree_required": true,
     "device_and_web_ui_forks_allowed": false,
@@ -70,13 +87,37 @@
     "same_source_commit_for_equivalent_surface": true,
     "manual_web_to_device_port_required": false
   },
+  "host_independence": {
+    "wsl_required": false,
+    "qemu_required": false,
+    "powershell_required": false,
+    "bash_required": false,
+    "specific_linux_distribution_required": false,
+    "specific_desktop_os_required": false,
+    "shared_creator_core_required": true,
+    "thin_platform_adapters_allowed": true,
+    "platform_policy_forks_allowed": false,
+    "end_user_kernel_toolchain_required": false
+  },
+  "remote_control": {
+    "product_owned_remote_core_required": true,
+    "external_ssh_executable_required": false,
+    "ssh_required_for_product": false,
+    "ssh_required_for_daily_development": false,
+    "structured_capability_rpc_preferred": true,
+    "arbitrary_shell_is_primary_control_path": false,
+    "browser_compatible_transport_desired": true,
+    "custom_cryptographic_primitives_allowed": false,
+    "mature_secure_transport_required": true,
+    "device_private_identity_stays_local": true,
+    "break_glass_ssh_temporarily_allowed_during_migration": true
+  },
   "security": {
-    "ssh_public_key_only": true,
-    "strict_host_key_checking_required": true,
-    "persistent_device_host_key_required": true,
-    "multiple_operator_public_keys_allowed": true,
     "private_keys_in_repository_allowed": false,
-    "fail_closed_identity_and_integrity": true
+    "fail_closed_identity_and_integrity": true,
+    "device_identity_persistent": true,
+    "multiple_operator_authorizations_allowed": true,
+    "custom_crypto_allowed": false
   },
   "development": {
     "full_image_rebuild_per_edit": false,
@@ -84,6 +125,8 @@
     "routine_reboot_per_edit": false,
     "delta_or_release_update_preferred": true,
     "browser_hmr_for_surface_allowed": true,
-    "surface_change_should_reach_web_and_device": true
+    "surface_change_should_reach_web_and_device": true,
+    "emulator_mandatory": false,
+    "real_hardware_validation_required_before_final_promotion": true
   }
 }
