@@ -29,7 +29,7 @@ class NetworkBootstrapContractTest(unittest.TestCase):
     def test_network_userspace_is_bounded(self):
         self.assertEqual(
             SOURCE["busybox"]["required_applets"],
-            ["busybox", "ifconfig", "ip", "route", "udhcpc"],
+            ["busybox", "ifconfig", "route", "udhcpc"],
         )
         text = (NETWORK / "bring-up").read_text(encoding="utf-8").lower()
         dhcp = (NETWORK / "udhcpc.script").read_text(encoding="utf-8").lower()
@@ -37,8 +37,9 @@ class NetworkBootstrapContractTest(unittest.TestCase):
         for forbidden in ("wpa_supplicant", "sshd", "dropbear", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden, text)
             self.assertNotIn(forbidden, dhcp)
-        self.assertNotIn("config_httpd\": \"y", builder)
-        self.assertNotIn("config_telnetd\": \"y", builder)
+        self.assertNotIn('"CONFIG_IP": "y"', builder)
+        self.assertNotIn('"CONFIG_HTTPD": "y"', builder)
+        self.assertNotIn('"CONFIG_TELNETD": "y"', builder)
 
     def test_runtime_sources_match_source_contract_hashes(self):
         runtime = SOURCE["runtime"]

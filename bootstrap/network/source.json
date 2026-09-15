@@ -11,14 +11,13 @@
     "required_applets": [
       "busybox",
       "ifconfig",
-      "ip",
       "route",
       "udhcpc"
     ]
   },
   "runtime": {
     "bring_up": "bootstrap/network/bring-up",
-    "bring_up_sha256": "222c4838c0e3a4401593653e7f495c61bafaed3bb799fa41642a708c8d9e57d9",
+    "bring_up_sha256": "daf8ebd084c404427c41f1139b14cee6dc3c89af2b6cf5eaaa4e71d30f6ea1e1",
     "dhcp_script": "bootstrap/network/udhcpc.script",
     "dhcp_script_sha256": "3fbb9ed0cdf1df84e1bfffc6de5a2190e676dc3816a0a856b557b3da0500f5a0",
     "target_netbox": "/ordax/bootstrap/network/bin/netbox",

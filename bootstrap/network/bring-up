@@ -31,9 +31,9 @@ for path in /sys/class/net/*; do
     pidfile="$STATE_DIR/udhcpc-$iface.pid"
     rm -f "$pidfile"
     if "$NETBOX" udhcpc -n -q -t 4 -T 3 -i "$iface" -s "$DHCP_SCRIPT" -p "$pidfile"; then
-        ipv4="$("$NETBOX" ip -4 addr show dev "$iface" 2>/dev/null || true)"
-        case "$ipv4" in
-            *"inet "*)
+        status="$("$NETBOX" ifconfig "$iface" 2>/dev/null || true)"
+        case "$status" in
+            *"inet addr:"*|*"inet "*)
                 printf '%s\n' "$iface" > "$STATE_DIR/active-interface"
                 log "network ready on $iface"
                 exit 0
