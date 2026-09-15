@@ -129,7 +129,23 @@ CONFIG_MODULES=y
 CONFIG_MODULE_UNLOAD=y
 CONFIG_FW_LOADER=y
 
-# Wireless stack and known baseline adapters.
+# First-acquisition network path. Keep common wired Ethernet and USB tether
+# drivers built in so DHCP can work before a module loader or full release.
+CONFIG_NET=y
+CONFIG_PACKET=y
+CONFIG_INET=y
+CONFIG_NETDEVICES=y
+CONFIG_ETHERNET=y
+CONFIG_E1000=y
+CONFIG_E1000E=y
+CONFIG_USB_NET_DRIVERS=y
+CONFIG_USB_USBNET=y
+CONFIG_USB_NET_CDCETHER=y
+CONFIG_USB_NET_CDC_NCM=y
+CONFIG_USB_NET_RNDIS_HOST=y
+
+# Wireless stack and known baseline adapters. These are not the first-acquisition
+# bootstrap path; the full release owns Wi-Fi userspace and firmware policy.
 CONFIG_MAC80211=y
 CONFIG_CFG80211=y
 CONFIG_CFG80211_WEXT=y

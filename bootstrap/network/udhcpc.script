@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+
+NETBOX=/ordax/bootstrap/network/bin/netbox
+
+case "${1:-}" in
+    deconfig)
+        "$NETBOX" ifconfig "$interface" 0.0.0.0
+        ;;
+    bound|renew)
+        "$NETBOX" ifconfig "$interface" "$ip" ${subnet:+netmask "$subnet"} ${broadcast:+broadcast "$broadcast"}
+
+        while "$NETBOX" route del default dev "$interface" >/dev/null 2>&1; do :; done
+        for gateway in ${router:-}; do
+            "$NETBOX" route add default gw "$gateway" dev "$interface"
+            break
+        done
+
+        : > /etc/resolv.conf
+        for server in ${dns:-}; do
+            printf 'nameserver %s\n' "$server" >> /etc/resolv.conf
+        done
+        if [ -n "${domain:-}" ]; then
+            printf 'domain %s\n' "$domain" >> /etc/resolv.conf
+        fi
+        if [ -n "${search:-}" ]; then
+            printf 'search %s\n' "$search" >> /etc/resolv.conf
+        fi
+        ;;
+    *)
+        exit 1
+        ;;
+esac

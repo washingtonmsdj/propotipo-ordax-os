@@ -79,7 +79,24 @@
       "target_root": "/ordax/bootstrap/network",
       "source_owner": "bootstrap/network",
       "resolved": false,
-      "artifacts": []
+      "artifacts": [
+        {
+          "source_path": "bootstrap/network/bring-up",
+          "target_path": "/ordax/bootstrap/network/bring-up",
+          "sha256": "222c4838c0e3a4401593653e7f495c61bafaed3bb799fa41642a708c8d9e57d9",
+          "mode": "0755",
+          "logical_owner": "bootstrap-network",
+          "reason": "Bring up the smallest first-acquisition DHCP path over an Ethernet-like interface"
+        },
+        {
+          "source_path": "bootstrap/network/udhcpc.script",
+          "target_path": "/ordax/bootstrap/network/udhcpc.script",
+          "sha256": "3fbb9ed0cdf1df84e1bfffc6de5a2190e676dc3816a0a856b557b3da0500f5a0",
+          "mode": "0755",
+          "logical_owner": "bootstrap-network",
+          "reason": "Apply DHCP IPv4 route and resolver state without importing the legacy connectivity stack"
+        }
+      ]
     },
     {
       "id": "bootstrap-release-acquisition",

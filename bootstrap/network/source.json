@@ -1,0 +1,30 @@
+{
+  "$schema": "prototype-ordax.network-bootstrap-source/1",
+  "status": "userspace-unresolved",
+  "prototype_scope": "ethernet-and-usb-tether-dhcp",
+  "wifi_in_bootstrap": false,
+  "consumer_wifi_required_before_promotion": true,
+  "busybox": {
+    "version": "1.38.0",
+    "archive_url": "https://busybox.net/downloads/busybox-1.38.0.tar.bz2",
+    "archive_sha256": "34f9ea6ff8636f2c9241153b9114eefa9e65674a45318ae1ef95bb5f31c53bb2",
+    "required_applets": [
+      "busybox",
+      "ifconfig",
+      "ip",
+      "route",
+      "udhcpc"
+    ]
+  },
+  "runtime": {
+    "bring_up": "bootstrap/network/bring-up",
+    "dhcp_script": "bootstrap/network/udhcpc.script",
+    "target_netbox": "/ordax/bootstrap/network/bin/netbox",
+    "network_success_condition": "ipv4-address-present",
+    "https_verified_by_release_agent": true
+  },
+  "build": {
+    "canonical_entrypoint": null,
+    "physical_artifact_authorized": false
+  }
+}
