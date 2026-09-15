@@ -20,23 +20,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Validate JSON contracts
-        run: |
-          python -m json.tool docs/contracts/foundation.json >/dev/null
-          python -m json.tool docs/contracts/product-capabilities.json >/dev/null
-          python -m json.tool docs/contracts/module-boundaries.json >/dev/null
-          python -m json.tool docs/contracts/release-protocol.json >/dev/null
-          python -m json.tool docs/contracts/sync-model.json >/dev/null
-          python -m json.tool docs/contracts/state-evolution.json >/dev/null
-          python -m json.tool docs/contracts/runtime-configuration.json >/dev/null
-          python -m json.tool docs/contracts/minimal-bootstrap.json >/dev/null
-          python -m json.tool docs/contracts/build-autonomy.json >/dev/null
-          python -m json.tool docs/contracts/release-channel.json >/dev/null
-          python -m json.tool docs/contracts/physical-media.json >/dev/null
-          python -m json.tool bootstrap/kernel/source.json >/dev/null
-          python -m json.tool bootstrap/initramfs/source.json >/dev/null
-          python -m json.tool bootstrap/network/source.json >/dev/null
-          python -m json.tool boot/esp/source.json >/dev/null
+      - name: Discover and validate JSON contracts
+        run: python tools/verify/json_contracts.py
 
       - name: Validate build contracts without compiling
         run: |
