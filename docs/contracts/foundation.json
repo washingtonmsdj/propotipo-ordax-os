@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.foundation/3",
+  "$schema": "prototype-ordax.foundation/4",
   "status": "prototype-not-promoted",
   "source_authority": {
     "kind": "git",
@@ -30,10 +30,13 @@
     "separate_home_partition": false
   },
   "initial_media": {
-    "policy": "minimum-network-first",
+    "policy": "minimum-git-acquisition-first",
     "full_system_preseeded": false,
     "surface_preseeded": false,
     "normal_apps_preseeded": false,
+    "remote_core_preseeded": false,
+    "control_plane_preseeded": false,
+    "stable_device_identity_preseeded": false,
     "legacy_repository_dump_allowed": false,
     "build_toolchain_preseeded": false,
     "complete_source_checkout_preseeded": false,
@@ -47,11 +50,8 @@
       "kernel",
       "initramfs",
       "minimal-network",
-      "stable-device-identity",
-      "ordax-remote-core",
-      "minimal-control-plane",
       "release-acquisition",
-      "trust-material-public-only",
+      "public-release-trust",
       "recovery-maintenance",
       "empty-runtime-roots"
     ]
@@ -69,18 +69,22 @@
     "path_template": "/ordax/releases/<commit>",
     "immutable_after_verification": true,
     "activation": "atomic-current-pointer",
-    "rollback_required": true
+    "rollback_required": true,
+    "normal_update_source": "git-or-published-release",
+    "remote_shell_required": false
   },
   "pre_git_capabilities": [
     "uefi-boot",
     "kernel",
     "initramfs",
     "minimal-network",
-    "stable-device-identity",
-    "ordax-remote-core",
-    "minimal-control-plane",
     "git-release-acquisition",
     "recovery-maintenance"
+  ],
+  "post_release_optional_capabilities": [
+    "stable-device-identity",
+    "ordax-remote-core",
+    "control-plane"
   ],
   "product_modes": {
     "single_product": true,
@@ -127,32 +131,28 @@
     "end_user_kernel_toolchain_required": false
   },
   "remote_control": {
-    "product_owned_remote_core_required": true,
-    "external_ssh_executable_required": false,
-    "ssh_required_for_product": false,
-    "ssh_required_for_daily_development": false,
-    "structured_capability_rpc_preferred": true,
-    "arbitrary_shell_is_primary_control_path": false,
-    "browser_compatible_transport_desired": true,
-    "custom_cryptographic_primitives_allowed": false,
-    "mature_secure_transport_required": true,
-    "device_private_identity_stays_local": true,
-    "break_glass_ssh_temporarily_allowed_during_migration": true
+    "required_for_bootstrap": false,
+    "required_for_product": false,
+    "required_for_daily_development": false,
+    "ssh_required": false,
+    "product_owned_remote_core_may_be_added_later": true,
+    "custom_cryptographic_primitives_allowed": false
   },
   "security": {
     "private_keys_in_repository_allowed": false,
     "fail_closed_identity_and_integrity": true,
-    "device_identity_persistent": true,
-    "multiple_operator_authorizations_allowed": true,
     "custom_crypto_allowed": false
   },
   "development": {
+    "normal_change_path": "git-push-to-release-update",
     "full_image_rebuild_per_edit": false,
     "usb_reflash_per_edit": false,
     "routine_reboot_per_edit": false,
     "delta_or_release_update_preferred": true,
     "browser_hmr_for_surface_allowed": true,
     "surface_change_should_reach_web_and_device": true,
+    "remote_shell_required": false,
+    "remote_control_service_required": false,
     "emulator_mandatory": false,
     "real_hardware_validation_required_before_final_promotion": true
   }
