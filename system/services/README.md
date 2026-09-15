@@ -6,6 +6,7 @@ Services expose contracts consumed by the Surface/apps and may delegate environm
 
 Current canonical service boundaries:
 
+- `system/services/account/` owns provider-neutral runtime invariants between account/session state and advertised capabilities; adapters expose environment integration but cannot redefine those invariants;
 - `system/services/preferences/` owns user-facing preference semantics such as appearance; persistence/sync are separate capabilities and are not implied by the preference definition itself;
 - `system/services/sync/` owns cross-device data classification, versioning, conflict and retry semantics;
 - `system/services/config/` owns product/runtime configuration semantics and remains distinct from user preferences and secrets;
