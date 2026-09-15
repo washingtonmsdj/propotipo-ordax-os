@@ -59,10 +59,10 @@ try {
     go test -count=1 ./appchannel ./componentchannel ./physicalchannel ./cmd/ordax-creator-app ./cmd/ordax-creator-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Creator handoff pre-build tests failed' }
     $launcherLd = "-s -w -H=windowsgui -X main.buildCanonicalTrustBase64=$trustBase64 -X main.buildCanonicalTrustSHA256=$trustSha"
-    go build -trimpath -buildvcs=false -ldflags=$launcherLd -o (Join-Path $OutputDirectory 'OrdaX-Creator.exe') ./cmd/ordax-creator-launcher
+    go build -trimpath -buildvcs=false -ldflags $launcherLd -o (Join-Path $OutputDirectory 'OrdaX-Creator.exe') ./cmd/ordax-creator-launcher
     if ($LASTEXITCODE -ne 0) { throw 'Creator launcher build failed' }
     $appLd = "-s -w -H=windowsgui -X main.buildPhysicalTrustBase64=$trustBase64 -X main.buildPhysicalTrustSHA256=$trustSha"
-    go build -trimpath -buildvcs=false -ldflags=$appLd -o (Join-Path $OutputDirectory 'OrdaX-Creator-App.exe') ./cmd/ordax-creator-app
+    go build -trimpath -buildvcs=false -ldflags $appLd -o (Join-Path $OutputDirectory 'OrdaX-Creator-App.exe') ./cmd/ordax-creator-app
     if ($LASTEXITCODE -ne 0) { throw 'Creator versioned app build failed' }
 } finally {
     Pop-Location
@@ -72,9 +72,9 @@ Push-Location (Join-Path $repoRoot 'tools/release-signing')
 try {
     go test -count=1 ./cmd/ordax-creator-app-signing ./cmd/ordax-creator-app-manifest
     if ($LASTEXITCODE -ne 0) { throw 'Creator publisher tooling tests failed' }
-    go build -trimpath -buildvcs=false -ldflags='-s -w' -o (Join-Path $OutputDirectory 'ordax-creator-app-signing.exe') ./cmd/ordax-creator-app-signing
+    go build -trimpath -buildvcs=false -ldflags '-s -w' -o (Join-Path $OutputDirectory 'ordax-creator-app-signing.exe') ./cmd/ordax-creator-app-signing
     if ($LASTEXITCODE -ne 0) { throw 'Creator app signing tool build failed' }
-    go build -trimpath -buildvcs=false -ldflags='-s -w' -o (Join-Path $OutputDirectory 'ordax-creator-app-manifest.exe') ./cmd/ordax-creator-app-manifest
+    go build -trimpath -buildvcs=false -ldflags '-s -w' -o (Join-Path $OutputDirectory 'ordax-creator-app-manifest.exe') ./cmd/ordax-creator-app-manifest
     if ($LASTEXITCODE -ne 0) { throw 'Creator app manifest tool build failed' }
 } finally {
     Pop-Location
