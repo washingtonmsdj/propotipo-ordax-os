@@ -115,38 +115,38 @@ jobs:
           if (($applyOutput -join "`n") -notmatch 'inspection-only') { throw 'apply did not fail closed on missing build binding' }
           $global:LASTEXITCODE = 0
 
-      - name: Smoke test double-click trust ceremony defaults with disposable CI key
+      - name: Smoke test double-click trust ceremony on real Windows user profile path
         shell: pwsh
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
           $out = Join-Path $PWD 'out/physical-usb-test-toolkit'
           $toolkit = Join-Path $PWD '.ci-trust-toolkit'
-          $localAppData = Join-Path $PWD '.ci-trust-localappdata'
+          $privateRoot = Join-Path $env:USERPROFILE 'OrdaX-Private'
+          $private = Join-Path $privateRoot 'release-signing\ordax-release-private.pem'
           New-Item -ItemType Directory -Force -Path $toolkit | Out-Null
-          New-Item -ItemType Directory -Force -Path $localAppData | Out-Null
+          if (Test-Path -LiteralPath $privateRoot) {
+            throw "unexpected pre-existing CI private root: $privateRoot"
+          }
           Copy-Item (Join-Path $out 'ordax-release-signing.exe') (Join-Path $toolkit 'ordax-release-signing.exe')
           Copy-Item (Join-Path $out 'Initialize-OrdaXReleaseTrust.ps1') (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
-          $oldLocalAppData = $env:LOCALAPPDATA
-          $env:LOCALAPPDATA = $localAppData
           try {
             & (Join-Path $toolkit 'Initialize-OrdaXReleaseTrust.ps1')
-            $private = Join-Path $localAppData 'OrdaX\release-signing\ordax-release-private.pem'
             $review = Join-Path $toolkit 'trust-review'
-            if (-not (Test-Path -LiteralPath $private -PathType Leaf)) { throw 'default ceremony did not create private key' }
+            if (-not (Test-Path -LiteralPath $private -PathType Leaf)) { throw 'default ceremony did not create private key in USERPROFILE' }
             $result = Get-Content -Raw (Join-Path $review 'ceremony-result.json') | ConvertFrom-Json
             if ($result.key_id -ne 'ordax-prototype-release-v1') { throw 'unexpected ceremony key id' }
             if (-not $result.independent_derivation_byte_equal) { throw 'independent trust derivation did not match' }
             if (-not $result.proof_signature_created) { throw 'proof signature was not created' }
             if ($result.ready_to_pin_public_anchor) { throw 'ceremony must remain blocked until offline backup' }
+            if ([IO.Path]::GetFullPath([string]$result.private_key_location) -ne [IO.Path]::GetFullPath($private)) { throw 'ceremony used unexpected private-key path' }
           } finally {
-            $env:LOCALAPPDATA = $oldLocalAppData
             Remove-Item -LiteralPath $toolkit -Force -Recurse -ErrorAction SilentlyContinue
-            Remove-Item -LiteralPath $localAppData -Force -Recurse -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $privateRoot -Force -Recurse -ErrorAction SilentlyContinue
           }
           if (Test-Path -LiteralPath $toolkit) { throw 'disposable CI toolkit was not destroyed' }
-          if (Test-Path -LiteralPath $localAppData) { throw 'disposable CI private storage was not destroyed' }
-          Write-Host 'CI_TRUST_DEFAULT_DOUBLE_CLICK_SMOKE_TEST=PASS'
+          if (Test-Path -LiteralPath $privateRoot) { throw 'disposable CI private storage was not destroyed' }
+          Write-Host 'CI_TRUST_USERPROFILE_DOUBLE_CLICK_SMOKE_TEST=PASS'
           Write-Host 'CI_PRIVATE_KEY_DESTROYED=YES'
           Write-Host 'CI_KEY_CANONICAL=NO'
 
@@ -185,9 +185,9 @@ jobs:
           The inspection step NEVER writes or formats a disk.
 
           The trust ceremony creates the private Ed25519 key under the user's
-          local private storage by default, OUTSIDE this toolkit. Never upload
-          or commit the PEM. Before the public anchor can be pinned, create and
-          verify at least one encrypted offline recovery copy.
+          direct profile path at OrdaX-Private/release-signing, OUTSIDE this
+          toolkit. Never upload or commit the PEM. Before the public anchor can
+          be pinned, create and verify at least one encrypted offline recovery copy.
 
           prepare/apply are compiled but fail closed until a later physical-test build is bound to:
           - canonical Ed25519 public trust SHA-256
@@ -198,7 +198,7 @@ jobs:
           No physical write is authorized by this inspection artifact.
           "@ | Set-Content -Encoding utf8 (Join-Path $out 'README.txt')
           $provenance = [ordered]@{
-            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/4'
+            '$schema' = 'prototype-ordax.physical-usb-test-toolkit/5'
             status = 'inspection-only'
             source_commit = '${{ github.sha }}'
             raw_backend_linked = $true
@@ -211,6 +211,7 @@ jobs:
             double_click_trust_ceremony = $true
             trust_ceremony_script_included = $true
             trust_ceremony_ci_smoke_test = 'PASS'
+            trust_private_storage = 'USERPROFILE/OrdaX-Private/release-signing'
             ci_key_canonical = $false
             private_key_in_artifact = $false
             components = [ordered]@{
