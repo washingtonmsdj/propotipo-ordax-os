@@ -16,6 +16,12 @@ export const accountApp = defineFirstPartyApp({
       body: "A Surface apenas exibe o estado entregue pelo port de identidade. Nenhum provedor ou login é simulado quando o host não oferece autenticação real.",
     },
     {
+      kind: "identity-actions",
+      label: "Acesso",
+      title: "Entrar e sair",
+      body: "As ações aparecem somente quando o adapter autorizado declara suporte. O app não conhece Google, Microsoft, passkeys ou qualquer provedor específico.",
+    },
+    {
       kind: "static",
       label: "Núcleo local",
       title: "Continuidade preparada",
