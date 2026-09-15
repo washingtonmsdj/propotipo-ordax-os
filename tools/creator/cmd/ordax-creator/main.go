@@ -10,7 +10,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-creator <check|plan> --manifest <path>")
+	fmt.Fprintln(os.Stderr, "usage: ordax-creator <check|verify-payload|plan> --manifest <path> [--payload-root <dir>]")
 }
 
 func loadManifest(path string) (creatorcore.Manifest, error) {
@@ -30,6 +30,7 @@ func main() {
 	command := os.Args[1]
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	manifestPath := fs.String("manifest", "docs/contracts/minimal-bootstrap.json", "path to minimal-bootstrap manifest")
+	payloadRoot := fs.String("payload-root", "", "root directory of the assembled Creator payload")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		os.Exit(2)
 	}
@@ -49,6 +50,15 @@ func main() {
 		fmt.Printf("MANIFEST_SCHEMA=%s\n", manifest.Schema)
 		fmt.Printf("PHYSICAL_WRITE_STATUS=%s\n", creatorcore.PhysicalWriteStatus(manifest))
 		fmt.Printf("PARTITIONS=ORDAX-ESP,ORDAX\n")
+	case "verify-payload":
+		result, err := creatorcore.VerifyPayload(manifest, *payloadRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ordax-creator: payload verification failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("PAYLOAD_VERIFIED=YES\n")
+		fmt.Printf("PAYLOAD_ARTIFACTS=%d\n", result.ArtifactCount)
+		fmt.Printf("PHYSICAL_WRITE_STATUS=%s\n", creatorcore.PhysicalWriteStatus(manifest))
 	case "plan":
 		plan, err := creatorcore.BuildWritePlan(manifest)
 		if err != nil {
