@@ -1,4 +1,5 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
+import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
@@ -74,6 +75,12 @@ const CONNECTIVITY_LABELS = {
   unknown: "Conectividade desconhecida",
 };
 
+const IDENTITY_LABELS = {
+  unavailable: "Identidade indisponível neste host",
+  "signed-out": "Sem sessão ativa",
+  "signed-in": "Sessão ativa",
+};
+
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -100,7 +107,7 @@ function renderPreferenceChoice(panel, state) {
   return choices;
 }
 
-function renderPanel(panel, state) {
+function renderPanel(panel, state, identitySnapshot) {
   const section = element("section", "ordax-app-panel");
   section.append(element("span", "ordax-app-panel-label", panel.label));
   section.append(element("h3", "ordax-app-panel-title", panel.title));
@@ -110,6 +117,14 @@ function renderPanel(panel, state) {
     const badge = element("span", "ordax-inline-status", label);
     badge.dataset.state = state.connectivity;
     section.append(badge);
+  } else if (panel.kind === "identity-session") {
+    const label = IDENTITY_LABELS[identitySnapshot.state] ?? IDENTITY_LABELS.unavailable;
+    const badge = element("span", "ordax-inline-status", label);
+    badge.dataset.state = identitySnapshot.state;
+    section.append(badge);
+    if (identitySnapshot.state === "signed-in") {
+      section.append(element("p", "ordax-app-panel-body", identitySnapshot.displayName));
+    }
   } else if (panel.kind === "capability") {
     const available = state.capabilityIds.includes(panel.capabilityId);
     const badge = element("span", "ordax-inline-status", capabilityState(state.capabilityIds, panel.capabilityId));
@@ -133,7 +148,7 @@ function renderPanel(panel, state) {
   return section;
 }
 
-function createWindow(app, windowState, state, index) {
+function createWindow(app, windowState, state, identitySnapshot, index) {
   const windowNode = element("article", "ordax-window");
   windowNode.dataset.windowId = windowState.id;
   windowNode.dataset.active = String(state.activeWindowId === windowState.id);
@@ -167,18 +182,22 @@ function createWindow(app, windowState, state, index) {
   titlebar.append(identity, controls);
 
   const body = element("div", "ordax-window-body");
-  for (const panel of app.panels) body.append(renderPanel(panel, state));
+  for (const panel of app.panels) body.append(renderPanel(panel, state, identitySnapshot));
   windowNode.append(titlebar, body);
   return windowNode;
 }
 
-export function mountSurface(root, host, preferenceStore = null) {
+export function mountSurface(root, host, preferenceStore = null, identitySession = null) {
   if (!(root instanceof Element)) {
     throw new TypeError("Surface root must be a DOM Element");
   }
   assertSurfaceHost(host);
   const store = preferenceStore === null ? null : assertPreferenceStore(preferenceStore);
+  const identityPort = identitySession === null ? null : assertIdentitySessionPort(identitySession);
   const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
+  let identitySnapshot = validateIdentitySessionSnapshot(
+    identityPort ? identityPort.getSnapshot() : { state: "unavailable" }
+  );
 
   root.innerHTML = SHELL_MARKUP;
   let state = createSurfaceState(host.getSnapshot(), preferenceSeed);
@@ -216,7 +235,7 @@ export function mountSurface(root, host, preferenceStore = null) {
       if (windowState.minimized) continue;
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
-      windowLayer.append(createWindow(app, windowState, state, visibleIndex));
+      windowLayer.append(createWindow(app, windowState, state, identitySnapshot, visibleIndex));
       visibleIndex += 1;
     }
   };
@@ -333,12 +352,17 @@ export function mountSurface(root, host, preferenceStore = null) {
   root.addEventListener("click", onClick);
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
-  const unsubscribe = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
+  const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
+  const unsubscribeIdentity = identityPort?.subscribe((snapshot) => {
+    identitySnapshot = validateIdentitySessionSnapshot(snapshot);
+    render();
+  });
   render();
 
   return Object.freeze({
     destroy() {
-      unsubscribe?.();
+      unsubscribeHost?.();
+      unsubscribeIdentity?.();
       root.removeEventListener("click", onClick);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);

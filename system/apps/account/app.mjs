@@ -10,6 +10,12 @@ export const accountApp = defineFirstPartyApp({
   requiredCapabilities: [],
   panels: [
     {
+      kind: "identity-session",
+      label: "Sessão",
+      title: "Conta OrdaX",
+      body: "A Surface apenas exibe o estado entregue pelo port de identidade. Nenhum provedor ou login é simulado quando o host não oferece autenticação real.",
+    },
+    {
       kind: "static",
       label: "Núcleo local",
       title: "Continuidade preparada",
@@ -18,8 +24,8 @@ export const accountApp = defineFirstPartyApp({
     {
       kind: "capability",
       label: "Identidade",
-      title: "Conta OrdaX",
-      body: "A sessão só se torna ativa quando o host realmente expõe identidade autenticada; o núcleo local não inventa login nem tokens.",
+      title: "Capacidade autenticada",
+      body: "A capacidade account.identity só deve aparecer quando um adapter realmente fornece identidade autenticada.",
       capabilityId: "account.identity",
     },
     {

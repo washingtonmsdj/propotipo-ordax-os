@@ -6,6 +6,7 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
+      - 'system/contracts/identity-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/preferences/**'
@@ -16,12 +17,14 @@ on:
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
+      - 'tests/test_identity_session.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
+      - 'system/contracts/identity-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/preferences/**'
@@ -32,6 +35,7 @@ on:
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
+      - 'tests/test_identity_session.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   workflow_dispatch:
@@ -74,6 +78,7 @@ jobs:
             | sort -z \
             | xargs -0 -n1 node --check
           node --test tests/test_surface_preferences.mjs
+          node --test tests/test_identity_session.mjs
           node --test tests/test_sync_*.mjs
 
       - name: Run Surface and Web bundle regressions

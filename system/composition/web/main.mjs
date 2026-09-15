@@ -1,3 +1,4 @@
+import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -9,12 +10,14 @@ if (!root) {
 
 const host = createWebSurfaceHost(window);
 const preferenceStore = createWebPreferenceStore(window);
-const surface = mountSurface(root, host, preferenceStore);
+const identitySession = createWebIdentitySession();
+const surface = mountSurface(root, host, preferenceStore, identitySession);
 
 window.addEventListener(
   "pagehide",
   () => {
     surface.destroy();
+    identitySession.dispose();
     host.dispose();
   },
   { once: true },
