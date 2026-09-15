@@ -43,9 +43,11 @@ MANUAL_KERNEL_BUILD_REQUIRED=NO
 CI_BUILD_REQUIRED=YES
 ARTIFACT_PROVENANCE_REQUIRED=YES
 ARTIFACT_SHA256_REQUIRED=YES
+PINNED_KERNEL_BUILD_ENVIRONMENT=PASS
+KERNEL_REPEAT_DIGEST_PROOF=PASS
 ```
 
-GitHub Actions is the current executor; repository recipes remain source authority.
+GitHub Actions is the current executor; repository recipes remain source authority. The kernel environment is pinned by immutable OCI digest, APT snapshot, exact package versions and CA-bundle digest, and an independent repeat build produced identical kernel artifact hashes.
 
 ## Physical architecture
 
@@ -134,8 +136,12 @@ KERNEL_VERSION=6.6.52
 UPSTREAM_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8
 KERNEL_ARTIFACT_SHA256=e080323be390b2e921ed34286794cbce18642b653fc6790ae308f61720c90ba1
 KERNEL_BUILD_IN_CI=PROVEN
+KERNEL_BUILD_ENVIRONMENT=pinned-repeat-proof-complete
+KERNEL_REPEAT_DIGEST_PROOF=PASS
 PHYSICAL_KERNEL_AUTHORIZED=NO
 ```
+
+The reproducible kernel build is eligible to enter the physical-media pipeline, but physical artifact authorization remains a separate fail-closed gate.
 
 ### Initramfs
 
@@ -279,18 +285,21 @@ CREATOR_WINDOWS_FIXED_MEDIA_USB_DISCOVERY=PASS
 CREATOR_WINDOWS_USB_TRANSPORT_VERIFICATION=PASS
 CREATOR_WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
 CREATOR_TARGET_CONFIRMATION_TOKEN=PASS
+CREATOR_TARGET_IDENTITY_RECOMPUTED=PASS
 CREATOR_TARGET_REENUMERATION_CONFIRMATION=PASS
 CREATOR_BLOCKED_RAW_DISK_PLAN=PASS
 RAW_DISK_PLAN_STRATEGY=verified-full-disk-image
+CREATOR_INTERNAL_RAW_WRITER_ORCHESTRATION=PASS_FAKE_BACKEND_ONLY
+CREATOR_INTERNAL_RAW_WRITE_READBACK_SHA256=PASS_FAKE_BACKEND_ONLY
 WINDOWS_PROTOTYPE_TOOLKIT=PASS
-CREATOR_APPLY_IMPLEMENTED=NO
-CREATOR_WINDOWS_RAW_DISK_WRITER_IMPLEMENTED=NO
+CREATOR_PUBLIC_APPLY_IMPLEMENTED=NO
+CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND_IMPLEMENTED=NO
 PHYSICAL_USB_WRITE=NO
 ```
 
-The blocked raw-disk plan binds a currently re-enumerated safe USB target to `\\.\PhysicalDriveN`, requires elevation, canonical trust and explicit destructive authorization, but contains no write implementation. Discovery code contains no write/lock/dismount primitive.
+The fail-closed raw-disk plan and internal orchestration bind a currently re-enumerated safe USB target to its exact physical identity, require elevation, exact full-disk geometry, image SHA-256, canonical trust and explicit destructive authorization, and perform byte-complete read-back verification in the in-memory test backend. The orchestration is intentionally unexported and has no CLI/public apply path. Windows target discovery remains read-only, and no native host backend currently opens, locks, dismounts or writes `\\.\PhysicalDriveN`.
 
-A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key, no canonical trust and no physical writer.
+A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key, no canonical trust and no exposed physical writer.
 
 Disposable media proof already demonstrates two partitions, FAT32+EXT4 labels, embedded partition bytes and post-materialization hash verification without touching a physical disk.
 
@@ -325,7 +334,8 @@ USB_LOCATION=WINDOWS
 PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 PHYSICAL_NOTEBOOK_BOOT_PROVEN=NO
-CREATOR_APPLY_IMPLEMENTED=NO
+CREATOR_PUBLIC_APPLY_IMPLEMENTED=NO
+CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND_IMPLEMENTED=NO
 DESTRUCTIVE_AUTHORIZATION=NO
 ```
 
@@ -334,7 +344,7 @@ DESTRUCTIVE_AUTHORIZATION=NO
 1. complete the full-bootstrap-media proof with ephemeral trust and record the result without promoting it to canonical trust;
 2. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
 3. rerun the byte-complete media proof with canonical public trust while keeping physical write disabled;
-4. implement the narrow Windows raw-disk writer behind target re-enumeration, verified full-disk image, elevation and an explicit destructive authorization boundary;
+4. implement the native Windows `PhysicalDrive` backend behind the already tested internal orchestration, with handle-bound identity verification and fail-closed lock/dismount semantics, while keeping the public apply path disabled;
 5. request explicit user authorization only when the real physical write is ready to execute;
 6. boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
 7. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
@@ -342,4 +352,4 @@ DESTRUCTIVE_AUTHORIZATION=NO
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, a byte-complete proof or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, a byte-complete proof, internal fake-backend writer test or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
