@@ -69,8 +69,9 @@ func writeEnvelopeAtomic(path string, data []byte) error {
 }
 
 // Current is deliberately strict: offline use is allowed only when the cached
-// pointer is itself the exact signed envelope and the referenced candidate
-// still passes every file hash/size binding. No unsigned local metadata can
+// pointer is itself the exact signed envelope, the referenced candidate still
+// passes every file hash/size binding, and its bound provenance contains a
+// valid positive monotonic release sequence. No unsigned local metadata can
 // promote a physical writer.
 func Current(root string, trustBytes []byte, expectedTrustSHA256 string) (Installed, error) {
 	root, err := physicalRoot(root)
@@ -98,17 +99,22 @@ func Current(root string, trustBytes []byte, expectedTrustSHA256 string) (Instal
 	if err != nil || !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
 		return Installed{}, errors.New("cached physical candidate directory is unavailable or unsafe")
 	}
-	if err := VerifyInstalled(directory, manifest); err != nil {
+	installed := Installed{SourceCommit: manifest.SourceCommit, Directory: directory, Manifest: manifest}
+	if _, err := ReleaseSequence(installed); err != nil {
 		return Installed{}, err
 	}
-	return Installed{SourceCommit: manifest.SourceCommit, Directory: directory, Manifest: manifest}, nil
+	return installed, nil
 }
 
 // AcquireCached first lets the canonical online acquisition path install and
-// verify a candidate. It then performs a second independent read of the signed
-// envelope. The cache pointer is committed only if that second envelope still
-// names the same commit and all installed bytes still match its bindings.
-// This prevents a moving release pointer from creating an unsafe offline cache.
+// verify a candidate. Before that candidate can be returned to the GUI, its
+// signed-and-bound release sequence is compared against the last accepted
+// physical release so replaying an older correctly-signed envelope fails
+// closed. It then performs a second independent read of the signed envelope.
+// The cache pointer is committed only if that second envelope still names the
+// same commit, all installed bytes still match its bindings, and the monotonic
+// sequence check still passes. This prevents both rollback and a moving release
+// pointer from creating an unsafe offline cache.
 func AcquireCached(client *http.Client, root, envelopeURL string, trustBytes []byte, expectedTrustSHA256 string) (Installed, bool, error) {
 	installed, changed, err := Acquire(client, root, envelopeURL, trustBytes, expectedTrustSHA256)
 	if err != nil {
@@ -116,6 +122,9 @@ func AcquireCached(client *http.Client, root, envelopeURL string, trustBytes []b
 	}
 	actualRoot, err := physicalRoot(root)
 	if err != nil {
+		return Installed{}, false, err
+	}
+	if err := ensureNotRollback(actualRoot, installed, trustBytes, expectedTrustSHA256); err != nil {
 		return Installed{}, false, err
 	}
 	if envelopeURL == "" {
@@ -134,11 +143,15 @@ func AcquireCached(client *http.Client, root, envelopeURL string, trustBytes []b
 	if err != nil || manifest.SourceCommit != installed.SourceCommit {
 		return installed, changed, nil
 	}
-	if err := VerifyInstalled(installed.Directory, manifest); err != nil {
+	verified := Installed{SourceCommit: manifest.SourceCommit, Directory: installed.Directory, Manifest: manifest}
+	if err := VerifyInstalled(verified.Directory, verified.Manifest); err != nil {
+		return Installed{}, false, err
+	}
+	if err := ensureNotRollback(actualRoot, verified, trustBytes, expectedTrustSHA256); err != nil {
 		return Installed{}, false, err
 	}
 	if err := writeEnvelopeAtomic(filepath.Join(actualRoot, currentEnvelopeName), envelopeBytes); err != nil {
 		return installed, changed, nil
 	}
-	return installed, changed, nil
+	return verified, changed, nil
 }
