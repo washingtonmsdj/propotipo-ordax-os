@@ -12,7 +12,12 @@ on:
       - 'bootstrap/recovery/**'
       - 'bootstrap/config/**'
       - 'bootstrap/entrypoint'
-      - 'tools/creator/**'
+      - 'tools/creator/core/**'
+      - 'tools/creator/cmd/ordax-creator/**'
+      - 'tools/creator/assemble.py'
+      - 'tools/creator/proof/**'
+      - 'tools/creator/go.mod'
+      - 'tools/creator/go.sum'
       - 'tools/release-signing/**'
       - 'docs/contracts/minimal-bootstrap.json'
       - 'docs/contracts/physical-media.json'
@@ -27,7 +32,12 @@ on:
       - 'bootstrap/recovery/**'
       - 'bootstrap/config/**'
       - 'bootstrap/entrypoint'
-      - 'tools/creator/**'
+      - 'tools/creator/core/**'
+      - 'tools/creator/cmd/ordax-creator/**'
+      - 'tools/creator/assemble.py'
+      - 'tools/creator/proof/**'
+      - 'tools/creator/go.mod'
+      - 'tools/creator/go.sum'
       - 'tools/release-signing/**'
       - 'docs/contracts/minimal-bootstrap.json'
       - 'docs/contracts/physical-media.json'
@@ -36,6 +46,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: full-bootstrap-media-proof-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   full-bootstrap-media-proof:
