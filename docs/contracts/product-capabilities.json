@@ -1,0 +1,197 @@
+{
+  "$schema": "prototype-ordax.product-capabilities/1",
+  "status": "canonical-prototype-contract",
+  "authority": {
+    "product_shape": "docs/contracts/foundation.json",
+    "capability_boundary": "docs/contracts/product-capabilities.json",
+    "implementation_root": "system/adapters",
+    "declaration_semantics": "policy-boundary-not-implementation-proof"
+  },
+  "compatibility": {
+    "capability_ids_are_stable": true,
+    "additive_capability_definition_is_backward_compatible": true,
+    "adding_optional_capability_to_mode_is_backward_compatible": true,
+    "adding_required_capability_to_existing_mode_requires_explicit_migration": true,
+    "changing_existing_capability_semantics_requires_new_id_or_schema_major": true,
+    "removing_capability_is_breaking": true,
+    "unknown_optional_capability": "ignore",
+    "unknown_required_capability": "fail-closed",
+    "shared_surface_may_branch_on_platform_id": false,
+    "shared_surface_may_branch_on_capability_presence": true,
+    "platform_specific_policy_forks_allowed": false
+  },
+  "capabilities": [
+    {
+      "id": "surface.render",
+      "owner": "system/surface",
+      "security_boundary": "shared-product"
+    },
+    {
+      "id": "account.identity",
+      "owner": "system/services",
+      "security_boundary": "authenticated-service"
+    },
+    {
+      "id": "sync.safe-state",
+      "owner": "system/services",
+      "security_boundary": "server-authorized"
+    },
+    {
+      "id": "network.https",
+      "owner": "system/services",
+      "security_boundary": "standard-secure-transport"
+    },
+    {
+      "id": "storage.secure-device",
+      "owner": "system/adapters",
+      "security_boundary": "device-local-secret-storage"
+    },
+    {
+      "id": "notifications.native",
+      "owner": "system/adapters",
+      "security_boundary": "platform-mediated"
+    },
+    {
+      "id": "media.capture",
+      "owner": "system/adapters",
+      "security_boundary": "user-permission"
+    },
+    {
+      "id": "auth.biometric-gate",
+      "owner": "system/adapters",
+      "security_boundary": "platform-mediated-local-gate"
+    },
+    {
+      "id": "background.tasks",
+      "owner": "system/adapters",
+      "security_boundary": "platform-lifecycle"
+    },
+    {
+      "id": "filesystem.user-selected",
+      "owner": "system/adapters",
+      "security_boundary": "user-mediated-filesystem"
+    },
+    {
+      "id": "creator.usb-media",
+      "owner": "system/adapters/desktop",
+      "security_boundary": "explicit-privileged-capability"
+    },
+    {
+      "id": "host.raw-disk",
+      "owner": "tools/creator/host",
+      "security_boundary": "destructive-explicit-authorization"
+    },
+    {
+      "id": "system.release-activation",
+      "owner": "system/adapters/native",
+      "security_boundary": "verified-release-only"
+    },
+    {
+      "id": "system.recovery",
+      "owner": "system/adapters/native",
+      "security_boundary": "explicit-recovery"
+    },
+    {
+      "id": "system.boot-control",
+      "owner": "system/adapters/native",
+      "security_boundary": "native-system-only"
+    }
+  ],
+  "modes": [
+    {
+      "id": "web",
+      "adapter": "system/adapters/web",
+      "baseline_capabilities": [
+        "surface.render",
+        "account.identity",
+        "sync.safe-state",
+        "network.https"
+      ],
+      "privileged_capabilities": [],
+      "forbidden_capabilities": [
+        "creator.usb-media",
+        "host.raw-disk",
+        "system.release-activation",
+        "system.recovery",
+        "system.boot-control"
+      ]
+    },
+    {
+      "id": "mobile",
+      "adapter": "system/adapters/mobile",
+      "baseline_capabilities": [
+        "surface.render",
+        "account.identity",
+        "sync.safe-state",
+        "network.https",
+        "storage.secure-device"
+      ],
+      "privileged_capabilities": [],
+      "forbidden_capabilities": [
+        "creator.usb-media",
+        "host.raw-disk",
+        "system.release-activation",
+        "system.recovery",
+        "system.boot-control"
+      ]
+    },
+    {
+      "id": "desktop",
+      "adapter": "system/adapters/desktop",
+      "baseline_capabilities": [
+        "surface.render",
+        "account.identity",
+        "sync.safe-state",
+        "network.https",
+        "storage.secure-device"
+      ],
+      "privileged_capabilities": [
+        "creator.usb-media",
+        "host.raw-disk"
+      ],
+      "privileged_boundary": "creator-only-explicit-user-authorization",
+      "forbidden_capabilities": [
+        "system.release-activation",
+        "system.recovery",
+        "system.boot-control"
+      ]
+    },
+    {
+      "id": "usb",
+      "adapter": "system/adapters/native",
+      "baseline_capabilities": [
+        "surface.render",
+        "account.identity",
+        "sync.safe-state",
+        "network.https",
+        "system.release-activation",
+        "system.recovery",
+        "system.boot-control"
+      ],
+      "privileged_capabilities": [],
+      "forbidden_capabilities": []
+    },
+    {
+      "id": "native-disk",
+      "adapter": "system/adapters/native",
+      "baseline_capabilities": [
+        "surface.render",
+        "account.identity",
+        "sync.safe-state",
+        "network.https",
+        "system.release-activation",
+        "system.recovery",
+        "system.boot-control"
+      ],
+      "privileged_capabilities": [],
+      "forbidden_capabilities": []
+    }
+  ],
+  "extension_rules": [
+    "shared product code consumes capability ids instead of platform-specific APIs",
+    "a capability omitted from a mode is not guaranteed and may be added later through that adapter",
+    "new adapters require a mode contract update in the same change",
+    "security-sensitive capabilities require an explicit boundary and fail closed when unavailable",
+    "future delta update, remote management or hardware capabilities extend this registry instead of forking the product"
+  ]
+}
