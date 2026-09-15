@@ -89,8 +89,28 @@ class PackageCandidateTests(unittest.TestCase):
             link.symlink_to(self.exe)
         except (OSError, NotImplementedError):
             self.skipTest("symlinks unavailable")
-        with self.assertRaisesRegex(pack.PackagingError, "non-symlink"):
+        with self.assertRaisesRegex(pack.PackagingError, "symlinks or junctions"):
             pack.package_candidate(link, self.root / "linked", "0.1.0", 1, self.commit)
+
+    def test_symlink_parent_traversal_is_rejected_when_supported(self):
+        real_parent = self.root / "real-parent"
+        real_parent.mkdir()
+        nested_exe = real_parent / "inspection.exe"
+        nested_exe.write_bytes(b"read-only")
+        parent_link = self.root / "parent-link"
+        output_real = self.root / "output-real"
+        output_real.mkdir()
+        output_link = self.root / "output-link"
+        try:
+            parent_link.symlink_to(real_parent, target_is_directory=True)
+            output_link.symlink_to(output_real, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks unavailable")
+
+        with self.assertRaisesRegex(pack.PackagingError, "symlinks or junctions"):
+            pack.package_candidate(parent_link / "inspection.exe", self.root / "safe-out", "0.1.0", 1, self.commit)
+        with self.assertRaisesRegex(pack.PackagingError, "symlinks or junctions"):
+            pack.package_candidate(self.exe, output_link / "nested", "0.1.0", 1, self.commit)
 
 
 if __name__ == "__main__":
