@@ -1,0 +1,43 @@
+{
+  "$schema": "prototype-ordax.identity-actions-evidence/1",
+  "status": "pass-provider-neutral-command-boundary",
+  "source_commit": "f9160b6dbfd86aab3ad96586691b2ef2b64d2199",
+  "contracts": {
+    "session": "ordax.identity-session/1",
+    "actions": "ordax.identity-actions/1",
+    "supported_command_families": [
+      "sign-in",
+      "sign-out"
+    ]
+  },
+  "web_candidate": {
+    "workflow_run_id": 35012771224,
+    "artifact_id": 10414640077,
+    "artifact_name": "ordax-web-client-f9160b6dbfd86aab3ad96586691b2ef2b64d2199",
+    "artifact_sha256": "40f18697dd722d6ed98ba1327515cb1d4c8866311abcde759e6265a349073277"
+  },
+  "gates": {
+    "foundation_run_id": 35012771196,
+    "foundation": "PASS",
+    "web_client": "PASS",
+    "pipeline_contract_run_id": 35012771181,
+    "pipeline_contract": "PASS",
+    "real_system_bundle": "PASS",
+    "source_to_signed_envelope_compatibility": "PASS"
+  },
+  "runtime": {
+    "session_and_commands_are_separate_ports": true,
+    "surface_selects_contextual_command": true,
+    "provider_specific_branches_in_shared_app": false,
+    "web_session_state": "unavailable",
+    "web_supported_actions": [],
+    "real_auth_provider": "NO",
+    "real_sign_in_flow": "NO",
+    "real_sign_out_flow": "NO"
+  },
+  "safety": {
+    "canonical_release_trust_resolved": false,
+    "physical_write_authorized": false,
+    "public_creator_apply_available": false
+  }
+}
