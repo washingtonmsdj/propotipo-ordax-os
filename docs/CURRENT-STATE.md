@@ -25,10 +25,14 @@ MODES=WEB,MOBILE,DESKTOP,USB,NATIVE_DISK
 ONE_ACCOUNT_MODEL=YES
 ONE_SURFACE_SOURCE=YES
 CAPABILITY_DIFFERENCES_VIA_ADAPTERS=YES
+SYSTEM_ENTRYPOINT_IMPLEMENTED=YES
+SURFACE_BOOTSTRAP_RUNTIME=YES
+REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
+GRAPHICAL_SURFACE_COMPLETE=NO
 CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 ```
 
-`system/` is the shared product source, but the real user-facing Surface/runtime is not yet complete enough to publish as a production OrdaX release. CI release fixtures are protocol fixtures only and must never be promoted as the product runtime.
+`system/` is the shared product source. The real release path now exists as `system/entrypoint -> system/surface/entrypoint -> system/surface/bin/ordax-surface`, and repository CI proves that the actual `system/` tree can be bundled deterministically as `system.tar`. The current Surface runtime is a deliberate bootstrap-console milestone; the graphical user-facing Surface remains incomplete and must not be described as production-ready.
 
 ## Build autonomy
 
@@ -107,7 +111,8 @@ UEFI
  -> download and verify system.tar
  -> safely materialize /ordax/releases/<commit>/system
  -> atomically activate current
- -> boot release
+ -> /ordax/current/system/entrypoint
+ -> shared Surface entry path
 ```
 
 ## Boot artifacts
@@ -183,15 +188,12 @@ RELEASE_AGENT_SIZE=7090336
 PHYSICAL_AGENT_AUTHORIZED=NO
 ```
 
-The release-agent candidate above was built with Go 1.27.1, `CGO_ENABLED=0`, Linux amd64, and its CI provenance explicitly marks it as not physically authorized.
-
 ### Release build/signing pipeline
-
-Repository-owned tooling now covers the complete pre-publication chain:
 
 ```text
 RELEASE_BUNDLE_TOOLING_IMPLEMENTED=YES
 DETERMINISTIC_SYSTEM_TAR=PASS
+REAL_REPOSITORY_SYSTEM_BUNDLE=PASS
 RELEASE_MANIFEST_TOOLING_IMPLEMENTED=YES
 MANIFEST_PINS_SOURCE_COMMIT=PASS
 MANIFEST_PINS_SYSTEM_TAR_SHA256_SIZE=PASS
@@ -204,22 +206,9 @@ RELEASE_PIPELINE_CI=PASS
 PRODUCTION_RELEASE_PUBLISHED=NO
 ```
 
-Integrated CI proves:
-
-```text
-system source fixture
- -> deterministic system.tar
- -> exact unsigned release-manifest.json
- -> ephemeral Ed25519 signing with matching public trust
- -> release-envelope.json
- -> verification by the real ordax-release-agent
-```
-
-The fixture key is deleted after the proof and never becomes canonical trust. The fixture system is not the OrdaX product runtime.
+CI has proved both the protocol fixture chain and deterministic bundling of the actual repository `system/` tree. CI-only signing keys remain ephemeral and are never canonical trust.
 
 ### Release channel
-
-Resolved in source and hash-bound in the minimal-bootstrap manifest:
 
 ```text
 RELEASE_CHANNEL=RESOLVED
@@ -233,19 +222,27 @@ The URL selects bytes. Ed25519 verification decides whether those bytes are trus
 
 ### Release trust
 
+Policy is resolved; actual canonical key material is not.
+
 ```text
+RELEASE_TRUST_POLICY=RESOLVED
+TRUST_POLICY_SCHEMA=prototype-ordax.release-trust-policy/1
+CANONICAL_KEY_ID=ordax-prototype-release-v1
+CANONICAL_KEY_MATERIAL_GENERATED=NO
+PUBLIC_ANCHOR_PINNED=NO
 RELEASE_TRUST=UNRESOLVED
 EXPECTED_RUNTIME_PATH=/ordax/bootstrap/trust/release-ed25519.json
 PRIVATE_SIGNING_KEY_IN_GIT=FORBIDDEN
 PRIVATE_SIGNING_KEY_IN_USB=FORBIDDEN
-PRIVATE_KEY_CUSTODY_OWNER=UNRESOLVED
-PRIVATE_KEY_RECOVERY_POLICY=UNRESOLVED
-PRIVATE_KEY_ROTATION_POLICY=UNRESOLVED
+PRIVATE_KEY_CUSTODY_OWNER=repository-owner-developer
+PRIVATE_KEY_GENERATION_HOST=developer-windows-machine
+PRIVATE_KEY_RECOVERY_POLICY=offline-encrypted-backup-required
+PRIVATE_KEY_ROTATION_POLICY=prototype-reprovision-until-signed-transition
 MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=NO
 PHYSICAL_WRITE_ALLOWED=NO
 ```
 
-This remains the only unresolved artifact group in `docs/contracts/minimal-bootstrap.json`. Do not replace it with a generated placeholder or CI key. The canonical public trust anchor may be pinned only after its matching private key has explicit custody outside Git.
+`docs/contracts/release-trust-policy.json` and `docs/RELEASE-TRUST-CEREMONY.md` define the custody/recovery/rotation boundary. The actual private key must be generated locally outside Git; only the matching public trust document may be pinned in source. A CI key or placeholder must never satisfy `bootstrap-release-trust`.
 
 ## Recovery
 
@@ -268,7 +265,7 @@ OrdaX Desktop UI
  -> verified target
 ```
 
-Implemented:
+Implemented and proven non-destructively:
 
 ```text
 CREATOR_CORE_IMPLEMENTED=YES
@@ -276,12 +273,30 @@ CREATOR_VERIFY_PAYLOAD_IMPLEMENTED=YES
 CREATOR_STAGE_TREE=IMPLEMENTED_TRANSACTIONAL
 CREATOR_DISPOSABLE_GPT_FILESYSTEM_PROOF=PASS
 CREATOR_PLAN=FAIL_CLOSED
+CREATOR_WINDOWS_TARGET_DISCOVERY=PASS
+CREATOR_WINDOWS_REMOVABLE_USB_DISCOVERY=PASS
+CREATOR_WINDOWS_FIXED_MEDIA_USB_DISCOVERY=PASS
+CREATOR_WINDOWS_USB_TRANSPORT_VERIFICATION=PASS
+CREATOR_WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
+CREATOR_TARGET_CONFIRMATION_TOKEN=PASS
+CREATOR_TARGET_REENUMERATION_CONFIRMATION=PASS
+CREATOR_BLOCKED_RAW_DISK_PLAN=PASS
+RAW_DISK_PLAN_STRATEGY=verified-full-disk-image
+WINDOWS_PROTOTYPE_TOOLKIT=PASS
 CREATOR_APPLY_IMPLEMENTED=NO
-CREATOR_WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
+CREATOR_WINDOWS_RAW_DISK_WRITER_IMPLEMENTED=NO
 PHYSICAL_USB_WRITE=NO
 ```
 
+The blocked raw-disk plan binds a currently re-enumerated safe USB target to `\\.\PhysicalDriveN`, requires elevation, canonical trust and explicit destructive authorization, but contains no write implementation. Discovery code contains no write/lock/dismount primitive.
+
+A unified Windows prototype toolkit is built by CI with `ordax-creator.exe`, `ordax-creator-targets.exe`, `ordax-release-signing.exe`, hashes, provenance and the trust ceremony. It contains no private key, no canonical trust and no physical writer.
+
 Disposable media proof already demonstrates two partitions, FAT32+EXT4 labels, embedded partition bytes and post-materialization hash verification without touching a physical disk.
+
+## Full bootstrap media proof
+
+A heavier proof workflow exists to rebuild the real bootstrap owners, inject an ephemeral CI-only public trust into a temporary manifest, assemble the byte-complete payload and materialize the actual two-partition image. It deletes the private key, payload and RAW image before artifact upload. Its result must be recorded only after the workflow completes; it never resolves canonical trust or authorizes physical write.
 
 ## Remote access
 
@@ -290,8 +305,6 @@ SSH_REQUIRED=NO
 REMOTE_CORE_REQUIRED=NO
 CONTROL_PLANE_REQUIRED=NO
 ```
-
-Remote/control may return later only as ordinary post-release product capabilities if justified.
 
 ## Host independence
 
@@ -318,16 +331,15 @@ DESTRUCTIVE_AUTHORIZATION=NO
 
 ## Current priorities
 
-1. define real custody, recovery and rotation for the canonical Ed25519 release-signing private key, then pin only its public trust anchor in source;
-2. complete the real shared `system/` runtime/Surface entry path so a repository-built `system.tar` is an actual OrdaX release rather than only a protocol fixture;
-3. add production release publication policy after canonical trust and real runtime are ready;
-4. resolve `bootstrap-release-trust`, making the minimal bootstrap byte-complete while keeping physical write disabled;
-5. implement Creator target identity and the narrow Windows removable-disk adapter;
-6. add physical APPLY only after all non-destructive gates pass;
-7. request explicit destructive authorization only at the actual physical write boundary;
-8. boot the notebook and prove first release acquisition, offline known-good boot and recovery;
-9. continue shared Surface, Web/native adapters and account continuity in parallel.
+1. complete the full-bootstrap-media proof with ephemeral trust and record the result without promoting it to canonical trust;
+2. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
+3. rerun the byte-complete media proof with canonical public trust while keeping physical write disabled;
+4. implement the narrow Windows raw-disk writer behind target re-enumeration, verified full-disk image, elevation and an explicit destructive authorization boundary;
+5. request explicit user authorization only when the real physical write is ready to execute;
+6. boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
+7. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
+8. add production release publication and signed trust rotation before product promotion.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture or disposable-media proof never implicitly authorizes physical mutation or promotes a test key/runtime to production.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, a byte-complete proof or disposable-media proof never implicitly authorizes physical mutation or promotes a CI key/runtime to production.
