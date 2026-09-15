@@ -19,6 +19,7 @@ on:
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
+      - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_account_runtime.mjs'
@@ -41,6 +42,7 @@ on:
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
+      - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_account_runtime.mjs'
@@ -87,6 +89,7 @@ jobs:
             | sort -z \
             | xargs -0 -n1 node --check
           node --test tests/test_surface_preferences.mjs
+          node --test tests/test_surface_workspace.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_account_runtime.mjs

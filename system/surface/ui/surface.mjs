@@ -10,6 +10,9 @@ import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createSurfaceState, reduceSurfaceState } from "./surface-state.mjs";
 
+const MOVABLE_WORKSPACE_MIN_WIDTH = 761;
+const KEYBOARD_MOVE_STEP = 24;
+
 const SHELL_MARKUP = `
   <div class="ordax-shell" data-ordax-shell>
     <header class="ordax-topbar">
@@ -227,12 +230,28 @@ function createWindow(
   windowNode.dataset.windowId = windowState.id;
   windowNode.dataset.active = String(state.activeWindowId === windowState.id);
   windowNode.dataset.maximized = String(windowState.maximized);
-  windowNode.style.setProperty("--ordax-window-offset", `${index * 22}px`);
+  const placementOrdinal = windowState.placementOrdinal ?? index + 1;
+  windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 8) * 22}px`);
+  if (
+    !windowState.maximized &&
+    Number.isFinite(windowState.positionX) &&
+    Number.isFinite(windowState.positionY)
+  ) {
+    windowNode.style.left = `${windowState.positionX}px`;
+    windowNode.style.top = `${windowState.positionY}px`;
+    windowNode.style.transform = "none";
+    windowNode.dataset.positioned = "true";
+  }
   windowNode.setAttribute("role", "region");
   windowNode.setAttribute("aria-label", app.title);
 
   const titlebar = element("header", "ordax-window-titlebar");
   titlebar.dataset.windowTitlebar = "";
+  titlebar.tabIndex = 0;
+  titlebar.setAttribute(
+    "aria-label",
+    `Mover ${app.title}. Use Alt mais setas ou arraste quando houver espaço.`,
+  );
   const identity = element("div", "ordax-window-identity");
   identity.append(element("span", "ordax-app-mark", app.monogram));
   const titleGroup = element("div", "ordax-window-title-group");
@@ -295,6 +314,7 @@ export function mountSurface(
   );
   let identityActionPending = null;
   let identityActionMessage = null;
+  let dragSession = null;
 
   root.innerHTML = SHELL_MARKUP;
   let state = createSurfaceState(host.getSnapshot(), preferenceSeed);
@@ -305,6 +325,31 @@ export function mountSurface(
   const appLauncher = root.querySelector("[data-app-launcher]");
   const windowLayer = root.querySelector("[data-window-layer]");
   const runningApps = root.querySelector("[data-running-apps]");
+
+  const findRenderedWindow = (windowId) =>
+    Array.from(windowLayer.children).find((node) => node.dataset.windowId === windowId) ?? null;
+
+  const isMovableWorkspace = () =>
+    windowLayer.getBoundingClientRect().width >= MOVABLE_WORKSPACE_MIN_WIDTH;
+
+  const clampPosition = (x, y, width, height) => {
+    const layerRect = windowLayer.getBoundingClientRect();
+    return {
+      x: Math.round(Math.min(Math.max(0, x), Math.max(0, layerRect.width - width))),
+      y: Math.round(Math.min(Math.max(0, y), Math.max(0, layerRect.height - height))),
+    };
+  };
+
+  const renderedGeometry = (windowNode) => {
+    const layerRect = windowLayer.getBoundingClientRect();
+    const windowRect = windowNode.getBoundingClientRect();
+    return {
+      x: windowRect.left - layerRect.left,
+      y: windowRect.top - layerRect.top,
+      width: windowRect.width,
+      height: windowRect.height,
+    };
+  };
 
   const renderLauncher = () => {
     appLauncher.replaceChildren();
@@ -474,6 +519,76 @@ export function mountSurface(
     }
   };
 
+  const onPointerDown = (event) => {
+    if (event.button !== 0 || !isMovableWorkspace()) return;
+    const titlebar = event.target.closest("[data-window-titlebar]");
+    const windowNode = titlebar?.closest("[data-window-id]");
+    if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
+    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
+    if (!windowState || windowState.maximized) return;
+
+    const geometry = renderedGeometry(windowNode);
+    dispatch({ type: "window.focus", windowId: windowState.id });
+    const focusedNode = findRenderedWindow(windowState.id);
+    const focusedTitlebar = focusedNode?.querySelector("[data-window-titlebar]");
+    if (!focusedNode || !focusedTitlebar) return;
+
+    focusedTitlebar.setPointerCapture?.(event.pointerId);
+    dragSession = {
+      pointerId: event.pointerId,
+      windowId: windowState.id,
+      node: focusedNode,
+      titlebar: focusedTitlebar,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: geometry.x,
+      startY: geometry.y,
+      width: geometry.width,
+      height: geometry.height,
+      x: geometry.x,
+      y: geometry.y,
+      moved: false,
+    };
+    event.preventDefault();
+  };
+
+  const onPointerMove = (event) => {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+    const deltaX = event.clientX - dragSession.startClientX;
+    const deltaY = event.clientY - dragSession.startClientY;
+    if (!dragSession.moved && Math.abs(deltaX) + Math.abs(deltaY) < 3) return;
+
+    const position = clampPosition(
+      dragSession.startX + deltaX,
+      dragSession.startY + deltaY,
+      dragSession.width,
+      dragSession.height,
+    );
+    dragSession.moved = true;
+    dragSession.x = position.x;
+    dragSession.y = position.y;
+    dragSession.node.dataset.dragging = "true";
+    dragSession.node.style.left = `${position.x}px`;
+    dragSession.node.style.top = `${position.y}px`;
+    dragSession.node.style.transform = "none";
+    event.preventDefault();
+  };
+
+  const finishPointerDrag = (event, commit) => {
+    if (!dragSession || event.pointerId !== dragSession.pointerId) return;
+    const current = dragSession;
+    dragSession = null;
+    current.titlebar.releasePointerCapture?.(event.pointerId);
+    if (current.moved && commit) {
+      dispatch({ type: "window.move", windowId: current.windowId, x: current.x, y: current.y });
+    } else if (current.moved) {
+      render();
+    }
+  };
+
+  const onPointerUp = (event) => finishPointerDrag(event, true);
+  const onPointerCancel = (event) => finishPointerDrag(event, false);
+
   const onDoubleClick = (event) => {
     const titlebar = event.target.closest("[data-window-titlebar]");
     const windowNode = titlebar?.closest("[data-window-id]");
@@ -485,10 +600,40 @@ export function mountSurface(
     if (event.key === "Escape" && state.launcherOpen) {
       dispatch({ type: "launcher.close" });
       launcherToggle.focus();
+      return;
     }
+
+    if (!event.altKey || !isMovableWorkspace()) return;
+    const deltas = {
+      ArrowLeft: [-KEYBOARD_MOVE_STEP, 0],
+      ArrowRight: [KEYBOARD_MOVE_STEP, 0],
+      ArrowUp: [0, -KEYBOARD_MOVE_STEP],
+      ArrowDown: [0, KEYBOARD_MOVE_STEP],
+    };
+    const delta = deltas[event.key];
+    if (!delta) return;
+    const titlebar = event.target.closest("[data-window-titlebar]");
+    const windowNode = titlebar?.closest("[data-window-id]");
+    if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
+    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
+    if (!windowState || windowState.maximized) return;
+
+    const geometry = renderedGeometry(windowNode);
+    const position = clampPosition(
+      geometry.x + delta[0],
+      geometry.y + delta[1],
+      geometry.width,
+      geometry.height,
+    );
+    dispatch({ type: "window.move", windowId: windowState.id, x: position.x, y: position.y });
+    event.preventDefault();
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("pointerdown", onPointerDown);
+  root.addEventListener("pointermove", onPointerMove);
+  root.addEventListener("pointerup", onPointerUp);
+  root.addEventListener("pointercancel", onPointerCancel);
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
@@ -506,10 +651,18 @@ export function mountSurface(
 
   return Object.freeze({
     destroy() {
+      if (dragSession) {
+        dragSession.titlebar.releasePointerCapture?.(dragSession.pointerId);
+        dragSession = null;
+      }
       unsubscribeHost?.();
       unsubscribeIdentity?.();
       unsubscribeIdentityActions?.();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("pointermove", onPointerMove);
+      root.removeEventListener("pointerup", onPointerUp);
+      root.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
       delete root.dataset.ordaxTheme;

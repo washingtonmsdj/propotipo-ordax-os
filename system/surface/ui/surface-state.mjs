@@ -41,6 +41,13 @@ function focusWindow(state, windowId) {
   return freezeState({ ...state, windows, activeWindowId: windowId, launcherOpen: false });
 }
 
+function validateWindowCoordinate(value, name) {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new TypeError(`Window ${name} must be a finite non-negative number`);
+  }
+  return Math.round(value);
+}
+
 export function createSurfaceState(snapshot, preferenceSeed = {}) {
   const safeSnapshot = validateSurfaceSnapshot(snapshot);
   return freezeState({
@@ -67,7 +74,8 @@ export function reduceSurfaceState(state, action) {
       const existing = state.windows.find((item) => item.appId === app.id && app.singleton);
       if (existing) return focusWindow(state, existing.id);
 
-      const windowId = app.singleton ? app.id : `${app.id}:${state.nextWindowOrdinal}`;
+      const ordinal = state.nextWindowOrdinal;
+      const windowId = app.singleton ? app.id : `${app.id}:${ordinal}`;
       return freezeState({
         ...state,
         launcherOpen: false,
@@ -78,14 +86,29 @@ export function reduceSurfaceState(state, action) {
             appId: app.id,
             minimized: false,
             maximized: false,
+            placementOrdinal: ordinal,
+            positionX: null,
+            positionY: null,
           },
         ],
         activeWindowId: windowId,
-        nextWindowOrdinal: app.singleton ? state.nextWindowOrdinal : state.nextWindowOrdinal + 1,
+        nextWindowOrdinal: ordinal + 1,
       });
     }
     case "window.focus":
       return focusWindow(state, action.windowId);
+    case "window.move": {
+      const index = state.windows.findIndex((item) => item.id === action.windowId);
+      if (index < 0 || state.windows[index].maximized) return state;
+      const positionX = validateWindowCoordinate(action.x, "x");
+      const positionY = validateWindowCoordinate(action.y, "y");
+      const current = state.windows[index];
+      if (current.positionX === positionX && current.positionY === positionY) return state;
+      const windows = state.windows.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, positionX, positionY } : item
+      );
+      return freezeState({ ...state, windows });
+    }
     case "window.minimize": {
       const index = state.windows.findIndex((item) => item.id === action.windowId);
       if (index < 0) return state;
