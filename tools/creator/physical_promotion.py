@@ -73,6 +73,13 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
 
     _add(blockers, auth.get("$schema") == AUTH_SCHEMA, "authorization-schema-invalid")
     _add(blockers, auth.get("source_repository") == REPOSITORY, "authorization-repository-mismatch")
+    release_sequence = auth.get("release_sequence")
+    sequence_ok = (
+        isinstance(release_sequence, int)
+        and not isinstance(release_sequence, bool)
+        and 1 <= release_sequence <= (2**63 - 1)
+    )
+    _add(blockers, sequence_ok, "physical-release-sequence-invalid")
     _add(blockers, minimal.get("$schema") == MINIMAL_SCHEMA, "minimal-bootstrap-schema-invalid")
     _add(blockers, policy.get("$schema") == TRUST_POLICY_SCHEMA, "release-trust-policy-schema-invalid")
     _add(blockers, media.get("$schema") == MEDIA_SCHEMA, "physical-media-schema-invalid")
@@ -188,6 +195,7 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
             "release_trust_sha256": trust_sha,
             "physical_media_sha256": media_sha,
         },
+        "release_sequence": release_sequence if sequence_ok else None,
         "consumer_key_setup_required": False,
         "development_channel_can_authorize_write": False,
     }
