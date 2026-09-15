@@ -60,6 +60,17 @@ func TestNormalizeVolumeNameForOpen(t *testing.T) {
 	}
 }
 
+func TestNormalizeVolumeNameForOpenIsIdempotent(t *testing.T) {
+	const want = `\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}`
+	got, err := normalizeVolumeNameForOpen(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("already-normalized volume = %q, want %q", got, want)
+	}
+}
+
 func TestNormalizeVolumeNameForOpenRejectsDriveLetter(t *testing.T) {
 	if _, err := normalizeVolumeNameForOpen(`E:\`); err == nil {
 		t.Fatal("drive letter must not be accepted as a volume GUID path")
