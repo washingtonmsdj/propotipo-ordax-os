@@ -325,7 +325,24 @@ Disposable media proof already demonstrates two partitions, FAT32+EXT4 labels, e
 
 ## Full bootstrap media proof
 
-A heavier proof workflow exists to rebuild the real bootstrap owners, inject an ephemeral CI-only public trust into a temporary manifest, assemble the byte-complete payload and materialize the actual two-partition image. It deletes the private key, payload and RAW image before artifact upload. Its result remains pending until a workflow run completes successfully; it never resolves canonical trust or authorizes physical write.
+The heavy proof workflow rebuilds the real bootstrap owners, injects an ephemeral CI-only public trust into a temporary manifest, assembles the byte-complete payload and materializes the actual two-partition image without touching a physical disk. Run 70 for source commit `95de305cc05701025ca7c93d574769da6a7fcf95` completed successfully. It then destroyed the ephemeral private key and unpublished RAW image and uploaded metadata only.
+
+```text
+FULL_BOOTSTRAP_MEDIA_PROOF=PASS_EPHEMERAL_TRUST
+FULL_BOOTSTRAP_MEDIA_SOURCE_COMMIT=95de305cc05701025ca7c93d574769da6a7fcf95
+FULL_BOOTSTRAP_MEDIA_RUN_ID=34998897295
+FULL_BOOTSTRAP_MEDIA_PAYLOAD_ARTIFACTS=14
+FULL_BOOTSTRAP_MEDIA_UNRESOLVED_GROUPS=0
+FULL_BOOTSTRAP_MEDIA_IMAGE_BYTES=536870912
+FULL_BOOTSTRAP_MEDIA_IMAGE_SHA256=95bd9943b3fe65402d9bda06eb7e0d45959f2a18b1671855e5752033659c7bb8
+FULL_BOOTSTRAP_MEDIA_PARTITIONS=2
+FULL_BOOTSTRAP_MEDIA_CANONICAL_TRUST=NO
+FULL_BOOTSTRAP_MEDIA_EPHEMERAL_PRIVATE_KEY_DESTROYED=YES
+FULL_BOOTSTRAP_MEDIA_RAW_IMAGE_PUBLISHED=NO
+FULL_BOOTSTRAP_MEDIA_PHYSICAL_WRITE_AUTHORIZED=NO
+```
+
+The durable non-secret evidence is `docs/evidence/full-bootstrap-media-proof-95de305c.json`. This closes the byte-complete composition proof with ephemeral trust only; it does not resolve canonical release trust and does not authorize physical mutation.
 
 ## Remote access
 
@@ -354,6 +371,7 @@ USB_LOCATION=WINDOWS
 PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 PHYSICAL_NOTEBOOK_BOOT_PROVEN=NO
+FULL_BOOTSTRAP_MEDIA_PROOF=PASS_EPHEMERAL_TRUST
 CREATOR_WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_TAGGED_UNBOUND
 CREATOR_WINDOWS_RAW_BACKEND_BUILD_TAG=ordax_raw_backend
 CREATOR_WINDOWS_RAW_BACKEND_BUILD_TAG_ISOLATION=PASS
@@ -366,14 +384,13 @@ DESTRUCTIVE_AUTHORIZATION=NO
 
 ## Current priorities
 
-1. complete the full-bootstrap-media proof with ephemeral trust and record the result without promoting it to canonical trust;
-2. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
-3. rerun the byte-complete media proof with canonical public trust while keeping physical write unavailable;
-4. keep the tagged, unbound native Windows backend behind `ordax_raw_backend` and the no-public-apply CI gates while completing canonical trust and byte-complete media evidence; do not expose `apply` yet;
-5. only after those gates pass, implement the deliberate public apply boundary and request explicit user authorization for the exact target operation at execution time;
-6. after an authorized physical write, boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
-7. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
-8. add production release publication and signed trust rotation before product promotion.
+1. generate the canonical Ed25519 prototype release key locally on the developer Windows machine, create the required encrypted offline backup, then commit only the public trust anchor and pin its SHA-256;
+2. rerun the byte-complete media proof with canonical public trust while keeping physical write unavailable;
+3. keep the tagged, unbound native Windows backend behind `ordax_raw_backend` and the no-public-apply CI gates while completing canonical trust and byte-complete media evidence; do not expose `apply` yet;
+4. only after those gates pass, implement the deliberate public apply boundary and request explicit user authorization for the exact target operation at execution time;
+5. after an authorized physical write, boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
+6. continue the graphical shared Surface, Web/native adapters and account continuity in parallel;
+7. add production release publication and signed trust rotation before product promotion.
 
 ## Handoff rule
 
