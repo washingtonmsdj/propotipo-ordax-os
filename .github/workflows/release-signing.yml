@@ -1,0 +1,105 @@
+name: Release Signing Tooling
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/release-signing/**'
+      - 'bootstrap/trust/README.md'
+      - 'docs/RELEASE-SIGNING.md'
+      - '.github/workflows/release-signing.yml'
+  pull_request:
+    paths:
+      - 'tools/release-signing/**'
+      - 'bootstrap/trust/README.md'
+      - 'docs/RELEASE-SIGNING.md'
+      - '.github/workflows/release-signing.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  signing-tooling:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test release signing boundary
+        working-directory: tools/release-signing
+        run: go test -count=1 ./...
+
+      - name: Build Linux and Windows candidates
+        working-directory: tools/release-signing
+        run: |
+          set -euo pipefail
+          mkdir -p ../../out/release-signing
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -buildvcs=false -ldflags='-s -w' \
+            -o ../../out/release-signing/ordax-release-signing-linux-amd64 .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false -ldflags='-s -w' \
+            -o ../../out/release-signing/ordax-release-signing-windows-amd64.exe .
+
+      - name: Prove ephemeral signing round trip without exporting private key
+        run: |
+          set -euo pipefail
+          tool="$PWD/out/release-signing/ordax-release-signing-linux-amd64"
+          work="$RUNNER_TEMP/release-signing-proof"
+          mkdir -p "$work"
+          chmod 0700 "$work"
+          cat > "$work/release-manifest.json" <<'JSON'
+          {
+            "$schema": "prototype-ordax.release-manifest/1",
+            "source_repository": "washingtonmsdj/prototipo-ordax-os",
+            "source_commit": "0123456789abcdef0123456789abcdef01234567",
+            "release_id": "0123456789abcdef0123456789abcdef01234567",
+            "created_from_ci_recipe": "release/native/1",
+            "artifacts": [
+              {
+                "name": "system.tar",
+                "role": "system",
+                "url": "https://example.invalid/system.tar",
+                "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "size": 123
+              }
+            ]
+          }
+          JSON
+          "$tool" generate-key \
+            --private-key "$work/private.pem" \
+            --trust "$work/trust.json" \
+            --key-id ci-test-1
+          "$tool" sign \
+            --manifest "$work/release-manifest.json" \
+            --private-key "$work/private.pem" \
+            --key-id ci-test-1 \
+            --out "$work/release-envelope.json"
+          "$tool" derive-trust \
+            --private-key "$work/private.pem" \
+            --key-id ci-test-1 \
+            --out "$work/derived-trust.json"
+          cmp "$work/trust.json" "$work/derived-trust.json"
+          test "$(stat -c '%a' "$work/private.pem")" = 600
+          rm -f "$work/private.pem"
+          test ! -e "$work/private.pem"
+          echo 'CI_TEST_KEY_REMOVED=YES'
+          echo 'CANONICAL_TRUST_ANCHOR=NO'
+          echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
+
+      - name: Upload public tooling candidates only
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-signing-tooling-${{ github.sha }}
+          path: |
+            out/release-signing/ordax-release-signing-linux-amd64
+            out/release-signing/ordax-release-signing-windows-amd64.exe
+          if-no-files-found: error
+          retention-days: 14
