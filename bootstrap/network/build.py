@@ -28,7 +28,11 @@ REQUESTED_CONFIG = {
     "CONFIG_FEATURE_IFCONFIG_STATUS": "y",
     "CONFIG_ROUTE": "y",
     "CONFIG_UDHCPC": "y",
+    "CONFIG_SH_IS_ASH": "n",
+    "CONFIG_SH_IS_HUSH": "n",
     "CONFIG_SH_IS_NONE": "y",
+    "CONFIG_BASH_IS_ASH": "n",
+    "CONFIG_BASH_IS_HUSH": "n",
     "CONFIG_BASH_IS_NONE": "y",
 }
 FIXED_ENV = {
@@ -164,6 +168,12 @@ def extract(archive: Path, directory: Path, version: str) -> Path:
     return source
 
 
+def render_config(symbol: str, value: str) -> str:
+    if value == "n":
+        return f"# {symbol} is not set"
+    return f"{symbol}={value}"
+
+
 def patch_config(config: Path) -> None:
     values = dict(REQUESTED_CONFIG)
     out = []
@@ -173,17 +183,18 @@ def patch_config(config: Path) -> None:
         match = assignment.fullmatch(line) or unset.fullmatch(line)
         symbol = match.group(1) if match else None
         if symbol in values:
-            out.append(f"{symbol}={values.pop(symbol)}")
+            out.append(render_config(symbol, values.pop(symbol)))
         else:
             out.append(line)
-    out.extend(f"{key}={value}" for key, value in values.items())
+    out.extend(render_config(key, value) for key, value in values.items())
     config.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
 def verify_config(config: Path) -> None:
     text = config.read_text(encoding="utf-8")
     for key, value in REQUESTED_CONFIG.items():
-        if f"{key}={value}\n" not in text:
+        expected = render_config(key, value) + "\n"
+        if expected not in text:
             raise BuildError(f"Kconfig rejected {key}={value}")
     forbidden_enabled = (
         "CONFIG_IP=y\n",
