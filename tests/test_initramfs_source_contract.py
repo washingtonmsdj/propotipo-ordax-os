@@ -5,6 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = json.loads((ROOT / "bootstrap/initramfs/source.json").read_text(encoding="utf-8"))
 INIT = (ROOT / CONTRACT["root_init"]).read_text(encoding="utf-8")
+BUILDER = (ROOT / "bootstrap/initramfs/build.py").read_text(encoding="utf-8")
 
 
 class InitramfsSourceContractTests(unittest.TestCase):
@@ -26,6 +27,15 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn("/ordax/bootstrap/entrypoint", INIT)
         for forbidden in ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden.lower(), INIT.lower())
+
+    def test_builder_uses_minimal_busybox_and_explicit_musl_target_compiler(self):
+        self.assertIn('"CONFIG_BUSYBOX": "y"', BUILDER)
+        self.assertIn('["make", "allnoconfig"]', BUILDER.replace('make = ["make", f"CC={musl_cc}"]\n    run(make + ', ''))
+        self.assertIn('make = ["make", f"CC={musl_cc}"]', BUILDER)
+        self.assertIn('"CONFIG_TC=y\\n"', BUILDER)
+        self.assertIn('"CONFIG_TELNETD=y\\n"', BUILDER)
+        self.assertIn('"CONFIG_HTTPD=y\\n"', BUILDER)
+        self.assertIn('libc_archive_sha256', BUILDER)
 
     def test_physical_use_remains_fail_closed(self):
         self.assertFalse(CONTRACT["build"]["physical_artifact_authorized"])
