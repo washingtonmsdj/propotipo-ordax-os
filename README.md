@@ -1,6 +1,6 @@
 # Prototipo OrdaX OS
 
-Clean-room experimental para validar uma arquitetura OrdaX OS mais simples antes de qualquer substituicao do repositorio atual.
+Clean-room experimental para validar uma arquitetura OrdaX OS mais simples antes de substituir qualquer base atual.
 
 > **Status:** PROTOTIPO / NAO PROMOVIDO
 >
@@ -8,7 +8,7 @@ Clean-room experimental para validar uma arquitetura OrdaX OS mais simples antes
 
 ## Objetivo
 
-Construir uma unica OrdaX, reproduzivel e Git-first, capaz de existir em tres modos de capacidade:
+Construir uma unica OrdaX, reproduzivel e Git-first, em tres modos:
 
 ```text
 OrdaX Web
@@ -16,28 +16,29 @@ OrdaX Web
  -> OrdaX Native (SSD/HD)
 ```
 
-Todos compartilham a mesma Surface, apps e logica de produto. O modo nativo adiciona capacidades de kernel/hardware por adapters, nao por uma segunda interface.
+Todos compartilham a mesma Surface, apps e logica de produto. O modo nativo apenas acrescenta capacidades de kernel/hardware por adapters.
 
 ## Principios
 
-- `main` e a autoridade de source deste prototipo.
-- O pendrive/notebook sao alvos materializados, nao source authority.
-- O layout fisico alvo possui apenas duas particoes: `ORDAX-ESP` + `ORDAX`.
-- HOME e estado de usuario sao separacoes logicas dentro de `ORDAX`, nao uma terceira particao obrigatoria.
-- O primeiro USB e minimo: boot + bootstrap + rede + identidade + Remote Core + trust/release acquisition + recovery.
-- Surface, apps e o sistema de alto nivel chegam depois por release, em vez de serem pregravados por padrao.
+- `main` e a source authority.
+- Pendrive/notebook sao alvos materializados.
+- Layout fisico: `ORDAX-ESP` + `ORDAX`.
+- HOME e estado de usuario sao logicos, nao uma terceira particao obrigatoria.
+- O primeiro USB e minimo: boot + kernel/initramfs + rede + aquisicao/verificacao de release + recovery.
+- SSH, Remote Core e Control Plane nao sao requisitos do bootstrap nem do desenvolvimento diario.
+- Surface, apps e sistema de alto nivel chegam depois por release.
 - Depois da primeira release verificada, ela permanece local para boot offline e rollback.
 - Web, USB e SSD/HD sao modos do mesmo produto, nao forks.
 - Surface e apps possuem uma unica arvore source.
 - WSL, QEMU, PowerShell, Bash e SSH externo nao sao dependencias arquiteturais obrigatorias.
-- Nada do repositorio antigo entra aqui por copia em massa. Cada componente herdado precisa de origem, finalidade e validacao explicitas.
-- Segredos, chaves privadas e credenciais nunca sao versionados.
-- Criptografia caseira e proibida; usar primitivas e transportes maduros/auditados.
-- Operacoes destrutivas em midia fisica exigem gates e evidencia antes da escrita.
+- Nada do repositorio antigo entra por copia em massa.
+- Segredos/chaves privadas nunca sao versionados.
+- Criptografia caseira e proibida.
+- Escrita fisica exige gates e evidencia.
 
-## Entrada obrigatoria para humanos e IAs
+## Entrada obrigatoria
 
-Leia, nesta ordem:
+Leia:
 
 1. `AGENTS.md`
 2. `docs/CURRENT-STATE.md`
@@ -52,35 +53,33 @@ Leia, nesta ordem:
 11. `docs/PROMOTION-GATES.md`
 12. `docs/DECISIONS.md`
 
-`CURRENT-STATE.md` e o snapshot de handoff. Os demais documentos definem contratos duraveis e vencem em caso de conflito.
-
 ## Estrutura alvo
 
 ```text
 boot/
-  esp/                   # definicao/material de boot
+  esp/
 bootstrap/
   kernel/
   initramfs/
   network/
-  identity/
-  remote/                # OrdaX Remote Core
-  control-plane/
-  git/
+  git/                   # release acquisition/update
   recovery/
+  identity/              # opcional futuro
+  remote/                # opcional futuro
+  control-plane/         # opcional futuro
 system/
-  surface/               # uma unica Surface para Web + nativo
-  apps/                  # uma unica fonte de apps
+  surface/
+  apps/
   services/
   adapters/
     web/
     native/
 platform/
-  releases/              # contrato de materializacao versionada
-  state/                 # estado persistente local
-  home/                  # dados de usuario locais/sincronizaveis por politica
+  releases/
+  state/
+  home/
 tools/
-  creator/               # OrdaX Creator: USB/SSD sem WSL
+  creator/
   dev/
   verify/
 tests/
@@ -89,27 +88,35 @@ docs/
 
 ## Pendrive inicial
 
-O fluxo padrao do prototipo e **minimum network-first**:
-
 ```text
 USB inicial
  -> boot
  -> rede
- -> identidade
- -> OrdaX Remote Core
- -> trust/Control Plane minimo
- -> buscar release exata
+ -> buscar release exata no Git/GitHub
  -> verificar
  -> releases/<commit>
  -> current
- -> Surface/apps
+ -> OrdaX completa
 ```
 
-Nao gravar o sistema completo no pendrive inicial apenas por conveniencia. Isso reduz o trabalho fisico e faz quase toda evolucao posterior acontecer por Git/rede.
+Nao gravar o sistema completo no pendrive inicial por conveniencia. Quase toda evolucao posterior acontece por Git/rede.
 
-## Modelo de instalacao
+## Desenvolvimento
 
-O usuario pode iniciar na Web e, quando quiser mais capacidade:
+```text
+editar
+ -> preview Web/HMR
+ -> testar
+ -> commit/push main
+ -> Web recebe a mudanca
+ -> OrdaX recebe release/delta correspondente
+ -> verifica
+ -> ativa
+```
+
+Sem SSH ou shell remoto como requisito.
+
+## Instalacao
 
 ```text
 OrdaX Web
@@ -120,25 +127,23 @@ OrdaX Web
  -> opcionalmente instalar no SSD/HD
 ```
 
-O usuario final nao deve precisar instalar WSL, QEMU ou toolchain de kernel para isso.
+O usuario final nao deve precisar de WSL, QEMU ou toolchain de kernel.
 
 ## Regra de promocao
 
-Este repositorio so pode ser promovido a sucessor oficial depois de provar no hardware real:
+O sucessor oficial precisa provar no hardware real:
 
 ```text
 UEFI
- -> boot
  -> kernel/initramfs
  -> rede
- -> identidade
- -> OrdaX Remote Core
- -> aquisicao de release
+ -> aquisicao/verificacao de release
  -> release/<commit>
  -> current
+ -> boot offline conhecido-bom
  -> Surface compartilhada
- -> atualizacao incremental
+ -> atualizacao Git-driven
  -> continuidade Web/USB/Native
 ```
 
-Ate la, `novo-ordax-os` permanece intacto como referencia e fallback.
+Ate la, `novo-ordax-os` permanece como referencia.
