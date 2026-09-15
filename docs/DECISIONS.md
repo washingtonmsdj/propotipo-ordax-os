@@ -82,27 +82,31 @@ Decision: once the new two-partition provisioner and disposable tests pass, an o
 
 This ADR does not itself authorize a physical write. Execution still requires the destructive-operation gate.
 
-## ADR-010 - One OrdaX product across Web, USB and native disk
+## ADR-010 - One OrdaX product across five execution modes
 
 Decision:
 
 ```text
 OrdaX Web
+ -> OrdaX Mobile (Android / iPhone)
+ -> OrdaX Desktop
  -> OrdaX USB
  -> OrdaX Native (SSD/HD)
 ```
 
 These are capability modes of one product, not separate forks.
 
-They share account model, Surface source, app source and safe synchronizable user state. Device-local secrets and hardware state remain local.
+They share account model, Surface source, app source and safe synchronizable user state. Device-local secrets and hardware state remain local. Mode-specific authority is expressed through capability adapters rather than copied product implementations.
+
+This expands the original Web/USB/native prototype decision to the canonical five-mode product model.
 
 ## ADR-011 - Single-source Surface and applications
 
-Decision: Web and native OrdaX must render/execute shared user-facing code from the same source trees.
+Decision: Web, Mobile, Desktop, USB and native-disk OrdaX use shared user-facing source trees wherever the feature is applicable.
 
-Platform-specific differences are capability adapters only.
+Platform-specific differences are capability adapters only. Shared code may react to capability availability; it must not fork product policy by platform identity when a capability boundary can express the difference.
 
-Copied CSS, copied screens, Web-specific app forks and native-specific visual forks are forbidden.
+Copied CSS, copied screens, Android/iOS product forks, Desktop-only copies of shared apps and native-specific visual forks are forbidden.
 
 ## ADR-012 - Host-independent architecture
 
@@ -204,3 +208,69 @@ Consequences:
 - the channel URL is source-controlled and hash-bound in `minimal-bootstrap.json`;
 - a missing release endpoint fails closed into recovery on first acquisition;
 - physical write remains blocked until a real public trust anchor and the remaining promotion gates are satisfied.
+
+## ADR-018 - Product growth is capability-driven and additive
+
+Decision: new product features and execution environments extend stable capability contracts instead of creating platform forks.
+
+Machine-readable authority: `docs/contracts/product-capabilities.json`.
+
+Rules:
+
+- capability IDs are stable;
+- adding a capability definition or an optional capability is the normal backward-compatible path;
+- a new required capability on an existing mode requires an explicit migration;
+- changing the meaning of an existing capability requires a new capability ID or contract major;
+- an unknown optional capability may be ignored;
+- an unknown required capability fails closed;
+- security-sensitive capabilities keep explicit privilege boundaries.
+
+Reason: allow future hardware, mobile APIs, remote-management functions, AI capabilities or entirely new modes to be added without rewriting shared product logic.
+
+## ADR-019 - Published release protocol schemas have immutable semantics
+
+Decision: a published release schema keeps its meaning for the lifetime of that schema. Breaking release changes require a new schema version and explicit support in every relevant owner.
+
+Machine-readable authority: `docs/contracts/release-protocol.json`.
+
+The current `release-manifest/1` remains exactly one complete `system.tar` addressed by source commit. Delta updates, multiple artifacts or new required fields cannot be silently added to v1.
+
+A future version may coexist with an older version during a migration window. Optional delta delivery must preserve a verified full-release fallback until its migration policy says otherwise.
+
+Reason: old devices must never reinterpret previously understood signed data under new semantics.
+
+## ADR-020 - Sync semantics are provider-neutral and versioned
+
+Decision: account/synchronization semantics are owned by `system/services/sync`, not by a database vendor, cloud provider or platform adapter.
+
+Machine-readable authority: `docs/contracts/sync-model.json`.
+
+Stable object IDs, object schema versions, server revisions, idempotent mutation keys, explicit tombstones and deterministic versioned conflict resolvers form the domain boundary. Client wall clocks are not conflict authority and universal last-writer-wins is forbidden.
+
+Infrastructure may change without forcing a client-domain migration solely because the storage provider changed. Device-private keys, machine secrets, raw-disk state and other never-sync classes remain local regardless of paid plan.
+
+Reason: keep future backend, scaling and hosting choices replaceable without locking the product model to today's infrastructure.
+
+## ADR-021 - Shared modules follow an acyclic contract-first dependency direction
+
+Decision: shared runtime modules depend inward through platform-neutral contracts rather than importing concrete environment implementations.
+
+Machine-readable authority: `docs/contracts/module-boundaries.json`.
+
+Canonical direction:
+
+```text
+contracts
+  <- services
+  <- apps
+  <- surface
+
+contracts/services
+  <- adapters
+```
+
+`system/contracts/` is intentionally small and only gains concrete interfaces when a real implementation requires them. It is not a speculative framework layer.
+
+Surface/apps/services do not import concrete Web/Mobile/Desktop/native adapters. Adapters implement capabilities and do not own shared screens or application policy. Dependency cycles are forbidden. Temporary compatibility bridges require an owner and removal condition; permanent ownerless bridges are forbidden.
+
+Reason: keep modules replaceable and independently evolvable as the codebase grows, while avoiding both monolithic coupling and premature abstraction.
