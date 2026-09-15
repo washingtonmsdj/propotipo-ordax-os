@@ -57,6 +57,20 @@ The physical media is only the stable launch/recovery substrate. Most future sys
 
 See `docs/MINIMAL-USB-BOOTSTRAP.md`.
 
+## Minimal bootstrap manifest state
+
+The machine-readable bounded manifest now exists at `docs/contracts/minimal-bootstrap.json`.
+
+Current gate:
+
+```text
+MINIMAL_BOOTSTRAP_MANIFEST_SKELETON=YES
+ALL_BOOTSTRAP_ARTIFACTS_RESOLVED=NO
+PHYSICAL_WRITE_ALLOWED=NO
+```
+
+This is intentional. Physical write remains fail-closed until every approved artifact has source path, target path, SHA-256, mode, owner and reason, and all pre-write gates pass.
+
 ## Physical architecture target
 
 ```text
@@ -149,6 +163,7 @@ The existence of this prototype does not authorize formatting or writing the USB
 - clean-room architecture documented;
 - two-partition physical-media contract documented;
 - minimal network-first initial USB contract documented and regression-protected;
+- fail-closed machine-readable minimal bootstrap manifest skeleton created;
 - Git-first development workflow documented;
 - selective migration ledger created;
 - promotion gates defined and expanded for Web/Creator/Remote Core;
@@ -156,8 +171,8 @@ The existence of this prototype does not authorize formatting or writing the USB
 - source directory skeleton materialized in Git;
 - secret/build-output hygiene added through `.gitignore`;
 - machine-readable foundation contract added;
-- foundation regression tests added;
-- CI workflow added for the foundation contract;
+- foundation and minimal-bootstrap regression tests added;
+- CI validates both JSON contracts and all regressions;
 - legacy kernel provenance reviewed and selected for clean rebuild;
 - legacy initramfs provenance reviewed and rejected for direct copy because it carries old layout responsibilities;
 - one-product Web/USB/native-disk contract created;
@@ -188,7 +203,7 @@ See `bootstrap/kernel/PROVENANCE.md`, `bootstrap/initramfs/PROVENANCE.md` and `d
 ## Not yet implemented
 
 ```text
-MINIMAL_BOOTSTRAP_MANIFEST_IMPLEMENTED=NO
+MINIMAL_BOOTSTRAP_MANIFEST_RESOLVED=NO
 KERNEL_BUILD_IMPLEMENTED=NO
 INITRAMFS_BUILD_IMPLEMENTED=NO
 BOOTLOADER_IMPLEMENTED=NO
@@ -215,7 +230,7 @@ Do not copy the whole old repository.
 
 Recommended implementation order:
 
-1. define the exact machine-readable minimal USB/bootstrap manifest;
+1. resolve the minimal bootstrap manifest component-by-component with real source paths and hashes;
 2. define capability interfaces shared by `system/adapters/web` and `system/adapters/native`;
 3. define the first minimal shared Surface shell so Web can become the fastest visual development target;
 4. define OrdaX Remote Core protocol/capability contract without custom cryptography;
