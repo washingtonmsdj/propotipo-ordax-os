@@ -28,6 +28,8 @@ REQUESTED_CONFIG = {
     "CONFIG_FEATURE_IFCONFIG_STATUS": "y",
     "CONFIG_ROUTE": "y",
     "CONFIG_UDHCPC": "y",
+    "CONFIG_SH_IS_NONE": "y",
+    "CONFIG_BASH_IS_NONE": "y",
 }
 FIXED_ENV = {
     "SOURCE_DATE_EPOCH": "0",
@@ -183,9 +185,19 @@ def verify_config(config: Path) -> None:
     for key, value in REQUESTED_CONFIG.items():
         if f"{key}={value}\n" not in text:
             raise BuildError(f"Kconfig rejected {key}={value}")
-    for forbidden in ("CONFIG_IP=y\n", "CONFIG_HTTPD=y\n", "CONFIG_TELNETD=y\n", "CONFIG_NC=y\n"):
+    forbidden_enabled = (
+        "CONFIG_IP=y\n",
+        "CONFIG_HTTPD=y\n",
+        "CONFIG_TELNETD=y\n",
+        "CONFIG_NC=y\n",
+        "CONFIG_SH_IS_ASH=y\n",
+        "CONFIG_SH_IS_HUSH=y\n",
+        "CONFIG_BASH_IS_ASH=y\n",
+        "CONFIG_BASH_IS_HUSH=y\n",
+    )
+    for forbidden in forbidden_enabled:
         if forbidden in text:
-            raise BuildError(f"unneeded applet leaked into netbox: {forbidden.strip()}")
+            raise BuildError(f"unneeded applet/alias leaked into netbox: {forbidden.strip()}")
 
 
 def source_commit() -> str:
