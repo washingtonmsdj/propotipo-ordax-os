@@ -1,0 +1,236 @@
+name: Creator Component Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/trust/release-ed25519.json'
+      - 'docs/contracts/release-trust-policy.json'
+      - 'docs/contracts/creator-component-channel.json'
+      - 'tools/creator/componentchannel/**'
+      - 'tools/creator/cmd/ordax-creator-inspection/**'
+      - 'tools/creator/host/windows/**'
+      - 'tools/release-signing/cmd/ordax-creator-component-signing/**'
+      - '.github/workflows/creator-component-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trust-and-contract-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      version: ${{ steps.gate.outputs.version }}
+      release_sequence: ${{ steps.gate.outputs.release_sequence }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Require canonical trust and explicit component candidate state
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=false
+          version=''
+          release_sequence=''
+          if [ -f bootstrap/trust/release-ed25519.json ]; then
+            readarray -t values < <(python - <<'PY'
+          import base64, json, pathlib, re
+          trust = json.loads(pathlib.Path('bootstrap/trust/release-ed25519.json').read_text(encoding='utf-8'))
+          policy = json.loads(pathlib.Path('docs/contracts/release-trust-policy.json').read_text(encoding='utf-8'))
+          contract = json.loads(pathlib.Path('docs/contracts/creator-component-channel.json').read_text(encoding='utf-8'))
+          assert trust['$schema'] == 'prototype-ordax.release-trust/1'
+          assert trust['key_id'] == policy['canonical_key_id'] == 'ordax-prototype-release-v1'
+          assert len(base64.b64decode(trust['public_key_base64'], validate=True)) == 32
+          assert policy['gates']['key_material_generated'] is True
+          assert policy['gates']['public_anchor_pinned'] is True
+          assert contract['$schema'] == 'prototype-ordax.creator-component-channel/1'
+          assert contract['status'] == 'candidate-enabled'
+          assert contract['purpose'] == 'creator-inspection-windows-amd64'
+          assert contract['source_repository'] == 'washingtonmsdj/prototipo-ordax-os'
+          assert contract['release_tag'] == 'creator-components'
+          assert contract['bundle_name'] == 'ordax-creator-components-windows-amd64.zip'
+          assert contract['envelope_name'] == 'creator-component-envelope.json'
+          assert contract['created_from_recipe'] == 'creator/component/windows/1'
+          assert re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}', contract['version'])
+          assert isinstance(contract['release_sequence'], int) and not isinstance(contract['release_sequence'], bool) and contract['release_sequence'] > 0
+          assert contract['canonical_public_trust_required'] is True
+          assert contract['ed25519_signature_required'] is True
+          assert contract['development_fallback_allowed_in_official_creator'] is False
+          assert contract['raw_disk_writer_allowed'] is False
+          assert contract['publisher_private_key_in_consumer'] is False
+          assert contract['publisher_private_key_in_ci_artifact'] is False
+          assert contract['unsigned_manifest_may_activate_official_component'] is False
+          assert contract['publish_allowed'] is False
+          print(contract['version'])
+          print(contract['release_sequence'])
+          PY
+            )
+            version="${values[0]}"
+            release_sequence="${values[1]}"
+            ready=true
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_sequence=$release_sequence" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = true ]; then
+            echo 'CREATOR_COMPONENT_CANDIDATE_GATE=READY'
+          else
+            echo 'CREATOR_COMPONENT_CANDIDATE_GATE=BLOCKED'
+            echo 'CREATOR_COMPONENT_BUNDLE_BUILT=NO'
+          fi
+
+  build-windows-candidate:
+    needs: trust-and-contract-gate
+    if: ${{ needs.trust-and-contract-gate.outputs.ready == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Test component verifier signer and Windows target policy
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          Push-Location tools/creator
+          try {
+            go test -count=1 ./componentchannel
+            go test -count=1 ./host/windows
+          } finally {
+            Pop-Location
+          }
+          Push-Location tools/release-signing
+          try {
+            go test -count=1 ./cmd/ordax-creator-component-signing
+          } finally {
+            Pop-Location
+          }
+
+      - name: Build read-only inspection component
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $candidate = Join-Path $PWD 'out/creator-component-candidate'
+          New-Item -ItemType Directory -Force -Path $candidate | Out-Null
+          Push-Location tools/creator
+          try {
+            go build -trimpath -buildvcs=false -ldflags='-s -w' `
+              -o ../../out/creator-component-candidate/ordax-creator-physical-test.exe `
+              ./cmd/ordax-creator-inspection
+          } finally {
+            Pop-Location
+          }
+          $backend = Join-Path $candidate 'ordax-creator-physical-test.exe'
+          $statusRaw = & $backend status
+          if ($LASTEXITCODE -ne 0) { throw 'inspection backend status failed' }
+          $status = $statusRaw | ConvertFrom-Json
+          if ($status.'$schema' -ne 'prototype-ordax.creator-physical-test-status/2') { throw 'unexpected inspection status schema' }
+          if ($status.raw_backend_linked -ne $false) { throw 'read-only component linked raw backend' }
+          if ($status.build.physical_write_authorized -ne $false -or $status.build.ready -ne $false) { throw 'read-only component unexpectedly authorizes physical write' }
+          Write-Host 'CREATOR_COMPONENT_RAW_BACKEND_LINKED=NO'
+          Write-Host 'CREATOR_COMPONENT_PHYSICAL_WRITE=NO'
+
+      - name: Package exact unsigned signing input
+        shell: pwsh
+        env:
+          COMPONENT_VERSION: ${{ needs.trust-and-contract-gate.outputs.version }}
+          RELEASE_SEQUENCE: ${{ needs.trust-and-contract-gate.outputs.release_sequence }}
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $candidate = Join-Path $PWD 'out/creator-component-candidate'
+          $release = Join-Path $PWD 'out/creator-component-release'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          $backend = Join-Path $candidate 'ordax-creator-physical-test.exe'
+          $bundle = Join-Path $release 'ordax-creator-components-windows-amd64.zip'
+          $manifest = Join-Path $release 'creator-component-manifest.json'
+
+          python -c @'
+          import hashlib, json, os, pathlib, zipfile
+          candidate = pathlib.Path('out/creator-component-candidate/ordax-creator-physical-test.exe')
+          bundle = pathlib.Path('out/creator-component-release/ordax-creator-components-windows-amd64.zip')
+          manifest_path = pathlib.Path('out/creator-component-release/creator-component-manifest.json')
+          def digest(path):
+              h = hashlib.sha256()
+              size = 0
+              with path.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      h.update(chunk)
+                      size += len(chunk)
+              return h.hexdigest(), size
+          if not candidate.is_file():
+              raise SystemExit('inspection component missing')
+          info = zipfile.ZipInfo('ordax-creator-physical-test.exe', date_time=(1980, 1, 1, 0, 0, 0))
+          info.compress_type = zipfile.ZIP_DEFLATED
+          info.external_attr = 0o100755 << 16
+          with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              with candidate.open('rb') as source, archive.open(info, 'w', force_zip64=True) as target:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                      target.write(chunk)
+          file_sha, file_size = digest(candidate)
+          bundle_sha, bundle_size = digest(bundle)
+          sequence = int(os.environ['RELEASE_SEQUENCE'])
+          if sequence <= 0:
+              raise SystemExit('invalid release sequence')
+          manifest = {
+              '$schema': 'prototype-ordax.creator-component-manifest/1',
+              'purpose': 'creator-inspection-windows-amd64',
+              'source_repository': 'washingtonmsdj/prototipo-ordax-os',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'version': os.environ['COMPONENT_VERSION'],
+              'release_sequence': sequence,
+              'created_from_recipe': 'creator/component/windows/1',
+              'bundle': {
+                  'url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-components/ordax-creator-components-windows-amd64.zip',
+                  'sha256': bundle_sha,
+                  'size': bundle_size,
+              },
+              'file': {
+                  'name': 'ordax-creator-physical-test.exe',
+                  'sha256': file_sha,
+                  'size': file_size,
+              },
+          }
+          manifest_path.write_text(json.dumps(manifest, indent=2, separators=(',', ': ')) + '\n', encoding='utf-8', newline='\n')
+          '@
+
+          if (Get-ChildItem -LiteralPath $release -Recurse -File | Where-Object { $_.Extension -in @('.pem', '.key', '.p12', '.pfx', '.dpapi') }) {
+            throw 'private signing material entered Creator component release input'
+          }
+          Write-Host 'CREATOR_COMPONENT_RELEASE_PACKAGE_READY_FOR_OFFLINE_SIGNING=YES'
+          Write-Host 'CREATOR_COMPONENT_ENVELOPE_PRESENT=NO'
+          Write-Host 'PRIVATE_KEY_REQUIRED_IN_CI=NO'
+
+      - name: Upload non-published component signing input
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-creator-component-candidate-${{ github.sha }}
+          path: |
+            out/creator-component-candidate/
+            out/creator-component-release/
+          if-no-files-found: error
+          retention-days: 7
