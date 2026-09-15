@@ -1,0 +1,32 @@
+{
+  "$schema": "prototype-ordax.physical-write-authorization/1",
+  "status": "blocked-canonical-trust-pending",
+  "physical_write_allowed": false,
+  "explicit_owner_authorization": false,
+  "scope": "first-real-usb-proof",
+  "source_repository": "washingtonmsdj/prototipo-ordax-os",
+  "bindings": {
+    "minimal_bootstrap_sha256": null,
+    "release_trust_sha256": null,
+    "physical_media_sha256": null
+  },
+  "requirements": {
+    "canonical_public_trust_pinned": true,
+    "minimal_bootstrap_all_artifacts_resolved": true,
+    "minimal_bootstrap_physical_write_allowed": true,
+    "disposable_media_proof_required": true,
+    "writer_binds_generated_seed_sha256_and_size": true,
+    "writer_binds_manifest_sha256": true,
+    "writer_binds_public_trust_sha256": true,
+    "live_usb_reenumeration_required": true,
+    "end_user_destructive_confirmation_required": true,
+    "windows_uac_required": true,
+    "post_write_readback_required": true
+  },
+  "consumer_policy": {
+    "user_selects_image_file": false,
+    "user_manages_signing_keys": false,
+    "user_manages_trust_backup": false,
+    "development_channel_may_satisfy_this_authorization": false
+  }
+}
