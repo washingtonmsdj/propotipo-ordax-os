@@ -33,7 +33,7 @@ def workflow_files(root: Path, contract: dict) -> list[Path]:
 def approved_refs(contract: dict) -> set[tuple[str, str]]:
     return {
         (item["uses"], item["sha"])
-        for item in contract["external_actions"]["approved_external_actions"]
+        for item in contract["approved_external_actions"]
     }
 
 
