@@ -23,6 +23,19 @@ func writeRawFixture(t *testing.T, data []byte) VerifiedRawImage {
 	}
 }
 
+func targetForRawImage(image VerifiedRawImage) Target {
+	return FinalizeTarget(Target{
+		DriveLetter:       "E:",
+		VolumeLabel:       "ORDAXTEST",
+		VolumeSerial:      0xabcddcba,
+		DiskNumber:        9,
+		VolumeBytes:       uint64(image.SizeBytes),
+		PhysicalDiskBytes: uint64(image.SizeBytes),
+		DeviceRemovable:   false,
+		DeviceSerial:      "USB-RAW-APPLY-1",
+	}, DriveTypeFixed, true, BusTypeUSB, false)
+}
+
 func TestVerifyRawImageChecksSizeAndDigest(t *testing.T) {
 	fixture := writeRawFixture(t, []byte("ordax raw image fixture"))
 	verified, err := VerifyRawImage(fixture.Path, fixture.SHA256, fixture.SizeBytes)
@@ -52,8 +65,8 @@ func TestVerifyRawImageRejectsSymlink(t *testing.T) {
 }
 
 func TestDestructiveAuthorizationBindsTargetAndImage(t *testing.T) {
-	target := safeUSBTargetForRawPlan()
 	image := writeRawFixture(t, []byte("image-a"))
+	target := targetForRawImage(image)
 	token := DestructiveAuthorizationToken(target, image)
 	if len(token) != 64 {
 		t.Fatalf("authorization token length = %d", len(token))
@@ -66,6 +79,13 @@ func TestDestructiveAuthorizationBindsTargetAndImage(t *testing.T) {
 		t.Fatal("authorization must change with target identity")
 	}
 
+	changedCapacity := target
+	changedCapacity.PhysicalDiskBytes++
+	changedCapacity.ConfirmationToken = ConfirmationToken(changedCapacity)
+	if token == DestructiveAuthorizationToken(changedCapacity, image) {
+		t.Fatal("authorization must change with physical device capacity")
+	}
+
 	otherImage := writeRawFixture(t, []byte("image-b"))
 	if token == DestructiveAuthorizationToken(target, otherImage) {
 		t.Fatal("authorization must change with image identity")
@@ -73,8 +93,8 @@ func TestDestructiveAuthorizationBindsTargetAndImage(t *testing.T) {
 }
 
 func TestValidateRawDiskApplyRequestFailsClosedUntilTrustAndAuthorizationMatch(t *testing.T) {
-	target := safeUSBTargetForRawPlan()
 	image := writeRawFixture(t, []byte("verified image"))
+	target := targetForRawImage(image)
 	request := RawDiskApplyRequest{
 		Target:            target,
 		ConfirmationToken: target.ConfirmationToken,
@@ -97,6 +117,23 @@ func TestValidateRawDiskApplyRequestFailsClosedUntilTrustAndAuthorizationMatch(t
 	request.ConfirmationToken = "0" + target.ConfirmationToken[1:]
 	if err := ValidateRawDiskApplyRequest(request); err == nil {
 		t.Fatal("stale target confirmation must block physical write")
+	}
+}
+
+func TestValidateRawDiskApplyRequestRejectsImageGeometryMismatch(t *testing.T) {
+	image := writeRawFixture(t, []byte("verified image geometry"))
+	target := targetForRawImage(image)
+	target.PhysicalDiskBytes++
+	target.ConfirmationToken = ConfirmationToken(target)
+	request := RawDiskApplyRequest{
+		Target:                   target,
+		ConfirmationToken:        target.ConfirmationToken,
+		Image:                    image,
+		CanonicalTrustResolved:   true,
+		DestructiveAuthorization: DestructiveAuthorizationToken(target, image),
+	}
+	if err := ValidateRawDiskApplyRequest(request); err == nil {
+		t.Fatal("full-disk image/device size mismatch must block physical write")
 	}
 }
 
