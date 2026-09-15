@@ -12,6 +12,7 @@ Required:
 AGENTS_CONTRACT=PASS
 ARCHITECTURE_CONTRACT=PASS
 PRODUCT_MODES_CONTRACT=PASS
+MINIMAL_USB_CONTRACT=PASS
 HOST_INDEPENDENCE_CONTRACT=PASS
 REMOTE_CONTROL_CONTRACT=PASS
 PHYSICAL_MEDIA_CONTRACT=PASS
@@ -19,7 +20,7 @@ DEVELOPMENT_WORKFLOW=PASS
 MIGRATION_LEDGER=PASS
 ```
 
-## Gate 1 - Reproducible bootstrap source
+## Gate 1 - Reproducible minimal bootstrap source
 
 Required:
 
@@ -27,16 +28,23 @@ Required:
 - initramfs provenance identified;
 - minimal userspace source/build reproducible;
 - no private secrets in repository;
-- pre-Git dependency list explicit;
+- exact pre-Git dependency/file manifest explicit before physical write;
 - bootstrap build has deterministic/verified artifact hashes where practical;
 - no legacy `ORDAX-HOME`/`ORDAX-PLATFORM` physical dependency;
-- no mandatory WSL/QEMU/host-shell dependency.
+- no mandatory WSL/QEMU/host-shell dependency;
+- initial physical media excludes normal Surface/apps/high-level services/full source/toolchain.
 
 ```text
 BOOTSTRAP_SOURCE=PASS
+MINIMAL_BOOTSTRAP_MANIFEST=PASS
 KERNEL_PROVENANCE=PASS
 INITRAMFS_PROVENANCE=PASS
 SECRET_SCAN=PASS
+FULL_SYSTEM_PRESEEDED=NO
+SURFACE_PRESEEDED=NO
+NORMAL_APPS_PRESEEDED=NO
+COMPLETE_SOURCE_PRESEEDED=NO
+BUILD_TOOLCHAIN_PRESEEDED=NO
 WSL_REQUIRED=NO
 QEMU_REQUIRED=NO
 ```
@@ -68,7 +76,8 @@ Required:
 - kernel artifact is verified and boots in at least one trustworthy execution environment before physical promotion;
 - initramfs/bootstrap enters expected state;
 - recovery/maintenance entry exists or equivalent safe path is proven;
-- no dependence on legacy USB contents.
+- no dependence on legacy USB contents;
+- bootstrap can reach the release-acquisition state without a full system preseed.
 
 An emulator may be used, but no specific emulator is required. Real-hardware proof remains mandatory later.
 
@@ -76,6 +85,7 @@ An emulator may be used, but no specific emulator is required. Real-hardware pro
 UEFI_BOOT_CONTRACT=PASS
 KERNEL_BOOT=PASS
 BOOTSTRAP_ENTRY=PASS
+RELEASE_ACQUISITION_ENTRY=PASS
 LEGACY_MEDIA_DEPENDENCY=NO
 EMULATOR_SPECIFIC_DEPENDENCY=NO
 ```
@@ -89,6 +99,7 @@ Required:
 - Windows path works without WSL;
 - user does not need a kernel toolchain;
 - Creator verifies artifacts before write and bytes/layout after write;
+- Creator writes only the bounded minimal payload defined by the bootstrap manifest for the default prototype flow;
 - platform adapters pass common conformance tests.
 
 ```text
@@ -97,6 +108,7 @@ WINDOWS_WITHOUT_WSL=PASS
 HOST_POLICY_FORKS=NO
 END_USER_KERNEL_TOOLCHAIN_REQUIRED=NO
 CREATOR_VERIFY=PASS
+CREATOR_MINIMAL_PAYLOAD_ONLY=PASS
 ```
 
 Linux/macOS adapters may remain pending for initial prototype promotion if explicitly scoped, but their architecture must already follow the same shared-core contract.
@@ -110,6 +122,7 @@ Required before write:
 ```text
 TARGET_IDENTITY=PASS
 SOURCE_LAYOUT_CONTRACT=PASS
+MINIMAL_BOOTSTRAP_MANIFEST=PASS
 DISPOSABLE_LAYOUT_TEST=PASS
 DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=YES
 ```
@@ -120,6 +133,8 @@ Required after write:
 PHYSICAL_GPT_VERIFY=PASS
 PHYSICAL_FILESYSTEM_VERIFY=PASS
 BOOT_ARTIFACT_HASH_VERIFY=PASS
+PHYSICAL_PAYLOAD_MATCHES_MANIFEST=PASS
+UNAPPROVED_FULL_SYSTEM_PRESEED=NO
 ```
 
 ## Gate 6 - Physical notebook bootstrap and OrdaX Remote Core
@@ -141,21 +156,27 @@ SSH_REQUIRED_FOR_NORMAL_OPERATION=NO
 
 If temporary break-glass SSH still exists during migration, the prototype is not considered free of SSH dependency until normal boot, development, update and recovery evidence no longer require it.
 
-## Gate 7 - Git acquisition and release activation
+## Gate 7 - First network release acquisition and activation
 
 Required:
 
-- device can reach the configured source/release channel;
-- a release tied to an exact commit can be materialized;
-- integrity is checked before activation;
+- the minimal physical bootstrap can reach the configured source/release channel;
+- the first complete system release is not required to be prewritten to the initial USB;
+- a release tied to an exact commit can be acquired and materialized;
+- integrity/authenticity is checked before activation;
 - `current` activation is atomic;
-- rollback to previous verified release works.
+- the verified release remains local after activation;
+- rollback to previous verified release works once more than one verified release exists;
+- a known-good current release boots without network/Git.
 
 ```text
-GIT_REACHABLE=PASS
+GIT_OR_RELEASE_CHANNEL_REACHABLE=PASS
+FIRST_RELEASE_ACQUIRED_AFTER_BOOT=PASS
 RELEASE_MATERIALIZE=PASS
 RELEASE_INTEGRITY=PASS
 ATOMIC_ACTIVATION=PASS
+KNOWN_GOOD_PERSISTED=PASS
+KNOWN_GOOD_OFFLINE_BOOT=PASS
 ROLLBACK=PASS
 ```
 
@@ -218,16 +239,18 @@ DEVICE_SECRETS_STAY_LOCAL=PASS
 
 Simulate at least:
 
+- first-release acquisition unavailable;
 - bad/unavailable new release;
-- network unavailable;
-- Git unavailable;
+- network unavailable after a known-good release exists;
+- Git/release channel unavailable;
 - interrupted release acquisition;
 - invalid device/client authorization or trust mismatch;
 - failed delta/release activation.
 
-A previously verified system/recovery path must remain available.
+Before the first full release, bootstrap/recovery must remain available. After the first verified release, that known-good system must remain available locally.
 
 ```text
+BOOTSTRAP_RECOVERY_WITHOUT_FIRST_RELEASE=PASS
 KNOWN_GOOD_PRESERVED=PASS
 OFFLINE_BOOT=PASS
 INTERRUPTED_UPDATE_SAFE=PASS
