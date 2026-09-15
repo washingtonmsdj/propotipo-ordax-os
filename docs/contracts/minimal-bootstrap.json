@@ -41,7 +41,6 @@
     {
       "id": "uefi-boot",
       "partition": "ORDAX-ESP",
-      "role": "uefi-boot",
       "source_owner": "boot/esp",
       "resolved": true,
       "artifacts": [
@@ -82,7 +81,6 @@
     {
       "id": "kernel",
       "partition": "ORDAX-ESP",
-      "role": "kernel",
       "source_owner": "bootstrap/kernel",
       "resolved": true,
       "artifacts": [
@@ -99,7 +97,6 @@
     {
       "id": "initramfs",
       "partition": "ORDAX-ESP",
-      "role": "initramfs",
       "source_owner": "bootstrap/initramfs",
       "resolved": true,
       "artifacts": [
@@ -116,7 +113,6 @@
     {
       "id": "bootstrap-orchestrator",
       "partition": "ORDAX",
-      "role": "bootstrap-orchestrator",
       "target_root": "/ordax/bootstrap",
       "source_owner": "bootstrap/entrypoint",
       "resolved": true,
@@ -134,7 +130,6 @@
     {
       "id": "bootstrap-network",
       "partition": "ORDAX",
-      "role": "minimal-network",
       "target_root": "/ordax/bootstrap/network",
       "source_owner": "bootstrap/network",
       "resolved": true,
@@ -168,7 +163,6 @@
     {
       "id": "bootstrap-release-acquisition",
       "partition": "ORDAX",
-      "role": "release-acquisition",
       "target_root": "/ordax/bootstrap/release-acquisition",
       "source_owner": "bootstrap/release-acquisition",
       "resolved": true,
@@ -186,7 +180,6 @@
     {
       "id": "bootstrap-release-trust",
       "partition": "ORDAX",
-      "role": "release-trust",
       "target_root": "/ordax/bootstrap/trust",
       "source_owner": "bootstrap/trust",
       "resolved": false,
@@ -195,7 +188,6 @@
     {
       "id": "bootstrap-release-channel",
       "partition": "ORDAX",
-      "role": "release-channel",
       "target_root": "/ordax/bootstrap/config",
       "source_owner": "bootstrap/config",
       "resolved": true,
@@ -213,7 +205,6 @@
     {
       "id": "bootstrap-recovery",
       "partition": "ORDAX",
-      "role": "recovery-maintenance",
       "target_root": "/ordax/bootstrap/recovery",
       "source_owner": "bootstrap/recovery",
       "resolved": true,
