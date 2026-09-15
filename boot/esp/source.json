@@ -1,0 +1,38 @@
+{
+  "$schema": "prototype-ordax.esp-source/1",
+  "status": "candidate-build-defined",
+  "bootloader": {
+    "project": "systemd-boot",
+    "upstream_repository": "https://github.com/systemd/systemd.git",
+    "version": "261.2",
+    "tag": "v261.2",
+    "tag_object_sha": "d5e8f63a205ef22cb7e43a5ff2cc79556340ead0",
+    "source_commit": "4925d9f07fc697efccd98a93046ff535b8832445",
+    "upstream_tag_signature_verified": true
+  },
+  "configuration": {
+    "loader_conf": "boot/esp/loader/loader.conf",
+    "loader_conf_sha256": "9506f438aa972adb3d08da98f1dd45088f7682e60caa335d8ba053fba9a30832",
+    "normal_entry": "boot/esp/loader/entries/ordax.conf",
+    "normal_entry_sha256": "a0cbed8e3f9886f6a44f7288b4501cbffa908903d060abad992c6d34503ef928",
+    "recovery_entry": "boot/esp/loader/entries/ordax-recovery.conf",
+    "recovery_entry_sha256": "1856bdb05cbe8b9c69114f2f83b17d36acdf41d9acbde37170b12a0f37aab50f"
+  },
+  "target_layout": [
+    "EFI/BOOT/BOOTX64.EFI",
+    "loader/loader.conf",
+    "loader/entries/ordax.conf",
+    "loader/entries/ordax-recovery.conf",
+    "ordax/vmlinuz",
+    "ordax/initrd.gz"
+  ],
+  "forbidden_extra_entries": [
+    "developer",
+    "maintenance",
+    "installer"
+  ],
+  "build": {
+    "canonical_entrypoint": "boot/esp/build.py",
+    "physical_artifact_authorized": false
+  }
+}

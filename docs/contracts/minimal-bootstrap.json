@@ -5,14 +5,8 @@
   "all_artifacts_resolved": false,
   "policy": "minimum-release-acquisition-first",
   "partitions": [
-    {
-      "name": "ORDAX-ESP",
-      "role": "uefi-boot"
-    },
-    {
-      "name": "ORDAX",
-      "role": "main"
-    }
+    {"name": "ORDAX-ESP", "role": "uefi-boot"},
+    {"name": "ORDAX", "role": "main"}
   ],
   "required_capabilities_before_first_release": [
     "uefi-boot",
@@ -32,7 +26,8 @@
     "network_required_when_current_bootable": false,
     "first_release_requires_network": true,
     "release_channel_scheme": "https",
-    "recovery_on_acquisition_failure": true
+    "recovery_on_acquisition_failure": true,
+    "explicit_recovery_boot_entry": true
   },
   "artifact_groups": [
     {
@@ -40,7 +35,32 @@
       "partition": "ORDAX-ESP",
       "source_owner": "boot/esp",
       "resolved": false,
-      "artifacts": []
+      "artifacts": [
+        {
+          "source_path": "boot/esp/loader/loader.conf",
+          "target_path": "/loader/loader.conf",
+          "sha256": "9506f438aa972adb3d08da98f1dd45088f7682e60caa335d8ba053fba9a30832",
+          "mode": "0644",
+          "logical_owner": "uefi-boot",
+          "reason": "Minimal systemd-boot policy with only normal and explicit recovery entries"
+        },
+        {
+          "source_path": "boot/esp/loader/entries/ordax.conf",
+          "target_path": "/loader/entries/ordax.conf",
+          "sha256": "a0cbed8e3f9886f6a44f7288b4501cbffa908903d060abad992c6d34503ef928",
+          "mode": "0644",
+          "logical_owner": "uefi-boot",
+          "reason": "Normal OrdaX boot entry"
+        },
+        {
+          "source_path": "boot/esp/loader/entries/ordax-recovery.conf",
+          "target_path": "/loader/entries/ordax-recovery.conf",
+          "sha256": "1856bdb05cbe8b9c69114f2f83b17d36acdf41d9acbde37170b12a0f37aab50f",
+          "mode": "0644",
+          "logical_owner": "uefi-boot",
+          "reason": "Explicit read-only recovery boot entry"
+        }
+      ]
     },
     {
       "id": "kernel",
@@ -111,8 +131,17 @@
       "partition": "ORDAX",
       "target_root": "/ordax/bootstrap/recovery",
       "source_owner": "bootstrap/recovery",
-      "resolved": false,
-      "artifacts": []
+      "resolved": true,
+      "artifacts": [
+        {
+          "source_path": "bootstrap/recovery/entrypoint",
+          "target_path": "/ordax/bootstrap/recovery/entrypoint",
+          "sha256": "c2ec724432903723092bb755cda62526810a3659bb5edfefc4357b49ca883deb",
+          "mode": "0755",
+          "logical_owner": "bootstrap-recovery",
+          "reason": "Local read-only recovery shell without automatic networking or mutation"
+        }
+      ]
     }
   ],
   "runtime_roots_created_empty": [

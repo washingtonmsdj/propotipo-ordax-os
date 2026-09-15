@@ -14,9 +14,22 @@ mount -t proc proc /proc || rescue "cannot mount /proc"
 mount -t sysfs sysfs /sys || rescue "cannot mount /sys"
 mount -t devtmpfs devtmpfs /dev || rescue "cannot mount /dev"
 
+RECOVERY_MODE=0
+case " $(cat /proc/cmdline 2>/dev/null || true) " in
+    *" ordax.mode=recovery "*) RECOVERY_MODE=1 ;;
+esac
+
 ORDAX_DEVICE="$(findfs LABEL=ORDAX 2>/dev/null || true)"
 [ -n "$ORDAX_DEVICE" ] || rescue "ORDAX partition not found"
-mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
 
+if [ "$RECOVERY_MODE" -eq 1 ]; then
+    mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
+    if [ -x /ordax/bootstrap/recovery/entrypoint ]; then
+        exec /ordax/bootstrap/recovery/entrypoint
+    fi
+    rescue "recovery entrypoint is missing"
+fi
+
+mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
 [ -x /ordax/bootstrap/entrypoint ] || rescue "bootstrap entrypoint is missing"
 exec /ordax/bootstrap/entrypoint

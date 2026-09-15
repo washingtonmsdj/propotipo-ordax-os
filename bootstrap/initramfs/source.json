@@ -9,6 +9,12 @@
   "root_init": "bootstrap/initramfs/root/init",
   "main_partition_label": "ORDAX",
   "bootstrap_entrypoint": "/ordax/bootstrap/entrypoint",
+  "recovery": {
+    "cmdline_token": "ordax.mode=recovery",
+    "main_partition_mount": "read-only",
+    "entrypoint": "/ordax/bootstrap/recovery/entrypoint",
+    "network_started": false
+  },
   "legacy_archive_imported": false,
   "network_inside_fixed_initramfs": false,
   "ssh_inside_fixed_initramfs": false,

@@ -10,15 +10,15 @@ permissions:
 
 jobs:
   foundation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Validate JSON contracts
         run: |
@@ -28,11 +28,15 @@ jobs:
           python -m json.tool docs/contracts/release-channel.json >/dev/null
           python -m json.tool bootstrap/kernel/source.json >/dev/null
           python -m json.tool bootstrap/initramfs/source.json >/dev/null
+          python -m json.tool bootstrap/network/source.json >/dev/null
+          python -m json.tool boot/esp/source.json >/dev/null
 
       - name: Validate build contracts without compiling
         run: |
           python bootstrap/kernel/build.py check
           python bootstrap/initramfs/build.py check
+          python bootstrap/network/build.py check
+          python boot/esp/build.py check
 
       - name: Run foundation regressions
         run: python -m unittest discover -s tests -p 'test_*.py' -v

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+echo "OrdaX recovery"
+echo "The ORDAX partition is mounted read-only at /ordax."
+echo "No network, remote access or automatic mutation is started in recovery."
+echo "Type 'exit' to leave the shell; reboot the machine afterwards."
+exec sh
