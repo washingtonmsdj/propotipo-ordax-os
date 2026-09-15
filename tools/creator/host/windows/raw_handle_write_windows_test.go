@@ -1,10 +1,10 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
 import "testing"
 
-// These tests must fail before CreateFileW. They exercise the Windows-only
+// These tests must fail before CreateFileW. They exercise the tagged Windows
 // writable boundary without ever opening a real PhysicalDrive on CI.
 func TestWritablePhysicalDriveRejectsNilLeaseBeforeHostOpen(t *testing.T) {
 	target := openedIdentityTarget()
