@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "bootstrap/kernel/**"
+      - "tests/test_kernel_artifact_verifier.py"
       - ".github/workflows/kernel-candidate.yml"
   pull_request:
     paths:
       - "bootstrap/kernel/**"
+      - "tests/test_kernel_artifact_verifier.py"
       - ".github/workflows/kernel-candidate.yml"
   workflow_dispatch:
 
@@ -38,14 +40,14 @@ jobs:
       - name: Validate kernel source/config contract
         run: python bootstrap/kernel/build.py check
 
+      - name: Run kernel artifact verifier regressions
+        run: python -m unittest discover -s tests -p 'test_kernel_artifact_verifier.py' -v
+
       - name: Build kernel candidate with provenance
         run: python bootstrap/kernel/build.py build --jobs 4
 
-      - name: Validate emitted provenance
-        run: |
-          python -m json.tool out/kernel/kernel-provenance.json >/dev/null
-          test -s out/kernel/SHA256SUMS
-          sha256sum -c out/kernel/SHA256SUMS
+      - name: Verify kernel candidate artifacts
+        run: python bootstrap/kernel/verify.py out/kernel
 
       - name: Upload kernel candidate
         uses: actions/upload-artifact@v4
