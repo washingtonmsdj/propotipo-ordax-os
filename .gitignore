@@ -1,0 +1,57 @@
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+**/authorized_keys
+**/known_hosts
+secrets/
+credentials/
+
+# Generated boot/build artifacts
+build/
+out/
+dist/
+*.img
+*.raw
+*.iso
+*.qcow2
+*.vhd
+*.vhdx
+*.cpio
+*.cpio.gz
+*.initramfs
+
+# Local physical/provisioning evidence
+.local/
+state/
+runs/
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node/tool caches
+node_modules/
+.cache/
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
