@@ -218,7 +218,7 @@ jobs:
           popd >/dev/null
           printf '%s\n' "$stage" > "$RUNNER_TEMP/full-media-stage-path"
 
-      - name: Prove real GPT, FAT32, ext4 and post-materialization hashes
+      - name: Prove real GPT, filesystems, Creator capacity expansion and boot-time ext4 growth
         run: |
           set -euo pipefail
           stage="$(cat "$RUNNER_TEMP/full-media-stage-path")"
@@ -227,14 +227,21 @@ jobs:
             --contract docs/contracts/physical-media.json \
             --stage-root "$stage" \
             --output-root "$output"
+          bash tools/creator/proof/prove_prepared_ext4_growth.sh \
+            "$output/ordax-disposable.raw" \
+            out/initramfs-work/ordax-grow-ext4 \
+            out/full-media-proof/creator-prepared-ext4-growth-proof.json \
+            805306368
           python - \
             "$output/proof.json" \
             "$RUNNER_TEMP/full-media-payload/payload-provenance.json" \
-            "out/full-media-proof/ext4-growth-runtime-proof.json" <<'PY'
+            "out/full-media-proof/ext4-growth-runtime-proof.json" \
+            "out/full-media-proof/creator-prepared-ext4-growth-proof.json" <<'PY'
           import json, pathlib, sys
           disk_proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
           payload = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
           ext4 = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding='utf-8'))
+          prepared = json.loads(pathlib.Path(sys.argv[4]).read_text(encoding='utf-8'))
           assert disk_proof['status'] == 'pass'
           assert disk_proof['physical_write_authorized'] is False
           assert all(disk_proof['checks'].values())
@@ -244,8 +251,20 @@ jobs:
           assert ext4['physical_write_authorized'] is False
           assert ext4['physical_hardware_proven'] is False
           assert ext4['fixture']['ordax_final_blocks'] == ext4['fixture']['resize2fs_final_blocks']
+          assert prepared['$schema'] == 'prototype-ordax.creator-prepared-ext4-growth-proof/1'
+          assert prepared['status'] == 'pass'
+          assert all(prepared['checks'].values())
+          assert prepared['source_commit'] == __import__('os').environ['GITHUB_SHA']
+          assert prepared['seed_image_sha256'] == disk_proof['image_sha256']
+          assert prepared['gpt']['prepared_ordax_last_lba'] == prepared['gpt']['last_usable_lba']
+          assert prepared['ext4']['ordax_final_blocks'] == prepared['ext4']['resize2fs_final_blocks']
+          assert prepared['ext4']['tree_digest_before'] == prepared['ext4']['tree_digest_after']
+          assert prepared['canonical_trust'] is False
+          assert prepared['physical_write_authorized'] is False
+          assert prepared['physical_hardware_proven'] is False
+          assert prepared['real_hardware_touched'] is False
           summary = {
-              '$schema': 'prototype-ordax.full-bootstrap-media-proof/2',
+              '$schema': 'prototype-ordax.full-bootstrap-media-proof/3',
               'status': 'pass',
               'canonical_trust': False,
               'ephemeral_ci_trust': True,
@@ -259,6 +278,19 @@ jobs:
               'ext4_growth_raw_target_blocks': ext4['fixture']['raw_target_blocks'],
               'ext4_growth_final_blocks': ext4['fixture']['ordax_final_blocks'],
               'ext4_growth_unused_tail_blocks': ext4['fixture']['unused_tail_blocks'],
+              'creator_prepare_image_proven': True,
+              'creator_prepared_seed_sha256': prepared['seed_image_sha256'],
+              'creator_prepared_image_sha256_before_growth': prepared['prepared_image_sha256_before_growth'],
+              'creator_prepared_target_image_bytes': prepared['target_image_bytes'],
+              'creator_prepared_ordax_first_lba': prepared['gpt']['ordax_first_lba'],
+              'creator_prepared_ordax_last_lba': prepared['gpt']['prepared_ordax_last_lba'],
+              'creator_prepared_ext4_initial_blocks': prepared['ext4']['initial_blocks'],
+              'creator_prepared_ext4_raw_target_blocks': prepared['ext4']['raw_target_blocks'],
+              'creator_prepared_ext4_final_blocks': prepared['ext4']['ordax_final_blocks'],
+              'creator_prepared_ext4_unused_tail_blocks': prepared['ext4']['unused_tail_blocks'],
+              'creator_prepared_files_preserved': True,
+              'creator_prepared_e2fsck_passed': True,
+              'real_hardware_touched': False,
               'physical_hardware_proven': False,
               'physical_write_authorized': False,
           }
@@ -266,7 +298,9 @@ jobs:
               json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           print('REAL_BOOTSTRAP_MEDIA_COMPOSITION=PASS')
           print('EXT4_RUNTIME_GROWTH_INTEGRATED=PASS')
+          print('CREATOR_PREPARED_IMAGE_GROWTH=PASS')
           print('CANONICAL_TRUST=NO')
+          print('REAL_HARDWARE_TOUCHED=NO')
           print('PHYSICAL_HARDWARE_PROVEN=NO')
           print('PHYSICAL_WRITE_AUTHORIZED=NO')
           PY
@@ -293,6 +327,7 @@ jobs:
           path: |
             out/full-media-proof/proof-summary.json
             out/full-media-proof/ext4-growth-runtime-proof.json
+            out/full-media-proof/creator-prepared-ext4-growth-proof.json
             ${{ runner.temp }}/full-media-disk-proof/proof.json
           if-no-files-found: error
           retention-days: 14
