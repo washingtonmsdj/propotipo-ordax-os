@@ -20,6 +20,7 @@ ordax-release-signing derive-trust \
 ordax-release-signing sign \
   --manifest release-manifest.json \
   --private-key <external-path>/ordax-release-private.pem \
+  --trust <canonical-public-path>/release-ed25519.json \
   --key-id prototype-1 \
   --out release-envelope.json
 ```
@@ -39,6 +40,8 @@ All outputs use exclusive creation. Existing files are never silently replaced.
 
 `generate-key` exists to support an explicit key ceremony on a trusted operator/signing host. Generating a key in CI, a disposable runner or an arbitrary developer temp directory does **not** make that key a canonical release key.
 
+The repository already ignores `*.pem`, `*.key`, `*.p12`, `*.pfx`, `secrets/` and `credentials/`, but `.gitignore` is only a safety net. Canonical private-key custody must be outside the repository tree.
+
 ## Trust anchor
 
 `derive-trust` emits only:
@@ -53,17 +56,21 @@ All outputs use exclusive creation. Existing files are never silently replaced.
 
 The public trust anchor may enter `bootstrap/trust/release-ed25519.json` only after the matching private key has an explicit custody owner and recovery/rotation policy outside Git.
 
+The `sign` command requires that public trust anchor as an explicit input and refuses to emit an envelope when the private key, public key or `key_id` disagree.
+
 ## Signing
 
-Before signing, the tool validates the same critical release-manifest invariants consumed by the device agent:
+Before signing, the tool validates the same v1 release-manifest invariants consumed by the device agent:
 
 - exact schema;
 - expected source repository;
 - lowercase 40-hex source commit;
 - `release_id == source_commit`;
 - bounded CI recipe identifier;
-- 1..128 uniquely named artifacts;
-- HTTPS artifact URLs;
+- exactly one artifact;
+- artifact name exactly `system.tar`;
+- artifact role exactly `system`;
+- HTTPS artifact URL;
 - exact SHA-256 syntax and positive bounded size.
 
 The signature is standard Ed25519 over the **exact manifest file bytes**. Whitespace is preserved in the signed payload. The output envelope uses the existing `prototype-ordax.release-envelope/1` protocol.
@@ -80,3 +87,5 @@ PRIVATE_KEY_ARTIFACT_UPLOAD=NO
 ```
 
 The production/canonical private key must come from a separate explicit custody decision.
+
+See `docs/RELEASE-SIGNING.md` and `docs/RELEASE-TRUST-CEREMONY.md`.
