@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/statfs.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -45,12 +46,26 @@ static void fail(const char *message) {
     exit(1);
 }
 
-static int real_block_device(const char *path) {
+static struct stat require_block_device(const char *path) {
     struct stat st;
     if (lstat(path, &st) != 0) {
-        return 0;
+        fail_errno("cannot inspect ORDAX block device");
     }
-    return S_ISBLK(st.st_mode);
+    if (!S_ISBLK(st.st_mode)) {
+        fail("source is not a block device");
+    }
+    return st;
+}
+
+static struct stat require_mountpoint_directory(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        fail_errno("cannot inspect ORDAX mountpoint");
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        fail("mountpoint is not a directory");
+    }
+    return st;
 }
 
 int main(int argc, char **argv) {
@@ -61,8 +76,18 @@ int main(int argc, char **argv) {
 
     const char *device = argv[1];
     const char *mountpoint = argv[2];
-    if (!real_block_device(device)) {
-        fail("source is not a block device");
+    struct stat device_stat = require_block_device(device);
+    struct stat mount_stat = require_mountpoint_directory(mountpoint);
+    if (mount_stat.st_dev != device_stat.st_rdev) {
+        fail("mountpoint does not belong to the supplied block device");
+    }
+
+    struct statvfs mount_flags;
+    if (statvfs(mountpoint, &mount_flags) != 0) {
+        fail_errno("cannot inspect ORDAX mount flags");
+    }
+    if ((mount_flags.f_flag & ST_RDONLY) != 0) {
+        fail("mounted filesystem is read-only");
     }
 
     struct statfs before;
@@ -125,7 +150,7 @@ int main(int argc, char **argv) {
     }
     uint64_t final_blocks = (uint64_t)after.f_blocks;
     if (final_blocks < current_blocks || final_blocks < target_blocks) {
-        fail("online ext4 resize returned success without reaching the partition capacity");
+        fail("online ext4 resize returned success without reaching the block-device capacity");
     }
 
     printf("ORDAX_EXT4_GROWTH=PASS previous_blocks=%" PRIu64 " final_blocks=%" PRIu64 " target_blocks=%" PRIu64 " block_size=%" PRIu64 " device_bytes=%" PRIu64 "\n",
