@@ -74,10 +74,6 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def sha256_text(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
 def load_contract() -> dict:
     try:
         value = json.loads(CONTRACT.read_text(encoding="utf-8"))
@@ -145,14 +141,27 @@ def capture(argv: list[str], *, cwd: Path | None = None) -> str:
 
 
 def musl_identity(musl_cc: str) -> dict:
-    target = capture([musl_cc, "-dumpmachine"])
-    specs = capture([musl_cc, "-dumpspecs"])
-    if "linux-musl" not in specs or "ld-musl-" not in specs:
-        raise BuildError("musl-gcc effective specs do not identify musl include/linker paths")
+    wrapper = Path(musl_cc).resolve()
+    try:
+        wrapper_text = wrapper.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BuildError(f"musl-gcc wrapper is not inspectable: {wrapper}") from exc
+    match = re.search(r'-specs(?:=|\s+)["\']([^"\']*musl-gcc\.specs)["\']', wrapper_text)
+    if not match:
+        raise BuildError("musl-gcc wrapper does not reference musl-gcc.specs")
+    specs = Path(match.group(1))
+    if not specs.is_absolute():
+        specs = (wrapper.parent / specs).resolve()
+    if not specs.is_file() or specs.is_symlink():
+        raise BuildError(f"musl-gcc specs are missing or unsafe: {specs}")
+    specs_text = specs.read_text(encoding="utf-8")
+    if "linux-musl" not in specs_text or "ld-musl-" not in specs_text:
+        raise BuildError("musl-gcc specs do not identify musl include/linker paths")
     return {
-        "compiler": Path(musl_cc).name,
-        "target": target,
-        "effective_specs_sha256": sha256_text(specs),
+        "compiler": wrapper.name,
+        "target": capture([musl_cc, "-dumpmachine"]),
+        "wrapper_sha256": sha256_file(wrapper),
+        "specs_sha256": sha256_file(specs),
         "musl_specs_verified": True,
     }
 
