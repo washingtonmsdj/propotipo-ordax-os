@@ -7,13 +7,15 @@ This file is the handoff snapshot for another AI/conversation. Update it when th
 ## Repository
 
 ```text
-REPOSITORY=washingtonmsdj/propotipo-ordax-os
+REPOSITORY=washingtonmsdj/prototipo-ordax-os
 ROLE=CLEAN_ROOM_PROTOTYPE
 DEFAULT_BRANCH=main
 PROMOTED_TO_OFFICIAL=NO
 LEGACY_REPOSITORY=washingtonmsdj/novo-ordax-os
 LEGACY_REPOSITORY_IS_REFERENCE=YES
 ```
+
+The repository was renamed from the earlier misspelled `propotipo-ordax-os` to `prototipo-ordax-os`. Use only the current repository name in new documentation/tooling.
 
 ## Product direction
 
@@ -36,6 +38,24 @@ OrdaX Web
 ```
 
 Safe user/account state should be able to follow the user across modes. Device-private keys, machine identity secrets, drivers, caches and hardware-bound state remain local.
+
+## Initial USB policy
+
+```text
+INITIAL_USB_POLICY=MINIMUM_NETWORK_FIRST
+FULL_SYSTEM_PRESEEDED=NO
+SURFACE_PRESEEDED=NO
+NORMAL_APPS_PRESEEDED=NO
+COMPLETE_SOURCE_CHECKOUT_PRESEEDED=NO
+BUILD_TOOLCHAIN_PRESEEDED=NO
+FIRST_FULL_RELEASE_ACQUIRED_AFTER_BOOT=YES
+KNOWN_GOOD_RELEASE_PERSISTED_AFTER_FIRST_ACTIVATION=YES
+NORMAL_SYSTEM_CHANGE_REQUIRES_REFLASH=NO
+```
+
+The physical media is only the stable launch/recovery substrate. Most future system work arrives through Git/releases after network/control is available.
+
+See `docs/MINIMAL-USB-BOOTSTRAP.md`.
 
 ## Physical architecture target
 
@@ -77,20 +97,58 @@ MATURE_SECURE_TRANSPORT_REQUIRED=YES
 
 During migration, SSH may temporarily remain as break-glass compatibility only until OrdaX Remote Core proves equivalent physical recovery. It must not become the new architecture.
 
-## Physical environment at prototype creation
+## Legacy/Codex evidence received 2026-09-15
 
-The existing OrdaX USB media was connected to the Windows development machine, not booting the notebook.
+Codex completed the SSH/operator-key reconciliation in `washingtonmsdj/novo-ordax-os`.
 
-A separate Codex mission was already running against the previous project context to inventory SSH/operator-key state and inspect the existing USB safely. Do not assume that mission has completed. Retrieve its final evidence before making decisions that depend on its results.
+Verified repository continuity:
+
+```text
+LEGACY_MAIN_BEFORE_PROTOTYPE_SSH_RECONCILE=f8ea8424f8cf52b516800f16f2331090ccb56748
+LEGACY_MAIN_AFTER_CODEX=49fe41fa67d9032f2e349e86592304e64d6c2d88
+LEGACY_CODEX_COMMIT_PARENT=f8ea8424f8cf52b516800f16f2331090ccb56748
+LEGACY_MAIN_DIVERGENCE=NO
+```
+
+Although the Codex report printed an older `MAIN_SHA_BEFORE`, GitHub confirms commit `49fe41fa...` is directly based on `f8ea8424...`; the clean source hardening was not lost.
+
+Operator public-key fingerprints reported by Codex:
+
+```text
+OLD_OPERATOR_KEY=SHA256:Q2ClLoKlAz4WTsFoc8+b3pBnjim8mayhhzafM9eJ8f0
+NEW_OPERATOR_KEY=SHA256:wKKyxsf8vQ3uKYczpqKnv/P2LTbHILs8oYnrqNRGvuM
+OLD_KEY_PRESERVED=YES
+NEW_KEY_ADDED=NO_PHYSICAL_TARGET_PENDING
+```
+
+Physical proof remains pending:
+
+```text
+USB_LOCATION=WINDOWS
+USB_CONNECTED_TO_NOTEBOOK=NO
+PHYSICAL_USB_WRITTEN=NO
+PHYSICAL_LAYOUT_CHANGED=NO
+ROOT_SSH_OLD_KEY=PENDING
+ROOT_SSH_NEW_KEY=PENDING
+CONTROL_PLANE_ATTESTATION=PENDING_PHYSICAL_TARGET
+LIVE_DEV_GIT_TO_NOTEBOOK=PENDING_PHYSICAL_TARGET
+```
+
+This evidence is reference material only. Do not copy the legacy SSH/QEMU/F7 subsystem into this prototype. Preserve useful invariants such as additive operator authorization and fail-closed trust while implementing the new OrdaX Remote Core architecture.
+
+## Physical environment
+
+The existing OrdaX USB media is connected to the Windows development machine, not booting the notebook.
 
 The existence of this prototype does not authorize formatting or writing the USB yet.
 
 ## Completed here
 
-- repository initialized from empty state;
+- repository initialized from empty state and renamed to `prototipo-ordax-os`;
 - mandatory agent contract created;
 - clean-room architecture documented;
 - two-partition physical-media contract documented;
+- minimal network-first initial USB contract documented and regression-protected;
 - Git-first development workflow documented;
 - selective migration ledger created;
 - promotion gates defined and expanded for Web/Creator/Remote Core;
@@ -109,12 +167,14 @@ The existence of this prototype does not authorize formatting or writing the USB
 - external SSH executable removed as a required product/development dependency;
 - WSL/QEMU removed as required architectural dependencies;
 - `system/` source root created with Surface/apps/services and Web/native adapter boundaries;
-- `tools/creator/` created with host-neutral core and thin Windows/Linux/macOS adapter boundaries.
+- `tools/creator/` created with host-neutral core and thin Windows/Linux/macOS adapter boundaries;
+- latest legacy Codex SSH/key evidence reviewed without importing its subsystem.
 
 ## Reviewed legacy baselines
 
 ```text
 LEGACY_BASE_COMMIT=f8ea8424f8cf52b516800f16f2331090ccb56748
+LEGACY_LATEST_REFERENCE_COMMIT=49fe41fa67d9032f2e349e86592304e64d6c2d88
 KERNEL_VERSION=6.6.52
 KERNEL_KNOWN_GOOD_SHA256=351941db619b7e93a4dc87010dbf39d3b8bf07262c73342381021385398a277d
 KERNEL_SOURCE_ARCHIVE_SHA256=1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8
@@ -128,6 +188,7 @@ See `bootstrap/kernel/PROVENANCE.md`, `bootstrap/initramfs/PROVENANCE.md` and `d
 ## Not yet implemented
 
 ```text
+MINIMAL_BOOTSTRAP_MANIFEST_IMPLEMENTED=NO
 KERNEL_BUILD_IMPLEMENTED=NO
 INITRAMFS_BUILD_IMPLEMENTED=NO
 BOOTLOADER_IMPLEMENTED=NO
@@ -154,16 +215,16 @@ Do not copy the whole old repository.
 
 Recommended implementation order:
 
-1. define capability interfaces shared by `system/adapters/web` and `system/adapters/native`;
-2. define the first minimal shared Surface shell so Web can become the fastest visual development target;
-3. define OrdaX Remote Core protocol/capability contract without custom cryptography;
-4. implement OrdaX Creator plan/verification core independent of host raw-disk APIs;
-5. create the minimal boot artifact manifest;
+1. define the exact machine-readable minimal USB/bootstrap manifest;
+2. define capability interfaces shared by `system/adapters/web` and `system/adapters/native`;
+3. define the first minimal shared Surface shell so Web can become the fastest visual development target;
+4. define OrdaX Remote Core protocol/capability contract without custom cryptography;
+5. implement OrdaX Creator plan/verification core independent of host raw-disk APIs;
 6. implement the clean kernel build recipe from official Linux 6.6.52 source identity;
 7. implement the new deterministic initramfs without old `ORDAX-HOME`/`ORDAX-PLATFORM` dependencies;
 8. implement the Windows Creator raw-disk adapter without WSL;
 9. verify a disposable two-partition representation without requiring a specific emulator;
-10. only then request authorization to wipe/reprovision the physical USB.
+10. only then request authorization to wipe/reprovision the physical USB with the bounded minimal payload.
 
 ## Handoff rule
 
