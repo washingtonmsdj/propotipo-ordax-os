@@ -15,6 +15,7 @@ import (
 
 func writeIdentity(t *testing.T, root string) (string, string) {
 	t.Helper()
+	if err := os.MkdirAll(root, 0o755); err != nil { t.Fatal(err) }
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil { t.Fatal(err) }
 	der, err := x509.MarshalPKCS8PrivateKey(private)
@@ -82,7 +83,6 @@ func TestPhysicalSignerRejectsPurposeAndExtraFile(t *testing.T) {
 func TestPhysicalSignerRejectsWrongKeyAndOverwrite(t *testing.T) {
 	root := t.TempDir()
 	privateA, trustA := writeIdentity(t, filepath.Join(root, "a"))
-	_ = trustA
 	privateB, trustB := writeIdentity(t, filepath.Join(root, "b"))
 	_ = privateB
 	manifestPath := filepath.Join(root, "manifest.json")
