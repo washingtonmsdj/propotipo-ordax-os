@@ -24,7 +24,7 @@ function Get-EmptyOutputDirectory {
     $full = [IO.Path]::GetFullPath($Path)
     if (Test-Path -LiteralPath $full) {
         $item = Get-Item -LiteralPath $full -Force
-        if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
             throw 'publisher handoff output must be a real directory'
         }
         if (@(Get-ChildItem -LiteralPath $full -Force).Count -ne 0) { throw 'publisher handoff output must be empty' }
@@ -88,17 +88,17 @@ foreach ($name in @('OrdaX-Creator.exe', 'OrdaX-Creator-App.exe')) {
     }
 }
 
-$copies = [ordered]@{
-    (Join-Path $repoRoot 'docs/contracts/creator-code-signing.json') = 'creator-code-signing.json'
-    (Join-Path $repoRoot 'docs/contracts/creator-app-channel.json') = 'creator-app-channel.json'
-    (Join-Path $repoRoot 'docs/contracts/creator-component-channel.json') = 'creator-component-channel.json'
-    $TrustPath = 'release-ed25519.json'
-    (Join-Path $repoRoot 'tools/creator/windows/Verify-OrdaXCreatorSignature.ps1') = 'Verify-OrdaXCreatorSignature.ps1'
-    (Join-Path $repoRoot 'tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1') = 'Finalize-OrdaXCreatorRelease.ps1'
-}
-foreach ($source in $copies.Keys) {
-    $sourcePath = Get-RealFile -Path $source -Label "handoff source $source"
-    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $OutputDirectory $copies[$source])
+$copies = @(
+    @{ Source = (Join-Path $repoRoot 'docs/contracts/creator-code-signing.json'); Destination = 'creator-code-signing.json' },
+    @{ Source = (Join-Path $repoRoot 'docs/contracts/creator-app-channel.json'); Destination = 'creator-app-channel.json' },
+    @{ Source = (Join-Path $repoRoot 'docs/contracts/creator-component-channel.json'); Destination = 'creator-component-channel.json' },
+    @{ Source = $TrustPath; Destination = 'release-ed25519.json' },
+    @{ Source = (Join-Path $repoRoot 'tools/creator/windows/Verify-OrdaXCreatorSignature.ps1'); Destination = 'Verify-OrdaXCreatorSignature.ps1' },
+    @{ Source = (Join-Path $repoRoot 'tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1'); Destination = 'Finalize-OrdaXCreatorRelease.ps1' }
+)
+foreach ($copy in $copies) {
+    $sourcePath = Get-RealFile -Path ([string]$copy.Source) -Label "handoff source $($copy.Source)"
+    Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $OutputDirectory ([string]$copy.Destination))
 }
 
 $names = @(
@@ -121,13 +121,16 @@ $sumLines | Set-Content -Encoding ascii (Join-Path $OutputDirectory 'PRE-SIGNING
 
 $launcherSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputDirectory 'OrdaX-Creator.exe')).Hash.ToLowerInvariant()
 $appSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputDirectory 'OrdaX-Creator-App.exe')).Hash.ToLowerInvariant()
+$canonicalTrustSha = $null
+if ($TrustClass -eq 'canonical') { $canonicalTrustSha = $trustSha }
 $provenance = [ordered]@{
     '$schema' = 'prototype-ordax.creator-official-candidate/2'
     source_commit = $SourceCommit
     app_version = $AppVersion
     app_release_sequence = $AppReleaseSequence
     trust_class = $TrustClass
-    canonical_trust_sha256 = $trustSha
+    trust_sha256 = $trustSha
+    canonical_trust_sha256 = $canonicalTrustSha
     launcher = [ordered]@{
         name = 'OrdaX-Creator.exe'
         role = 'stable-signed-app-loader'
