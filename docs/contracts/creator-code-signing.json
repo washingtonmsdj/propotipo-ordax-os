@@ -1,8 +1,15 @@
 {
-  "$schema": "prototype-ordax.creator-code-signing/1",
+  "$schema": "prototype-ordax.creator-code-signing/2",
   "status": "unconfigured",
   "platform": "windows",
-  "artifact": "OrdaX-Creator.exe",
+  "artifacts": [
+    "OrdaX-Creator.exe",
+    "OrdaX-Creator-App.exe"
+  ],
+  "artifact_roles": {
+    "OrdaX-Creator.exe": "stable-signed-app-loader",
+    "OrdaX-Creator-App.exe": "versioned-signed-creator-gui"
+  },
   "signature_format": "authenticode",
   "file_digest_algorithm": "sha256",
   "timestamp": {
@@ -19,7 +26,8 @@
     "windows_trust_chain_required": true,
     "exact_publisher_subject_required": true,
     "leaf_certificate_sha256_pin_required": true,
-    "timestamp_certificate_required": true
+    "timestamp_certificate_required": true,
+    "exact_artifact_name_required": true
   },
   "custody": {
     "provider": "unconfigured",
@@ -34,6 +42,7 @@
     "unsigned_candidate_publishable": false,
     "signature_with_unapproved_identity_publishable": false,
     "signature_without_timestamp_publishable": false,
+    "unlisted_artifact_publishable": false,
     "authenticode_is_release_authenticity_root": false,
     "ed25519_release_verification_remains_required": true,
     "publish_allowed": false
