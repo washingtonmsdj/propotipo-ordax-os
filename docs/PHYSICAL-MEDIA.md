@@ -132,7 +132,7 @@ Before any physical write:
 13. require explicit destructive authorization at execution time;
 14. re-read GPT/filesystems after writing and verify artifact hashes from the physical target.
 
-Implementation evidence now exists in source for steps 1-9. The Windows host has native lock/dismount primitives, a managed lease policy, a lease-bound writable `PhysicalDrive` primitive, same-handle identity proof and a real process-token elevation probe. Those pieces are assembled behind an unexported `windowsRawDiskRuntimeUnbound`, but no public Creator command constructs or reaches it. CI explicitly rejects `apply`, `write` or `flash` command routes and physical authorization remains false.
+Implementation evidence exists in source for steps 1-9, but the destructive Windows pieces are additionally excluded from normal builds. `FSCTL_LOCK_VOLUME`/dismount, process elevation, the lease-bound writable `PhysicalDrive` primitive and `windowsRawDiskRuntimeUnbound` compile only with the explicit `ordax_raw_backend` build tag. Normal/public Windows builds exclude those files entirely. CI proves both halves: the public build omits them and the tagged internal build compiles/tests them on native Windows without opening a real target for writing.
 
 ## Current physical state
 
@@ -144,12 +144,15 @@ CREATOR_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
 CREATOR_VOLUME_EXTENT_INVENTORY=PASS
 CREATOR_TARGET_VOLUME_ISOLATION_POLICY=PASS
 CREATOR_VOLUME_LEASE_POLICY=PASS
-WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS
-WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE=PASS_UNWIRED
-WINDOWS_PROCESS_ELEVATION_PROBE=PASS
-WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_UNBOUND
+WINDOWS_RAW_BACKEND_BUILD_TAG=ordax_raw_backend
+WINDOWS_RAW_BACKEND_BUILD_TAG_ISOLATION=PASS
+WINDOWS_RAW_BACKEND_IN_PUBLIC_BUILD=NO
+WINDOWS_VOLUME_LOCK_DISMOUNT_PRIMITIVES=PASS_TAGGED_UNBOUND
+WINDOWS_WRITABLE_PHYSICALDRIVE_HANDLE=PASS_TAGGED_UNBOUND
+WINDOWS_PROCESS_ELEVATION_PROBE=PASS_TAGGED_UNBOUND
+WINDOWS_NATIVE_RAW_DISK_BACKEND=PASS_TAGGED_UNBOUND
 CREATOR_PUBLIC_PHYSICAL_APPLY=NO
 PHYSICAL_WRITE_AUTHORIZED=NO
 ```
 
-`PASS_UNBOUND` means the native backend exists in source but is deliberately unreachable from the public Creator surface. No source implementation, successful CI run or disposable proof implicitly authorizes a physical write.
+`PASS_TAGGED_UNBOUND` means the native implementation exists in source only behind the explicit internal build tag, is excluded from public builds and is deliberately unreachable from the public Creator surface. No source implementation, successful CI run or disposable proof implicitly authorizes a physical write.
