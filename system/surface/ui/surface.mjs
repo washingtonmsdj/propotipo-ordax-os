@@ -1,4 +1,5 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
+import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createSurfaceState, reduceSurfaceState } from "./surface-state.mjs";
@@ -171,14 +172,16 @@ function createWindow(app, windowState, state, index) {
   return windowNode;
 }
 
-export function mountSurface(root, host) {
+export function mountSurface(root, host, preferenceStore = null) {
   if (!(root instanceof Element)) {
     throw new TypeError("Surface root must be a DOM Element");
   }
   assertSurfaceHost(host);
+  const store = preferenceStore === null ? null : assertPreferenceStore(preferenceStore);
+  const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
 
   root.innerHTML = SHELL_MARKUP;
-  let state = createSurfaceState(host.getSnapshot());
+  let state = createSurfaceState(host.getSnapshot(), preferenceSeed);
 
   const workspace = root.querySelector("[data-workspace]");
   const launcher = root.querySelector("[data-launcher]");
@@ -254,6 +257,9 @@ export function mountSurface(root, host) {
     const next = reduceSurfaceState(state, action);
     if (next === state) return;
     state = next;
+    if (action?.type === "preference.set" && store) {
+      store.save(state.preferences);
+    }
     render();
   };
 

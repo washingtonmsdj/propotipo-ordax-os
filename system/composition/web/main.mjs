@@ -1,3 +1,4 @@
+import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 
@@ -7,7 +8,8 @@ if (!root) {
 }
 
 const host = createWebSurfaceHost(window);
-const surface = mountSurface(root, host);
+const preferenceStore = createWebPreferenceStore(window);
+const surface = mountSurface(root, host, preferenceStore);
 
 window.addEventListener(
   "pagehide",

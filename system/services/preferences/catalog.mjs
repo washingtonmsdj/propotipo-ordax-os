@@ -30,6 +30,22 @@ export function createPreferenceSnapshot(seed = {}) {
   return Object.freeze(snapshot);
 }
 
+export function recoverPreferenceSnapshot(seed = {}) {
+  const source = seed && typeof seed === "object" && !Array.isArray(seed) ? seed : {};
+  const snapshot = {};
+  for (const definition of DEFINITIONS) {
+    const candidate = Object.prototype.hasOwnProperty.call(source, definition.id)
+      ? source[definition.id]
+      : definition.defaultValue;
+    try {
+      snapshot[definition.id] = definition.validate(candidate);
+    } catch {
+      snapshot[definition.id] = definition.defaultValue;
+    }
+  }
+  return Object.freeze(snapshot);
+}
+
 export function setPreferenceValue(snapshot, preferenceId, value) {
   const definition = getPreferenceDefinition(preferenceId);
   if (!definition) return snapshot;

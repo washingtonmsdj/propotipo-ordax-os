@@ -1,7 +1,7 @@
 import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
 import { getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import {
-  createPreferenceSnapshot,
+  recoverPreferenceSnapshot,
   setPreferenceValue,
 } from "../../services/preferences/catalog.mjs";
 
@@ -50,7 +50,7 @@ export function createSurfaceState(snapshot, preferenceSeed = {}) {
     windows: [],
     activeWindowId: null,
     nextWindowOrdinal: 1,
-    preferences: createPreferenceSnapshot(preferenceSeed),
+    preferences: recoverPreferenceSnapshot(preferenceSeed),
   });
 }
 

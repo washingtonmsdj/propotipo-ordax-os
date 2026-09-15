@@ -15,14 +15,16 @@ APP_OWNERS = {
 }
 APPEARANCE = PREFERENCES / "appearance.mjs"
 PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
+PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "web"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
+WEB_PREFERENCE_ADAPTER = ROOT / "system" / "adapters" / "web" / "preferences.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
 
 class SurfaceUiContractTests(unittest.TestCase):
-    def test_visual_surface_app_and_preference_sources_exist(self):
+    def test_visual_surface_app_preference_and_store_sources_exist(self):
         for path in (
             SURFACE / "surface.mjs",
             SURFACE / "surface-state.mjs",
@@ -33,9 +35,11 @@ class SurfaceUiContractTests(unittest.TestCase):
             *APP_OWNERS.values(),
             APPEARANCE,
             PREFERENCE_CATALOG,
+            PREFERENCE_STORE_CONTRACT,
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
             WEB_ADAPTER,
+            WEB_PREFERENCE_ADAPTER,
             HOST_CONTRACT,
         ):
             self.assertTrue(path.is_file(), path)
@@ -48,6 +52,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertNotIn("navigator.", text, path)
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         self.assertIn("contracts/surface-host.mjs", surface)
+        self.assertIn("contracts/preference-store.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
 
@@ -82,6 +87,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('defaultValue: "dark"', appearance)
         self.assertIn('value: "light"', appearance)
         self.assertIn("createPreferenceSnapshot", preferences)
+        self.assertIn("recoverPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
@@ -91,6 +97,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             APP_OWNERS["settings"],
             SURFACE / "surface-state.mjs",
             SURFACE / "surface.mjs",
+            PREFERENCE_STORE_CONTRACT,
         ]
         for path in paths:
             text = path.read_text(encoding="utf-8")
@@ -104,6 +111,20 @@ class SurfaceUiContractTests(unittest.TestCase):
                 "adapters/native",
             ):
                 self.assertNotIn(forbidden, text, path)
+
+    def test_web_preference_adapter_owns_browser_storage(self):
+        adapter = WEB_PREFERENCE_ADAPTER.read_text(encoding="utf-8")
+        contract = PREFERENCE_STORE_CONTRACT.read_text(encoding="utf-8")
+        composition = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        self.assertIn("localStorage", adapter)
+        self.assertIn("contracts/preference-store.mjs", adapter)
+        self.assertIn('"ordax.preferences.v1"', adapter)
+        self.assertIn("ordax.preference-store/1", contract)
+        self.assertIn("createWebPreferenceStore", composition)
+        self.assertIn("mountSurface(root, host, preferenceStore)", composition)
+        self.assertIn("assertPreferenceStore", surface)
+        self.assertIn("store.save(state.preferences)", surface)
 
     def test_app_source_is_platform_neutral(self):
         for path in APPS.rglob("*.mjs"):
@@ -131,7 +152,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         ):
             self.assertIn(action, text)
         self.assertIn("isAppAvailable", text)
-        self.assertIn("createPreferenceSnapshot", text)
+        self.assertIn("recoverPreferenceSnapshot", text)
         self.assertIn("setPreferenceValue", text)
         self.assertNotIn("platform", text.lower())
         self.assertNotIn("navigator.", text)
@@ -141,6 +162,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         self.assertIn("../../surface/ui/surface.mjs", main)
         self.assertIn("../../adapters/web/runtime.mjs", main)
+        self.assertIn("../../adapters/web/preferences.mjs", main)
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertNotIn("<style", html.lower())
@@ -184,6 +206,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         workflow = WEB_WORKFLOW.read_text(encoding="utf-8")
         self.assertGreaterEqual(workflow.count("'system/apps/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/services/preferences/**'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'tests/test_surface_preferences.mjs'"), 2)
 
 
 if __name__ == "__main__":

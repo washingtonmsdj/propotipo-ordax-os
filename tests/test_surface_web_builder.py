@@ -28,7 +28,9 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/services/preferences/appearance.mjs",
             "system/services/preferences/catalog.mjs",
             "system/adapters/web/runtime.mjs",
+            "system/adapters/web/preferences.mjs",
             "system/contracts/surface-host.mjs",
+            "system/contracts/preference-store.mjs",
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
         ):

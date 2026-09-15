@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/preference-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/preferences/**'
@@ -13,10 +14,12 @@ on:
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
+      - 'tests/test_surface_preferences.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/preference-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/preferences/**'
@@ -25,6 +28,7 @@ on:
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
+      - 'tests/test_surface_preferences.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   workflow_dispatch:
 
@@ -49,6 +53,22 @@ jobs:
 
       - name: Validate shared Surface source graph
         run: python tools/surface-web/build.py check
+
+      - name: Validate zero-dependency ES modules and preference persistence
+        run: |
+          set -euo pipefail
+          node --version
+          find \
+            system/contracts \
+            system/services/preferences \
+            system/apps \
+            system/surface/ui \
+            system/adapters/web \
+            system/composition/web \
+            -type f -name '*.mjs' -print0 \
+            | sort -z \
+            | xargs -0 -n1 node --check
+          node --test tests/test_surface_preferences.mjs
 
       - name: Run Surface and Web bundle regressions
         run: |
