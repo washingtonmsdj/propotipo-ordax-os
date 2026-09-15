@@ -221,15 +221,16 @@ O clean-room ja possui receitas e provas para kernel, initramfs, rede minima, re
 
 O ambiente do kernel esta fechado por prova repetida: imagem OCI por digest, snapshot APT, pacotes fixados e os tres artefatos do kernel reproduziram hashes identicos em execucoes independentes. Esse fato nao autoriza por si so uso fisico.
 
-O Creator Windows ja mede a capacidade real do `PhysicalDrive`, inclui essa capacidade no token de confirmacao, verifica imagem RAW por tamanho/hash e possui uma autorizacao destrutiva calculada sobre alvo + imagem. O writer fisico Win32 continua propositalmente nao exposto.
+O Creator Windows ja mede a capacidade real do `PhysicalDrive`, inclui essa capacidade no token de confirmacao, verifica imagem RAW por tamanho/hash e possui uma autorizacao destrutiva calculada sobre alvo + imagem. O backend nativo Win32 de escrita RAW ja existe e e testado internamente, mas fica isolado pelo build tag `ordax_raw_backend`, fora do binario publico e sem rota `apply` exposta.
+
+A prova byte-completa com confianca efemera tambem passou: os 14 artefatos do bootstrap foram materializados em uma imagem GPT real de duas particoes (`ORDAX-ESP` FAT32 + `ORDAX` ext4), reabertos e verificados por hash. A chave privada efemera e a imagem RAW foram destruidas antes do upload; somente metadados de prova foram preservados em `docs/evidence/full-bootstrap-media-proof-95de305c.json`. Isso nao substitui confianca canonica e nao autoriza escrita fisica.
 
 Ainda permanecem abertos antes da escrita fisica e promocao:
 
 ```text
 canonical Ed25519 release trust ceremony/public anchor
-raw-disk physical writer implementation + tests
-executable destructive authorization at execution time
 byte-complete proof with canonical public trust
+public apply boundary bound to executable destructive authorization
 real notebook boot/network/release/recovery evidence
 graphical shared Surface and remaining product-mode continuity
 ```
