@@ -4,9 +4,9 @@ Este arquivo e a entrada obrigatoria para qualquer IA, agente, Codex ou pessoa q
 
 ## 1. Identidade do repositorio
 
-`prototipo-ordax-os` e uma **clean-room experimental**. Ele existe para provar uma arquitetura OrdaX OS simplificada sem contaminar nem depender estruturalmente de `washingtonmsdj/novo-ordax-os`.
+`prototipo-ordax-os` e uma **clean-room experimental**. Ele existe para provar uma arquitetura OrdaX OS simplificada sem depender estruturalmente de `washingtonmsdj/novo-ordax-os`.
 
-Nao trate este repositorio como sucessor oficial enquanto `docs/PROMOTION-GATES.md` nao estiver integralmente aprovado.
+Nao trate este repositorio como sucessor oficial enquanto `docs/PROMOTION-GATES.md` nao estiver aprovado.
 
 ## 2. Fonte de verdade
 
@@ -41,7 +41,7 @@ MAIN=ORDAX
 SEPARATE_HOME_PARTITION=NO
 ```
 
-Nao reintroduzir uma terceira particao HOME sem uma decisao arquitetural registrada em `docs/DECISIONS.md` com motivo e impacto.
+Nao reintroduzir uma terceira particao HOME sem uma decisao arquitetural registrada.
 
 ## 5. Um produto, tres modos
 
@@ -51,32 +51,32 @@ OrdaX Web
  -> OrdaX Native (SSD/HD)
 ```
 
-Web, USB e instalacao nativa sao modos de capacidade do mesmo produto, nao forks.
+Web, USB e instalacao nativa sao modos do mesmo produto, nao forks.
 
-A Surface, apps e logica compartilhada devem ter uma unica fonte em `system/`. Diferencas de ambiente vivem somente em adapters de capacidade.
-
-E proibido criar implementacoes visuais separadas para Web e dispositivo.
+Surface, apps e logica compartilhada possuem uma unica fonte em `system/`. Diferencas de ambiente vivem apenas em adapters de capacidade.
 
 ## 6. Pendrive inicial minimo
 
-O primeiro USB deve ser propositalmente pequeno. Ele existe somente para conseguir chegar com seguranca a uma release completa pela rede.
+O primeiro USB deve conter apenas o necessario para chegar a uma release confiavel pela rede:
 
 ```text
 UEFI
  -> bootloader
  -> kernel/initramfs
  -> bootstrap minimo
- -> rede
- -> identidade
- -> OrdaX Remote Core
- -> Control Plane/trust minimo
- -> aquisicao de release
+ -> rede minima
+ -> aquisicao de release via Git/GitHub
+ -> verificacao
  -> recovery
 ```
 
-Nao colocar no primeiro pendrive, por conveniencia, aquilo que pode chegar depois por release:
+Nao sao obrigatorios antes da primeira release:
 
-- Surface/desktop completo;
+- SSH;
+- OrdaX Remote Core;
+- Control Plane;
+- servico de identidade persistente;
+- Surface/desktop;
 - apps normais;
 - servicos de alto nivel;
 - checkout completo do source;
@@ -84,9 +84,26 @@ Nao colocar no primeiro pendrive, por conveniencia, aquilo que pode chegar depoi
 - WSL/QEMU;
 - dump do repositorio antigo.
 
-Depois do primeiro boot, a release completa deve ser adquirida, verificada e materializada em `/ordax/releases/<commit>`. Depois de uma release conhecida ser ativada, ela deve continuar disponivel para boot offline e rollback.
+Depois do primeiro boot, a release completa deve ser adquirida, verificada e materializada em `/ordax/releases/<commit>`. Uma release conhecida deve permanecer local para boot offline e rollback.
 
-## 7. Independencia do host
+## 7. Desenvolvimento diario
+
+Fluxo normal:
+
+```text
+editar source
+ -> preview Web/HMR quando aplicavel
+ -> testar
+ -> commit/push em main
+ -> Web recebe o mesmo commit
+ -> OrdaX detecta/puxa release ou delta
+ -> verifica
+ -> ativa
+```
+
+Nao exigir SSH, shell remoto, Remote Core ou Control Plane para esse fluxo.
+
+## 8. Independencia do host
 
 A arquitetura nao pode exigir como dependencia obrigatoria:
 
@@ -94,90 +111,69 @@ A arquitetura nao pode exigir como dependencia obrigatoria:
 - QEMU;
 - PowerShell;
 - Bash;
-- uma distribuicao Linux especifica;
-- um sistema desktop especifico;
-- um executavel SSH externo.
+- distribuicao Linux especifica;
+- sistema desktop especifico;
+- executavel SSH externo.
 
-Quando Windows/Linux/macOS exigirem APIs diferentes para disco, elevacao ou integracao, usar adapters finos sob um core compartilhado. Politica, formato, hashes, layout e comportamento nao podem divergir por host.
+Quando Windows/Linux/macOS exigirem APIs diferentes para disco/elevacao, usar adapters finos sob um core compartilhado. Politica, formato, hashes, layout e comportamento nao podem divergir por host.
 
-QEMU pode ser usado opcionalmente para testes, nunca como dependencia do produto ou source authority.
+## 9. Remote/Control opcional
 
-## 8. Remote/Control Core
+Remote Core e Control Plane sao capacidades futuras opcionais.
 
-O acesso remoto principal deve ser OrdaX-owned e estruturado.
+Nao implementar ou colocar no bootstrap por antecipacao. So adicionar quando existir requisito concreto de diagnostico remoto, gerenciamento, suporte ou recovery.
 
-- nao depender de `ssh.exe` como produto;
-- nao usar shell remoto irrestrito como caminho principal;
-- preferir RPC de capacidades, streaming de logs/eventos, transferencia de delta e operacoes de release;
-- usar transporte seguro e criptografia padrao/auditada;
-- nunca criar cifra, troca de chaves ou assinatura criptografica caseira;
-- chaves privadas permanecem locais e nunca entram no Git.
+Se forem implementados, devem usar transporte/criptografia padrao e auditado. Criptografia customizada e proibida.
 
-SSH pode existir temporariamente somente como break-glass durante a migracao ate o Remote Core provar recuperacao equivalente em hardware real.
+## 10. Reuso do repositorio antigo
 
-## 9. Reuso do repositorio antigo
-
-`novo-ordax-os` e uma referencia, nao uma dependencia automatica.
+`novo-ordax-os` e referencia, nao dependencia automatica.
 
 Para portar qualquer componente antigo, registrar em `docs/SOURCE-MIGRATION.md`:
 
 - origem exata;
-- commit/SHA de origem;
+- commit/SHA;
 - responsabilidade;
 - por que ainda e necessario;
 - dependencias;
-- testes executados;
+- testes;
 - decisao: ADOPTED / REIMPLEMENTED / REJECTED.
 
-Nao copiar pastas inteiras, history, tmp, backups, scripts de diagnostico antigos ou contratos obsoletos.
+Nao copiar pastas inteiras, history, tmp, backups, scripts antigos, stack SSH/QEMU/F7 ou contratos obsoletos.
 
-## 10. Seguranca
+## 11. Seguranca
 
 - Nunca versionar private keys, tokens, secrets ou credenciais.
-- Identidade, integridade e autorizacao falham fechado.
-- Multiplas autorizacoes publicas de operador/dispositivo podem coexistir.
+- Integridade, autorizacao e selecao de alvo falham fechado.
 - Operacao destrutiva de disco exige identificacao inequivoca do alvo, dry-run e evidencia.
 - Criptografia customizada e proibida.
 
-## 11. Trabalho fisico
+## 12. Trabalho fisico
 
 Antes de formatar ou escrever em pendrive/notebook:
 
 1. confirmar dispositivo por identidade/capacidade/serial quando disponivel;
 2. confirmar que o source da operacao esta na `main`;
 3. executar dry-run ou teste descartavel quando aplicavel;
-4. registrar o payload minimo exato que sera gravado;
+4. registrar o payload minimo exato;
 5. registrar o que sera apagado/criado;
 6. somente depois aplicar;
 7. verificar leitura/hashes/layout depois da escrita.
 
-Nunca corrigir um layout antigo por impulso se a arquitetura alvo exige reprovisionamento limpo.
-
-## 12. Desenvolvimento diario esperado
-
-```text
-editar source
- -> testar afetado
- -> preview Web/HMR quando aplicavel
- -> commit em main
- -> materializar/sincronizar delta no target
- -> reiniciar somente o owner afetado
- -> health/readiness
- -> evidencia
-```
-
-Nao reconstruir imagem completa, reflashear pendrive ou reiniciar notebook por padrao quando uma atualizacao incremental for suficiente.
-
 ## 13. Qualidade
 
-- Preferir SSOT unico por responsabilidade.
-- Sem bridges permanentes, aliases silenciosos ou compatibilidade legada sem owner.
-- Testes devem cobrir contratos criticos, nao apenas happy path.
-- Documentacao canonica deve ser atualizada junto com mudancas arquiteturais.
+- SSOT unico por responsabilidade.
+- Sem bridges permanentes ou compatibilidade legada sem owner.
+- Testes cobrem contratos criticos.
+- Documentacao canonica muda junto com arquitetura.
 - Platform adapters nao podem duplicar regras de produto.
 
 ## 14. Estado atual
 
-O repositorio esta em fase de fundacao arquitetural e migracao seletiva. Kernel/initramfs ainda nao foram implementados no clean-room. O antigo initramfs nao deve ser copiado porque carrega responsabilidades do layout antigo.
+Kernel/initramfs e provisioning ainda nao foram implementados no clean-room. O primeiro objetivo e provar o menor caminho possivel:
 
-O proximo trabalho seguro e construir contratos e implementacoes minimas novas, validando cada responsabilidade sem importar lixo ou legados do repositorio anterior.
+```text
+boot -> rede -> adquirir release do Git/GitHub -> verificar -> ativar -> boot offline posterior
+```
+
+Todo componente extra deve justificar sua existencia antes de entrar no bootstrap.
