@@ -1,0 +1,30 @@
+{
+  "$schema": "prototype-ordax.account-runtime-consistency-evidence/1",
+  "status": "pass",
+  "source_commit": "85c4e26650503c9ad084622f3743889296491577",
+  "web_candidate": {
+    "workflow_run_id": 35011120650,
+    "artifact_id": 10413019999,
+    "artifact_name": "ordax-web-client-85c4e26650503c9ad084622f3743889296491577",
+    "artifact_sha256": "93b049adf08353136d6856d729c7a3b888cc203734b91838009bf969fb116d0f"
+  },
+  "gates": {
+    "foundation": "PASS",
+    "web_client": "PASS",
+    "account_runtime_tests": "PASS",
+    "deterministic_web_bundle": "PASS"
+  },
+  "runtime_invariants": {
+    "sync_requires_account_identity_capability": true,
+    "unavailable_session_cannot_advertise_account_identity": true,
+    "available_session_requires_account_identity_capability": true,
+    "web_current_session_state": "unavailable",
+    "provider_specific_authentication": "NO",
+    "real_sign_in_flow": "NO"
+  },
+  "safety": {
+    "canonical_release_trust_resolved": false,
+    "physical_write_authorized": false,
+    "public_creator_apply_available": false
+  }
+}
