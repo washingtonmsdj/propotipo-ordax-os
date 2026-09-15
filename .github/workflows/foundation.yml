@@ -32,6 +32,9 @@ jobs:
           python bootstrap/network/build.py check
           python boot/esp/build.py check
 
+      - name: Validate native graphics kernel prerequisites
+        run: python tools/verify/native_graphics_prereqs.py
+
       - name: Validate module import boundaries
         run: python tools/verify/module_boundaries.py
 
