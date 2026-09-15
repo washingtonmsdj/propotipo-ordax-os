@@ -33,12 +33,15 @@ Construir uma base minima, reproduzivel e Git-first que consiga:
 Leia, nesta ordem:
 
 1. `AGENTS.md`
-2. `docs/ARCHITECTURE.md`
-3. `docs/PHYSICAL-MEDIA.md`
-4. `docs/DEVELOPMENT-WORKFLOW.md`
-5. `docs/SOURCE-MIGRATION.md`
-6. `docs/PROMOTION-GATES.md`
-7. `docs/DECISIONS.md`
+2. `docs/CURRENT-STATE.md`
+3. `docs/ARCHITECTURE.md`
+4. `docs/PHYSICAL-MEDIA.md`
+5. `docs/DEVELOPMENT-WORKFLOW.md`
+6. `docs/SOURCE-MIGRATION.md`
+7. `docs/PROMOTION-GATES.md`
+8. `docs/DECISIONS.md`
+
+`CURRENT-STATE.md` e o snapshot de handoff. Os demais documentos definem os contratos duraveis e vencem em caso de conflito.
 
 ## Estrutura alvo
 
