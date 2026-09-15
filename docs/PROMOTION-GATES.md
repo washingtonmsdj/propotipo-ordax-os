@@ -11,6 +11,7 @@ Required:
 ```text
 AGENTS_CONTRACT=PASS
 ARCHITECTURE_CONTRACT=PASS
+BUILD_AUTONOMY_CONTRACT=PASS
 PRODUCT_MODES_CONTRACT=PASS
 MINIMAL_USB_CONTRACT=PASS
 HOST_INDEPENDENCE_CONTRACT=PASS
@@ -21,7 +22,31 @@ MIGRATION_LEDGER=PASS
 
 Remote-control documentation may exist, but remote control is not a promotion prerequisite unless a later ADR makes it a supported product requirement.
 
-## Gate 1 - Reproducible minimal bootstrap source
+## Gate 1 - Autonomous reproducible build foundation
+
+Required:
+
+- Codex is not required to build, test or publish any canonical artifact;
+- no developer-local kernel toolchain is required;
+- build entrypoints live in repository source;
+- build environment/toolchain identity is pinned;
+- upstream sources are checksum-verified;
+- boot-critical artifacts produce provenance + SHA-256;
+- GitHub Actions may execute builds, but recipes remain portable to another compatible executor.
+
+```text
+CODEX_REQUIRED=NO
+LOCAL_DEVELOPER_TOOLCHAIN_REQUIRED=NO
+MANUAL_KERNEL_BUILD_REQUIRED=NO
+REPOSITORY_BUILD_RECIPE=PASS
+PINNED_BUILD_ENVIRONMENT=PASS
+UPSTREAM_SOURCE_HASH_VERIFY=PASS
+ARTIFACT_PROVENANCE=PASS
+ARTIFACT_SHA256=PASS
+PORTABLE_BUILD_ENTRYPOINT=PASS
+```
+
+## Gate 2 - Reproducible minimal bootstrap source
 
 Required:
 
@@ -53,7 +78,7 @@ WSL_REQUIRED=NO
 QEMU_REQUIRED=NO
 ```
 
-## Gate 2 - Two-partition provisioning in disposable media
+## Gate 3 - Two-partition provisioning in disposable media
 
 Required:
 
@@ -66,7 +91,7 @@ PROVISION_VERIFY=PASS
 
 Provisioning must start from a blank/disposable representation, select targets safely and not require a particular emulator.
 
-## Gate 3 - Boot artifact and bootstrap proof
+## Gate 4 - Boot artifact and bootstrap proof
 
 Required:
 
@@ -83,7 +108,7 @@ REMOTE_CONTROL_DEPENDENCY=NO
 
 The bootstrap must be able to reach release acquisition without a full system preseed.
 
-## Gate 4 - OrdaX Creator host independence
+## Gate 5 - OrdaX Creator host independence
 
 Required:
 
@@ -96,9 +121,9 @@ CREATOR_VERIFY=PASS
 CREATOR_MINIMAL_PAYLOAD_ONLY=PASS
 ```
 
-Host-specific code may only integrate raw-device/elevation APIs; layout, artifact and verification policy remain shared.
+Host-specific code may only integrate raw-device/elevation APIs; layout, artifact and verification policy remain shared. Creator consumes prebuilt verified artifacts; it does not compile the OS for the end user.
 
-## Gate 5 - Physical USB reprovisioning
+## Gate 6 - Physical USB reprovisioning
 
 This gate is destructive and requires explicit authorization at execution time.
 
@@ -122,7 +147,7 @@ PHYSICAL_PAYLOAD_MATCHES_MANIFEST=PASS
 UNAPPROVED_FULL_SYSTEM_PRESEED=NO
 ```
 
-## Gate 6 - Physical notebook minimal bootstrap
+## Gate 7 - Physical notebook minimal bootstrap
 
 Required:
 
@@ -136,7 +161,7 @@ REMOTE_CORE_REQUIRED=NO
 CONTROL_PLANE_REQUIRED=NO
 ```
 
-## Gate 7 - First network release acquisition and activation
+## Gate 8 - First network release acquisition and activation
 
 Required:
 
@@ -152,7 +177,7 @@ ROLLBACK=PASS
 
 A release must be tied to an exact source commit and verified before activation.
 
-## Gate 8 - Single-source Surface across Web and native
+## Gate 9 - Single-source Surface across Web and native
 
 Required:
 
@@ -165,7 +190,7 @@ SAME_COMMIT_VISUAL_CHANGE=PASS
 CAPABILITY_ADAPTER_BOUNDARY=PASS
 ```
 
-## Gate 9 - Git-driven live incremental development
+## Gate 10 - Git-driven live incremental development
 
 With the normal user-facing system running:
 
@@ -174,6 +199,7 @@ EDIT_SOURCE=PASS
 AFFECTED_TEST=PASS
 WEB_PREVIEW=PASS
 GIT_PUSH=PASS
+CI_AFFECTED_ARTIFACT_BUILD=PASS
 DEVICE_RELEASE_OR_DELTA_UPDATE=PASS
 HEALTH_READINESS=PASS
 FULL_IMAGE_REBUILD_REQUIRED=NO
@@ -181,9 +207,10 @@ USB_REFLASH_REQUIRED=NO
 ROUTINE_REBOOT_REQUIRED=NO
 SSH_REQUIRED=NO
 REMOTE_CONTROL_REQUIRED=NO
+CODEX_REQUIRED=NO
 ```
 
-## Gate 10 - User continuity Web -> USB -> native disk
+## Gate 11 - User continuity Web -> USB -> native disk
 
 Required:
 
@@ -196,7 +223,7 @@ DEVICE_SECRETS_STAY_LOCAL=PASS
 
 `NATIVE_DISK_INSTALL=PASS` is required before native-disk installation is declared production-supported.
 
-## Gate 11 - Recovery after failure
+## Gate 12 - Recovery after failure
 
 Simulate at least:
 
@@ -223,4 +250,4 @@ Only if Remote Core or another remote-management feature is later adopted as a s
 
 ## Promotion decision
 
-Only after the applicable Gates 0-11 pass may the repository be declared a successor candidate.
+Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate.
