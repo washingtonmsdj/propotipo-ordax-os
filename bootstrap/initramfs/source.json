@@ -1,0 +1,23 @@
+{
+  "$schema": "prototype-ordax.initramfs-source/1",
+  "busybox": {
+    "version": "1.38.0",
+    "archive_url": "https://busybox.net/downloads/busybox-1.38.0.tar.bz2",
+    "signature_url": "https://busybox.net/downloads/busybox-1.38.0.tar.bz2.sig",
+    "archive_sha256": "34f9ea6ff8636f2c9241153b9114eefa9e65674a45318ae1ef95bb5f31c53bb2"
+  },
+  "root_init": "bootstrap/initramfs/root/init",
+  "main_partition_label": "ORDAX",
+  "bootstrap_entrypoint": "/ordax/bootstrap/entrypoint",
+  "legacy_archive_imported": false,
+  "network_inside_fixed_initramfs": false,
+  "ssh_inside_fixed_initramfs": false,
+  "control_plane_inside_fixed_initramfs": false,
+  "build": {
+    "canonical_entrypoint": "bootstrap/initramfs/build.py",
+    "static_userspace": "busybox-musl",
+    "deterministic_cpio": "newc",
+    "compression": "gzip-mtime-zero",
+    "physical_artifact_authorized": false
+  }
+}

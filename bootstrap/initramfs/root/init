@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+rescue() {
+    echo "ordax-initramfs: entering local recovery shell: $*" >&2
+    exec sh
+}
+
+mkdir -p /proc /sys /dev /run /ordax
+mount -t proc proc /proc || rescue "cannot mount /proc"
+mount -t sysfs sysfs /sys || rescue "cannot mount /sys"
+mount -t devtmpfs devtmpfs /dev || rescue "cannot mount /dev"
+
+ORDAX_DEVICE="$(findfs LABEL=ORDAX 2>/dev/null || true)"
+[ -n "$ORDAX_DEVICE" ] || rescue "ORDAX partition not found"
+mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
+
+[ -x /ordax/bootstrap/entrypoint ] || rescue "bootstrap entrypoint is missing"
+exec /ordax/bootstrap/entrypoint
