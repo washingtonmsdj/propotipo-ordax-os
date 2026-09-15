@@ -25,7 +25,6 @@ jobs:
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
       trust_sha256: ${{ steps.gate.outputs.trust_sha256 }}
-      trust_base64: ${{ steps.gate.outputs.trust_base64 }}
       app_version: ${{ steps.gate.outputs.app_version }}
       app_sequence: ${{ steps.gate.outputs.app_sequence }}
     steps:
@@ -41,28 +40,11 @@ jobs:
           set -euo pipefail
           ready=false
           trust_sha=''
-          trust_b64=''
-          app_version=''
-          app_sequence=''
-          if [ -f bootstrap/trust/release-ed25519.json ]; then
-            readarray -t app_values < <(python - <<'PY'
-          import base64, json, pathlib, re
-          trust = json.loads(pathlib.Path('bootstrap/trust/release-ed25519.json').read_text(encoding='utf-8'))
-          policy = json.loads(pathlib.Path('docs/contracts/release-trust-policy.json').read_text(encoding='utf-8'))
+          readarray -t app_values < <(python - <<'PY'
+          import json, pathlib, re
           app = json.loads(pathlib.Path('docs/contracts/creator-app-channel.json').read_text(encoding='utf-8'))
           component = json.loads(pathlib.Path('docs/contracts/creator-component-channel.json').read_text(encoding='utf-8'))
           code_signing = json.loads(pathlib.Path('docs/contracts/creator-code-signing.json').read_text(encoding='utf-8'))
-
-          assert trust['$schema'] == 'prototype-ordax.release-trust/1'
-          assert trust['key_id'] == policy['canonical_key_id'] == 'ordax-prototype-release-v1'
-          assert len(base64.b64decode(trust['public_key_base64'], validate=True)) == 32
-          assert policy['consumer_creator']['generates_publisher_private_keys'] is False
-          assert policy['consumer_creator']['stores_publisher_private_keys'] is False
-          assert policy['consumer_creator']['requests_private_key_backup_from_end_user'] is False
-          assert policy['private_key']['end_user_must_never_receive_or_manage_private_key'] is True
-          assert policy['gates']['key_material_generated'] is True
-          assert policy['gates']['public_anchor_pinned'] is True
-
           assert app['$schema'] == 'prototype-ordax.creator-app-channel/1'
           assert app['purpose'] == 'creator-app-windows-amd64'
           assert app['release_tag'] == 'creator-app'
@@ -118,16 +100,30 @@ jobs:
           print(app['version'])
           print(app['release_sequence'])
           PY
-            )
-            app_version="${app_values[0]}"
-            app_sequence="${app_values[1]}"
+          )
+          app_version="${app_values[0]}"
+          app_sequence="${app_values[1]}"
+
+          if [ -f bootstrap/trust/release-ed25519.json ]; then
+            python - <<'PY'
+          import base64, json, pathlib
+          trust = json.loads(pathlib.Path('bootstrap/trust/release-ed25519.json').read_text(encoding='utf-8'))
+          policy = json.loads(pathlib.Path('docs/contracts/release-trust-policy.json').read_text(encoding='utf-8'))
+          assert trust['$schema'] == 'prototype-ordax.release-trust/1'
+          assert trust['key_id'] == policy['canonical_key_id'] == 'ordax-prototype-release-v1'
+          assert len(base64.b64decode(trust['public_key_base64'], validate=True)) == 32
+          assert policy['consumer_creator']['generates_publisher_private_keys'] is False
+          assert policy['consumer_creator']['stores_publisher_private_keys'] is False
+          assert policy['consumer_creator']['requests_private_key_backup_from_end_user'] is False
+          assert policy['private_key']['end_user_must_never_receive_or_manage_private_key'] is True
+          assert policy['gates']['key_material_generated'] is True
+          assert policy['gates']['public_anchor_pinned'] is True
+          PY
             ready=true
             trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
-            trust_b64="$(base64 -w0 bootstrap/trust/release-ed25519.json)"
           fi
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
           echo "trust_sha256=$trust_sha" >> "$GITHUB_OUTPUT"
-          echo "trust_base64=$trust_b64" >> "$GITHUB_OUTPUT"
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
           echo "app_sequence=$app_sequence" >> "$GITHUB_OUTPUT"
           if [ "$ready" = true ]; then
@@ -136,6 +132,57 @@ jobs:
             echo 'CREATOR_OFFICIAL_TRUST_GATE=BLOCKED'
             echo 'CREATOR_OFFICIAL_BINARY_BUILT=NO'
           fi
+
+  handoff-regression:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Exercise exact publisher handoff recipe with disposable public trust
+        shell: pwsh
+        run: |
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = 'Stop'
+          $app = Get-Content -LiteralPath docs/contracts/creator-app-channel.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $trustPath = Join-Path $env:RUNNER_TEMP 'creator-ci-disposable-trust.json'
+          $trust = [ordered]@{
+            '$schema' = 'prototype-ordax.release-trust/1'
+            key_id = 'ordax-prototype-release-v1'
+            public_key_base64 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+          }
+          $utf8 = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText($trustPath, (($trust | ConvertTo-Json -Depth 5) + "`n"), $utf8)
+          $out = Join-Path $PWD 'out/creator-publisher-handoff-regression'
+          & tools/creator/windows/Build-OrdaXCreatorPublisherHandoff.ps1 `
+            -TrustPath $trustPath `
+            -SourceCommit '${{ github.sha }}' `
+            -AppVersion ([string]$app.version) `
+            -AppReleaseSequence ([int64]$app.release_sequence) `
+            -TrustClass 'ci-disposable' `
+            -OutputDirectory $out | Out-Host
+          $provenance = Get-Content -LiteralPath (Join-Path $out 'provenance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($provenance.trust_class -ne 'ci-disposable') { throw 'handoff regression did not record disposable trust class' }
+          if ($null -ne $provenance.canonical_trust_sha256) { throw 'disposable handoff incorrectly claimed canonical trust' }
+          if ($provenance.publishable_to_end_users -ne $false -or $provenance.authenticode_signed -ne $false) { throw 'disposable handoff became publishable' }
+          if (Test-Path -LiteralPath (Join-Path $out 'creator-app-manifest.json')) { throw 'disposable handoff created app manifest before Authenticode' }
+          if (Test-Path -LiteralPath (Join-Path $out 'creator-app-envelope.json')) { throw 'disposable handoff created Ed25519 envelope' }
+          if (Get-ChildItem -LiteralPath $out -Recurse -File | Where-Object { $_.Extension -in @('.pem', '.key', '.p12', '.pfx', '.dpapi') }) { throw 'secret-looking file entered disposable handoff' }
+          Remove-Item -LiteralPath $trustPath -Force
+          Write-Host 'CREATOR_HANDOFF_SHARED_RECIPE=PASS'
+          Write-Host 'CREATOR_HANDOFF_CANONICAL_TRUST=NO'
+          Write-Host 'CREATOR_HANDOFF_PUBLISHABLE=NO'
+          Write-Host 'CREATOR_HANDOFF_PRIVATE_KEY=NO'
 
   build-windows-candidate:
     needs: trust-gate
@@ -155,163 +202,31 @@ jobs:
           check-latest: false
           cache: false
 
-      - name: Test Creator update and publisher tooling before official build
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          Push-Location tools/creator
-          try {
-            go test -count=1 ./...
-            go test -count=1 ./host/windows
-          } finally {
-            Pop-Location
-          }
-          Push-Location tools/release-signing
-          try {
-            go test -count=1 ./cmd/ordax-creator-app-signing ./cmd/ordax-creator-app-manifest
-          } finally {
-            Pop-Location
-          }
-
-      - name: Build stable launcher versioned app and publisher tools
+      - name: Build canonical publisher handoff with shared recipe
         shell: pwsh
         env:
-          TRUST_SHA256: ${{ needs.trust-gate.outputs.trust_sha256 }}
-          TRUST_BASE64: ${{ needs.trust-gate.outputs.trust_base64 }}
+          EXPECTED_TRUST_SHA256: ${{ needs.trust-gate.outputs.trust_sha256 }}
           APP_VERSION: ${{ needs.trust-gate.outputs.app_version }}
           APP_SEQUENCE: ${{ needs.trust-gate.outputs.app_sequence }}
         run: |
           Set-StrictMode -Version Latest
           $ErrorActionPreference = 'Stop'
-          if ($env:TRUST_SHA256 -notmatch '^[0-9a-f]{64}$') { throw 'canonical trust SHA missing or invalid' }
-          if ([string]::IsNullOrWhiteSpace($env:TRUST_BASE64)) { throw 'canonical public trust bytes missing' }
-          if ([string]::IsNullOrWhiteSpace($env:APP_VERSION)) { throw 'Creator app version is missing' }
-          if ([int64]$env:APP_SEQUENCE -le 0) { throw 'Creator app release sequence is invalid' }
-
           $out = Join-Path $PWD 'out/creator-official-candidate'
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Push-Location tools/creator
-          try {
-            $launcherLd = "-s -w -H=windowsgui -X main.buildCanonicalTrustBase64=$env:TRUST_BASE64 -X main.buildCanonicalTrustSHA256=$env:TRUST_SHA256"
-            go build -trimpath -buildvcs=false -ldflags=$launcherLd `
-              -o ../../out/creator-official-candidate/OrdaX-Creator.exe `
-              ./cmd/ordax-creator-launcher
-
-            $appLd = "-s -w -H=windowsgui -X main.buildPhysicalTrustBase64=$env:TRUST_BASE64 -X main.buildPhysicalTrustSHA256=$env:TRUST_SHA256"
-            go build -trimpath -buildvcs=false -ldflags=$appLd `
-              -o ../../out/creator-official-candidate/OrdaX-Creator-App.exe `
-              ./cmd/ordax-creator-app
-          } finally {
-            Pop-Location
-          }
-          Push-Location tools/release-signing
-          try {
-            go build -trimpath -buildvcs=false -ldflags='-s -w' `
-              -o ../../out/creator-official-candidate/ordax-creator-app-signing.exe `
-              ./cmd/ordax-creator-app-signing
-            go build -trimpath -buildvcs=false -ldflags='-s -w' `
-              -o ../../out/creator-official-candidate/ordax-creator-app-manifest.exe `
-              ./cmd/ordax-creator-app-manifest
-          } finally {
-            Pop-Location
-          }
-
-          foreach ($name in @('OrdaX-Creator.exe', 'OrdaX-Creator-App.exe')) {
-            $exe = Join-Path $out $name
-            if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "$name missing from official Creator handoff" }
-            $signature = Get-AuthenticodeSignature -LiteralPath $exe
-            if ([string]$signature.Status -eq 'Valid' -or $null -ne $signature.SignerCertificate) {
-              throw "$name unexpectedly contains an Authenticode signer before publisher handoff"
-            }
-          }
-
-          Copy-Item -LiteralPath docs/contracts/creator-code-signing.json -Destination (Join-Path $out 'creator-code-signing.json')
-          Copy-Item -LiteralPath docs/contracts/creator-app-channel.json -Destination (Join-Path $out 'creator-app-channel.json')
-          Copy-Item -LiteralPath docs/contracts/creator-component-channel.json -Destination (Join-Path $out 'creator-component-channel.json')
-          Copy-Item -LiteralPath bootstrap/trust/release-ed25519.json -Destination (Join-Path $out 'release-ed25519.json')
-          Copy-Item -LiteralPath tools/creator/windows/Verify-OrdaXCreatorSignature.ps1 -Destination (Join-Path $out 'Verify-OrdaXCreatorSignature.ps1')
-          Copy-Item -LiteralPath tools/creator/windows/Finalize-OrdaXCreatorRelease.ps1 -Destination (Join-Path $out 'Finalize-OrdaXCreatorRelease.ps1')
-
-          $names = @(
-            'OrdaX-Creator.exe',
-            'OrdaX-Creator-App.exe',
-            'ordax-creator-app-signing.exe',
-            'ordax-creator-app-manifest.exe',
-            'Verify-OrdaXCreatorSignature.ps1',
-            'Finalize-OrdaXCreatorRelease.ps1',
-            'release-ed25519.json',
-            'creator-code-signing.json',
-            'creator-app-channel.json',
-            'creator-component-channel.json'
-          )
-          $preSigning = foreach ($name in $names) {
-            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out $name)).Hash.ToLowerInvariant()
-            "$sha  $name"
-          }
-          $preSigning | Set-Content -Encoding ascii (Join-Path $out 'PRE-SIGNING-SHA256SUMS')
-
-          $launcherSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out 'OrdaX-Creator.exe')).Hash.ToLowerInvariant()
-          $appSha = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $out 'OrdaX-Creator-App.exe')).Hash.ToLowerInvariant()
-          $provenance = [ordered]@{
-            '$schema' = 'prototype-ordax.creator-official-candidate/2'
-            source_commit = '${{ github.sha }}'
-            app_version = $env:APP_VERSION
-            app_release_sequence = [int64]$env:APP_SEQUENCE
-            canonical_trust_sha256 = $env:TRUST_SHA256
-            launcher = [ordered]@{
-              name = 'OrdaX-Creator.exe'
-              role = 'stable-signed-app-loader'
-              pre_signing_sha256 = $launcherSha
-            }
-            app = [ordered]@{
-              name = 'OrdaX-Creator-App.exe'
-              role = 'versioned-signed-creator-gui'
-              pre_signing_sha256 = $appSha
-              manifest_generated = $false
-              ed25519_envelope_generated = $false
-            }
-            publisher_handoff_tools = @('Verify-OrdaXCreatorSignature.ps1', 'Finalize-OrdaXCreatorRelease.ps1', 'ordax-creator-app-manifest.exe', 'ordax-creator-app-signing.exe')
-            creator_component_channel = 'signed-ed25519-only'
-            development_component_channel_allowed = $false
-            private_key_embedded = $false
-            publisher_key_generation_available = $false
-            authenticode_signed = $false
-            app_manifest_may_be_generated_before_authenticode_verification = $false
-            publishable_to_end_users = $false
-            required_order = @('authenticode-sign-launcher-and-app', 'verify-authenticode-launcher-and-app', 'generate-app-manifest-from-signed-app-bytes', 'sign-app-manifest-ed25519', 'publish-public-assets')
-            remaining_release_gate = 'real Authenticode publisher identity and timestamp, post-sign verification, Ed25519 app envelope, and explicit official publication'
-          }
-          $utf8 = [Text.UTF8Encoding]::new($false)
-          [IO.File]::WriteAllText((Join-Path $out 'provenance.json'), (($provenance | ConvertTo-Json -Depth 10) + "`n"), $utf8)
-          Write-Host 'CREATOR_OFFICIAL_LAUNCHER_BUILT=YES'
-          Write-Host 'CREATOR_OFFICIAL_VERSIONED_APP_BUILT=YES'
-          Write-Host 'CREATOR_PUBLISHER_FINALIZER_INCLUDED=YES'
+          & tools/creator/windows/Build-OrdaXCreatorPublisherHandoff.ps1 `
+            -TrustPath bootstrap/trust/release-ed25519.json `
+            -SourceCommit '${{ github.sha }}' `
+            -AppVersion $env:APP_VERSION `
+            -AppReleaseSequence ([int64]$env:APP_SEQUENCE) `
+            -TrustClass 'canonical' `
+            -OutputDirectory $out | Out-Host
+          $provenance = Get-Content -LiteralPath (Join-Path $out 'provenance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($provenance.trust_class -ne 'canonical') { throw 'canonical handoff did not record canonical trust class' }
+          if ([string]$provenance.canonical_trust_sha256 -cne $env:EXPECTED_TRUST_SHA256) { throw 'canonical handoff trust SHA differs from trust gate' }
+          if ([string]$provenance.trust_sha256 -cne $env:EXPECTED_TRUST_SHA256) { throw 'canonical handoff embedded trust SHA differs from trust gate' }
+          if ($provenance.publishable_to_end_users -ne $false -or $provenance.authenticode_signed -ne $false) { throw 'unsigned canonical handoff became publishable' }
+          Write-Host 'CREATOR_OFFICIAL_SHARED_HANDOFF_RECIPE=PASS'
           Write-Host 'CREATOR_OFFICIAL_AUTHENTICODE_SIGNED=NO'
-          Write-Host 'CREATOR_APP_MANIFEST_GENERATED=NO'
-          Write-Host 'CREATOR_APP_ED25519_ENVELOPE_GENERATED=NO'
           Write-Host 'CREATOR_OFFICIAL_PUBLISHABLE=NO'
-
-      - name: Prove no private signing material or premature release output entered handoff
-        shell: pwsh
-        run: |
-          Set-StrictMode -Version Latest
-          $ErrorActionPreference = 'Stop'
-          $out = Join-Path $PWD 'out/creator-official-candidate'
-          $forbidden = @(Get-ChildItem -LiteralPath $out -Recurse -File | Where-Object {
-            $_.Extension -in @('.pem', '.key', '.p12', '.pfx', '.dpapi')
-          })
-          if ($forbidden.Count -ne 0) { throw 'private signing material entered official Creator handoff' }
-          if (Get-ChildItem -LiteralPath $out -Recurse -File | Select-String -SimpleMatch 'PRIVATE KEY' -Quiet) {
-            throw 'private-key marker entered official Creator handoff'
-          }
-          if (Test-Path -LiteralPath (Join-Path $out 'creator-app-manifest.json')) { throw 'app manifest was generated before Authenticode verification' }
-          if (Test-Path -LiteralPath (Join-Path $out 'creator-app-envelope.json')) { throw 'Ed25519 envelope was generated inside CI before publisher signing' }
-          if (Test-Path -LiteralPath (Join-Path $out 'final-release')) { throw 'final public release directory appeared inside unsigned CI handoff' }
-          Write-Host 'CREATOR_OFFICIAL_PRIVATE_KEY_MATERIAL=ABSENT'
-          Write-Host 'CREATOR_PREMATURE_APP_MANIFEST=ABSENT'
-          Write-Host 'CREATOR_PREMATURE_ED25519_ENVELOPE=ABSENT'
-          Write-Host 'CREATOR_PREMATURE_PUBLIC_RELEASE=ABSENT'
 
       - name: Upload non-publishable official launcher and app for publisher signing
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
