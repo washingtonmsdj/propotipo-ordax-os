@@ -1,12 +1,13 @@
 {
   "$schema": "prototype-ordax.creator-consumer-flow/1",
-  "status": "implemented-gated-physical-release-pending",
+  "status": "implemented-gated-signed-physical-release-pending",
   "audience": "end-user",
   "principle": "the consumer Creator behaves like a USB creation utility; publisher trust and signing custody are never user tasks",
   "normal_flow": [
     "launch_creator",
     "automatic_component_update",
     "automatic_usb_detection",
+    "automatic_signed_physical_candidate_check",
     "select_usb",
     "click_create_ordax_usb",
     "confirm_destructive_target",
@@ -31,12 +32,35 @@
     "private_signing_key_may_ship_in_creator": false,
     "private_signing_key_may_ship_in_creator_payload": false,
     "public_verification_material_is_automatic": true,
-    "release_signature_verification_is_automatic": true
+    "public_verification_material_is_compile_time_pinned": true,
+    "release_signature_verification_is_automatic": true,
+    "physical_release_purpose": "creator-physical-windows-amd64",
+    "physical_release_recipe": "creator/physical/windows/1",
+    "development_channel_may_promote_writer": false
+  },
+  "physical_candidate_integrity": {
+    "signed_envelope_required": true,
+    "ed25519_signature_required": true,
+    "canonical_trust_file_sha256_must_match_creator_pin": true,
+    "bundle_sha256_and_size_required": true,
+    "critical_files_bound_by_sha256_and_size": [
+      "ordax-creator-physical-test.exe",
+      "ordax-bootstrap-seed.raw",
+      "release-ed25519.json",
+      "provenance.json",
+      "SHA256SUMS"
+    ],
+    "unexpected_archive_files_allowed": false,
+    "archive_symlinks_allowed": false,
+    "archive_path_traversal_allowed": false,
+    "critical_files_rehashed_before_offline_reuse": true,
+    "offline_pointer_is_signed_envelope": true
   },
   "physical_write_gate": {
     "development_channel_can_write": false,
     "requires_raw_backend": true,
     "requires_canonical_public_trust_binding": true,
+    "requires_signed_physical_manifest": true,
     "requires_authorized_manifest_binding": true,
     "requires_authorized_seed_hash_and_size": true,
     "requires_live_usb_confirmation_token": true,
@@ -45,7 +69,9 @@
     "requires_post_write_readback": true
   },
   "failure_policy": {
-    "network_update_failure": "use_last_known_valid_component_set_when_available",
+    "network_update_failure": "use_last_signed_and_reverified_physical_candidate_when_available_otherwise_stay_read_only",
+    "signed_envelope_failure": "stay_read_only",
+    "critical_file_hash_failure": "stay_read_only",
     "target_changes_during_prepare": "abort",
     "uac_denied": "abort_without_write",
     "seed_or_prepared_image_mismatch": "abort",
