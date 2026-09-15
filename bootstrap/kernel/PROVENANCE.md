@@ -90,6 +90,24 @@ promotable_to_physical=false
 
 A future source change will pin the immutable build environment, repeat the build, compare provenance and then allow the build-autonomy promotion gate to close.
 
+## Creator payload handoff
+
+A successful kernel CI candidate is an input to the deterministic Creator payload, not a direct physical-media source path.
+
+```text
+kernel CI candidate
+ -> candidate SHA-256 + provenance
+ -> exact bzImage copied into Creator payload
+ -> bundle-relative source_path pinned in media manifest
+ -> Creator Core re-hashes local payload bytes
+ -> disposable two-partition boot proof
+ -> later explicit destructive authorization
+```
+
+Workflow artifact IDs, runner paths and `out/` paths are provenance only. They must never appear as runtime `source_path` values in the canonical physical media contract.
+
+The payload assembler must preserve the exact candidate bytes. Rebuilding the kernel implicitly while assembling the payload is forbidden; rebuilds belong to the kernel candidate pipeline and must produce new provenance.
+
 ## Prototype decision
 
 ```text
@@ -106,7 +124,7 @@ The known-good legacy bzImage digest is a comparison baseline, not a permanent b
 
 ## Remaining gates
 
-1. first clean-room CI kernel candidate succeeds and publishes provenance;
+1. current clean-room CI kernel candidate succeeds and publishes provenance;
 2. inspect resolved `.config` and module closure;
 3. pin the build environment/toolchain by immutable identity;
 4. reproduce the build under that pinned environment;
