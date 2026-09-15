@@ -77,6 +77,33 @@ func TestStageDisposableTreeMapsExactlyTwoFilesystemRoots(t *testing.T) {
 	}
 }
 
+func TestStageDisposableTreeAllowsCanonicalOrdaxBootPathOnESP(t *testing.T) {
+	m, payloadRoot := makeStageableFixture(t)
+	changed := false
+	for i := range m.ArtifactGroups {
+		if m.ArtifactGroups[i].Partition == "ORDAX-ESP" {
+			m.ArtifactGroups[i].Artifacts[0].TargetPath = "/ordax/vmlinuz"
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		t.Fatal("fixture needs an ORDAX-ESP artifact group")
+	}
+
+	outputRoot := t.TempDir()
+	if _, err := StageDisposableTree(m, payloadRoot, outputRoot); err != nil {
+		t.Fatalf("StageDisposableTree with canonical ESP /ordax path: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(outputRoot, "ORDAX-ESP", "ordax", "vmlinuz"))
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("canonical ESP boot asset was not staged: info=%v err=%v", info, err)
+	}
+	if _, err := BuildWritePlan(m); err == nil || !strings.Contains(err.Error(), "not authorized") {
+		t.Fatalf("allowing ESP /ordax staging must not authorize physical write: %v", err)
+	}
+}
+
 func TestStageDisposableTreePublishesPreviouslyMissingOutputOnlyAfterSuccess(t *testing.T) {
 	m, payloadRoot := makeStageableFixture(t)
 	parent := t.TempDir()
