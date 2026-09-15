@@ -1,0 +1,42 @@
+{
+  "$schema": "prototype-ordax.native-graphics-kernel-prereqs-evidence/1",
+  "status": "pass-kernel-substrate-only",
+  "source_commit": "8e05f2a0613c2f0f341dec9b5dc4fe00960853c4",
+  "foundation": {
+    "workflow_run_id": 35013546026,
+    "result": "PASS",
+    "native_graphics_prereq_verifier": "PASS"
+  },
+  "kernel_substrate": {
+    "generic_graphics": [
+      "CONFIG_DRM=y",
+      "CONFIG_DRM_SIMPLEDRM=y",
+      "CONFIG_DRM_FBDEV_EMULATION=y"
+    ],
+    "generic_input": [
+      "CONFIG_INPUT=y",
+      "CONFIG_INPUT_EVDEV=y",
+      "CONFIG_HID=y",
+      "CONFIG_HID_GENERIC=y",
+      "CONFIG_USB_HID=y"
+    ],
+    "current_laptop_baseline": [
+      "CONFIG_DRM_I915=y",
+      "CONFIG_I2C_HID=y",
+      "CONFIG_I2C_HID_ACPI=y",
+      "CONFIG_HID_MULTITOUCH=y"
+    ]
+  },
+  "userspace": {
+    "graphical_host_proven": false,
+    "compositor_required_by_architecture": false,
+    "runtime_engine_selected_as_architectural_authority": false,
+    "wpe_webkit_direct_drm_is_candidate": true,
+    "runtime_artifact_built": false
+  },
+  "safety": {
+    "console_fallback_remains_canonical": true,
+    "canonical_release_trust_resolved": false,
+    "physical_write_authorized": false
+  }
+}
