@@ -57,12 +57,14 @@ class PhysicalMediaContractTests(unittest.TestCase):
         if not hasattr(Path, "symlink_to"):
             self.skipTest("symlinks unavailable")
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            temporary_root = Path(temporary)
+            root = temporary_root / "stage"
+            root.mkdir()
             esp = root / "ORDAX-ESP"
             main = root / "ORDAX"
             esp.mkdir()
             main.mkdir()
-            target = root / "outside"
+            target = temporary_root / "outside"
             target.write_bytes(b"unsafe")
             try:
                 (esp / "BOOTX64.EFI").symlink_to(target)
