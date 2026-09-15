@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'tools/release-signing/**'
+      - 'bootstrap/release-acquisition/**'
       - 'bootstrap/trust/README.md'
       - 'docs/RELEASE-SIGNING.md'
       - '.github/workflows/release-signing.yml'
   pull_request:
     paths:
       - 'tools/release-signing/**'
+      - 'bootstrap/release-acquisition/**'
       - 'bootstrap/trust/README.md'
       - 'docs/RELEASE-SIGNING.md'
       - '.github/workflows/release-signing.yml'
@@ -36,22 +38,32 @@ jobs:
         working-directory: tools/release-signing
         run: go test -count=1 ./...
 
-      - name: Build Linux and Windows candidates
-        working-directory: tools/release-signing
+      - name: Build signer and verifier candidates
         run: |
           set -euo pipefail
-          mkdir -p ../../out/release-signing
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-            go build -trimpath -buildvcs=false -ldflags='-s -w' \
-            -o ../../out/release-signing/ordax-release-signing-linux-amd64 .
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-            go build -trimpath -buildvcs=false -ldflags='-s -w' \
-            -o ../../out/release-signing/ordax-release-signing-windows-amd64.exe .
+          mkdir -p out/release-signing
+          (
+            cd tools/release-signing
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-signing/ordax-release-signing-linux-amd64 .
+            CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-signing/ordax-release-signing-windows-amd64.exe .
+          )
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-signing/ordax-release-agent-linux-amd64 .
+          )
 
-      - name: Prove ephemeral signing round trip without exporting private key
+      - name: Prove signer and release agent protocol compatibility
         run: |
           set -euo pipefail
-          tool="$PWD/out/release-signing/ordax-release-signing-linux-amd64"
+          signer="$PWD/out/release-signing/ordax-release-signing-linux-amd64"
+          agent="$PWD/out/release-signing/ordax-release-agent-linux-amd64"
           work="$RUNNER_TEMP/release-signing-proof"
           mkdir -p "$work"
           chmod 0700 "$work"
@@ -73,23 +85,30 @@ jobs:
             ]
           }
           JSON
-          "$tool" generate-key \
+          "$signer" generate-key \
             --private-key "$work/private.pem" \
             --trust "$work/trust.json" \
             --key-id ci-test-1
-          "$tool" sign \
+          "$signer" sign \
             --manifest "$work/release-manifest.json" \
             --private-key "$work/private.pem" \
             --key-id ci-test-1 \
             --out "$work/release-envelope.json"
-          "$tool" derive-trust \
+          "$signer" derive-trust \
             --private-key "$work/private.pem" \
             --key-id ci-test-1 \
             --out "$work/derived-trust.json"
           cmp "$work/trust.json" "$work/derived-trust.json"
           test "$(stat -c '%a' "$work/private.pem")" = 600
+          verify_output="$("$agent" verify-envelope \
+            --envelope "$work/release-envelope.json" \
+            --trust "$work/trust.json")"
+          printf '%s\n' "$verify_output"
+          grep -q '"status": "verified"' <<<"$verify_output"
+          grep -q '"source_commit": "0123456789abcdef0123456789abcdef01234567"' <<<"$verify_output"
           rm -f "$work/private.pem"
           test ! -e "$work/private.pem"
+          echo 'SIGNER_AGENT_PROTOCOL=PASS'
           echo 'CI_TEST_KEY_REMOVED=YES'
           echo 'CANONICAL_TRUST_ANCHOR=NO'
           echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
