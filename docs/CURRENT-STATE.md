@@ -37,9 +37,36 @@ OrdaX Web
  -> optional OrdaX Native on SSD/HD
 ```
 
+## Build autonomy
+
+Canonical contract:
+
+`docs/BUILD-AUTONOMY.md`
+`docs/contracts/build-autonomy.json`
+
+```text
+CODEX_REQUIRED=NO
+CODEX_IS_OPTIONAL_PARTNER=YES
+CODEX_IS_BUILD_AUTHORITY=NO
+CODEX_IS_RELEASE_AUTHORITY=NO
+LOCAL_DEVELOPER_TOOLCHAIN_REQUIRED=NO
+MANUAL_KERNEL_BUILD_REQUIRED=NO
+REPOSITORY_BUILD_RECIPE_REQUIRED=YES
+PINNED_BUILD_ENVIRONMENT_REQUIRED=YES
+CI_BUILD_REQUIRED=YES
+ARTIFACT_PROVENANCE_REQUIRED=YES
+ARTIFACT_SHA256_REQUIRED=YES
+```
+
+The intended operating model is that ChatGPT, another AI, or a developer can change repository source, push `main`, inspect/fix CI and obtain canonical artifacts without Codex-specific execution.
+
+GitHub Actions is the current CI executor, not source authority. Build entrypoints must remain portable to another compatible container/CI executor.
+
+The first heavy artifact to implement under this model is the Linux 6.6.52 kernel recipe. End users must never need to compile that kernel to install OrdaX; OrdaX Creator consumes prebuilt verified artifacts.
+
 ## Initial USB policy
 
-The initial physical media is now intentionally smaller than the earlier prototype design.
+The initial physical media is intentionally minimal.
 
 ```text
 INITIAL_USB_POLICY=MINIMUM_GIT_ACQUISITION_FIRST
@@ -106,21 +133,24 @@ WSL_REQUIRED=NO
 QEMU_REQUIRED=NO
 POWERSHELL_REQUIRED=NO
 BASH_REQUIRED=NO
-SPECIFIC_DESKTOP_OS_REQUIRED=NO
+SPECIFIC_DEVELOPER_DESKTOP_OS_REQUIRED=NO
 END_USER_KERNEL_TOOLCHAIN_REQUIRED=NO
 CREATOR_SHARED_CORE=YES
 THIN_HOST_ADAPTERS=YES
 ```
 
+A Linux/container CI environment may compile the Linux kernel. That is an implementation environment, not a requirement that the developer install Linux or WSL.
+
 ## Development path
 
-Normal development is Git-driven and requires no remote shell/control service:
+Normal development is Git-driven and requires no remote shell/control service or Codex:
 
 ```text
 edit source
  -> Web/HMR preview when applicable
  -> tests
  -> commit/push main
+ -> CI builds/verifies affected artifacts
  -> Web receives same commit
  -> OrdaX updater acquires release/delta
  -> verify
@@ -131,6 +161,7 @@ edit source
 SSH_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
 REMOTE_CORE_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
 CONTROL_PLANE_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
+CODEX_REQUIRED_FOR_DAILY_DEVELOPMENT=NO
 ```
 
 ## Legacy/Codex evidence
@@ -146,7 +177,7 @@ PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
 ```
 
-This evidence does not justify importing the legacy SSH/QEMU/F7 subsystem. The clean-room currently requires none of it.
+This evidence does not justify importing the legacy SSH/QEMU/F7 subsystem. Codex remains optional evidence/review assistance only.
 
 ## Reviewed legacy boot baselines
 
@@ -162,6 +193,9 @@ INITRAMFS_DECISION=REIMPLEMENTED
 ## Not yet implemented
 
 ```text
+PINNED_KERNEL_BUILD_ENVIRONMENT_RESOLVED=NO
+PORTABLE_KERNEL_BUILD_ENTRYPOINT_IMPLEMENTED=NO
+KERNEL_CI_ARTIFACT_IMPLEMENTED=NO
 MINIMAL_BOOTSTRAP_MANIFEST_RESOLVED=NO
 KERNEL_BUILD_IMPLEMENTED=NO
 INITRAMFS_BUILD_IMPLEMENTED=NO
@@ -182,17 +216,19 @@ WEB_TO_USB_CONTINUITY_PROVEN=NO
 
 ## Next safe source milestones
 
-1. resolve the reduced minimal-bootstrap manifest with real artifacts/hashes;
-2. implement clean kernel build recipe;
-3. implement deterministic minimal initramfs with network + release acquisition only;
-4. implement release integrity/activation/rollback contract;
-5. implement Creator core and Windows adapter without WSL;
-6. verify two-partition disposable representation;
-7. build the first shared Web/native Surface in parallel;
-8. only then request authorization to reprovision the physical USB.
+1. define and pin the kernel CI build environment/toolchain;
+2. implement a portable repository kernel build entrypoint for Linux 6.6.52 with upstream SHA verification;
+3. publish kernel artifact + machine-readable provenance + SHA-256 from CI;
+4. resolve the reduced minimal-bootstrap manifest with real artifacts/hashes;
+5. implement deterministic minimal initramfs with network + release acquisition only;
+6. implement release integrity/activation/rollback contract;
+7. implement Creator core and Windows adapter without WSL;
+8. verify two-partition disposable representation;
+9. build the first shared Web/native Surface in parallel;
+10. only then request authorization to reprovision the physical USB.
 
-Do not add SSH, Remote Core or Control Plane just because the legacy system used them.
+Do not add Codex, SSH, Remote Core or Control Plane as required dependencies because the legacy system used them.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md` and the canonical docs before making changes. Architecture contracts win over this snapshot if they conflict.
+Any new AI/conversation must read `AGENTS.md` and the canonical docs before making changes. Architecture/build contracts win over this snapshot if they conflict.
