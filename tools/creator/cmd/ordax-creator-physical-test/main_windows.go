@@ -18,18 +18,22 @@ import (
 )
 
 var (
-	buildSourceCommit        = "UNRESOLVED"
-	buildCanonicalTrustSHA256 = "UNRESOLVED"
-	buildSeedImageSHA256     = "UNRESOLVED"
-	buildSeedImageSize       = "0"
+	buildSourceCommit            = "UNRESOLVED"
+	buildCanonicalTrustSHA256    = "UNRESOLVED"
+	buildManifestSHA256          = "UNRESOLVED"
+	buildSeedImageSHA256         = "UNRESOLVED"
+	buildSeedImageSize           = "0"
+	buildPhysicalWriteAuthorized = "NO"
 )
 
 type buildBinding struct {
-	SourceCommit        string `json:"source_commit"`
-	CanonicalTrustSHA256 string `json:"canonical_trust_sha256"`
-	SeedImageSHA256     string `json:"seed_image_sha256"`
-	SeedImageSize       int64  `json:"seed_image_size"`
-	Ready               bool   `json:"ready"`
+	SourceCommit            string `json:"source_commit"`
+	CanonicalTrustSHA256    string `json:"canonical_trust_sha256"`
+	ManifestSHA256          string `json:"manifest_sha256"`
+	SeedImageSHA256         string `json:"seed_image_sha256"`
+	SeedImageSize           int64  `json:"seed_image_size"`
+	PhysicalWriteAuthorized bool   `json:"physical_write_authorized"`
+	Ready                   bool   `json:"ready"`
 }
 
 func validLowerHex(value string, bytes int) bool {
@@ -42,16 +46,20 @@ func validLowerHex(value string, bytes int) bool {
 
 func binding() buildBinding {
 	size, _ := strconv.ParseInt(buildSeedImageSize, 10, 64)
+	authorized := buildPhysicalWriteAuthorized == "YES"
 	ready := validLowerHex(buildSourceCommit, 20) &&
 		validLowerHex(buildCanonicalTrustSHA256, sha256.Size) &&
+		validLowerHex(buildManifestSHA256, sha256.Size) &&
 		validLowerHex(buildSeedImageSHA256, sha256.Size) &&
-		size > 0
+		size > 0 && authorized
 	return buildBinding{
-		SourceCommit:        buildSourceCommit,
-		CanonicalTrustSHA256: buildCanonicalTrustSHA256,
-		SeedImageSHA256:     buildSeedImageSHA256,
-		SeedImageSize:       size,
-		Ready:               ready,
+		SourceCommit:            buildSourceCommit,
+		CanonicalTrustSHA256:    buildCanonicalTrustSHA256,
+		ManifestSHA256:          buildManifestSHA256,
+		SeedImageSHA256:         buildSeedImageSHA256,
+		SeedImageSize:           size,
+		PhysicalWriteAuthorized: authorized,
+		Ready:                   ready,
 	}
 }
 
@@ -95,7 +103,7 @@ func verifyFile(path, expectedSHA string, expectedSize int64) error {
 func requireReady() buildBinding {
 	b := binding()
 	if !b.Ready {
-		fmt.Fprintln(os.Stderr, "ordax-creator-physical-test: this build is inspection-only; canonical trust and authorized seed image are not bound")
+		fmt.Fprintln(os.Stderr, "ordax-creator-physical-test: this build is inspection-only; canonical trust, authorized manifest and canonical seed image are not all bound")
 		os.Exit(1)
 	}
 	return b
@@ -112,17 +120,17 @@ func enumerateConfirmed(token string) (windowsadapter.Target, error) {
 func runStatus() error {
 	b := binding()
 	return encode(struct {
-		Schema                 string       `json:"$schema"`
-		Mode                   string       `json:"mode"`
-		RawBackendLinked       bool         `json:"raw_backend_linked"`
-		PublicCreatorUnaffected bool        `json:"public_creator_unaffected"`
-		Build                  buildBinding `json:"build"`
+		Schema                  string       `json:"$schema"`
+		Mode                    string       `json:"mode"`
+		RawBackendLinked        bool         `json:"raw_backend_linked"`
+		PublicCreatorUnaffected bool         `json:"public_creator_unaffected"`
+		Build                   buildBinding `json:"build"`
 	}{
-		Schema:                 "prototype-ordax.creator-physical-test-status/1",
-		Mode:                   "physical-test-only",
-		RawBackendLinked:       true,
+		Schema:                  "prototype-ordax.creator-physical-test-status/2",
+		Mode:                    "physical-test-only",
+		RawBackendLinked:        true,
 		PublicCreatorUnaffected: true,
-		Build:                  b,
+		Build:                   b,
 	})
 }
 
@@ -172,18 +180,20 @@ func runPrepare(args []string) error {
 	}
 	authorization := windowsadapter.DestructiveAuthorizationToken(target, image)
 	return encode(struct {
-		Schema                   string                         `json:"$schema"`
-		SourceCommit             string                         `json:"source_commit"`
-		CanonicalTrustSHA256     string                         `json:"canonical_trust_sha256"`
-		AuthorizedSeedSHA256     string                         `json:"authorized_seed_sha256"`
-		Target                   windowsadapter.Target          `json:"target"`
+		Schema                   string                             `json:"$schema"`
+		SourceCommit             string                             `json:"source_commit"`
+		CanonicalTrustSHA256     string                             `json:"canonical_trust_sha256"`
+		ManifestSHA256           string                             `json:"manifest_sha256"`
+		AuthorizedSeedSHA256     string                             `json:"authorized_seed_sha256"`
+		Target                   windowsadapter.Target              `json:"target"`
 		PreparedImage            creatorcore.PreparedPhysicalImage `json:"prepared_image"`
-		DestructiveAuthorization string                         `json:"destructive_authorization"`
-		Next                     string                         `json:"next"`
+		DestructiveAuthorization string                             `json:"destructive_authorization"`
+		Next                     string                             `json:"next"`
 	}{
-		Schema:                   "prototype-ordax.creator-physical-test-preparation/1",
+		Schema:                   "prototype-ordax.creator-physical-test-preparation/2",
 		SourceCommit:             b.SourceCommit,
 		CanonicalTrustSHA256:     b.CanonicalTrustSHA256,
+		ManifestSHA256:           b.ManifestSHA256,
 		AuthorizedSeedSHA256:     b.SeedImageSHA256,
 		Target:                   target,
 		PreparedImage:            prepared,
