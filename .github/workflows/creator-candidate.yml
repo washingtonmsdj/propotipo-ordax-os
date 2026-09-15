@@ -40,11 +40,25 @@ jobs:
 
       - name: Verify canonical manifest stays fail-closed
         run: |
-          go run ./cmd/ordax-creator check --manifest ../../docs/contracts/minimal-bootstrap.json
-          if go run ./cmd/ordax-creator plan --manifest ../../docs/contracts/minimal-bootstrap.json; then
+          set -euo pipefail
+          manifest='../../docs/contracts/minimal-bootstrap.json'
+          go run ./cmd/ordax-creator check --manifest "$manifest"
+
+          if go run ./cmd/ordax-creator plan --manifest "$manifest"; then
             echo 'creator unexpectedly produced a destructive write plan' >&2
             exit 1
           fi
+
+          payload_root="$(mktemp -d)"
+          output_root="$(mktemp -d)"
+          if go run ./cmd/ordax-creator stage-tree \
+            --manifest "$manifest" \
+            --payload-root "$payload_root" \
+            --output-root "$output_root"; then
+            echo 'creator unexpectedly staged an unresolved canonical payload' >&2
+            exit 1
+          fi
+          test -z "$(find "$output_root" -mindepth 1 -print -quit)"
 
       - name: Build Windows and Linux candidates
         run: |
@@ -68,6 +82,8 @@ jobs:
               'status': 'candidate',
               'physical_write_implemented': False,
               'physical_write_authorized': False,
+              'disposable_tree_staging_implemented': True,
+              'gpt_filesystem_proof_implemented': False,
               'source_commit': os.environ['GITHUB_SHA'],
               'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
               'artifacts': {
