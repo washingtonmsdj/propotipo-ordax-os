@@ -1,0 +1,100 @@
+{
+  "$schema": "prototype-ordax.module-boundaries/1",
+  "status": "canonical-prototype-contract",
+  "principles": {
+    "dependency_cycles_allowed": false,
+    "shared_code_imports_platform_adapter_implementation": false,
+    "platform_policy_forks_allowed": false,
+    "cross_module_internal_imports_allowed": false,
+    "public_contract_boundary_required": true,
+    "composition_selects_adapter_implementation": true,
+    "new_module_requires_named_owner": true
+  },
+  "layers": [
+    {
+      "id": "contracts",
+      "root": "system/contracts",
+      "responsibility": "platform-neutral interfaces, value shapes and capability ports",
+      "allowed_dependencies": [],
+      "forbidden_dependencies": [
+        "services",
+        "apps",
+        "surface",
+        "adapters"
+      ]
+    },
+    {
+      "id": "services",
+      "root": "system/services",
+      "responsibility": "shared account, sync and domain policy",
+      "allowed_dependencies": [
+        "contracts"
+      ],
+      "forbidden_dependencies": [
+        "apps",
+        "surface",
+        "adapters"
+      ]
+    },
+    {
+      "id": "apps",
+      "root": "system/apps",
+      "responsibility": "shared first-party application behavior",
+      "allowed_dependencies": [
+        "contracts",
+        "services"
+      ],
+      "forbidden_dependencies": [
+        "surface",
+        "adapters"
+      ]
+    },
+    {
+      "id": "surface",
+      "root": "system/surface",
+      "responsibility": "shared presentation shell and interaction composition",
+      "allowed_dependencies": [
+        "contracts",
+        "services",
+        "apps"
+      ],
+      "forbidden_dependencies": [
+        "adapters"
+      ]
+    },
+    {
+      "id": "adapters",
+      "root": "system/adapters",
+      "responsibility": "environment-specific capability implementation and integration",
+      "allowed_dependencies": [
+        "contracts",
+        "services"
+      ],
+      "forbidden_dependencies": [
+        "surface",
+        "apps"
+      ]
+    }
+  ],
+  "external_boundaries": {
+    "creator": {
+      "root": "tools/creator",
+      "shared_surface_direct_dependency_allowed": false,
+      "shared_apps_direct_dependency_allowed": false,
+      "desktop_access": "explicit creator capability contract only"
+    },
+    "bootstrap": {
+      "root": "bootstrap",
+      "shared_product_source_dependency_allowed": false,
+      "verified_runtime_handoff_allowed": true
+    }
+  },
+  "evolution": {
+    "adding_public_contract_is_preferred_over_cross_layer_shortcut": true,
+    "changing_public_contract_semantics_requires_versioned_migration": true,
+    "temporary_bridge_requires_owner_and_removal_condition": true,
+    "permanent_compatibility_bridge_without_owner_allowed": false,
+    "adapter_specific_ui_fork_allowed": false,
+    "backend_provider_may_change_without_domain_layer_rewrite": true
+  }
+}
