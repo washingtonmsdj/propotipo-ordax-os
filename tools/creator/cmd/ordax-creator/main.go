@@ -11,6 +11,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: ordax-creator <check|verify-payload|stage-tree|plan> --manifest <path> [--payload-root <dir>] [--output-root <dir>]")
+	fmt.Fprintln(os.Stderr, "       ordax-creator prepare-image --seed <regular-file> --out <new-regular-file> --target-bytes <bytes>")
 }
 
 func loadManifest(path string) (creatorcore.Manifest, error) {
@@ -21,6 +22,34 @@ func loadManifest(path string) (creatorcore.Manifest, error) {
 	return creatorcore.ParseManifest(data)
 }
 
+func runPrepareImage(args []string) int {
+	fs := flag.NewFlagSet("prepare-image", flag.ContinueOnError)
+	seed := fs.String("seed", "", "verified GPT seed regular-file path")
+	out := fs.String("out", "", "new prepared regular-file path")
+	targetBytes := fs.Uint64("target-bytes", 0, "exact target capacity in bytes; must be 512-byte aligned")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 || *seed == "" || *out == "" || *targetBytes == 0 {
+		usage()
+		return 2
+	}
+
+	prepared, err := creatorcore.PreparePhysicalImage(*seed, *out, *targetBytes)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ordax-creator: prepare image failed: %v\n", err)
+		return 1
+	}
+	fmt.Printf("PREPARED_PHYSICAL_IMAGE=YES\n")
+	fmt.Printf("PREPARED_PATH=%s\n", prepared.Path)
+	fmt.Printf("PREPARED_SIZE_BYTES=%d\n", prepared.SizeBytes)
+	fmt.Printf("PREPARED_SHA256=%s\n", prepared.SHA256)
+	fmt.Printf("PREPARED_LAST_USABLE_LBA=%d\n", prepared.LastUsableLBA)
+	fmt.Printf("PREPARED_MAIN_LAST_LBA=%d\n", prepared.MainLastLBA)
+	fmt.Printf("PHYSICAL_DEVICE_TOUCHED=NO\n")
+	return 0
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -28,11 +57,19 @@ func main() {
 	}
 
 	command := os.Args[1]
+	if command == "prepare-image" {
+		os.Exit(runPrepareImage(os.Args[2:]))
+	}
+
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	manifestPath := fs.String("manifest", "docs/contracts/minimal-bootstrap.json", "path to minimal-bootstrap manifest")
 	payloadRoot := fs.String("payload-root", "", "root directory of the assembled Creator payload")
 	outputRoot := fs.String("output-root", "", "empty output directory for disposable filesystem-tree staging")
 	if err := fs.Parse(os.Args[2:]); err != nil {
+		os.Exit(2)
+	}
+	if fs.NArg() != 0 {
+		usage()
 		os.Exit(2)
 	}
 
