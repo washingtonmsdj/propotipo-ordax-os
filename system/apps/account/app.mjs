@@ -1,3 +1,4 @@
+import { SYNC_CORE_STATUS } from "../../services/sync/runtime.mjs";
 import { defineFirstPartyApp } from "../app-contract.mjs";
 
 export const accountApp = defineFirstPartyApp({
@@ -9,10 +10,16 @@ export const accountApp = defineFirstPartyApp({
   requiredCapabilities: [],
   panels: [
     {
+      kind: "static",
+      label: "Núcleo local",
+      title: "Continuidade preparada",
+      body: `O protocolo compartilhado de sync e a fila offline estão ${SYNC_CORE_STATUS.protocolCore === "implemented" && SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "implementados" : "indisponíveis"}. Identidade e transporte continuam dependentes de um host autorizado.`,
+    },
+    {
       kind: "capability",
       label: "Identidade",
       title: "Conta OrdaX",
-      body: "Quando a identidade estiver implementada pelo host, esta mesma aplicação será o ponto compartilhado de sessão e perfil.",
+      body: "A sessão só se torna ativa quando o host realmente expõe identidade autenticada; o núcleo local não inventa login nem tokens.",
       capabilityId: "account.identity",
     },
     {

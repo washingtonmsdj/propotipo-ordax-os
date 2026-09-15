@@ -1,20 +1,31 @@
 # Shared Sync Service Boundary
 
-`system/services/sync/` is the canonical owner for cross-device synchronization semantics. It is intentionally provider-neutral: database choice, hosting provider, transport plumbing and platform lifecycle integrations are implementation details outside the domain contract.
+`system/services/sync/` is the canonical owner for cross-device synchronization semantics. It is provider-neutral: database choice, hosting provider, transport plumbing and platform lifecycle integration stay outside the domain contract.
 
-The machine-readable contract is `docs/contracts/sync-model.json`.
+The machine-readable authority is `docs/contracts/sync-model.json`.
 
-Core rules:
+## Implemented local protocol core
+
+`runtime.mjs` now implements the first provider-independent slice for the `appearance` data class:
+
+- versioned `appearance/theme` sync objects with mandatory server revisions;
+- explicit tombstones rather than ambiguous absence;
+- deterministic conflict resolution where the greater server revision wins;
+- fail-closed handling when the same server revision contains divergent state;
+- versioned appearance mutations with caller-supplied idempotency keys;
+- an in-memory offline mutation queue that deduplicates retries and rejects reuse of one idempotency key for different mutations.
+
+This is **not** an account backend and does not make account continuity active. `SYNC_CORE_STATUS` deliberately reports identity and transport as `host-required`. A platform/remote adapter must still provide authenticated identity, authorization and encrypted transport before `account.identity` or `sync.safe-state` may be advertised as runtime capabilities.
+
+Core rules remain:
 
 - one OrdaX identity spans Web, Mobile, Desktop, USB and native-disk modes;
 - shared data classes have stable IDs and versioned object schemas;
 - platform adapters provide secure storage, background execution and transport integration, but do not redefine conflict or entitlement policy;
-- mutations are designed to be idempotent so reconnect/retry does not duplicate state;
+- mutations are idempotent so reconnect/retry does not duplicate state;
 - incremental cursors are opaque implementation details and clients must tolerate a safe full resync;
 - server revisions, not client wall clocks, are the conflict authority;
 - deletion is explicit state (tombstone), not an ambiguous absence;
 - there is no universal last-writer-wins rule; conflict resolution is deterministic and versioned per data class/content type;
-- device-private keys, machine secrets, raw-disk state and other never-sync classes cannot become syncable through a paid plan;
+- device-private material, machine-local privileged state and other never-sync classes cannot become syncable through a paid plan;
 - changing database/provider must not require changing the client-facing domain model.
-
-This directory does not choose a backend yet. Implementation should arrive behind this boundary when the account/sync service is built, so early infrastructure choices do not become permanent product architecture.
