@@ -70,7 +70,7 @@ class CreatorPayloadAssemblerTest(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_unresolved_groups_require_explicit_candidate_mode(self):
+    def test_unresolved_groups_require_explicit_candidate_mode_without_output(self):
         out = self.root / "payload"
         with self.assertRaisesRegex(ASSEMBLER.AssembleError, "unresolved groups"):
             ASSEMBLER.assemble(
@@ -80,6 +80,7 @@ class CreatorPayloadAssemblerTest(unittest.TestCase):
                 allow_unresolved=False,
                 generated_sources=self.generated_map,
             )
+        self.assertFalse(out.exists(), "failed preflight must not publish an output directory")
 
     def test_resolved_subset_is_assembled_and_reverified(self):
         out = self.root / "payload"
@@ -108,7 +109,21 @@ class CreatorPayloadAssemblerTest(unittest.TestCase):
         self.assertEqual(verified["unresolved_groups"], ["pending-owner"])
         self.assertFalse(verified["physical_write_authorized"])
 
-    def test_source_hash_mismatch_fails(self):
+    def test_existing_empty_output_is_atomically_replaced_on_success(self):
+        out = self.root / "payload"
+        out.mkdir()
+        manifest = manifest_for(self.data)
+        ASSEMBLER.assemble(
+            self.root,
+            manifest,
+            out,
+            allow_unresolved=True,
+            generated_sources=self.generated_map,
+        )
+        self.assertEqual((out / "payload" / "example.bin").read_bytes(), self.data)
+        self.assertTrue((out / "payload-provenance.json").is_file())
+
+    def test_source_hash_mismatch_fails_without_output(self):
         out = self.root / "payload"
         manifest = manifest_for(b"different")
         with self.assertRaisesRegex(ASSEMBLER.AssembleError, "SHA-256 mismatch"):
@@ -119,6 +134,38 @@ class CreatorPayloadAssemblerTest(unittest.TestCase):
                 allow_unresolved=True,
                 generated_sources=self.generated_map,
             )
+        self.assertFalse(out.exists(), "hash failure must not publish a partial payload")
+
+    def test_preflight_failure_preserves_existing_empty_output(self):
+        out = self.root / "payload"
+        out.mkdir()
+        manifest = manifest_for(b"different")
+        with self.assertRaisesRegex(ASSEMBLER.AssembleError, "SHA-256 mismatch"):
+            ASSEMBLER.assemble(
+                self.root,
+                manifest,
+                out,
+                allow_unresolved=True,
+                generated_sources=self.generated_map,
+            )
+        self.assertTrue(out.is_dir())
+        self.assertEqual(list(out.iterdir()), [])
+
+    def test_duplicate_payload_source_is_rejected_before_output(self):
+        out = self.root / "payload"
+        manifest = manifest_for(self.data, unresolved=False)
+        duplicate = dict(manifest["artifact_groups"][0]["artifacts"][0])
+        duplicate["target_path"] = "/ordax/bootstrap/second.bin"
+        manifest["artifact_groups"][0]["artifacts"].append(duplicate)
+        with self.assertRaisesRegex(ASSEMBLER.AssembleError, "duplicate payload source path"):
+            ASSEMBLER.assemble(
+                self.root,
+                manifest,
+                out,
+                allow_unresolved=False,
+                generated_sources=self.generated_map,
+            )
+        self.assertFalse(out.exists())
 
     def test_unresolved_group_may_not_hide_candidate_bytes(self):
         manifest = manifest_for(self.data)
@@ -132,14 +179,31 @@ class CreatorPayloadAssemblerTest(unittest.TestCase):
                 "reason": "must remain absent",
             }
         ]
+        out = self.root / "payload"
         with self.assertRaisesRegex(ASSEMBLER.AssembleError, "may not carry candidate payload bytes"):
             ASSEMBLER.assemble(
                 self.root,
                 manifest,
-                self.root / "payload",
+                out,
                 allow_unresolved=True,
                 generated_sources=self.generated_map,
             )
+        self.assertFalse(out.exists())
+
+    def test_nonempty_output_is_never_modified(self):
+        out = self.root / "payload"
+        out.mkdir()
+        sentinel = out / "sentinel"
+        sentinel.write_bytes(b"keep")
+        with self.assertRaisesRegex(ASSEMBLER.AssembleError, "must be empty"):
+            ASSEMBLER.assemble(
+                self.root,
+                manifest_for(self.data),
+                out,
+                allow_unresolved=True,
+                generated_sources=self.generated_map,
+            )
+        self.assertEqual(sentinel.read_bytes(), b"keep")
 
     def test_physical_authorization_is_refused_by_candidate_assembler(self):
         manifest_path = self.root / "manifest.json"
