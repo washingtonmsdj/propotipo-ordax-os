@@ -42,9 +42,9 @@ Direct physical edits are experiments only until represented by an equivalent so
 
 ## ADR-004 - Minimal pre-Git substrate
 
-Decision: only capabilities necessary to boot, reach a trusted release, remotely recover/develop, and preserve essential identity/state may exist before Git/release activation.
+Decision: only capabilities necessary to boot, establish minimal network access, acquire/verify a trusted release, and recover from acquisition failure may exist before release activation.
 
-The complete OS must not be baked into the bootstrap merely for convenience.
+The complete OS, Remote Core and Control Plane must not be baked into the bootstrap merely for convenience.
 
 ## ADR-005 - Immutable commit-addressed releases
 
@@ -58,24 +58,17 @@ Decision: user/workspace data lives logically under the main partition. Backup, 
 
 A future physical HOME partition requires a new ADR and evidence that logical isolation is insufficient.
 
-## ADR-007 - OrdaX Remote Core is bootstrap infrastructure
+## ADR-007 - Remote/Control is optional post-release capability
 
-Decision: an OrdaX-owned Remote/Control Core and minimal Control Plane functionality belong to the pre-Git substrate because they are required to safely evolve and recover a development target.
+Decision: OrdaX Remote Core and Control Plane are not required for bootstrap, normal Git/release updates, or daily development.
 
-Requirements:
+They may be added later as normal versioned system capabilities if a concrete need for device management, pairing, support or remote recovery is proven.
 
-- persistent device identity;
-- explicit authorization;
-- mature authenticated/encrypted transport;
-- structured capability RPC;
-- file/delta transfer;
-- logs/events;
-- release operations;
-- fail-closed trust.
+SSH is not a required product dependency.
 
-SSH is not a required final product dependency. It may remain temporarily only as documented break-glass compatibility until Remote Core proves equivalent physical recovery.
+If a future Remote/Control capability is implemented, it must use mature authenticated/encrypted transport and standard cryptography; custom cryptographic primitives remain forbidden.
 
-Custom cryptographic primitives are forbidden.
+This decision supersedes the earlier prototype idea that Remote Core/Control Plane belonged to the pre-Git substrate.
 
 ## ADR-008 - Legacy components are selected, not inherited
 
@@ -127,17 +120,17 @@ Host adapters may integrate with Windows/Linux/macOS disk APIs but cannot fork l
 
 End users must not need WSL, QEMU or a kernel toolchain to install OrdaX.
 
-## ADR-014 - Standard cryptography, OrdaX-owned protocol
+## ADR-014 - Standard cryptography only
 
-Decision: OrdaX owns its Remote/Control application protocol and authorization semantics, but does not invent cryptographic algorithms.
+Decision: any future OrdaX-owned remote/control protocol may own application semantics, but must not invent cryptographic algorithms.
 
-Use mature audited transport/crypto implementations. A proprietary or custom protocol layer must still rely on standard cryptographic primitives and fail-closed identity/authentication.
+Use mature audited transport/crypto implementations and fail-closed identity/authentication.
 
-## ADR-015 - Initial physical media is minimum network-first
+## ADR-015 - Initial physical media is minimum Git-acquisition-first
 
 Decision: the first USB contains only boot-critical artifacts and the minimal substrate required to reach, verify and activate a complete release.
 
-The initial media does not preseed the normal Surface, applications, high-level services, full source checkout or build toolchain.
+The initial media does not preseed the normal Surface, applications, high-level services, Remote Core, Control Plane, full source checkout or build toolchain.
 
 Target:
 
@@ -145,17 +138,39 @@ Target:
 UEFI
  -> kernel/initramfs
  -> minimal bootstrap
- -> network
- -> device identity
- -> OrdaX Remote Core
- -> trust/Control Plane minimum
+ -> minimal network
  -> release acquisition
- -> verified releases/<commit>
+ -> verify
+ -> releases/<commit>
  -> current
 ```
 
-After the first verified release is activated, it remains local for normal offline boot and rollback. Git/network are needed for acquiring new releases, not for booting an already known-good system.
+Recovery remains available if acquisition fails. After the first verified release is activated, it remains local for normal offline boot and rollback. Git/network are needed for acquiring new releases, not for booting an already known-good system.
 
-Reason: keep physical provisioning small, stable and infrequent while almost all future system development happens over Git/network.
+Reason: keep physical provisioning small, stable and infrequent while almost all future system development happens through Git/network.
 
 See `docs/MINIMAL-USB-BOOTSTRAP.md`.
+
+## ADR-016 - Repository-owned autonomous builds; Codex is optional
+
+Decision: no artifact may require Codex or undocumented developer-machine state to be built.
+
+Canonical build ownership is:
+
+```text
+main source
+ -> versioned repository recipe
+ -> pinned build environment
+ -> CI execution
+ -> tests
+ -> provenance + SHA-256
+ -> artifact/release candidate
+```
+
+The kernel follows this rule like every other artifact. The developer does not manually compile it as a prerequisite for ordinary work or installation.
+
+GitHub Actions is the current executor, not source authority. Build entrypoints must remain portable to another compatible container/CI executor.
+
+Codex may be used as an optional reviewer, investigator or parallel engineering partner. It is not build authority, release authority, source authority or a required solver.
+
+See `docs/BUILD-AUTONOMY.md` and `docs/contracts/build-autonomy.json`.
