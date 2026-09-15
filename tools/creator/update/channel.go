@@ -2,6 +2,7 @@ package update
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,13 +20,15 @@ import (
 )
 
 const (
-	ChannelSchema       = "prototype-ordax.creator-update-channel/2"
-	DevelopmentChannel  = "development"
-	DefaultManifestURL  = "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/creator-dev-manifest.json"
-	maxManifestBytes    = 256 << 10
-	maxPayloadBytes     = int64(128 << 20)
-	maxExtractedBytes   = int64(256 << 20)
-	maxArchiveFileCount = 128
+	ChannelSchemaV1      = "prototype-ordax.creator-update-channel/1"
+	ChannelSchemaV2      = "prototype-ordax.creator-update-channel/2"
+	ChannelSchema        = ChannelSchemaV2
+	DevelopmentChannel   = "development"
+	DefaultManifestURL   = "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-dev/creator-dev-manifest.json"
+	maxManifestBytes     = 256 << 10
+	maxPayloadBytes      = int64(128 << 20)
+	maxExtractedBytes    = int64(256 << 20)
+	maxArchiveFileCount  = 128
 )
 
 var (
@@ -52,6 +55,21 @@ type Manifest struct {
 	SourceCommit string      `json:"source_commit"`
 	Payload      Payload     `json:"payload"`
 	Entrypoints  Entrypoints `json:"entrypoints"`
+}
+
+type legacyEntrypointsV1 struct {
+	Inspect string `json:"inspect"`
+	Trust   string `json:"trust"`
+	Status  string `json:"status"`
+}
+
+type legacyManifestV1 struct {
+	Schema       string              `json:"$schema"`
+	Channel      string              `json:"channel"`
+	Version      string              `json:"version"`
+	SourceCommit string              `json:"source_commit"`
+	Payload      Payload             `json:"payload"`
+	Entrypoints  legacyEntrypointsV1 `json:"entrypoints"`
 }
 
 type Installed struct {
@@ -99,7 +117,7 @@ func validateAssetURL(raw string) error {
 }
 
 func ValidateManifest(m Manifest) error {
-	if m.Schema != ChannelSchema {
+	if m.Schema != ChannelSchemaV1 && m.Schema != ChannelSchemaV2 {
 		return fmt.Errorf("unsupported update schema %q", m.Schema)
 	}
 	if m.Channel != DevelopmentChannel {
@@ -131,27 +149,59 @@ func ValidateManifest(m Manifest) error {
 	return nil
 }
 
-func decodeManifest(data []byte) (Manifest, error) {
-	if len(data) == 0 || len(data) > maxManifestBytes {
-		return Manifest{}, errors.New("update manifest size outside allowed range")
-	}
-	var m Manifest
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+func decodeStrict(data []byte, target any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
-		return Manifest{}, err
+	if err := dec.Decode(target); err != nil {
+		return err
 	}
 	var extra any
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return Manifest{}, errors.New("multiple JSON values are forbidden")
+			return errors.New("multiple JSON values are forbidden")
 		}
+		return err
+	}
+	return nil
+}
+
+func decodeManifest(data []byte) (Manifest, error) {
+	if len(data) == 0 || len(data) > maxManifestBytes {
+		return Manifest{}, errors.New("update manifest size outside allowed range")
+	}
+	var header struct {
+		Schema string `json:"$schema"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
 		return Manifest{}, err
 	}
-	if err := ValidateManifest(m); err != nil {
+
+	var manifest Manifest
+	switch header.Schema {
+	case ChannelSchemaV2:
+		if err := decodeStrict(data, &manifest); err != nil {
+			return Manifest{}, err
+		}
+	case ChannelSchemaV1:
+		var legacy legacyManifestV1
+		if err := decodeStrict(data, &legacy); err != nil {
+			return Manifest{}, err
+		}
+		if !safeRelative(legacy.Entrypoints.Trust) {
+			return Manifest{}, errors.New("unsafe legacy compatibility entrypoint")
+		}
+		manifest = Manifest{
+			Schema: legacy.Schema, Channel: legacy.Channel, Version: legacy.Version,
+			SourceCommit: legacy.SourceCommit, Payload: legacy.Payload,
+			Entrypoints: Entrypoints{Inspect: legacy.Entrypoints.Inspect, Status: legacy.Entrypoints.Status},
+		}
+	default:
+		return Manifest{}, fmt.Errorf("unsupported update schema %q", header.Schema)
+	}
+	if err := ValidateManifest(manifest); err != nil {
 		return Manifest{}, err
 	}
-	return m, nil
+	return manifest, nil
 }
 
 func fetchBytes(client *http.Client, raw string, limit int64) ([]byte, error) {
@@ -391,10 +441,7 @@ func Current(root string) (Installed, error) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return Installed{}, errors.New("invalid installed Creator metadata")
 	}
-	if current.Schema != "prototype-ordax.creator-installed/1" ||
-		current.Channel != DevelopmentChannel ||
-		!versionPattern.MatchString(current.Version) ||
-		!commitPattern.MatchString(current.SourceCommit) {
+	if current.Schema != "prototype-ordax.creator-installed/1" || current.Channel != DevelopmentChannel || !versionPattern.MatchString(current.Version) || !commitPattern.MatchString(current.SourceCommit) {
 		return Installed{}, errors.New("invalid installed Creator metadata")
 	}
 	expected := filepath.Join(root, "versions", current.SourceCommit)
