@@ -37,13 +37,19 @@ REQUESTED_CONFIG = {
     "CONFIG_STATIC": "y",
     "CONFIG_ASH": "y",
     "CONFIG_SH_IS_ASH": "y",
-    "CONFIG_MOUNT": "y",
-    "CONFIG_UMOUNT": "y",
-    "CONFIG_SWITCH_ROOT": "y",
     "CONFIG_BLKID": "y",
+    "CONFIG_CAT": "y",
+    "CONFIG_ECHO": "y",
     "CONFIG_FINDFS": "y",
-    "CONFIG_REBOOT": "y",
+    "CONFIG_MKDIR": "y",
+    "CONFIG_MOUNT": "y",
     "CONFIG_POWEROFF": "y",
+    "CONFIG_REBOOT": "y",
+    "CONFIG_SLEEP": "y",
+    "CONFIG_SWITCH_ROOT": "y",
+    "CONFIG_SYNC": "y",
+    "CONFIG_UMOUNT": "y",
+    "CONFIG_FEATURE_VOLUMEID_EXT": "y",
 }
 FIXED_ENV = {
     "SOURCE_DATE_EPOCH": "0",
@@ -197,6 +203,8 @@ def verify_config(config: Path) -> None:
     for symbol, value in REQUESTED_CONFIG.items():
         if f"{symbol}={value}\n" not in text:
             raise BuildError(f"BusyBox Kconfig rejected required selector: {symbol}={value}")
+    if "CONFIG_TC=y\n" in text or "CONFIG_TELNETD=y\n" in text or "CONFIG_HTTPD=y\n" in text:
+        raise BuildError("unrelated network server/traffic-control applet leaked into fixed initramfs")
 
 
 def cpio_pad(handle: io.BufferedWriter | gzip.GzipFile, length: int) -> None:
@@ -274,7 +282,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     env = dict(os.environ)
     env.update(FIXED_ENV)
     env["CC"] = resolve_program("musl-gcc")
-    run(["make", "defconfig"], cwd=source, env=env)
+    run(["make", "allnoconfig"], cwd=source, env=env)
     set_config(source / ".config", REQUESTED_CONFIG)
     run(["make", "oldconfig"], cwd=source, env=env)
     verify_config(source / ".config")
@@ -306,6 +314,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         "source_commit": git_head(),
         "busybox_version": contract["busybox"]["version"],
         "busybox_archive_sha256": sha256_file(archive),
+        "busybox_applet_count": len(applets),
         "root_init_sha256": sha256_file(init),
         "static_userspace": True,
         "network_inside_fixed_initramfs": False,
