@@ -25,7 +25,9 @@ const (
 	wmClose   = 0x0010
 	wmApp     = 0x8000
 
-	wmAppRefreshDone = wmApp + 1
+	wmAppRefreshDone   = wmApp + 1
+	wmAppWriteProgress = wmApp + 2
+	wmAppWriteDone     = wmApp + 3
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -34,7 +36,7 @@ const (
 	wsDisabled         = 0x08000000
 	wsVScroll          = 0x00200000
 
-	bsPushButton = 0x00000000
+	bsPushButton    = 0x00000000
 	bsDefPushButton = 0x00000001
 	cbsDropDownList = 0x0003
 
@@ -48,11 +50,13 @@ const (
 	idVersion     = 1005
 	idHint        = 1006
 
-	cbAddString  = 0x0143
+	cbAddString    = 0x0143
 	cbResetContent = 0x014B
-	cbSetCurSel  = 0x014E
-	cbGetCurSel  = 0x0147
-	bnClicked    = 0
+	cbSetCurSel    = 0x014E
+	cbGetCurSel    = 0x0147
+	bnClicked      = 0
+
+	createNoWindow = 0x08000000
 )
 
 var (
@@ -76,15 +80,15 @@ var (
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procGetStockObject   = gdi32.NewProc("GetStockObject")
 
-	mainWindow uintptr
-	deviceCombo uintptr
+	mainWindow    uintptr
+	deviceCombo   uintptr
 	refreshButton uintptr
-	writeButton uintptr
-	statusLabel uintptr
-	versionLabel uintptr
-	hintLabel uintptr
+	writeButton   uintptr
+	statusLabel   uintptr
+	versionLabel  uintptr
+	hintLabel     uintptr
 
-	stateMu sync.Mutex
+	stateMu      sync.Mutex
 	refreshState appRefreshState
 )
 
@@ -136,12 +140,13 @@ type physicalTarget struct {
 }
 
 type appRefreshState struct {
-	Version       string
-	SourceCommit  string
-	Updated       bool
-	Targets       []physicalTarget
-	Error         string
-	PhysicalReady bool
+	Version          string
+	SourceCommit     string
+	Updated          bool
+	Targets          []physicalTarget
+	Error            string
+	PhysicalReady    bool
+	BackendDirectory string
 }
 
 func utf16Ptr(value string) *uint16 {
@@ -187,8 +192,8 @@ func createControl(class, text string, style uint32, x, y, width, height int32, 
 	if hwnd == 0 {
 		panic(fmt.Sprintf("CreateWindowExW(%s): %v", class, err))
 	}
-	font, _, _ := procGetStockObject.Call(17) // DEFAULT_GUI_FONT
-	procSendMessageW.Call(hwnd, 0x0030, font, 1) // WM_SETFONT
+	font, _, _ := procGetStockObject.Call(17)
+	procSendMessageW.Call(hwnd, 0x0030, font, 1)
 	return hwnd
 }
 
@@ -209,11 +214,20 @@ func targetLabel(target physicalTarget) string {
 	return fmt.Sprintf("%s  —  %s  —  Disco %d  —  %s", target.DriveLetter, label, target.DiskNumber, formatBytes(target.PhysicalDiskBytes))
 }
 
-func loadTargets(directory string) ([]physicalTarget, bool, error) {
+func runBackendHidden(directory string, args ...string) ([]byte, error) {
 	exe := filepath.Join(directory, "ordax-creator-physical-test.exe")
-	command := exec.Command(exe, "targets")
+	command := exec.Command(exe, args...)
 	command.Dir = directory
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
 	output, err := command.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", strings.Join(args, " "), err)
+	}
+	return output, nil
+}
+
+func loadTargets(directory string) ([]physicalTarget, bool, error) {
+	output, err := runBackendHidden(directory, "targets")
 	if err != nil {
 		return nil, false, fmt.Errorf("detectar pendrives: %w", err)
 	}
@@ -230,13 +244,12 @@ func loadTargets(directory string) ([]physicalTarget, bool, error) {
 		}
 	}
 
-	statusCommand := exec.Command(exe, "status")
-	statusCommand.Dir = directory
-	statusOutput, err := statusCommand.Output()
+	statusOutput, err := runBackendHidden(directory, "status")
 	if err != nil {
 		return nil, false, fmt.Errorf("consultar estado físico: %w", err)
 	}
 	var status struct {
+		RawBackendLinked bool `json:"raw_backend_linked"`
 		Build struct {
 			PhysicalWriteAuthorized bool `json:"physical_write_authorized"`
 			Ready                   bool `json:"ready"`
@@ -245,7 +258,7 @@ func loadTargets(directory string) ([]physicalTarget, bool, error) {
 	if err := json.Unmarshal(statusOutput, &status); err != nil {
 		return nil, false, fmt.Errorf("ler estado físico: %w", err)
 	}
-	return document.Targets, status.Build.PhysicalWriteAuthorized && status.Build.Ready, nil
+	return document.Targets, status.RawBackendLinked && status.Build.PhysicalWriteAuthorized && status.Build.Ready, nil
 }
 
 func refreshAsync() {
@@ -265,6 +278,7 @@ func refreshAsync() {
 			result.Version = installed.Version
 			result.SourceCommit = installed.SourceCommit
 			result.Updated = changed
+			result.BackendDirectory = installed.Directory
 			targets, ready, targetErr := loadTargets(installed.Directory)
 			if targetErr != nil {
 				if result.Error == "" {
@@ -314,19 +328,23 @@ func renderRefresh() {
 		setText(statusLabel, "Nenhum pendrive USB elegível encontrado.")
 		setText(hintLabel, "Conecte um pendrive USB e clique em Recarregar dispositivos.")
 	case state.PhysicalReady:
-		setText(statusLabel, fmt.Sprintf("%d pendrive(s) pronto(s) para uso.", len(state.Targets)))
-		setText(hintLabel, "Confira o dispositivo selecionado antes de iniciar. O conteúdo do pendrive será apagado.")
+		setText(statusLabel, fmt.Sprintf("%d pendrive(s) pronto(s) para criar o OrdaX.", len(state.Targets)))
+		setText(hintLabel, "Escolha o dispositivo correto e clique em Criar pendrive OrdaX. O conteúdo do USB selecionado será apagado.")
 	default:
-		setText(statusLabel, fmt.Sprintf("%d pendrive(s) detectado(s). Modo seguro de desenvolvimento.", len(state.Targets)))
-		setText(hintLabel, "A detecção está funcionando. A gravação física ainda está bloqueada nesta versão até a candidata assinada ser liberada.")
+		setText(statusLabel, fmt.Sprintf("%d pendrive(s) detectado(s).", len(state.Targets)))
+		setText(hintLabel, "A criação do pendrive será habilitada automaticamente quando uma candidata física oficial e assinada estiver disponível.")
 	}
 
-	enable(refreshButton, true)
-	enable(deviceCombo, len(state.Targets) > 0)
-	enable(writeButton, state.PhysicalReady && len(state.Targets) > 0)
+	busy := writeInProgress()
+	enable(refreshButton, !busy)
+	enable(deviceCombo, !busy && len(state.Targets) > 0)
+	enable(writeButton, !busy && state.PhysicalReady && len(state.Targets) > 0)
 }
 
 func beginRefresh() {
+	if writeInProgress() {
+		return
+	}
 	setText(statusLabel, "Verificando atualização e dispositivos USB…")
 	setText(hintLabel, "Isso não grava nem altera nenhum disco.")
 	enable(refreshButton, false)
@@ -345,15 +363,26 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			return 0
 		}
 		if id == idWrite && notify == bnClicked {
-			// Deliberately no destructive call is reachable until the physical build
-			// advertises ready=true. The actual apply flow will be wired only after
-			// canonical trust + seed + manifest bindings are pinned.
+			beginPhysicalWrite()
 			return 0
 		}
 	case wmAppRefreshDone:
 		renderRefresh()
 		return 0
-	case wmClose, wmDestroy:
+	case wmAppWriteProgress:
+		renderWriteProgress()
+		return 0
+	case wmAppWriteDone:
+		renderWriteDone()
+		return 0
+	case wmClose:
+		if writeInProgress() {
+			showWriteBusyMessage()
+			return 0
+		}
+		procPostQuitMessage.Call(0)
+		return 0
+	case wmDestroy:
 		procPostQuitMessage.Call(0)
 		return 0
 	}
@@ -368,7 +397,7 @@ func createMainWindow() {
 		Size:       uint32(unsafe.Sizeof(wndClassEx{})),
 		WndProc:    syscall.NewCallback(wndProc),
 		Instance:   instance,
-		Background: 6, // COLOR_WINDOW + 1
+		Background: 6,
 		ClassName:  className,
 	}
 	atom, _, err := procRegisterClassExW.Call(uintptr(unsafe.Pointer(&class)))
@@ -391,7 +420,7 @@ func createMainWindow() {
 	mainWindow = hwnd
 
 	createControl("STATIC", "OrdaX Creator", 0, 28, 24, 640, 28, 0)
-	createControl("STATIC", "Crie e atualize seu pendrive OrdaX com segurança.", 0, 28, 56, 640, 22, 0)
+	createControl("STATIC", "Crie seu pendrive OrdaX em poucos passos.", 0, 28, 56, 640, 22, 0)
 	createControl("STATIC", "Dispositivo USB", 0, 28, 104, 640, 20, 0)
 	deviceCombo = createControl("COMBOBOX", "", wsTabStop|wsVScroll|cbsDropDownList|wsDisabled, 28, 130, 646, 220, idDeviceCombo)
 	statusLabel = createControl("STATIC", "Inicializando…", 0, 28, 184, 646, 22, idStatus)
