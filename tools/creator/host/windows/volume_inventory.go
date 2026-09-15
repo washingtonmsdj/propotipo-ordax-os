@@ -91,6 +91,34 @@ func selectPhysicalDiskVolumes(volumes []physicalVolume, diskNumber uint32) []ph
 	return selected
 }
 
+// validateTargetVolumeIsolation ensures that every enumerated volume touching
+// the confirmed target disk is wholly owned by that disk. A spanned/dynamic
+// volume that also touches another disk makes destructive scope cross the
+// selected-device boundary, so future mutation must fail closed rather than
+// attempting to lock/dismount it.
+func validateTargetVolumeIsolation(volumes []physicalVolume, diskNumber uint32) error {
+	for _, volume := range volumes {
+		if len(volume.DiskNumbers) == 0 {
+			return fmt.Errorf("volume %s has no physical disk identity", volume.VolumeName)
+		}
+
+		touchesTarget := false
+		for _, candidate := range volume.DiskNumbers {
+			if candidate == diskNumber {
+				touchesTarget = true
+				break
+			}
+		}
+		if !touchesTarget {
+			continue
+		}
+		if len(volume.DiskNumbers) != 1 || volume.DiskNumbers[0] != diskNumber {
+			return fmt.Errorf("volume %s spans target PhysicalDrive%d and other physical disks: disks=%v", volume.VolumeName, diskNumber, volume.DiskNumbers)
+		}
+	}
+	return nil
+}
+
 func volumeInventoryContainsName(volumes []physicalVolume, volumeName string) bool {
 	for _, volume := range volumes {
 		if strings.EqualFold(strings.TrimSpace(volume.VolumeName), strings.TrimSpace(volumeName)) {
