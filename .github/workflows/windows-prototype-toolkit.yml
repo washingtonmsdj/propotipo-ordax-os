@@ -42,7 +42,7 @@ jobs:
           (cd tools/creator && go test -count=1 ./...)
           (cd tools/release-signing && go test -count=1 ./...)
 
-      - name: Assert toolkit commands expose no physical apply route
+      - name: Assert toolkit Creator excludes physical apply and raw backend dependency
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -60,6 +60,14 @@ jobs:
               raise SystemExit(f'Windows toolkit Creator exposes forbidden physical route markers: {found}')
           print('TOOLKIT_PUBLIC_PHYSICAL_APPLY=BLOCKED')
           PY
+          pushd tools/creator >/dev/null
+          deps="$(CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go list -deps ./cmd/ordax-creator)"
+          popd >/dev/null
+          if grep -qx 'github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/host/windows' <<<"$deps"; then
+            echo 'Windows toolkit Creator unexpectedly links the native raw-disk host package' >&2
+            exit 1
+          fi
+          echo 'TOOLKIT_CREATOR_LINKS_NATIVE_RAW_BACKEND=NO'
 
       - name: Build Windows toolkit
         run: |
@@ -108,6 +116,7 @@ jobs:
               'go_version': subprocess.check_output(['go', 'version'], text=True).strip(),
               'native_windows_raw_disk_backend_source_implemented': True,
               'native_windows_raw_disk_backend_publicly_reachable': False,
+              'public_creator_binary_links_native_raw_backend': False,
               'public_physical_apply_implemented': False,
               'physical_write_authorized': False,
               'canonical_trust_included': False,
@@ -133,6 +142,7 @@ jobs:
           provenance = json.loads((root / 'provenance.json').read_text(encoding='utf-8'))
           assert provenance['native_windows_raw_disk_backend_source_implemented'] is True
           assert provenance['native_windows_raw_disk_backend_publicly_reachable'] is False
+          assert provenance['public_creator_binary_links_native_raw_backend'] is False
           assert provenance['public_physical_apply_implemented'] is False
           assert provenance['physical_write_authorized'] is False
           assert provenance['canonical_trust_included'] is False
