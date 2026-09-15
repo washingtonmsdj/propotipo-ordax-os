@@ -18,11 +18,20 @@ type rawDiskDevice interface {
 	Close() error
 }
 
+// rawVolumeLease represents exclusive ownership of every Windows volume that
+// belongs to the confirmed target disk. The production Windows implementation
+// is intentionally not connected yet; fake runtimes use this boundary to prove
+// ordering and lifetime before any native lock/dismount primitive exists.
+type rawVolumeLease interface {
+	Close() error
+}
+
 // rawDiskRuntime deliberately separates destructive host I/O from policy.
 // Production Windows bindings are not connected to a public command yet.
 type rawDiskRuntime interface {
 	IsElevated() (bool, error)
 	EnumerateTargets() ([]Target, error)
+	AcquireTargetVolumeLease(expected Target) (rawVolumeLease, error)
 	OpenVerifiedPhysicalDrive(expected Target) (rawDiskDevice, error)
 }
 
@@ -73,10 +82,10 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		return rawDiskApplyResult{}, err
 	}
 
-	// Re-open and revalidate the exact source handle before the device is
-	// opened. On Windows this handle denies write sharing for its lifetime, so a
-	// path replacement or concurrent writer cannot mutate the authorized source
-	// between this proof and streaming.
+	// Re-open and revalidate the exact source handle before any future
+	// disruptive volume operation is allowed. On Windows this source handle
+	// denies write sharing for its lifetime, so a path replacement or concurrent
+	// writer cannot mutate the authorized image while the target is leased.
 	source, streamImage, err := openVerifiedRawImageForApply(
 		validated.Image.Path,
 		validated.Image.SHA256,
@@ -88,6 +97,23 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 	defer func() {
 		if err := source.Close(); err != nil && retErr == nil {
 			retErr = fmt.Errorf("close raw image: %w", err)
+		}
+	}()
+
+	// A future Windows runtime must lock/dismount the complete, isolated volume
+	// inventory here and keep that lease until the exact physical device has
+	// been closed after byte-complete read-back. Today this is exercised only by
+	// fake runtimes; no native FSCTL lock/dismount calls are connected.
+	lease, err := runtime.AcquireTargetVolumeLease(confirmed)
+	if err != nil {
+		return rawDiskApplyResult{}, fmt.Errorf("acquire PhysicalDrive%d target-volume lease: %w", confirmed.DiskNumber, err)
+	}
+	if lease == nil {
+		return rawDiskApplyResult{}, fmt.Errorf("acquire PhysicalDrive%d target-volume lease: runtime returned nil lease", confirmed.DiskNumber)
+	}
+	defer func() {
+		if err := lease.Close(); err != nil && retErr == nil {
+			retErr = fmt.Errorf("release PhysicalDrive%d target-volume lease: %w", confirmed.DiskNumber, err)
 		}
 	}()
 
@@ -118,8 +144,8 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 	}
 
 	// Success requires byte-complete read-back verification from the same open
-	// physical device. The full authorized extent is hashed and must match the
-	// source digest before the operation can report success.
+	// physical device. The target-volume lease remains held through this proof
+	// and through device close, so no remount can race the verified operation.
 	digest := sha256.New()
 	reader := io.NewSectionReader(device, 0, streamImage.SizeBytes)
 	readBytes, err := io.Copy(digest, reader)
