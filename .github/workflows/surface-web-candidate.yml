@@ -7,6 +7,7 @@ on:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
+      - 'system/contracts/identity-actions.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -19,6 +20,7 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_identity_session.mjs'
+      - 'tests/test_identity_actions.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -27,6 +29,7 @@ on:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
+      - 'system/contracts/identity-actions.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -39,6 +42,7 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_identity_session.mjs'
+      - 'tests/test_identity_actions.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -84,6 +88,7 @@ jobs:
             | xargs -0 -n1 node --check
           node --test tests/test_surface_preferences.mjs
           node --test tests/test_identity_session.mjs
+          node --test tests/test_identity_actions.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_sync_*.mjs
 
