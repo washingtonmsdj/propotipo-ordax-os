@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	fileShareRead                 uintptr = 0x00000001
-	fileShareWrite                uintptr = 0x00000002
-	openExisting                  uintptr = 3
-	ioctlStorageGetDeviceNumber           = 0x002d1080
-	ioctlStorageQueryProperty             = 0x002d1400
+	fileShareRead                   uintptr = 0x00000001
+	fileShareWrite                  uintptr = 0x00000002
+	openExisting                    uintptr = 3
+	ioctlDiskGetDriveGeometryEx             = 0x000700A0
+	ioctlStorageGetDeviceNumber             = 0x002d1080
+	ioctlStorageQueryProperty               = 0x002d1400
 )
 
 type storageDeviceNumber struct {
@@ -149,11 +150,11 @@ func descriptorString(buffer []byte, returned uint32, offset uint32) string {
 	return strings.TrimSpace(string(buffer[int(offset):end]))
 }
 
-func physicalDeviceIdentity(diskNumber uint32) (uint32, bool, string, error) {
+func physicalDeviceIdentity(diskNumber uint32) (uint32, bool, string, uint64, error) {
 	path := fmt.Sprintf(`\\.\PhysicalDrive%d`, diskNumber)
 	ptr, err := utf16Ptr(path)
 	if err != nil {
-		return 0, false, "", err
+		return 0, false, "", 0, err
 	}
 	handle, _, callErr := procCreateFileW.Call(
 		uintptr(unsafe.Pointer(ptr)),
@@ -165,34 +166,63 @@ func physicalDeviceIdentity(diskNumber uint32) (uint32, bool, string, error) {
 		0,
 	)
 	if handle == ^uintptr(0) {
-		return 0, false, "", fmt.Errorf("open PhysicalDrive%d for read-only metadata: %v", diskNumber, callErr)
+		return 0, false, "", 0, fmt.Errorf("open PhysicalDrive%d for read-only metadata: %v", diskNumber, callErr)
 	}
 	defer procCloseHandle.Call(handle)
 
 	// STORAGE_PROPERTY_QUERY with PropertyId=StorageDeviceProperty and
 	// QueryType=PropertyStandardQuery is all-zero bytes.
 	query := make([]byte, 12)
-	buffer := make([]byte, 4096)
+	descriptor := make([]byte, 4096)
 	var returned uint32
 	result, _, ioctlErr := procDeviceIoControl.Call(
 		handle,
 		ioctlStorageQueryProperty,
 		uintptr(unsafe.Pointer(&query[0])),
 		uintptr(len(query)),
-		uintptr(unsafe.Pointer(&buffer[0])),
-		uintptr(len(buffer)),
+		uintptr(unsafe.Pointer(&descriptor[0])),
+		uintptr(len(descriptor)),
 		uintptr(unsafe.Pointer(&returned)),
 		0,
 	)
 	if result == 0 {
-		return 0, false, "", fmt.Errorf("query PhysicalDrive%d storage identity: %v", diskNumber, ioctlErr)
+		return 0, false, "", 0, fmt.Errorf("query PhysicalDrive%d storage identity: %v", diskNumber, ioctlErr)
 	}
 	if returned < 36 {
-		return 0, false, "", fmt.Errorf("short STORAGE_DEVICE_DESCRIPTOR response for PhysicalDrive%d", diskNumber)
+		return 0, false, "", 0, fmt.Errorf("short STORAGE_DEVICE_DESCRIPTOR response for PhysicalDrive%d", diskNumber)
 	}
-	busType := binary.LittleEndian.Uint32(buffer[28:32])
-	serialOffset := binary.LittleEndian.Uint32(buffer[24:28])
-	return busType, buffer[10] != 0, descriptorString(buffer, returned, serialOffset), nil
+	busType := binary.LittleEndian.Uint32(descriptor[28:32])
+	serialOffset := binary.LittleEndian.Uint32(descriptor[24:28])
+	deviceRemovable := descriptor[10] != 0
+	deviceSerial := descriptorString(descriptor, returned, serialOffset)
+
+	// DISK_GEOMETRY_EX begins with a 24-byte DISK_GEOMETRY followed by the
+	// 64-bit DiskSize. We only consume that fixed prefix and keep discovery
+	// read-only.
+	geometry := make([]byte, 32)
+	returned = 0
+	result, _, ioctlErr = procDeviceIoControl.Call(
+		handle,
+		ioctlDiskGetDriveGeometryEx,
+		0,
+		0,
+		uintptr(unsafe.Pointer(&geometry[0])),
+		uintptr(len(geometry)),
+		uintptr(unsafe.Pointer(&returned)),
+		0,
+	)
+	if result == 0 {
+		return 0, false, "", 0, fmt.Errorf("query PhysicalDrive%d capacity: %v", diskNumber, ioctlErr)
+	}
+	if returned < 32 {
+		return 0, false, "", 0, fmt.Errorf("short DISK_GEOMETRY_EX response for PhysicalDrive%d", diskNumber)
+	}
+	diskBytes := binary.LittleEndian.Uint64(geometry[24:32])
+	if diskBytes == 0 {
+		return 0, false, "", 0, fmt.Errorf("PhysicalDrive%d reported zero capacity", diskNumber)
+	}
+
+	return busType, deviceRemovable, deviceSerial, diskBytes, nil
 }
 
 func windowsSystemDiskNumber() (uint32, error) {
@@ -213,7 +243,8 @@ func windowsSystemDiskNumber() (uint32, error) {
 
 // EnumerateRemovableTargets is intentionally read-only. A candidate may be
 // reported by Windows as DRIVE_REMOVABLE or DRIVE_FIXED, but it is considered
-// for the prototype only after its PhysicalDrive descriptor proves BusType=USB.
+// for the prototype only after its PhysicalDrive descriptor proves BusType=USB
+// and its physical capacity is measured directly from the same device handle.
 // The physical disk hosting the running Windows installation is always marked
 // unsafe even if Windows itself is booted from USB.
 func EnumerateRemovableTargets() ([]Target, error) {
@@ -242,8 +273,8 @@ func EnumerateRemovableTargets() ([]Target, error) {
 		if err != nil {
 			continue
 		}
-		busType, deviceRemovable, deviceSerial, err := physicalDeviceIdentity(diskNumber)
-		if err != nil || busType != BusTypeUSB {
+		busType, deviceRemovable, deviceSerial, diskBytes, err := physicalDeviceIdentity(diskNumber)
+		if err != nil || busType != BusTypeUSB || diskBytes == 0 {
 			continue
 		}
 		if seenDisk[diskNumber] {
@@ -252,13 +283,14 @@ func EnumerateRemovableTargets() ([]Target, error) {
 		seenDisk[diskNumber] = true
 		label, serial := volumeIdentity(root)
 		target := Target{
-			DriveLetter:     letter,
-			VolumeLabel:     label,
-			VolumeSerial:    serial,
-			DiskNumber:      diskNumber,
-			VolumeBytes:     volumeBytes(root),
-			DeviceRemovable: deviceRemovable,
-			DeviceSerial:    deviceSerial,
+			DriveLetter:       letter,
+			VolumeLabel:       label,
+			VolumeSerial:      serial,
+			DiskNumber:        diskNumber,
+			VolumeBytes:       volumeBytes(root),
+			PhysicalDiskBytes: diskBytes,
+			DeviceRemovable:   deviceRemovable,
+			DeviceSerial:      deviceSerial,
 		}
 		targets = append(targets, FinalizeTarget(target, typeValue, true, busType, diskNumber == systemDiskNumber))
 	}
