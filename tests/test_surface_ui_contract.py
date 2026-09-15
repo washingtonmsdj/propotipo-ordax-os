@@ -226,7 +226,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('event.key === "Escape"', surface)
         self.assertIn("root.dataset.ordaxTheme", surface)
         self.assertIn("data-preference-id", surface)
-        self.assertIn("data.identityAction", surface)
+        self.assertIn("dataset.identityAction", surface)
         self.assertIn("IDENTITY_LABELS", surface)
         self.assertIn("IDENTITY_ACTION_LABELS", surface)
         self.assertIn('[data-ordax-theme="dark"]', tokens)
