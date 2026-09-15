@@ -38,7 +38,6 @@ const (
 	maxBundleBytes      = int64(2 << 30)
 	maxExtractedBytes   = int64(2 << 30)
 	maxArchiveFileCount = 32
-	currentEnvelopeName = "current-envelope.json"
 )
 
 var (
@@ -121,10 +120,10 @@ func validHTTPSAssetURL(raw string) error {
 func expectedFiles() map[string]struct{} {
 	return map[string]struct{}{
 		"ordax-creator-physical-test.exe": {},
-		"ordax-bootstrap-seed.raw":        {},
-		"release-ed25519.json":            {},
-		"provenance.json":                 {},
-		"SHA256SUMS":                      {},
+		"ordax-bootstrap-seed.raw":         {},
+		"release-ed25519.json":             {},
+		"provenance.json":                  {},
+		"SHA256SUMS":                       {},
 	}
 }
 
@@ -295,6 +294,212 @@ func fetchBytes(client *http.Client, raw string, limit int64) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP 5d from physical release source", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d from physical release source", resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("physical release document exceeded allowed size")
+	}
+	return data, nil
+}
+
+func downloadBundle(client *http.Client, bundle Bundle, destination string) error {
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Minute}
+	}
+	req, err := http.NewRequest(http.MethodGet, bundle.URL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "OrdaX-Creator-Physical/1")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d while downloading physical candidate", resp.StatusCode)
+	}
+	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	remove := true
+	defer func() {
+		_ = file.Close()
+		if remove {
+			_ = os.Remove(destination)
+		}
+	}()
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(file, h), io.LimitReader(resp.Body, bundle.Size+1))
+	if err != nil {
+		return err
+	}
+	if n != bundle.Size {
+		return fmt.Errorf("physical bundle size mismatch: expected=%d actual=%d", bundle.Size, n)
+	}
+	if hex.EncodeToString(h.Sum(nil)) != bundle.SHA256 {
+		return errors.New("physical bundle SHA-256 mismatch")
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	remove = false
+	return nil
+}
+
+func extractBundle(zipPath, destination string, manifest Manifest) error {
+	archive, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	if len(archive.File) == 0 || len(archive.File) > maxArchiveFileCount {
+		return errors.New("physical archive file count outside allowed range")
+	}
+	expected := expectedFiles()
+	seen := make(map[string]struct{}, len(archive.File))
+	var total int64
+	for _, item := range archive.File {
+		if !safeRelative(item.Name) {
+			return fmt.Errorf("unsafe physical archive path %q", item.Name)
+		}
+		clean := filepath.Clean(filepath.FromSlash(item.Name))
+		if strings.Contains(clean, string(filepath.Separator)) {
+			return fmt.Errorf("physical archive must be flat: %q", item.Name)
+		}
+		if _, ok := expected[clean]; !ok {
+			return fmt.Errorf("unexpected file in physical bundle: %q", item.Name)
+		}
+		if _, duplicate := seen[clean]; duplicate {
+			return fmt.Errorf("duplicate file in physical bundle: %q", item.Name)
+		}
+		seen[clean] = struct{}{}
+		if item.FileInfo().IsDir() || item.FileInfo().Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("invalid file type in physical bundle: %q", item.Name)
+		}
+		total += int64(item.UncompressedSize64)
+		if total > maxExtractedBytes {
+			return errors.New("physical archive expands beyond allowed size")
+		}
+		reader, err := item.Open()
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(destination, clean)
+		writer, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+		if err != nil {
+			_ = reader.Close()
+			return err
+		}
+		_, copyErr := io.Copy(writer, reader)
+		writeCloseErr := writer.Close()
+		readCloseErr := reader.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if writeCloseErr != nil {
+			return writeCloseErr
+		}
+		if readCloseErr != nil {
+			return readCloseErr
+		}
+	}
+	if len(seen) != len(expected) {
+		missing := make([]string, 0)
+		for name := range expected {
+			if _, ok := seen[name]; !ok {
+				missing = append(missing, name)
+			}
+		}
+		sort.Strings(missing)
+		return fmt.Errorf("physical bundle is missing required files: %s", strings.Join(missing, ", "))
+	}
+	return VerifyInstalled(destination, manifest)
+}
+
+func samePath(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func Acquire(client *http.Client, root, envelopeURL string, trustBytes []byte, expectedTrustSHA256 string) (Installed, bool, error) {
+	if envelopeURL == "" {
+		envelopeURL = DefaultEnvelopeURL
+	}
+	separator := "?"
+	if strings.Contains(envelopeURL, "?") {
+		separator = "&"
+	}
+	envelopeBytes, err := fetchBytes(client, envelopeURL+separator+"ordax_nocache="+fmt.Sprint(time.Now().UnixNano()), maxEnvelopeBytes)
+	if err != nil {
+		return Installed{}, false, err
+	}
+	manifest, err := VerifyEnvelope(envelopeBytes, trustBytes, expectedTrustSHA256)
+	if err != nil {
+		return Installed{}, false, err
+	}
+	if root == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return Installed{}, false, err
+		}
+		root = filepath.Join(home, ".ordax-creator-physical")
+		if runtime.GOOS == "windows" {
+			if profile := strings.TrimSpace(os.Getenv("USERPROFILE")); profile != "" {
+				root = filepath.Join(profile, "OrdaX-Creator", "physical")
+			}
+		}
+	}
+	versions := filepath.Join(root, "versions")
+	if err := os.MkdirAll(versions, 0o755); err != nil {
+		return Installed{}, false, err
+	}
+	finalDir := filepath.Join(versions, manifest.SourceCommit)
+	if info, err := os.Lstat(finalDir); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return Installed{}, false, errors.New("existing physical candidate slot is unsafe")
+		}
+		if err := VerifyInstalled(finalDir, manifest); err != nil {
+			return Installed{}, false, err
+		}
+		return Installed{SourceCommit: manifest.SourceCommit, Directory: finalDir, Manifest: manifest}, false, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Installed{}, false, err
+	}
+
+	tempDir, err := os.MkdirTemp(versions, ".physical-install-*")
+	if err != nil {
+		return Installed{}, false, err
+	}
+	defer os.RemoveAll(tempDir)
+	bundlePath := filepath.Join(tempDir, "candidate.zip")
+	if err := downloadBundle(client, manifest.Bundle, bundlePath); err != nil {
+		return Installed{}, false, err
+	}
+	extracted := filepath.Join(tempDir, "candidate")
+	if err := os.Mkdir(extracted, 0o755); err != nil {
+		return Installed{}, false, err
+	}
+	if err := extractBundle(bundlePath, extracted, manifest); err != nil {
+		return Installed{}, false, err
+	}
+	if err := os.Rename(extracted, finalDir); err != nil {
+		return Installed{}, false, err
+	}
+	if !samePath(finalDir, filepath.Join(versions, manifest.SourceCommit)) {
+		return Installed{}, false, errors.New("physical candidate escaped its version slot")
+	}
+	return Installed{SourceCommit: manifest.SourceCommit, Directory: finalDir, Manifest: manifest}, true, nil
+}
