@@ -22,6 +22,9 @@ Todos compartilham a mesma Surface, apps e logica de produto. O modo nativo apen
 
 - `main` e a source authority.
 - Pendrive/notebook sao alvos materializados.
+- Codex e parceiro opcional, nunca requisito de source/build/release.
+- Builds devem nascer de receitas versionadas + ambiente fixado + CI + provenance/hash.
+- Kernel nao e excecao manual: deve ser compilado pelo pipeline canonico, nao pela maquina do desenvolvedor.
 - Layout fisico: `ORDAX-ESP` + `ORDAX`.
 - HOME e estado de usuario sao logicos, nao uma terceira particao obrigatoria.
 - O primeiro USB e minimo: boot + kernel/initramfs + rede + aquisicao/verificacao de release + recovery.
@@ -43,15 +46,16 @@ Leia:
 1. `AGENTS.md`
 2. `docs/CURRENT-STATE.md`
 3. `docs/ARCHITECTURE.md`
-4. `docs/PRODUCT-MODES.md`
-5. `docs/MINIMAL-USB-BOOTSTRAP.md`
-6. `docs/HOST-INDEPENDENCE.md`
-7. `docs/REMOTE-CONTROL.md`
-8. `docs/PHYSICAL-MEDIA.md`
-9. `docs/DEVELOPMENT-WORKFLOW.md`
-10. `docs/SOURCE-MIGRATION.md`
-11. `docs/PROMOTION-GATES.md`
-12. `docs/DECISIONS.md`
+4. `docs/BUILD-AUTONOMY.md`
+5. `docs/PRODUCT-MODES.md`
+6. `docs/MINIMAL-USB-BOOTSTRAP.md`
+7. `docs/HOST-INDEPENDENCE.md`
+8. `docs/REMOTE-CONTROL.md`
+9. `docs/PHYSICAL-MEDIA.md`
+10. `docs/DEVELOPMENT-WORKFLOW.md`
+11. `docs/SOURCE-MIGRATION.md`
+12. `docs/PROMOTION-GATES.md`
+13. `docs/DECISIONS.md`
 
 ## Estrutura alvo
 
@@ -86,6 +90,22 @@ tests/
 docs/
 ```
 
+## Build autonomo
+
+```text
+alteracao em main
+ -> receita versionada
+ -> CI em ambiente fixado
+ -> build apenas do afetado
+ -> testes
+ -> provenance + SHA-256
+ -> artefato/release
+```
+
+O objetivo e que eu, outra IA ou qualquer desenvolvedor consiga manter o projeto apenas pelo repositorio e pelo pipeline canonico. Nenhum passo pode exigir Codex especificamente.
+
+GitHub Actions e o executor atual, mas nao e source authority. O entrypoint de build deve continuar portavel para outro runner/container compativel.
+
 ## Pendrive inicial
 
 ```text
@@ -108,13 +128,14 @@ editar
  -> preview Web/HMR
  -> testar
  -> commit/push main
+ -> CI gera/verifica o afetado
  -> Web recebe a mudanca
  -> OrdaX recebe release/delta correspondente
  -> verifica
  -> ativa
 ```
 
-Sem SSH ou shell remoto como requisito.
+Sem SSH, shell remoto ou Codex como requisito.
 
 ## Instalacao
 
@@ -127,15 +148,16 @@ OrdaX Web
  -> opcionalmente instalar no SSD/HD
 ```
 
-O usuario final nao deve precisar de WSL, QEMU ou toolchain de kernel.
+O usuario final nao deve precisar de WSL, QEMU ou toolchain de kernel. O Creator consome artefatos ja compilados e verificados pelo pipeline.
 
 ## Regra de promocao
 
 O sucessor oficial precisa provar no hardware real:
 
 ```text
-UEFI
- -> kernel/initramfs
+source/build sem Codex
+ -> kernel/initramfs reproduziveis no CI
+ -> UEFI
  -> rede
  -> aquisicao/verificacao de release
  -> release/<commit>
