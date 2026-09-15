@@ -31,10 +31,11 @@ GRAPHICAL_SURFACE_SOURCE=IMPLEMENTED
 SHARED_WORKSPACE_WINDOW_MODEL=IMPLEMENTED
 FIRST_PARTY_APP_REGISTRY=FILES,SETTINGS,ACCOUNT,SYSTEM
 WEB_CLIENT_CANDIDATE=PASS
-WEB_CLIENT_SOURCE_COMMIT=a87b8a9753c6072e7c84b72a9a4d0e1438edf29b
-WEB_CLIENT_ARTIFACT_SHA256=bc1b0b5e8a7e60047dbbdf4ed8c3016ba88bf1c6c76eaf9df2b68f6ca08f6f9e
+WEB_CLIENT_SOURCE_COMMIT=91928c7e4b6f4d59f4bf9b8061ac6c4f5c04dd03
+WEB_CLIENT_ARTIFACT_SHA256=03c06471231f84cd5a7b75fc9ece3f72626c715fa7e697a9ab744067c112d4f8
 APPEARANCE_THEME_VALUES=DARK,LIGHT
-APPEARANCE_PERSISTENCE=NO
+APPEARANCE_PERSISTENCE=WEB_LOCAL_PASS
+APPEARANCE_ACCOUNT_SYNC=NO
 NATIVE_GRAPHICAL_HOST=NO
 REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
 GRAPHICAL_SURFACE_COMPLETE=NO
@@ -43,11 +44,13 @@ CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 
 `system/` is the shared product source. The verified native release path remains `system/entrypoint -> system/surface/entrypoint -> system/surface/bin/ordax-surface`, and repository CI proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
 
-The shared graphical source now exists under `system/surface/ui/` with a platform-neutral Surface host contract, a real workspace/window lifecycle, a bounded first-party app registry and capability-driven app availability. Each first-party app has one owner under `system/apps/`; Web wiring lives only in `system/composition/web/` plus `system/adapters/web/`, so the shared Surface does not import concrete platform adapters.
+The shared graphical source exists under `system/surface/ui/` with platform-neutral contracts, a real workspace/window lifecycle, a bounded first-party app registry and capability-driven app availability. Each first-party app has one owner under `system/apps/`; Web wiring lives only in `system/composition/web/` plus `system/adapters/web/`, so the shared Surface does not import concrete platform adapters.
 
-The deterministic Web client build discovers the local ES/CSS/HTML dependency graph, includes multiline ES-module imports, rejects remote/bare/path-escaping dependencies and emits a SHA-256 manifest. CI produced `ordax-web-client-a87b8a9753c6072e7c84b72a9a4d0e1438edf29b` with artifact digest shown above.
+The deterministic Web client build discovers the local ES/CSS/HTML dependency graph, includes multiline ES-module imports, rejects remote/bare/path-escaping dependencies and emits a SHA-256 manifest. CI produced `ordax-web-client-91928c7e4b6f4d59f4bf9b8061ac6c4f5c04dd03` with artifact digest shown above. The Web gate also syntax-checks the zero-dependency ES modules and runs behavioral preference-store tests before publishing the candidate.
 
-`appearance.theme` is the first concrete shared user preference and currently supports `dark` and `light`. It is deliberately session-local at this milestone: persistence/account sync are not implemented or claimed yet. Likewise, the booted native OrdaX path still uses the safe bootstrap-console Surface; the graphical native host/runtime has not been proven and must not be described as complete.
+`appearance.theme` is the first concrete shared user preference and supports `dark` and `light`. Its semantics and validation remain in `system/services/preferences/`; persistence crosses the neutral `ordax.preference-store/1` boundary. The Web adapter persists the validated preference snapshot in browser-local storage, falls back to session memory when storage is denied/unavailable, and ignores corrupt persisted bytes while retaining safe defaults/last-good state. Account/cloud synchronization is not implemented or claimed yet.
+
+The booted native OrdaX path still uses the safe bootstrap-console Surface; the graphical native host/runtime has not been proven and must not be described as complete.
 
 ## Build autonomy
 
@@ -233,7 +236,7 @@ RELEASE_PIPELINE_CI=PASS
 PRODUCTION_RELEASE_PUBLISHED=NO
 ```
 
-CI has proved both the protocol fixture chain and deterministic bundling of the actual repository `system/` tree, including the shared graphical source and preference service. CI-only signing keys remain ephemeral and are never canonical trust.
+CI has proved both the protocol fixture chain and deterministic bundling of the actual repository `system/` tree, including the shared graphical source, preferences and the neutral persistence port. CI-only signing keys remain ephemeral and are never canonical trust.
 
 ### Release channel
 
@@ -410,9 +413,9 @@ DESTRUCTIVE_AUTHORIZATION=NO
 3. keep the tagged, unbound native Windows backend behind `ordax_raw_backend` and the no-public-apply CI gates while completing canonical trust and byte-complete media evidence; do not expose `apply` yet;
 4. only after those gates pass, implement the deliberate public apply boundary and request explicit user authorization for the exact target operation at execution time;
 5. after an authorized physical write, boot the notebook and prove first-release acquisition, known-good offline reboot and recovery;
-6. continue the shared graphical Surface by proving a native graphical host, adding preference persistence/account continuity through explicit capabilities, and expanding first-party apps without platform forks;
+6. continue the shared graphical Surface by proving a native graphical host, adding account/cloud preference continuity and equivalent preference-store adapters where appropriate, and expanding first-party apps without platform forks;
 7. add production release publication and signed trust rotation before product promotion.
 
 ## Handoff rule
 
-Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, Web candidate, graphical source tree, byte-complete proof, internal raw-writer test, tagged-unbound native backend or disposable-media proof never implicitly authorizes physical mutation, proves native graphical boot or promotes a CI key/runtime to production.
+Any new AI/conversation must read `AGENTS.md`, this file and the canonical contracts before changing source. Successful CI, a signed fixture, Web candidate, graphical source tree, local preference persistence, byte-complete proof, internal raw-writer test, tagged-unbound native backend or disposable-media proof never implicitly authorizes physical mutation, proves native graphical boot or promotes a CI key/runtime to production.
