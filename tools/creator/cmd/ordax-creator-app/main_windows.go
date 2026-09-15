@@ -278,8 +278,14 @@ func refreshAsync() {
 			result.Version = installed.Version
 			result.SourceCommit = installed.SourceCommit
 			result.Updated = changed
-			result.BackendDirectory = installed.Directory
-			targets, ready, targetErr := loadTargets(installed.Directory)
+
+			backendDirectory := installed.Directory
+			if physicalDirectory, ok := resolvePhysicalBackend(); ok {
+				backendDirectory = physicalDirectory
+			}
+			result.BackendDirectory = backendDirectory
+
+			targets, ready, targetErr := loadTargets(backendDirectory)
 			if targetErr != nil {
 				if result.Error == "" {
 					result.Error = targetErr.Error()
