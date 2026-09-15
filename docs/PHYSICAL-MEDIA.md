@@ -120,11 +120,17 @@ Before any physical write:
 1. independently identify the target disk rather than trusting a drive letter;
 2. fail closed if an internal/system disk could match;
 3. record pre-write device identity and geometry;
-4. require the canonical two-partition disposable proof;
-5. require a fully resolved minimal-bootstrap manifest, including release trust;
-6. show the exact destructive scope;
-7. require explicit destructive authorization at execution time;
-8. re-read GPT/filesystems after writing and verify artifact hashes from the physical target.
+4. open the selected physical disk read-only first and re-prove disk number, USB transport, capacity and stable device identity from that exact handle;
+5. enumerate every Windows volume by GUID and map it to physical disks through volume disk extents rather than assuming the original drive letter is the only mounted volume;
+6. fail closed if any volume touching the target also spans another physical disk; destructive scope must never cross the confirmed target disk boundary;
+7. before any future writable disk handle is opened, require every target-owned volume to be locked/dismounted through a fail-closed sequence and revalidate the volume-to-disk inventory;
+8. require the canonical two-partition disposable proof;
+9. require a fully resolved minimal-bootstrap manifest, including release trust;
+10. show the exact destructive scope;
+11. require explicit destructive authorization at execution time;
+12. re-read GPT/filesystems after writing and verify artifact hashes from the physical target.
+
+Read-only implementation evidence currently exists for steps 1-5. Steps 6-7 are the next policy/native-backend boundary; neither authorizes mutation by itself.
 
 ## Current physical state
 
@@ -132,6 +138,8 @@ Before any physical write:
 USB_LOCATION=WINDOWS
 PHYSICAL_USB_WRITTEN=NO
 PHYSICAL_LAYOUT_CHANGED=NO
+CREATOR_READ_ONLY_PHYSICALDRIVE_HANDLE_PROBE=PASS
+CREATOR_VOLUME_EXTENT_INVENTORY=PASS
 CREATOR_APPLY_IMPLEMENTED=NO
 WINDOWS_RAW_DISK_ADAPTER_IMPLEMENTED=NO
 ```
