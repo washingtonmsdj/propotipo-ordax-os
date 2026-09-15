@@ -1,4 +1,4 @@
-//go:build windows
+//go:build windows && ordax_raw_backend
 
 package windowsadapter
 
@@ -51,11 +51,11 @@ func deviceIoControlNoBuffers(handle uintptr, controlCode uintptr) error {
 	return nil
 }
 
-// openLockedWindowsVolume is an unexported native primitive. It opens the GUID
-// volume object for direct access and immediately requests FSCTL_LOCK_VOLUME.
-// It is deliberately not connected to rawDiskRuntime or any CLI/public apply
-// path. The host-neutral lease policy re-proves physical extents on this exact
-// returned handle before allowing a simulated dismount boundary to continue.
+// openLockedWindowsVolume is an unexported native primitive compiled only with
+// the explicit ordax_raw_backend tag. It opens the GUID volume object for
+// direct access and immediately requests FSCTL_LOCK_VOLUME. The host-neutral
+// lease policy re-proves physical extents on this exact returned handle before
+// allowing the dismount boundary to continue.
 func openLockedWindowsVolume(volumeName string) (*windowsLockedVolumeHandle, error) {
 	openName, err := normalizeVolumeNameForOpen(volumeName)
 	if err != nil {
@@ -137,10 +137,6 @@ func (h *windowsLockedVolumeHandle) Close() error {
 	return errors.Join(errs...)
 }
 
-// windowsTargetVolumeLeaseRuntime is the native binding for the already-tested
-// host-neutral lease policy. Merely defining this binding does not activate it:
-// no production rawDiskRuntime currently delegates AcquireTargetVolumeLease to
-// this type, and no public command can reach these primitives.
 type windowsTargetVolumeLeaseRuntime struct{}
 
 var _ targetVolumeLeaseRuntime = windowsTargetVolumeLeaseRuntime{}
