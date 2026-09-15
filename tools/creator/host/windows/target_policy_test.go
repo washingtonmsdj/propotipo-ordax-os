@@ -6,33 +6,43 @@ import (
 	"testing"
 )
 
-func TestPrototypeCandidateRequiresMappedRemovableVolume(t *testing.T) {
-	if !IsPrototypeCandidate("E:", DriveTypeRemovable, true) {
-		t.Fatal("expected mapped removable E: to be accepted")
+func TestPrototypeCandidateRequiresUSBAndRejectsSystemDisk(t *testing.T) {
+	if !IsPrototypeCandidate("E:", DriveTypeRemovable, true, BusTypeUSB, false) {
+		t.Fatal("expected mapped removable USB E: to be accepted")
 	}
-	if IsPrototypeCandidate("E:", 3, true) {
-		t.Fatal("fixed-media volume must not be accepted by prototype policy")
+	if !IsPrototypeCandidate("F:", DriveTypeFixed, true, BusTypeUSB, false) {
+		t.Fatal("expected mapped fixed-media USB F: to be accepted")
 	}
-	if IsPrototypeCandidate("E:", DriveTypeRemovable, false) {
+	if IsPrototypeCandidate("F:", DriveTypeFixed, true, 11, false) {
+		t.Fatal("fixed SATA media must not be accepted")
+	}
+	if IsPrototypeCandidate("E:", DriveTypeRemovable, true, 0, false) {
+		t.Fatal("removable media without proven USB transport must not be accepted")
+	}
+	if IsPrototypeCandidate("E:", DriveTypeRemovable, false, BusTypeUSB, false) {
 		t.Fatal("unmapped volume must not be accepted")
 	}
-	if IsPrototypeCandidate("C:", DriveTypeRemovable, true) {
+	if IsPrototypeCandidate("E:", DriveTypeRemovable, true, BusTypeUSB, true) {
+		t.Fatal("physical disk hosting Windows must never be accepted")
+	}
+	if IsPrototypeCandidate("C:", DriveTypeRemovable, true, BusTypeUSB, false) {
 		t.Fatal("system drive letter must never be accepted")
 	}
-	if IsPrototypeCandidate("invalid", DriveTypeRemovable, true) {
+	if IsPrototypeCandidate("invalid", DriveTypeRemovable, true, BusTypeUSB, false) {
 		t.Fatal("invalid drive letter must not be accepted")
 	}
 }
 
 func TestConfirmationTokenIsDeterministicAndIdentitySensitive(t *testing.T) {
-	base := Target{
-		DriveLetter:  "E:",
-		VolumeLabel:  "USB",
-		VolumeSerial: 0x1234abcd,
-		DiskNumber:   7,
-		VolumeBytes:  32 << 30,
-		DriveType:    "removable",
-	}
+	base := FinalizeTarget(Target{
+		DriveLetter:     "E:",
+		VolumeLabel:     "USB",
+		VolumeSerial:    0x1234abcd,
+		DiskNumber:      7,
+		VolumeBytes:     32 << 30,
+		DeviceRemovable: true,
+		DeviceSerial:    "DEVICE-123",
+	}, DriveTypeRemovable, true, BusTypeUSB, false)
 	first := ConfirmationToken(base)
 	second := ConfirmationToken(base)
 	if first == "" || first != second || len(first) != 64 {
@@ -53,18 +63,32 @@ func TestConfirmationTokenIsDeterministicAndIdentitySensitive(t *testing.T) {
 	if ConfirmationToken(changed) == first {
 		t.Fatal("volume-size change must change confirmation token")
 	}
+	changed = base
+	changed.DeviceSerial = "DEVICE-456"
+	if ConfirmationToken(changed) == first {
+		t.Fatal("device-serial change must change confirmation token")
+	}
+	changed = base
+	changed.BusType = "other"
+	if ConfirmationToken(changed) == first {
+		t.Fatal("bus-type change must change confirmation token")
+	}
 }
 
-func TestFinalizeTargetBindsSafetyAndToken(t *testing.T) {
+func TestFinalizeTargetBindsUSBTransportSafetyAndToken(t *testing.T) {
 	target := FinalizeTarget(Target{
-		DriveLetter:  "F:",
-		VolumeSerial: 42,
-		DiskNumber:   4,
-		VolumeBytes:  16 << 30,
-		DriveType:    "removable",
-	}, DriveTypeRemovable, true)
+		DriveLetter:     "F:",
+		VolumeSerial:    42,
+		DiskNumber:      4,
+		VolumeBytes:     16 << 30,
+		DeviceRemovable: false,
+		DeviceSerial:    "SSD-USB",
+	}, DriveTypeFixed, true, BusTypeUSB, false)
 	if !target.PrototypeSafe {
-		t.Fatal("expected removable target to be prototype-safe")
+		t.Fatal("expected fixed-media USB target to be prototype-safe")
+	}
+	if target.DriveType != "fixed" || target.BusType != "usb" || target.SystemDisk {
+		t.Fatalf("unexpected finalized identity: %#v", target)
 	}
 	if target.ConfirmationToken != ConfirmationToken(target) {
 		t.Fatal("finalized target confirmation token mismatch")
@@ -73,12 +97,13 @@ func TestFinalizeTargetBindsSafetyAndToken(t *testing.T) {
 
 func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 	target := FinalizeTarget(Target{
-		DriveLetter:  "G:",
-		VolumeSerial: 99,
-		DiskNumber:   8,
-		VolumeBytes:  64 << 30,
-		DriveType:    "removable",
-	}, DriveTypeRemovable, true)
+		DriveLetter:     "G:",
+		VolumeSerial:    99,
+		DiskNumber:      8,
+		VolumeBytes:     64 << 30,
+		DeviceRemovable: true,
+		DeviceSerial:    "USB-99",
+	}, DriveTypeRemovable, true, BusTypeUSB, false)
 	matched, err := MatchConfirmedTarget([]Target{target}, target.ConfirmationToken)
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +127,24 @@ func TestMatchConfirmedTargetRequiresCurrentSafeIdentity(t *testing.T) {
 
 	if _, err := MatchConfirmedTarget([]Target{target}, "not-a-token"); err == nil {
 		t.Fatal("malformed token must be rejected")
+	}
+}
+
+func TestWindowsDiscoverySourceRequiresUSBDescriptorAndSystemDiskGuard(t *testing.T) {
+	data, err := os.ReadFile("targets_windows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, required := range []string{
+		"ioctlStorageQueryProperty",
+		"BusTypeUSB",
+		"procGetWindowsDirectoryW",
+		"windowsSystemDiskNumber",
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("read-only discovery is missing safety evidence %q", required)
+		}
 	}
 }
 

@@ -3,18 +3,20 @@
 package windowsadapter
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sort"
+	"strings"
 	"syscall"
 	"unsafe"
 )
 
 const (
-	driveRemovable               = 2
-	fileShareRead         uintptr = 0x00000001
-	fileShareWrite        uintptr = 0x00000002
-	openExisting          uintptr = 3
-	ioctlStorageGetDeviceNumber  = 0x002d1080
+	fileShareRead                 uintptr = 0x00000001
+	fileShareWrite                uintptr = 0x00000002
+	openExisting                  uintptr = 3
+	ioctlStorageGetDeviceNumber           = 0x002d1080
+	ioctlStorageQueryProperty             = 0x002d1400
 )
 
 type storageDeviceNumber struct {
@@ -29,6 +31,7 @@ var (
 	procGetDriveTypeW         = kernel32.NewProc("GetDriveTypeW")
 	procGetVolumeInformationW = kernel32.NewProc("GetVolumeInformationW")
 	procGetDiskFreeSpaceExW   = kernel32.NewProc("GetDiskFreeSpaceExW")
+	procGetWindowsDirectoryW  = kernel32.NewProc("GetWindowsDirectoryW")
 	procCreateFileW           = kernel32.NewProc("CreateFileW")
 	procDeviceIoControl       = kernel32.NewProc("DeviceIoControl")
 	procCloseHandle           = kernel32.NewProc("CloseHandle")
@@ -106,7 +109,7 @@ func physicalDiskNumber(driveLetter string) (uint32, error) {
 		0,
 	)
 	if handle == ^uintptr(0) {
-		return 0, fmt.Errorf("open removable volume %s read-only: %v", driveLetter, callErr)
+		return 0, fmt.Errorf("open volume %s for read-only metadata: %v", driveLetter, callErr)
 	}
 	defer procCloseHandle.Call(handle)
 
@@ -123,7 +126,7 @@ func physicalDiskNumber(driveLetter string) (uint32, error) {
 		0,
 	)
 	if result == 0 {
-		return 0, fmt.Errorf("map removable volume %s to physical disk: %v", driveLetter, ioctlErr)
+		return 0, fmt.Errorf("map volume %s to physical disk: %v", driveLetter, ioctlErr)
 	}
 	if returned < uint32(unsafe.Sizeof(number)) {
 		return 0, fmt.Errorf("short STORAGE_DEVICE_NUMBER response for %s", driveLetter)
@@ -131,13 +134,96 @@ func physicalDiskNumber(driveLetter string) (uint32, error) {
 	return number.DeviceNumber, nil
 }
 
-// EnumerateRemovableTargets is intentionally read-only. It only considers
-// Win32 DRIVE_REMOVABLE volumes during this prototype phase and maps them to
-// their physical-disk number. Fixed-media USB devices are not accepted yet.
+func descriptorString(buffer []byte, returned uint32, offset uint32) string {
+	if offset == 0 || offset >= returned || int(offset) >= len(buffer) {
+		return ""
+	}
+	end := int(offset)
+	limit := int(returned)
+	if limit > len(buffer) {
+		limit = len(buffer)
+	}
+	for end < limit && buffer[end] != 0 {
+		end++
+	}
+	return strings.TrimSpace(string(buffer[int(offset):end]))
+}
+
+func physicalDeviceIdentity(diskNumber uint32) (uint32, bool, string, error) {
+	path := fmt.Sprintf(`\\.\PhysicalDrive%d`, diskNumber)
+	ptr, err := utf16Ptr(path)
+	if err != nil {
+		return 0, false, "", err
+	}
+	handle, _, callErr := procCreateFileW.Call(
+		uintptr(unsafe.Pointer(ptr)),
+		0,
+		fileShareRead|fileShareWrite,
+		0,
+		openExisting,
+		0,
+		0,
+	)
+	if handle == ^uintptr(0) {
+		return 0, false, "", fmt.Errorf("open PhysicalDrive%d for read-only metadata: %v", diskNumber, callErr)
+	}
+	defer procCloseHandle.Call(handle)
+
+	// STORAGE_PROPERTY_QUERY with PropertyId=StorageDeviceProperty and
+	// QueryType=PropertyStandardQuery is all-zero bytes.
+	query := make([]byte, 12)
+	buffer := make([]byte, 4096)
+	var returned uint32
+	result, _, ioctlErr := procDeviceIoControl.Call(
+		handle,
+		ioctlStorageQueryProperty,
+		uintptr(unsafe.Pointer(&query[0])),
+		uintptr(len(query)),
+		uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(len(buffer)),
+		uintptr(unsafe.Pointer(&returned)),
+		0,
+	)
+	if result == 0 {
+		return 0, false, "", fmt.Errorf("query PhysicalDrive%d storage identity: %v", diskNumber, ioctlErr)
+	}
+	if returned < 36 {
+		return 0, false, "", fmt.Errorf("short STORAGE_DEVICE_DESCRIPTOR response for PhysicalDrive%d", diskNumber)
+	}
+	busType := binary.LittleEndian.Uint32(buffer[28:32])
+	serialOffset := binary.LittleEndian.Uint32(buffer[24:28])
+	return busType, buffer[10] != 0, descriptorString(buffer, returned, serialOffset), nil
+}
+
+func windowsSystemDiskNumber() (uint32, error) {
+	buffer := make([]uint16, 32768)
+	result, _, callErr := procGetWindowsDirectoryW.Call(
+		uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(len(buffer)),
+	)
+	if result == 0 || result >= uintptr(len(buffer)) {
+		return 0, fmt.Errorf("GetWindowsDirectoryW failed: %v", callErr)
+	}
+	windowsPath := syscall.UTF16ToString(buffer[:result])
+	if len(windowsPath) < 2 || windowsPath[1] != ':' {
+		return 0, fmt.Errorf("unexpected Windows directory path %q", windowsPath)
+	}
+	return physicalDiskNumber(strings.ToUpper(windowsPath[:2]))
+}
+
+// EnumerateRemovableTargets is intentionally read-only. A candidate may be
+// reported by Windows as DRIVE_REMOVABLE or DRIVE_FIXED, but it is considered
+// for the prototype only after its PhysicalDrive descriptor proves BusType=USB.
+// The physical disk hosting the running Windows installation is always marked
+// unsafe even if Windows itself is booted from USB.
 func EnumerateRemovableTargets() ([]Target, error) {
 	mask, _, callErr := procGetLogicalDrives.Call()
 	if mask == 0 {
 		return nil, fmt.Errorf("GetLogicalDrives failed: %v", callErr)
+	}
+	systemDiskNumber, err := windowsSystemDiskNumber()
+	if err != nil {
+		return nil, fmt.Errorf("cannot establish Windows system disk identity: %w", err)
 	}
 
 	seenDisk := map[uint32]bool{}
@@ -149,12 +235,16 @@ func EnumerateRemovableTargets() ([]Target, error) {
 		letter := string(rune('A'+index)) + ":"
 		root := letter + `\`
 		typeValue, err := driveType(root)
-		if err != nil || typeValue != driveRemovable {
+		if err != nil || (typeValue != DriveTypeRemovable && typeValue != DriveTypeFixed) {
 			continue
 		}
 		diskNumber, err := physicalDiskNumber(letter)
 		if err != nil {
-			return nil, err
+			continue
+		}
+		busType, deviceRemovable, deviceSerial, err := physicalDeviceIdentity(diskNumber)
+		if err != nil || busType != BusTypeUSB {
+			continue
 		}
 		if seenDisk[diskNumber] {
 			continue
@@ -162,14 +252,15 @@ func EnumerateRemovableTargets() ([]Target, error) {
 		seenDisk[diskNumber] = true
 		label, serial := volumeIdentity(root)
 		target := Target{
-			DriveLetter: letter,
-			VolumeLabel: label,
-			VolumeSerial: serial,
-			DiskNumber:  diskNumber,
-			VolumeBytes: volumeBytes(root),
-			DriveType:   "removable",
+			DriveLetter:     letter,
+			VolumeLabel:     label,
+			VolumeSerial:    serial,
+			DiskNumber:      diskNumber,
+			VolumeBytes:     volumeBytes(root),
+			DeviceRemovable: deviceRemovable,
+			DeviceSerial:    deviceSerial,
 		}
-		targets = append(targets, FinalizeTarget(target, typeValue, true))
+		targets = append(targets, FinalizeTarget(target, typeValue, true, busType, diskNumber == systemDiskNumber))
 	}
 	sort.Slice(targets, func(i, j int) bool {
 		if targets[i].DiskNumber == targets[j].DiskNumber {
