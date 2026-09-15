@@ -6,9 +6,9 @@ This script deliberately has no dependency on Codex or the developer workstation
 `build` downloads the pinned kernel.org archive, verifies it, builds in an isolated
 workspace, packages modules deterministically, and emits provenance + SHA-256.
 
-The current CI build environment is still a candidate environment until its
-container/toolchain identity is pinned by immutable digest. Artifacts produced
-before that gate are useful test candidates but are not physical-release authority.
+Build-environment reproducibility and physical-artifact authorization are separate
+gates. A pinned/repeated environment may be verified while physical use remains
+fail-closed until the independent bootstrap, trust and provisioning gates pass.
 """
 
 from __future__ import annotations
@@ -154,6 +154,7 @@ def check_contract() -> dict:
         "fragment_sha256": sha256_file(fragment),
         "assignment_count": len(assignments),
         "pinned_environment_resolved": bool(contract["build"]["pinned_environment_resolved"]),
+        "physical_artifact_authorized": bool(contract["build"]["physical_artifact_authorized"]),
     }
     return result
 
@@ -420,12 +421,15 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
     final_config = out_dir / f"kernel-{contract['version']}.config"
     shutil.copy2(build_dir / ".config", final_config)
 
+    environment_pinned = bool(contract["build"]["pinned_environment_resolved"])
+    physical_authorized = bool(contract["build"]["physical_artifact_authorized"])
     provenance = {
         "$schema": "prototype-ordax.kernel-provenance/1",
-        "status": "candidate-unpinned-build-environment"
-        if not contract["build"]["pinned_environment_resolved"]
-        else "verified-build-environment",
-        "promotable_to_physical": bool(contract["build"]["pinned_environment_resolved"]),
+        "status": "verified-build-environment"
+        if environment_pinned
+        else "candidate-unpinned-build-environment",
+        "promotable_to_physical": environment_pinned and physical_authorized,
+        "physical_artifact_authorized": physical_authorized,
         "source_commit": git_head(),
         "kernel_version": contract["version"],
         "upstream_archive_url": contract["archive_url"],
@@ -443,7 +447,7 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
             ).stdout.strip(),
             "make": command_version([resolve_program("make"), "--version"]),
             "fixed_environment": FIXED_ENV,
-            "immutable_environment_pinned": bool(contract["build"]["pinned_environment_resolved"]),
+            "immutable_environment_pinned": environment_pinned,
         },
         "artifacts": {
             vmlinuz.name: sha256_file(vmlinuz),
