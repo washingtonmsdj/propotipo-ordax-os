@@ -19,22 +19,36 @@ type openedPhysicalIdentity struct {
 	DeviceSerial      string
 }
 
+// validateExpectedPhysicalTarget checks every Target-owned invariant that can
+// be established before opening a PhysicalDrive handle. Keeping this policy
+// host-neutral makes stale or internally modified targets fail before any host
+// raw-device API is touched.
+func validateExpectedPhysicalTarget(expected Target) error {
+	if !expected.PrototypeSafe {
+		return errors.New("PhysicalDrive validation requires a prototype-safe target")
+	}
+	if expected.SystemDisk {
+		return errors.New("PhysicalDrive validation refuses the Windows system disk")
+	}
+	if expected.BusType != "usb" {
+		return fmt.Errorf("PhysicalDrive validation requires USB target identity: bus_type=%q", expected.BusType)
+	}
+	if expected.PhysicalDiskBytes == 0 {
+		return errors.New("PhysicalDrive validation requires measured target capacity")
+	}
+	if expected.ConfirmationToken == "" || expected.ConfirmationToken != ConfirmationToken(expected) {
+		return errors.New("PhysicalDrive validation requires a current target confirmation token")
+	}
+	return nil
+}
+
 // validateOpenedPhysicalIdentity proves that an already-opened PhysicalDrive
 // handle still represents the same safe physical device selected by the
 // confirmed Target. A future native writer must call this on the same handle it
 // would write, before any lock/dismount/write primitive is allowed.
 func validateOpenedPhysicalIdentity(expected Target, actual openedPhysicalIdentity) error {
-	if !expected.PrototypeSafe {
-		return errors.New("opened PhysicalDrive validation requires a prototype-safe target")
-	}
-	if expected.SystemDisk {
-		return errors.New("opened PhysicalDrive validation refuses the Windows system disk")
-	}
-	if expected.PhysicalDiskBytes == 0 {
-		return errors.New("opened PhysicalDrive validation requires measured target capacity")
-	}
-	if expected.ConfirmationToken == "" || expected.ConfirmationToken != ConfirmationToken(expected) {
-		return errors.New("opened PhysicalDrive validation requires a current target confirmation token")
+	if err := validateExpectedPhysicalTarget(expected); err != nil {
+		return err
 	}
 	if actual.DiskNumber != expected.DiskNumber {
 		return fmt.Errorf("opened PhysicalDrive number changed: expected=%d actual=%d", expected.DiskNumber, actual.DiskNumber)
