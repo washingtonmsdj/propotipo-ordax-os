@@ -48,6 +48,7 @@ jobs:
           assert data['$schema'] == 'prototype-ordax.physical-promotion-status/1'
           assert data['consumer_key_setup_required'] is False
           assert data['development_channel_can_authorize_write'] is False
+          assert isinstance(data['release_sequence'], int) and data['release_sequence'] > 0
           print('true' if data['ready'] else 'false')
           PY
           )"
@@ -186,6 +187,9 @@ jobs:
           }
           if expected != actual:
               raise SystemExit(f'authorization binding changed after preflight: expected={expected!r} actual={actual!r}')
+          sequence = auth.get('release_sequence')
+          if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence <= 0:
+              raise SystemExit('physical release_sequence is missing or invalid')
           PY
 
           cp --sparse=always "$seed" "$out/ordax-bootstrap-seed.raw"
@@ -205,10 +209,15 @@ jobs:
 
           python - "$out/provenance.json" "$trust_sha" "$manifest_sha" "$media_sha" "$seed_sha" "$seed_size" <<'PY'
           import json, pathlib, sys, os
+          auth = json.loads(pathlib.Path('docs/contracts/physical-write-authorization.json').read_text(encoding='utf-8'))
+          release_sequence = auth.get('release_sequence')
+          if isinstance(release_sequence, bool) or not isinstance(release_sequence, int) or release_sequence <= 0:
+              raise SystemExit('physical release_sequence is missing or invalid')
           data = {
               '$schema': 'prototype-ordax.physical-write-candidate/1',
               'status': 'authorized-candidate-not-published',
               'source_commit': os.environ['GITHUB_SHA'],
+              'release_sequence': release_sequence,
               'consumer_key_setup_required': False,
               'development_channel': False,
               'canonical_trust_sha256': sys.argv[2],
@@ -276,6 +285,10 @@ jobs:
               path = candidate / name
               if not path.is_file():
                   raise SystemExit(f'missing physical candidate file: {name}')
+
+          provenance = json.loads((candidate / 'provenance.json').read_text(encoding='utf-8'))
+          if not isinstance(provenance.get('release_sequence'), int) or provenance['release_sequence'] <= 0:
+              raise SystemExit('physical candidate has no valid release_sequence')
 
           with zipfile.ZipFile(bundle, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
               for name in names:
