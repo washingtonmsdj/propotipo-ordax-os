@@ -115,7 +115,7 @@ HELPER_SHA256="$(sha256sum "$HELPER" | awk '{print $1}')"
 SOURCE_COMMIT="${GITHUB_SHA:-unknown}"
 cat >"$PROOF" <<EOF
 {
-  "$schema": "prototype-ordax.ext4-growth-runtime-proof/1",
+  "\$schema": "prototype-ordax.ext4-growth-runtime-proof/1",
   "status": "pass",
   "source_commit": "$SOURCE_COMMIT",
   "helper_sha256": "$HELPER_SHA256",
