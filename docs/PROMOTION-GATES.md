@@ -2,7 +2,7 @@
 
 Status: CANONICAL FOR PROTOTYPE
 
-This repository remains a prototype until every required gate below is closed with reproducible evidence.
+This repository remains a prototype until every required gate below is closed with reproducible evidence. A green CI candidate never implicitly authorizes physical-media mutation.
 
 ## Gate 0 - Repository foundation
 
@@ -20,57 +20,42 @@ DEVELOPMENT_WORKFLOW=PASS
 MIGRATION_LEDGER=PASS
 ```
 
-Remote-control documentation may exist, but remote control is not a promotion prerequisite unless a later ADR makes it a supported product requirement.
+Remote control is not a promotion prerequisite unless a later ADR makes it a supported product requirement.
 
 ## Gate 1 - Autonomous reproducible build foundation
 
 Required:
-
-- Codex is not required to build, test or publish any canonical artifact;
-- no developer-local kernel toolchain is required;
-- build entrypoints live in repository source;
-- build environment/toolchain identity is pinned;
-- upstream sources are checksum-verified;
-- boot-critical artifacts produce provenance + SHA-256;
-- GitHub Actions may execute builds, but recipes remain portable to another compatible executor.
 
 ```text
 CODEX_REQUIRED=NO
 LOCAL_DEVELOPER_TOOLCHAIN_REQUIRED=NO
 MANUAL_KERNEL_BUILD_REQUIRED=NO
 REPOSITORY_BUILD_RECIPE=PASS
-PINNED_BUILD_ENVIRONMENT=PASS
 UPSTREAM_SOURCE_HASH_VERIFY=PASS
 ARTIFACT_PROVENANCE=PASS
 ARTIFACT_SHA256=PASS
 PORTABLE_BUILD_ENTRYPOINT=PASS
+PINNED_BUILD_ENVIRONMENT=BLOCKED
+KERNEL_PROMOTABLE_TO_PHYSICAL=NO
 ```
+
+Repository-owned recipes and CI compilation are proven. This gate is **not closed** because kernel provenance still reports `candidate-unpinned-build-environment` and `promotable_to_physical=false`. The immutable build environment/toolchain identity must be pinned and the boot artifacts rebuilt before physical promotion.
 
 ## Gate 2 - Reproducible minimal bootstrap source
 
-Required:
-
-- kernel provenance identified;
-- initramfs provenance identified;
-- minimal userspace source/build reproducible;
-- no private secrets in repository;
-- exact pre-release dependency/file manifest explicit before physical write;
-- release channel source-controlled and hash-bound;
-- real public release trust anchor pinned before physical write;
-- corresponding private signing key remains outside Git/media/client bundles;
-- bootstrap build has deterministic/verified artifact hashes where practical;
-- no legacy `ORDAX-HOME`/`ORDAX-PLATFORM` physical dependency;
-- no mandatory WSL/QEMU/host-shell dependency;
-- initial media excludes Surface/apps/high-level services/full source/toolchain/SSH/Remote Core/Control Plane.
+Current state:
 
 ```text
 BOOTSTRAP_SOURCE=PASS
 MINIMAL_BOOTSTRAP_MANIFEST=PARTIAL_UNTIL_RELEASE_TRUST
-KERNEL_PROVENANCE=PASS
+KERNEL_PROVENANCE=PASS_CANDIDATE_ONLY
 INITRAMFS_PROVENANCE=PASS
 RELEASE_CHANNEL=PASS
-RELEASE_TRUST=BLOCKED_UNTIL_REAL_PUBLIC_ANCHOR
+RELEASE_TRUST_POLICY=PASS
+RELEASE_TRUST_KEY_MATERIAL=BLOCKED_UNTIL_LOCAL_CEREMONY
+REAL_PUBLIC_TRUST_ANCHOR=BLOCKED
 PRIVATE_SIGNING_KEY_IN_GIT=NO
+PRIVATE_SIGNING_KEY_IN_USB=NO
 FULL_SYSTEM_PRESEEDED=NO
 SURFACE_PRESEEDED=NO
 NORMAL_APPS_PRESEEDED=NO
@@ -83,51 +68,49 @@ WSL_REQUIRED=NO
 QEMU_REQUIRED=NO
 ```
 
-## Gate 3 - Two-partition provisioning in disposable media
+The trust custody/recovery/rotation policy is defined in `docs/contracts/release-trust-policy.json`; policy completion does not resolve the actual public trust artifact.
 
-Required:
+## Gate 3 - Two-partition provisioning in disposable media
 
 ```text
 DISPOSABLE_GPT=PASS
 PARTITION_COUNT=2
 SEPARATE_HOME_PARTITION=NO
-PROVISION_VERIFY=PASS
-```
-
-Current source/CI evidence additionally proves:
-
-```text
 FILESYSTEMS=FAT32,EXT4
 FILESYSTEM_LABELS=PASS
 POST_MATERIALIZATION_HASH_VERIFY=PASS
 RAW_PARTITION_BYTES_VERIFY=PASS
+PROVISION_VERIFY=PASS
 PHYSICAL_WRITE_AUTHORIZED=NO
 ```
 
-This gate is now proven against a disposable regular RAW representation through Creator Core staging plus `tools/creator/proof/disposable_media.py`. It does **not** authorize or imply a physical write.
+This gate is proven against an ephemeral regular RAW representation through Creator Core staging plus `tools/creator/proof/disposable_media.py`. It does not authorize a physical write.
 
 ## Gate 4 - Boot artifact and bootstrap proof
 
-Required:
+Current source/CI state:
 
 ```text
 UEFI_BOOT_CONTRACT=PASS
-KERNEL_BOOT=PASS
 BOOTSTRAP_ENTRY=PASS
-NETWORK_READY=PASS
+NETWORK_BOOTSTRAP_BUILD=PASS
 RELEASE_ACQUISITION_ENTRY=PASS
-RELEASE_TRUST_VALIDATION=PASS
 RELEASE_CHANNEL_VALIDATION=PASS
+RELEASE_AGENT_SAFE_MATERIALIZATION=PASS
+SYSTEM_ENTRYPOINT=PASS
+SURFACE_BOOTSTRAP_RUNTIME=PASS
+REAL_SYSTEM_BUNDLE=PASS
+RELEASE_TRUST_VALIDATION_WITH_EPHEMERAL_CI_KEY=PASS
+RELEASE_TRUST_VALIDATION_WITH_CANONICAL_KEY=PENDING
+PHYSICAL_KERNEL_BOOT=PENDING
 LEGACY_MEDIA_DEPENDENCY=NO
 EMULATOR_SPECIFIC_DEPENDENCY=NO
 REMOTE_CONTROL_DEPENDENCY=NO
 ```
 
-The bootstrap must be able to reach authenticated release acquisition without a full-system preseed.
+The full-bootstrap-media proof may close byte-complete disposable composition with ephemeral trust, but only canonical trust plus physical boot can close the remaining physical portions of this gate.
 
-## Gate 5 - OrdaX Creator host independence
-
-Required:
+## Gate 5 - OrdaX Creator host independence and target safety
 
 ```text
 CREATOR_SHARED_CORE=PASS
@@ -137,33 +120,45 @@ END_USER_KERNEL_TOOLCHAIN_REQUIRED=NO
 CREATOR_VERIFY=PASS
 CREATOR_STAGE_TREE_TRANSACTIONAL=PASS
 CREATOR_MINIMAL_PAYLOAD_ONLY=PASS
+WINDOWS_USB_TARGET_DISCOVERY=PASS
+WINDOWS_FIXED_MEDIA_USB_DISCOVERY=PASS
+USB_TRANSPORT_VERIFICATION=PASS
+WINDOWS_SYSTEM_DISK_EXCLUSION=PASS
+TARGET_CONFIRMATION_TOKEN=PASS
+TARGET_REENUMERATION=PASS
+BLOCKED_RAW_DISK_PLAN=PASS
+WINDOWS_PROTOTYPE_TOOLKIT=PASS
+PHYSICAL_WRITE_IMPLEMENTED=NO
 ```
 
-Host-specific code may only integrate raw-device/elevation APIs; layout, artifact and verification policy remain shared. Creator consumes prebuilt verified artifacts; it does not compile the OS for the end user.
+The target helper may accept Win32 removable or fixed media only when the mapped PhysicalDrive reports USB transport. The physical disk hosting the running Windows installation is always excluded. Host code remains read-only in this gate.
 
 ## Gate 6 - Physical USB reprovisioning
 
-This gate is destructive and requires explicit authorization at execution time.
+This gate is destructive and requires explicit user authorization at execution time.
 
 Before write:
 
 ```text
 TARGET_IDENTITY=PASS
+TARGET_REENUMERATION_IMMEDIATELY_BEFORE_WRITE=REQUIRED
 SOURCE_LAYOUT_CONTRACT=PASS
-MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PASS
-RELEASE_TRUST=PASS
+MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=PENDING_CANONICAL_TRUST
+RELEASE_TRUST=PENDING_CANONICAL_KEY
+PINNED_BOOT_BUILD_ENVIRONMENT=PENDING
 DISPOSABLE_LAYOUT_TEST=PASS
-CREATOR_APPLY_IMPLEMENTED_AND_TESTED=PASS
-DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=YES
+FULL_BOOTSTRAP_BYTE_COMPLETE_PROOF=PENDING_WORKFLOW_RESULT
+CREATOR_RAW_DISK_WRITER_IMPLEMENTED_AND_TESTED=NO
+DESTRUCTIVE_OPERATION_EXPLICITLY_AUTHORIZED=NO
 ```
 
-After write:
+After a future authorized write:
 
 ```text
-PHYSICAL_GPT_VERIFY=PASS
-PHYSICAL_FILESYSTEM_VERIFY=PASS
-BOOT_ARTIFACT_HASH_VERIFY=PASS
-PHYSICAL_PAYLOAD_MATCHES_MANIFEST=PASS
+PHYSICAL_GPT_VERIFY=PENDING
+PHYSICAL_FILESYSTEM_VERIFY=PENDING
+BOOT_ARTIFACT_HASH_VERIFY=PENDING
+PHYSICAL_PAYLOAD_MATCHES_MANIFEST=PENDING
 UNAPPROVED_FULL_SYSTEM_PRESEED=NO
 ```
 
@@ -180,11 +175,11 @@ DESTRUCTIVE_AUTHORIZATION=NO
 Required:
 
 ```text
-NOTEBOOK_UEFI_BOOT=PASS
-NETWORK_READY=PASS
-RELEASE_CHANNEL_REACHABLE=PASS
-RELEASE_SIGNATURE_VERIFY=PASS
-RECOVERY_PATH=PASS
+NOTEBOOK_UEFI_BOOT=PENDING
+NETWORK_READY=PENDING_PHYSICAL
+RELEASE_CHANNEL_REACHABLE=PENDING_PHYSICAL
+RELEASE_SIGNATURE_VERIFY=PENDING_CANONICAL_TRUST_AND_PHYSICAL
+RECOVERY_PATH=PENDING_PHYSICAL
 SSH_REQUIRED=NO
 REMOTE_CORE_REQUIRED=NO
 CONTROL_PLANE_REQUIRED=NO
@@ -195,45 +190,47 @@ CONTROL_PLANE_REQUIRED=NO
 Required:
 
 ```text
-FIRST_RELEASE_ACQUIRED_AFTER_BOOT=PASS
-RELEASE_MATERIALIZE=PASS
-RELEASE_INTEGRITY=PASS
-ATOMIC_ACTIVATION=PASS
-KNOWN_GOOD_PERSISTED=PASS
-KNOWN_GOOD_OFFLINE_BOOT=PASS
-ROLLBACK=PASS
+FIRST_RELEASE_ACQUIRED_AFTER_BOOT=PENDING
+RELEASE_MATERIALIZE=PASS_IN_AGENT_TESTS
+RELEASE_INTEGRITY=PASS_IN_AGENT_TESTS
+ATOMIC_ACTIVATION=PASS_IN_AGENT_TESTS
+KNOWN_GOOD_PERSISTED=PENDING_PHYSICAL
+KNOWN_GOOD_OFFLINE_BOOT=PENDING_PHYSICAL
+ROLLBACK=PENDING_PHYSICAL
 ```
 
 A release must be tied to an exact source commit and authenticated before activation.
 
 ## Gate 9 - Single-source Surface across Web and native
 
-Required:
-
 ```text
-ONE_SURFACE_SOURCE=PASS
-UI_FORKS=NO
-WEB_MODE=PASS
-NATIVE_MODE=PASS
-SAME_COMMIT_VISUAL_CHANGE=PASS
-CAPABILITY_ADAPTER_BOUNDARY=PASS
+ONE_SURFACE_SOURCE=ARCHITECTURE_PASS
+SYSTEM_TO_SURFACE_HANDOFF=PASS
+BOOTSTRAP_SURFACE_RUNTIME=PASS
+UI_FORKS=NO_BY_CONTRACT
+WEB_MODE=PENDING
+NATIVE_GRAPHICAL_MODE=PENDING
+SAME_COMMIT_VISUAL_CHANGE=PENDING
+CAPABILITY_ADAPTER_BOUNDARY=PASS_BY_CONTRACT
 ```
+
+The console/bootstrap Surface proves the release handoff but does not close the graphical Surface gate.
 
 ## Gate 10 - Git-driven live incremental development
 
-With the normal user-facing system running:
+Required with the normal user-facing system running:
 
 ```text
-EDIT_SOURCE=PASS
-AFFECTED_TEST=PASS
-WEB_PREVIEW=PASS
+EDIT_SOURCE=PENDING_END_TO_END
+AFFECTED_TEST=PASS_REPOSITORY
+WEB_PREVIEW=PENDING
 GIT_PUSH=PASS
-CI_AFFECTED_ARTIFACT_BUILD=PASS
-DEVICE_RELEASE_OR_DELTA_UPDATE=PASS
-HEALTH_READINESS=PASS
-FULL_IMAGE_REBUILD_REQUIRED=NO
-USB_REFLASH_REQUIRED=NO
-ROUTINE_REBOOT_REQUIRED=NO
+CI_AFFECTED_ARTIFACT_BUILD=PASS_PARTIAL
+DEVICE_RELEASE_OR_DELTA_UPDATE=PENDING_PHYSICAL
+HEALTH_READINESS=PENDING
+FULL_IMAGE_REBUILD_REQUIRED=NO_TARGET
+USB_REFLASH_REQUIRED=NO_TARGET_AFTER_FIRST_RELEASE
+ROUTINE_REBOOT_REQUIRED=NO_TARGET
 SSH_REQUIRED=NO
 REMOTE_CONTROL_REQUIRED=NO
 CODEX_REQUIRED=NO
@@ -241,44 +238,31 @@ CODEX_REQUIRED=NO
 
 ## Gate 11 - User continuity Web -> USB -> native disk
 
-Required:
-
 ```text
-ACCOUNT_CONTINUITY=PASS
-SYNC_POLICY=PASS
-WEB_TO_USB_CONTINUITY=PASS
-DEVICE_SECRETS_STAY_LOCAL=PASS
+ACCOUNT_CONTINUITY=CONTRACT_DEFINED
+SYNC_POLICY=CONTRACT_DEFINED
+WEB_TO_USB_CONTINUITY=PENDING
+DEVICE_SECRETS_STAY_LOCAL=PASS_BY_CONTRACT
+NATIVE_DISK_INSTALL=PENDING
 ```
-
-`NATIVE_DISK_INSTALL=PASS` is required before native-disk installation is declared production-supported.
 
 ## Gate 12 - Recovery after failure
 
-Simulate at least:
-
-- first-release acquisition unavailable;
-- invalid signature/wrong release key;
-- bad/unavailable new release;
-- network unavailable after a known-good release exists;
-- release channel unavailable;
-- interrupted release acquisition;
-- failed release activation.
-
-Required:
+Agent/unit/disposable tests already prove multiple fail-closed release cases, but physical recovery remains pending. Final required evidence includes:
 
 ```text
-BOOTSTRAP_RECOVERY_WITHOUT_FIRST_RELEASE=PASS
-KNOWN_GOOD_PRESERVED=PASS
-OFFLINE_BOOT=PASS
-INTERRUPTED_UPDATE_SAFE=PASS
+BOOTSTRAP_RECOVERY_WITHOUT_FIRST_RELEASE=PENDING_PHYSICAL
+KNOWN_GOOD_PRESERVED=PASS_IN_AGENT_TESTS
+OFFLINE_BOOT=PENDING_PHYSICAL
+INTERRUPTED_UPDATE_SAFE=PASS_IN_AGENT_TESTS
 RELEASE_INTEGRITY_FAIL_CLOSED=PASS
 RELEASE_SIGNATURE_FAIL_CLOSED=PASS
 ```
 
 ## Optional future remote-management gate
 
-Only if Remote Core or another remote-management feature is later adopted as a supported product capability should it receive its own security, authorization and recovery gates. It is intentionally not part of the bootstrap or daily-development critical path today.
+Only if Remote Core or another remote-management feature is later adopted as a supported product capability should it receive its own security, authorization and recovery gates. It is intentionally not part of the bootstrap or daily-development critical path.
 
 ## Promotion decision
 
-Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate.
+Only after the applicable Gates 0-12 pass may the repository be declared a successor candidate. In particular, no physical write is permitted while canonical release trust, pinned boot build environment, raw-disk writer validation or explicit destructive authorization remain open.
