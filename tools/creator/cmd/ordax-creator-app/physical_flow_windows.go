@@ -254,6 +254,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 	}
 	defer os.RemoveAll(workDir)
 	preparedPath := filepath.Join(workDir, "ordax-prepared.raw")
+	diagnosticPath := filepath.Join(workDir, "ordax-physical-error.txt")
 
 	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem do OrdaX e ajustando o layout GPT ao tamanho do pendrive, preservando o restante para ORDAX-DATA.")
 	output, err := runBackendHidden(
@@ -282,8 +283,9 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		"--sha256", preparation.PreparedImage.SHA256,
 		"--size", strconv.FormatInt(preparation.PreparedImage.SizeBytes, 10),
 		"--authorize", preparation.DestructiveAuthorization,
+		"--diagnostic-log", diagnosticPath,
 	}
-	if err := runElevatedAndWait(backend, directory, args); err != nil {
+	if err := runElevatedAndWait(backend, directory, args, diagnosticPath); err != nil {
 		return err
 	}
 
@@ -309,7 +311,7 @@ func validatePhysicalPreparation(preparation physicalPreparationDocument, target
 	return nil
 }
 
-func runElevatedAndWait(executable, directory string, args []string) error {
+func runElevatedAndWait(executable, directory string, args []string, diagnosticPath string) error {
 	parameters := make([]string, 0, len(args))
 	for _, arg := range args {
 		parameters = append(parameters, syscall.EscapeArg(arg))
@@ -336,9 +338,6 @@ func runElevatedAndWait(executable, directory string, args []string) error {
 	}
 	defer procCloseHandle.Call(info.Process)
 
-	// ShellExecuteEx returns only after the elevated child was actually created.
-	// At this point UAC was accepted, so keeping the UI at “waiting for
-	// authorization” is wrong and makes a healthy raw write look frozen.
 	updateWriteProgress(
 		"Gravando, verificando e preparando arquivos…",
 		"Autorização do Windows confirmada. Não remova o USB; o Creator está gravando, fará a leitura de verificação e preparará o volume ORDAX-DATA antes de concluir.",
@@ -354,6 +353,13 @@ func runElevatedAndWait(executable, directory string, args []string) error {
 		return fmt.Errorf("não foi possível ler o resultado da gravação: %v", exitErr)
 	}
 	if exitCode != 0 {
+		if diagnosticPath != "" {
+			if data, readErr := os.ReadFile(diagnosticPath); readErr == nil {
+				if detail := strings.TrimSpace(string(data)); detail != "" {
+					return fmt.Errorf("a gravação física falhou: %s", detail)
+				}
+			}
+		}
 		return fmt.Errorf("a gravação física foi interrompida ou falhou (código %d)", exitCode)
 	}
 	return nil
