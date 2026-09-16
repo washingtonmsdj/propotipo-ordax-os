@@ -2,7 +2,7 @@ name: Diagnose Creator Git USB build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'fix/**']
     paths:
       - 'bootstrap/dev-base/**'
       - '.github/workflows/creator-owner-build-diagnose.yml'
