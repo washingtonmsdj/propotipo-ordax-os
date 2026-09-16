@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+DEV_ROOT=/ordax/dev-base
+
+fail() {
+    echo "ordax-dev-bootstrap: $*" >&2
+    echo "ordax-dev-bootstrap: entering local recovery shell" >&2
+    exec sh
+}
+
+[ -d "$DEV_ROOT" ] || fail "development base is missing"
+[ -x "$DEV_ROOT/sbin/ordax-dev-init" ] || fail "development init is missing"
+
+for directory in proc sys dev run; do
+    mkdir -p "$DEV_ROOT/$directory"
+done
+
+mount -o bind "$DEV_ROOT" "$DEV_ROOT" || fail "cannot bind development root"
+mount -o bind /proc "$DEV_ROOT/proc" || fail "cannot bind /proc"
+mount -o bind /sys "$DEV_ROOT/sys" || fail "cannot bind /sys"
+mount -o bind /dev "$DEV_ROOT/dev" || fail "cannot bind /dev"
+
+echo "ordax-dev-bootstrap: minimal base ready; handing off to network + Git" >&2
+exec switch_root "$DEV_ROOT" /sbin/ordax-dev-init
