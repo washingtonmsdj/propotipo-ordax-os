@@ -21,6 +21,7 @@ type RawDiskApplyRequest struct {
 	Target                   Target           `json:"target"`
 	ConfirmationToken        string           `json:"confirmation_token"`
 	Image                    VerifiedRawImage `json:"image"`
+	BootstrapSeedBytes       int64            `json:"bootstrap_seed_bytes,omitempty"`
 	CanonicalTrustResolved   bool             `json:"canonical_trust_resolved"`
 	DestructiveAuthorization string           `json:"destructive_authorization"`
 }
@@ -130,36 +131,59 @@ func DestructiveAuthorizationToken(target Target, image VerifiedRawImage) string
 	return hex.EncodeToString(digest[:])
 }
 
-func ValidateRawDiskApplyRequest(request RawDiskApplyRequest) error {
+// validateRawDiskApplyRequestPolicy checks every non-I/O invariant needed before
+// the prepared image is opened through the write-locked handle. Keeping the
+// cryptographic file verification out of this helper avoids hashing a large
+// target-sized sparse image repeatedly; applyRawDiskInternal performs that hash
+// once on the exact handle that is subsequently used for the raw write.
+func validateRawDiskApplyRequestPolicy(request RawDiskApplyRequest) (Target, error) {
 	confirmed, err := MatchConfirmedTarget([]Target{request.Target}, request.ConfirmationToken)
 	if err != nil {
-		return err
+		return Target{}, err
 	}
 	if confirmed.SystemDisk || confirmed.BusType != "usb" || !confirmed.PrototypeSafe || confirmed.PhysicalDiskBytes == 0 {
-		return errors.New("target is not eligible for physical write")
+		return Target{}, errors.New("target is not eligible for physical write")
 	}
 	if !request.CanonicalTrustResolved {
-		return errors.New("physical write blocked: canonical release trust is unresolved")
+		return Target{}, errors.New("physical write blocked: canonical release trust is unresolved")
+	}
+	if strings.TrimSpace(request.Image.Path) == "" {
+		return Target{}, errors.New("raw image path is required")
+	}
+	if !validLowerSHA256(request.Image.SHA256) {
+		return Target{}, errors.New("expected raw image SHA-256 must be lowercase 64-hex")
+	}
+	if request.Image.SizeBytes <= 0 {
+		return Target{}, errors.New("expected raw image size must be positive")
+	}
+	if uint64(request.Image.SizeBytes) != confirmed.PhysicalDiskBytes {
+		return Target{}, fmt.Errorf(
+			"physical write blocked: full-disk image size must equal physical device size: image=%d device=%d",
+			request.Image.SizeBytes,
+			confirmed.PhysicalDiskBytes,
+		)
+	}
+	if request.BootstrapSeedBytes < 0 || request.BootstrapSeedBytes > request.Image.SizeBytes {
+		return Target{}, errors.New("physical write blocked: bootstrap seed size is outside the prepared image")
 	}
 
+	expectedAuthorization := DestructiveAuthorizationToken(confirmed, request.Image)
+	if request.DestructiveAuthorization != expectedAuthorization {
+		return Target{}, errors.New("physical write blocked: destructive authorization does not match current target and image")
+	}
+	return confirmed, nil
+}
+
+func ValidateRawDiskApplyRequest(request RawDiskApplyRequest) error {
+	if _, err := validateRawDiskApplyRequestPolicy(request); err != nil {
+		return err
+	}
 	verified, err := VerifyRawImage(request.Image.Path, request.Image.SHA256, request.Image.SizeBytes)
 	if err != nil {
 		return err
 	}
 	if verified.SizeBytes <= 0 {
 		return errors.New("verified raw image is empty")
-	}
-	if uint64(verified.SizeBytes) != confirmed.PhysicalDiskBytes {
-		return fmt.Errorf(
-			"physical write blocked: full-disk image size must equal physical device size: image=%d device=%d",
-			verified.SizeBytes,
-			confirmed.PhysicalDiskBytes,
-		)
-	}
-
-	expectedAuthorization := DestructiveAuthorizationToken(confirmed, verified)
-	if request.DestructiveAuthorization != expectedAuthorization {
-		return errors.New("physical write blocked: destructive authorization does not match current target and image")
 	}
 	return nil
 }
