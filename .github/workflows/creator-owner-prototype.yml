@@ -1,0 +1,339 @@
+name: Creator Owner Prototype Write Channel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/network/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'bootstrap/recovery/**'
+      - 'bootstrap/config/**'
+      - 'bootstrap/entrypoint'
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - 'docs/contracts/physical-media.json'
+      - '.github/workflows/creator-owner-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: creator-owner-prototype-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator core and Windows target policy
+        run: |
+          set -euo pipefail
+          (cd tools/creator && go test -count=1 ./...)
+
+      - name: Install bounded bootstrap and media dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
+            gdisk dosfstools e2fsprogs mtools util-linux zip
+          python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
+
+      - name: Build real bootstrap owners
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+          python bootstrap/network/build.py check
+          python bootstrap/network/build.py build --jobs 4
+          python bootstrap/network/build.py verify
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-acquisition/ordax-release-agent .
+          )
+          test -s out/release-acquisition/ordax-release-agent
+
+      - name: Create ephemeral prototype trust for this boot image
+        run: |
+          set -euo pipefail
+          mkdir -p out/owner-prototype bootstrap/trust
+          (
+            cd tools/release-signing
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/owner-prototype/ordax-release-signing .
+          )
+          signer="$PWD/out/owner-prototype/ordax-release-signing"
+          private="$RUNNER_TEMP/owner-prototype-private.pem"
+          "$signer" generate-key \
+            --private-key "$private" \
+            --trust bootstrap/trust/release-ed25519.json \
+            --key-id owner-prototype-${GITHUB_SHA::12}
+          test -s "$private"
+          test -s bootstrap/trust/release-ed25519.json
+          echo "$private" > "$RUNNER_TEMP/owner-prototype-private-path"
+
+      - name: Derive byte-complete prototype manifest without changing canonical policy
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/minimal-bootstrap-owner-prototype.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          source = pathlib.Path('docs/contracts/minimal-bootstrap.json')
+          trust = pathlib.Path('bootstrap/trust/release-ed25519.json')
+          output = pathlib.Path(sys.argv[1])
+          manifest = json.loads(source.read_text(encoding='utf-8'))
+          payload = trust.read_bytes()
+          digest = hashlib.sha256(payload).hexdigest()
+          groups = {group['id']: group for group in manifest['artifact_groups']}
+          group = groups['bootstrap-release-trust']
+          group['resolved'] = True
+          group['artifacts'] = [{
+              'source_path': 'bootstrap/trust/release-ed25519.json',
+              'target_path': '/ordax/bootstrap/trust/release-ed25519.json',
+              'sha256': digest,
+              'mode': '0644',
+              'logical_owner': 'bootstrap-release-trust',
+              'reason': 'Ephemeral public trust anchor for the owner-only first physical prototype'
+          }]
+          manifest['status'] = 'owner-prototype-byte-complete-ephemeral-trust'
+          manifest['all_artifacts_resolved'] = True
+          manifest['physical_write_allowed'] = False
+          output.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          print('OWNER_PROTOTYPE_TRUST_SHA256=' + digest)
+          PY
+
+      - name: Assemble and stage the complete bootstrap payload
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/minimal-bootstrap-owner-prototype.json"
+          payload="$RUNNER_TEMP/owner-prototype-payload"
+          stage="$RUNNER_TEMP/owner-prototype-stage"
+          python tools/creator/assemble.py build --manifest "$manifest" --out-dir "$payload"
+          python tools/creator/assemble.py verify --manifest "$manifest" --payload-root "$payload"
+          pushd tools/creator >/dev/null
+          go run ./cmd/ordax-creator verify-payload \
+            --manifest "$manifest" \
+            --payload-root "$payload"
+          go run ./cmd/ordax-creator stage-tree \
+            --manifest "$manifest" \
+            --payload-root "$payload" \
+            --output-root "$stage"
+          popd >/dev/null
+          echo "$stage" > "$RUNNER_TEMP/owner-prototype-stage-path"
+
+      - name: Materialize and verify the exact RAW seed image
+        run: |
+          set -euo pipefail
+          stage="$(cat "$RUNNER_TEMP/owner-prototype-stage-path")"
+          proof="$RUNNER_TEMP/owner-prototype-media"
+          python tools/creator/proof/disposable_media.py \
+            --contract docs/contracts/physical-media.json \
+            --stage-root "$stage" \
+            --output-root "$proof"
+          python - "$proof/proof.json" <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert proof['status'] == 'pass'
+          assert all(proof['checks'].values())
+          assert proof['real_hardware_touched'] is False
+          PY
+          echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/owner-prototype-seed-path"
+
+      - name: Build isolated write-enabled Windows Creator package
+        run: |
+          set -euo pipefail
+          seed="$(cat "$RUNNER_TEMP/owner-prototype-seed-path")"
+          manifest="$RUNNER_TEMP/minimal-bootstrap-owner-prototype.json"
+          out="$GITHUB_WORKSPACE/out/owner-prototype/package"
+          mkdir -p "$out"
+
+          trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
+          manifest_sha="$(sha256sum "$manifest" | cut -d' ' -f1)"
+          seed_sha="$(sha256sum "$seed" | cut -d' ' -f1)"
+          seed_size="$(stat -c '%s' "$seed")"
+
+          cp --sparse=always "$seed" "$out/ordax-bootstrap-seed.raw"
+          cp bootstrap/trust/release-ed25519.json "$out/release-ed25519.json"
+
+          pushd tools/creator >/dev/null
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false -tags ordax_raw_backend \
+              -ldflags="-s -w -X main.buildSourceCommit=$GITHUB_SHA -X main.buildCanonicalTrustSHA256=$trust_sha -X main.buildManifestSHA256=$manifest_sha -X main.buildSeedImageSHA256=$seed_sha -X main.buildSeedImageSize=$seed_size -X main.buildPhysicalWriteAuthorized=YES" \
+              -o "$out/ordax-creator-physical-test.exe" \
+              ./cmd/ordax-creator-physical-test
+
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false -tags ordax_owner_prototype \
+              -ldflags='-s -w -H=windowsgui' \
+              -o "$out/OrdaX-Creator.exe" \
+              ./cmd/ordax-creator-app
+          popd >/dev/null
+
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$seed_sha" >/dev/null
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$trust_sha" >/dev/null
+          strings "$out/ordax-creator-physical-test.exe" | grep -F "$manifest_sha" >/dev/null
+
+          cat > "$out/LEIA-ME.txt" <<'TXT'
+          OrdaX Creator - Owner Prototype
+
+          USO:
+          1. Extraia TODO o conteudo do ZIP para uma pasta.
+          2. Conecte o pendrive que sera apagado.
+          3. Abra OrdaX-Creator.exe.
+          4. Escolha o pendrive.
+          5. Clique em Criar OrdaX e confirme o aviso do Windows.
+          6. Nao remova o USB ate aparecer a confirmacao de verificacao concluida.
+
+          IMPORTANTE:
+          - Este pacote e um prototipo gravavel para o primeiro teste fisico do proprietario.
+          - O disco do sistema e excluido da lista de alvos elegiveis.
+          - O USB e revalidado antes da preparacao e novamente antes da escrita elevada.
+          - A imagem preparada e verificada por SHA-256 e tamanho.
+          - A escrita termina somente depois da verificacao de leitura.
+          - A ancora de confianca deste prototipo e temporaria; nao e o canal publico final de atualizacoes.
+          TXT
+
+          python - "$out/provenance.json" "$trust_sha" "$manifest_sha" "$seed_sha" "$seed_size" <<'PY'
+          import json, os, pathlib, sys
+          data = {
+              '$schema': 'prototype-ordax.creator-owner-physical/1',
+              'status': 'owner-prototype-write-enabled',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'canonical_public_release': False,
+              'ephemeral_prototype_trust': True,
+              'private_key_in_package': False,
+              'raw_backend_linked': True,
+              'physical_write_authorized_in_binary': True,
+              'system_disk_exclusion_required': True,
+              'live_target_revalidation_required': True,
+              'windows_uac_required': True,
+              'readback_verification_required': True,
+              'trust_sha256': sys.argv[2],
+              'prototype_manifest_sha256': sys.argv[3],
+              'seed_sha256': sys.argv[4],
+              'seed_size': int(sys.argv[5]),
+          }
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+
+          (
+            cd "$out"
+            sha256sum OrdaX-Creator.exe ordax-creator-physical-test.exe ordax-bootstrap-seed.raw release-ed25519.json provenance.json LEIA-ME.txt > SHA256SUMS
+          )
+
+          if find "$out" -type f \( -name '*.pem' -o -name '*.key' -o -name '*.p12' -o -name '*.pfx' -o -name '*.dpapi' \) -print -quit | grep -q .; then
+            echo 'private signing material entered owner prototype package' >&2
+            exit 1
+          fi
+
+          echo "OWNER_PROTOTYPE_SEED_SHA256=$seed_sha"
+          echo "OWNER_PROTOTYPE_SEED_SIZE=$seed_size"
+          echo 'OWNER_PROTOTYPE_RAW_WRITE=ENABLED'
+
+      - name: Destroy ephemeral private key before packaging
+        run: |
+          set -euo pipefail
+          private="$(cat "$RUNNER_TEMP/owner-prototype-private-path")"
+          rm -f "$private"
+          test ! -e "$private"
+          rm -f out/owner-prototype/ordax-release-signing
+          echo 'EPHEMERAL_PRIVATE_KEY_DESTROYED=YES'
+
+      - name: Package owner prototype
+        run: |
+          set -euo pipefail
+          package="$GITHUB_WORKSPACE/out/owner-prototype/package"
+          release="$GITHUB_WORKSPACE/out/owner-prototype/release"
+          mkdir -p "$release"
+          python - "$package" "$release/OrdaX-Creator-Owner-Prototype.zip" <<'PY'
+          import pathlib, sys, zipfile
+          root = pathlib.Path(sys.argv[1])
+          target = pathlib.Path(sys.argv[2])
+          names = [
+              'OrdaX-Creator.exe',
+              'ordax-creator-physical-test.exe',
+              'ordax-bootstrap-seed.raw',
+              'release-ed25519.json',
+              'provenance.json',
+              'SHA256SUMS',
+              'LEIA-ME.txt',
+          ]
+          with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9, allowZip64=True) as z:
+              for name in names:
+                  path = root / name
+                  if not path.is_file():
+                      raise SystemExit(f'missing package member: {name}')
+                  info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.external_attr = (0o100755 if name.endswith('.exe') else 0o100644) << 16
+                  with path.open('rb') as source, z.open(info, 'w', force_zip64=True) as dest:
+                      while True:
+                          chunk = source.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          dest.write(chunk)
+          PY
+          cp "$package/LEIA-ME.txt" "$release/LEIA-ME.txt"
+          (cd "$release" && sha256sum OrdaX-Creator-Owner-Prototype.zip > SHA256SUMS.txt)
+          test -s "$release/OrdaX-Creator-Owner-Prototype.zip"
+
+      - name: Publish rolling owner prototype release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release="$GITHUB_WORKSPACE/out/owner-prototype/release"
+          if ! gh release view creator-owner-prototype --repo washingtonmsdj/prototipo-ordax-os >/dev/null 2>&1; then
+            gh release create creator-owner-prototype \
+              --repo washingtonmsdj/prototipo-ordax-os \
+              --target "$GITHUB_SHA" \
+              --title 'OrdaX Creator - Owner Prototype (write enabled)' \
+              --prerelease \
+              --notes 'Owner-only physical prototype. Extract the ZIP, open OrdaX-Creator.exe, select the USB and click Criar OrdaX. This is not the final canonical public signing channel.'
+          fi
+          gh release upload creator-owner-prototype \
+            "$release/OrdaX-Creator-Owner-Prototype.zip" \
+            "$release/SHA256SUMS.txt" \
+            "$release/LEIA-ME.txt" \
+            --repo washingtonmsdj/prototipo-ordax-os \
+            --clobber
+          echo 'OWNER_PROTOTYPE_RELEASE_PUBLISHED=YES'
+          echo 'OWNER_PROTOTYPE_PHYSICAL_WRITE=ENABLED'
