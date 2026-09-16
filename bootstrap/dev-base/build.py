@@ -118,12 +118,26 @@ def download_verified(cache: Path) -> tuple[Path, str]:
 
 def safe_extract(archive: Path, rootfs: Path) -> None:
     with tarfile.open(archive, "r:gz") as tar:
+        members = []
         for member in tar.getmembers():
-            name = member.name.lstrip("./")
-            target = (rootfs / name).resolve(strict=False)
-            if rootfs.resolve() != target and rootfs.resolve() not in target.parents:
+            name = member.name
+            while name.startswith("./"):
+                name = name[2:]
+            if not name or name.startswith("/") or ".." in Path(name).parts:
                 raise BuildError(f"unsafe Alpine archive path: {member.name}")
-        members = [member for member in tar.getmembers() if not member.isdev() and not member.isfifo()]
+            target = rootfs / name
+            try:
+                target.relative_to(rootfs)
+            except ValueError as exc:
+                raise BuildError(f"unsafe Alpine archive path: {member.name}") from exc
+            if member.isdev() or member.isfifo():
+                continue
+            if member.issym() and os.path.isabs(member.linkname):
+                parent = Path(name).parent.as_posix()
+                member.linkname = os.path.relpath(member.linkname.lstrip("/"), start=parent or ".")
+            elif member.islnk() and os.path.isabs(member.linkname):
+                member.linkname = member.linkname.lstrip("/")
+            members.append(member)
         tar.extractall(rootfs, members=members, filter="data")
 
 
