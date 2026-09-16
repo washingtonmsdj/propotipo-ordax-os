@@ -7,15 +7,13 @@ on:
       - 'tools/creator/cmd/ordax-creator-app/**'
       - 'docs/contracts/creator-ux-baseline.json'
       - '.github/workflows/creator-ux-baseline.yml'
-      - '.github/workflows/creator-owner-standalone-exe.yml'
-      - '.github/workflows/creator-owner-update-manifest.yml'
+      - '.github/workflows/creator-owner-release.yml'
   pull_request:
     paths:
       - 'tools/creator/cmd/ordax-creator-app/**'
       - 'docs/contracts/creator-ux-baseline.json'
       - '.github/workflows/creator-ux-baseline.yml'
-      - '.github/workflows/creator-owner-standalone-exe.yml'
-      - '.github/workflows/creator-owner-update-manifest.yml'
+      - '.github/workflows/creator-owner-release.yml'
   workflow_dispatch:
 
 permissions:
@@ -48,8 +46,7 @@ jobs:
           update = pathlib.Path('tools/creator/cmd/ordax-creator-app/update_check_windows.go').read_text(encoding='utf-8')
           backend = pathlib.Path('tools/creator/cmd/ordax-creator-app/backend_resolution_windows.go').read_text(encoding='utf-8')
           standalone = pathlib.Path('tools/creator/cmd/ordax-creator-app/owner_single_exe_backend_windows.go').read_text(encoding='utf-8')
-          standalone_workflow = pathlib.Path('.github/workflows/creator-owner-standalone-exe.yml').read_text(encoding='utf-8')
-          update_workflow = pathlib.Path('.github/workflows/creator-owner-update-manifest.yml').read_text(encoding='utf-8')
+          release_workflow = pathlib.Path('.github/workflows/creator-owner-release.yml').read_text(encoding='utf-8')
 
           required_main = [
               'Criar OrdaX', 'Recarregar USB', 'Atualizações',
@@ -100,19 +97,17 @@ jobs:
               'runOwnerBackendCommand',
               'command != "status" && command != "targets" && command != "prepare" && command != "apply"',
           ]
-          required_standalone_workflow = [
-              "name: Creator Owner Standalone EXE",
+          required_release_workflow = [
+              'name: Creator Owner Standalone Release',
               "-tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend'",
               'OrdaX-Creator.exe',
+              'creator-owner-update.json',
+              'prototype-ordax.creator-owner-update/2',
               "delete-asset creator-owner-prototype",
               "'OrdaX-Creator-Owner-Prototype.zip'",
               'standalone release must not contain a ZIP',
-          ]
-          required_update_workflow = [
-              "workflows: ['Creator Owner Standalone EXE']",
-              "--pattern 'OrdaX-Creator.exe'",
-              'prototype-ordax.creator-owner-update/2',
-              '/OrdaX-Creator.exe',
+              'OWNER_RELEASE_PIPELINE=UNIFIED',
+              'Destroy ephemeral private key before publish',
           ]
 
           for text in required_main:
@@ -127,10 +122,11 @@ jobs:
               assert text in backend, f'missing owner isolation anchor: {text}'
           for text in required_standalone:
               assert text in standalone, f'missing standalone Creator anchor: {text}'
-          for text in required_standalone_workflow:
-              assert text in standalone_workflow, f'missing standalone release anchor: {text}'
-          for text in required_update_workflow:
-              assert text in update_workflow, f'missing standalone update anchor: {text}'
+          for text in required_release_workflow:
+              assert text in release_workflow, f'missing unified owner release anchor: {text}'
+
+          assert 'workflow_run:' not in release_workflow, 'owner release must not depend on a workflow_run publication chain'
+          assert 'OrdaX-Creator-Owner-Prototype.zip"' not in release_workflow, 'owner public release must not build a ZIP artifact'
 
           owner_pos = backend.index('ownerPrototypePhysicalBackend()')
           dev_pos = backend.index('creatorupdate.Ensure')
@@ -148,4 +144,5 @@ jobs:
           print('CREATOR_IN_APP_UPDATE=YES')
           print('CREATOR_UPDATE_ANTI_DOWNGRADE=YES')
           print('CREATOR_UPDATE_ROLLBACK=YES')
+          print('CREATOR_RELEASE_PIPELINE=UNIFIED')
           PY
