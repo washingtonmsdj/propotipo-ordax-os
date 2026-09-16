@@ -32,7 +32,7 @@ type preparedMediaContract struct {
 		PreparedImageIntegrityScope string `json:"prepared_image_integrity_scope"`
 		CurrentRawWriteScope        string `json:"current_raw_write_scope"`
 		CurrentReadbackScope        string `json:"current_readback_scope"`
-		ZeroRegionSkip              bool   `json:"zero_region_skip_implemented"`
+		ZeroRegionSkip              bool   `json:"zero-region-skip_implemented"`
 		SkippedRegionOwner          string `json:"skipped_region_owner"`
 		FailClosedRule              string `json:"fail_closed_rule"`
 	} `json:"performance"`
