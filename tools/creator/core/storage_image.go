@@ -45,9 +45,6 @@ func portableDataUniqueGUID(diskGUID []byte, targetBytes uint64) [16]byte {
 	sum := digest.Sum(nil)
 	var result [16]byte
 	copy(result[:], sum[:16])
-	// Mark the generated identifier as an RFC 4122-style version-5 UUID while
-	// retaining GPT's on-disk byte ordering. GPT only requires uniqueness, but
-	// these bits make diagnostics less surprising in partition tools.
 	result[7] = (result[7] & 0x0f) | 0x50
 	result[8] = (result[8] & 0x3f) | 0x80
 	return result
@@ -58,7 +55,7 @@ func portableDataUniqueGUID(diskGUID []byte, targetBytes uint64) [16]byte {
 // ORDAX-DATA is target-capacity-specific and exists only in the prepared image.
 func applyPortableDataLayout(entries []byte, entrySize, entryCount uint32, diskGUID []byte, layout PhysicalStorageLayout) error {
 	if entrySize < 128 || len(entries) < int(entrySize*entryCount) {
-		return errors.New("GPT entry array is shorter than its declared geometry")
+		return errors.New("GPT partition entry array is shorter than its declared geometry")
 	}
 	mainOffset, err := locateCanonicalPartitions(entries, entrySize, entryCount)
 	if err != nil {
@@ -123,19 +120,15 @@ func applyPortableDataLayout(entries []byte, entrySize, entryCount uint32, diskG
 	return nil
 }
 
-// PreparePhysicalStorageImage creates the target-sized raw image using the
+// PreparePhysicalStorageImage creates the target-sized sparse image using the
 // proven seed material, then replaces the old "ORDAX fills the USB" geometry
-// with ORDAX-ESP + bounded ORDAX + ORDAX-DATA. ORDAX-DATA is deliberately left
-// unformatted here: filesystem creation is a post-readback Windows operation,
-// so the raw-image trust proof never depends on host-specific filesystem bytes.
+// with ORDAX-ESP + bounded ORDAX + ORDAX-DATA. Its SHA256 field is the v1
+// physical write-plan binding, not a hash of capacity-only sparse bytes.
 func PreparePhysicalStorageImage(seedPath, outputPath string, targetBytes uint64) (prepared PreparedPhysicalImage, retErr error) {
 	layout, err := PlanPhysicalStorage(targetBytes)
 	if err != nil {
 		return PreparedPhysicalImage{}, err
 	}
-	// The intermediate two-partition target-sized image is immediately mutated
-	// below. Do not spend target-capacity-sized I/O hashing bytes that cannot be
-	// the final authorized image; hash exactly once after storage-v2 is complete.
 	prepared, err = preparePhysicalImage(seedPath, outputPath, targetBytes, false)
 	if err != nil {
 		return PreparedPhysicalImage{}, err
@@ -170,11 +163,7 @@ func PreparePhysicalStorageImage(seedPath, outputPath string, targetBytes uint64
 		return PreparedPhysicalImage{}, err
 	}
 	if primary.LastUsableLBA != layout.LastUsableLBA {
-		return PreparedPhysicalImage{}, fmt.Errorf(
-			"prepared last usable LBA=%d want=%d",
-			primary.LastUsableLBA,
-			layout.LastUsableLBA,
-		)
+		return PreparedPhysicalImage{}, fmt.Errorf("prepared last usable LBA=%d want=%d", primary.LastUsableLBA, layout.LastUsableLBA)
 	}
 	if len(primaryBlock) < 72 {
 		return PreparedPhysicalImage{}, errors.New("prepared GPT header does not contain a disk GUID")
@@ -200,24 +189,10 @@ func PreparePhysicalStorageImage(seedPath, outputPath string, targetBytes uint64
 		return PreparedPhysicalImage{}, errors.New("prepared secondary GPT entry array is not adjacent to its header")
 	}
 
-	if err := updateGPTHeader(
-		primaryBlock,
-		1,
-		primary.BackupLBA,
-		layout.LastUsableLBA,
-		primary.PartitionEntryLBA,
-		entriesCRC,
-	); err != nil {
+	if err := updateGPTHeader(primaryBlock, 1, primary.BackupLBA, layout.LastUsableLBA, primary.PartitionEntryLBA, entriesCRC); err != nil {
 		return PreparedPhysicalImage{}, err
 	}
-	if err := updateGPTHeader(
-		backupBlock,
-		backup.CurrentLBA,
-		1,
-		layout.LastUsableLBA,
-		backupEntriesLBA,
-		entriesCRC,
-	); err != nil {
+	if err := updateGPTHeader(backupBlock, backup.CurrentLBA, 1, layout.LastUsableLBA, backupEntriesLBA, entriesCRC); err != nil {
 		return PreparedPhysicalImage{}, err
 	}
 
@@ -238,9 +213,21 @@ func PreparePhysicalStorageImage(seedPath, outputPath string, targetBytes uint64
 	if err := file.Sync(); err != nil {
 		return PreparedPhysicalImage{}, fmt.Errorf("flush storage-v2 GPT: %w", err)
 	}
-	digest, err := hashOpenFile(file, int64(targetBytes))
+
+	seedInfo, err := os.Stat(seedPath)
 	if err != nil {
-		return PreparedPhysicalImage{}, fmt.Errorf("hash storage-v2 prepared image: %w", err)
+		return PreparedPhysicalImage{}, fmt.Errorf("stat authorized bootstrap seed: %w", err)
+	}
+	if !seedInfo.Mode().IsRegular() || seedInfo.Size() <= 0 {
+		return PreparedPhysicalImage{}, errors.New("authorized bootstrap seed must remain a non-empty regular file")
+	}
+	plan, err := PlanPreparedPhysicalWrite(file, targetBytes, uint64(seedInfo.Size()))
+	if err != nil {
+		return PreparedPhysicalImage{}, fmt.Errorf("plan storage-v2 write binding: %w", err)
+	}
+	digest, err := HashPhysicalWritePlan(file, plan, nil)
+	if err != nil {
+		return PreparedPhysicalImage{}, fmt.Errorf("hash storage-v2 write plan: %w", err)
 	}
 
 	prepared.SHA256 = digest
