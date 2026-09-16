@@ -61,7 +61,7 @@ jobs:
             dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
             meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
             liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
-            gdisk dosfstools e2fsprogs mtools util-linux
+            gdisk dosfstools e2fsprogs mtools util-linux proot
           python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
 
       - name: Build boot kernel initramfs and Git development base
@@ -76,6 +76,7 @@ jobs:
           python bootstrap/initramfs/build.py check
           python bootstrap/initramfs/build.py build --jobs 4
           python bootstrap/initramfs/build.py verify
+          proot --version
           sudo -E python bootstrap/dev-base/build.py \
             --kernel-modules out/kernel/kernel-modules-6.6.52.tar \
             --out-dir out/dev-base
