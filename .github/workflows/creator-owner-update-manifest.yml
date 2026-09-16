@@ -2,7 +2,7 @@ name: Creator Owner Update Manifest
 
 on:
   workflow_run:
-    workflows: ['Creator Owner Prototype Write Channel']
+    workflows: ['Creator Owner Standalone EXE']
     types: [completed]
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Download published owner package and derive immutable update binding
+      - name: Download published standalone Creator and derive immutable update binding
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
@@ -25,11 +25,11 @@ jobs:
           mkdir -p "$release"
           gh release download creator-owner-prototype \
             --repo "$repo" \
-            --pattern 'OrdaX-Creator-Owner-Prototype.zip' \
+            --pattern 'OrdaX-Creator.exe' \
             --dir "$release" \
             --clobber
 
-          package="$release/OrdaX-Creator-Owner-Prototype.zip"
+          package="$release/OrdaX-Creator.exe"
           test -s "$package"
           digest="$(sha256sum "$package" | cut -d' ' -f1)"
           size="$(stat -c '%s' "$package")"
@@ -39,11 +39,11 @@ jobs:
           import json, pathlib, sys
           output, source, version, digest, size = sys.argv[1:]
           data = {
-              '$schema': 'prototype-ordax.creator-owner-update/1',
+              '$schema': 'prototype-ordax.creator-owner-update/2',
               'channel': 'owner-prototype',
               'version': version,
               'source_commit': source,
-              'download_url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator-Owner-Prototype.zip',
+              'download_url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator.exe',
               'sha256': digest,
               'size': int(size),
           }
@@ -60,3 +60,4 @@ jobs:
 
           echo "OWNER_UPDATE_MANIFEST_SOURCE=$SOURCE_COMMIT"
           echo "OWNER_UPDATE_MANIFEST_SHA256=$digest"
+          echo 'OWNER_UPDATE_ARTIFACT=OrdaX-Creator.exe'

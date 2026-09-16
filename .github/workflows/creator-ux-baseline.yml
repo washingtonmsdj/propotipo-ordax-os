@@ -7,11 +7,15 @@ on:
       - 'tools/creator/cmd/ordax-creator-app/**'
       - 'docs/contracts/creator-ux-baseline.json'
       - '.github/workflows/creator-ux-baseline.yml'
+      - '.github/workflows/creator-owner-standalone-exe.yml'
+      - '.github/workflows/creator-owner-update-manifest.yml'
   pull_request:
     paths:
       - 'tools/creator/cmd/ordax-creator-app/**'
       - 'docs/contracts/creator-ux-baseline.json'
       - '.github/workflows/creator-ux-baseline.yml'
+      - '.github/workflows/creator-owner-standalone-exe.yml'
+      - '.github/workflows/creator-owner-update-manifest.yml'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +47,9 @@ jobs:
           progress = pathlib.Path('tools/creator/cmd/ordax-creator-app/physical_progress_windows.go').read_text(encoding='utf-8')
           update = pathlib.Path('tools/creator/cmd/ordax-creator-app/update_check_windows.go').read_text(encoding='utf-8')
           backend = pathlib.Path('tools/creator/cmd/ordax-creator-app/backend_resolution_windows.go').read_text(encoding='utf-8')
+          standalone = pathlib.Path('tools/creator/cmd/ordax-creator-app/owner_single_exe_backend_windows.go').read_text(encoding='utf-8')
+          standalone_workflow = pathlib.Path('.github/workflows/creator-owner-standalone-exe.yml').read_text(encoding='utf-8')
+          update_workflow = pathlib.Path('.github/workflows/creator-owner-update-manifest.yml').read_text(encoding='utf-8')
 
           required_main = [
               'Criar OrdaX', 'Recarregar USB', 'Atualizações',
@@ -56,28 +63,47 @@ jobs:
               'setProgressComplete()',
               'Pendrive OrdaX criado e verificado.',
               'O pendrive OrdaX foi criado, passou pela verificação de leitura',
-              '--progress-log', 'progressPollMillis',
-              'ordax-physical-error.txt',
+              'progressPollMillis', 'applyPhysicalProgressSnapshot',
           ]
           required_progress = [
-              'prototype-ordax.creator-physical-progress/1',
-              'CompletedBytes', 'TotalBytes',
-              'setProgressPercent',
               'Gravando OrdaX no pendrive',
               'Verificando a gravação por leitura',
-              'Preparando ORDAX-DATA',
-              'float64(document.CompletedBytes)',
-              'float64(document.TotalBytes)',
+              'CompletedBytes', 'TotalBytes',
+              'setProgressPercent', 'formatting-data',
           ]
           required_update = [
               'creator-owner-update.json',
               'Baixar atualização',
               'beginUpdateCheck',
               'openUpdateDownload',
+              'prototype-ordax.creator-owner-update/2',
+              '/OrdaX-Creator.exe',
           ]
           required_backend = [
               'ownerPrototypePhysicalBackend()',
               'return finishRefreshState(result, ownerDirectory)',
+          ]
+          required_standalone = [
+              'ordax_owner_prototype && ordax_single_exe && ordax_raw_backend',
+              'owner_payload/ordax-bootstrap-seed.raw.gz',
+              'os.Executable()',
+              'ordax-creator-physical-test.exe',
+              'runOwnerBackendCommand',
+              'command != "status" && command != "targets" && command != "prepare" && command != "apply"',
+          ]
+          required_standalone_workflow = [
+              "name: Creator Owner Standalone EXE",
+              "-tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend'",
+              'OrdaX-Creator.exe',
+              "delete-asset creator-owner-prototype",
+              "'OrdaX-Creator-Owner-Prototype.zip'",
+              'standalone release must not contain a ZIP',
+          ]
+          required_update_workflow = [
+              "workflows: ['Creator Owner Standalone EXE']",
+              "--pattern 'OrdaX-Creator.exe'",
+              'prototype-ordax.creator-owner-update/2',
+              '/OrdaX-Creator.exe',
           ]
 
           for text in required_main:
@@ -85,13 +111,18 @@ jobs:
           for text in required_physical:
               assert text in physical, f'missing Creator physical UX/safety anchor: {text}'
           for text in required_progress:
-              assert text in progress, f'missing Creator progress UX anchor: {text}'
+              assert text in progress, f'missing Creator progress anchor: {text}'
           for text in required_update:
               assert text in update, f'missing Creator update anchor: {text}'
           for text in required_backend:
               assert text in backend, f'missing owner isolation anchor: {text}'
+          for text in required_standalone:
+              assert text in standalone, f'missing standalone Creator anchor: {text}'
+          for text in required_standalone_workflow:
+              assert text in standalone_workflow, f'missing standalone release anchor: {text}'
+          for text in required_update_workflow:
+              assert text in update_workflow, f'missing standalone update anchor: {text}'
 
-          # The owner branch must return before the development updater path.
           owner_pos = backend.index('ownerPrototypePhysicalBackend()')
           dev_pos = backend.index('creatorupdate.Ensure')
           assert owner_pos < dev_pos
@@ -101,9 +132,8 @@ jobs:
           print('CREATOR_VISIBLE_UPDATE_CONTROL=YES')
           print('CREATOR_POST_UAC_STATUS_TRANSITION=YES')
           print('CREATOR_PROGRESS_INDICATOR=YES')
-          print('CREATOR_DETERMINATE_WRITE_VERIFY_PROGRESS=YES')
-          print('CREATOR_PROGRESS_REPORTS_ACTUAL_BYTES=YES')
-          print('CREATOR_PROGRESS_COMPLETION=YES')
-          print('CREATOR_DETAILED_FAILURE_REASON=YES')
-          print('CREATOR_SUCCESS_NOTICE=YES')
+          print('CREATOR_PROGRESS_BYTES=YES')
+          print('CREATOR_SINGLE_STANDALONE_EXE=YES')
+          print('CREATOR_OWNER_ZIP_REQUIRED=NO')
+          print('CREATOR_UPDATE_ARTIFACT=OrdaX-Creator.exe')
           PY

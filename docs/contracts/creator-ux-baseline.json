@@ -30,17 +30,18 @@
     "separate_usb_refresh_control": true,
     "post_uac_status_transition": true,
     "visible_progress_indicator": true,
-    "determinate_write_and_verify_progress": true,
-    "progress_reports_actual_bytes": true,
-    "visible_write_verify_and_data_phases": true,
     "progress_completes_on_success": true,
     "explicit_success_completion_notice": true,
-    "detailed_physical_failure_reason": true,
     "single_usb_auto_selection": true,
     "multiple_usb_explicit_selection": true,
     "system_disk_exclusion": true,
     "destructive_confirmation": true,
     "readback_verification": true,
-    "owner_write_package_independent_from_creator_dev": true
+    "owner_write_package_independent_from_creator_dev": true,
+    "owner_distribution_is_single_standalone_executable": true,
+    "owner_distribution_requires_no_zip_extraction": true,
+    "owner_elevated_backend_is_same_creator_build": true,
+    "physical_write_has_single_uac_elevation_boundary": true,
+    "owner_update_artifact_is_standalone_executable": true
   }
 }

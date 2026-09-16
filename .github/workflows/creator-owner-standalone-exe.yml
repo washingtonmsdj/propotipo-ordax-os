@@ -1,0 +1,158 @@
+name: Creator Owner Standalone EXE
+
+on:
+  workflow_run:
+    workflows: ['Creator Owner Prototype Write Channel']
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: creator-owner-standalone-exe
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish-standalone:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact owner source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Download and verify the internal owner package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          repo='washingtonmsdj/prototipo-ordax-os'
+          work="$RUNNER_TEMP/owner-package"
+          mkdir -p "$work"
+          gh release download creator-owner-prototype \
+            --repo "$repo" \
+            --pattern 'OrdaX-Creator-Owner-Prototype.zip' \
+            --dir "$work" \
+            --clobber
+          unzip -q "$work/OrdaX-Creator-Owner-Prototype.zip" -d "$work/extracted"
+          cd "$work/extracted"
+          sha256sum -c SHA256SUMS
+          python - "$SOURCE_COMMIT" <<'PY'
+          import json, pathlib, sys
+          provenance = json.loads(pathlib.Path('provenance.json').read_text(encoding='utf-8'))
+          expected = sys.argv[1]
+          if provenance.get('source_commit') != expected:
+              raise SystemExit('owner package provenance does not match workflow source commit')
+          if provenance.get('private_key_in_package') is not False:
+              raise SystemExit('owner package unexpectedly contains private-key provenance')
+          if provenance.get('physical_write_authorized_in_binary') is not True:
+              raise SystemExit('owner package is not write-authorized')
+          PY
+
+      - name: Stage the compressed embedded payload
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          extracted="$RUNNER_TEMP/owner-package/extracted"
+          payload='tools/creator/cmd/ordax-creator-app/owner_payload'
+          rm -rf "$payload"
+          mkdir -p "$payload"
+          gzip -9 -n -c "$extracted/ordax-bootstrap-seed.raw" > "$payload/ordax-bootstrap-seed.raw.gz"
+          cp "$extracted/provenance.json" "$payload/provenance.json"
+          python - "$payload/ordax-bootstrap-seed.raw.gz" "$payload/provenance.json" <<'PY'
+          import gzip, hashlib, json, pathlib, sys
+          compressed = pathlib.Path(sys.argv[1])
+          provenance = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding='utf-8'))
+          digest = hashlib.sha256()
+          size = 0
+          with gzip.open(compressed, 'rb') as source:
+              while True:
+                  chunk = source.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  digest.update(chunk)
+                  size += len(chunk)
+          if size != int(provenance['seed_size']):
+              raise SystemExit(f'embedded seed size mismatch: {size} != {provenance["seed_size"]}')
+          if digest.hexdigest() != provenance['seed_sha256']:
+              raise SystemExit('embedded seed SHA-256 mismatch')
+          print('EMBEDDED_SEED_COMPRESSED_BYTES=' + str(compressed.stat().st_size))
+          PY
+
+      - name: Build the one-file Windows Creator
+        env:
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          release="$GITHUB_WORKSPACE/out/owner-standalone"
+          mkdir -p "$release"
+          pushd tools/creator >/dev/null
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false \
+              -tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend' \
+              -ldflags='-s -w -H=windowsgui' \
+              -o "$release/OrdaX-Creator.exe" \
+              ./cmd/ordax-creator-app
+          popd >/dev/null
+          test -s "$release/OrdaX-Creator.exe"
+          strings "$release/OrdaX-Creator.exe" | grep -F "$SOURCE_COMMIT" >/dev/null
+          test "$(find "$release" -maxdepth 1 -type f -name '*.exe' | wc -l)" -eq 1
+          if find "$release" -maxdepth 1 -type f -name '*.zip' -print -quit | grep -q .; then
+            echo 'standalone release must not contain a ZIP' >&2
+            exit 1
+          fi
+          sha256sum "$release/OrdaX-Creator.exe" > "$release/SHA256SUMS.txt"
+          cat > "$release/LEIA-ME.txt" <<'TXT'
+          OrdaX Creator - Owner Prototype Standalone
+
+          USO:
+          1. Baixe somente OrdaX-Creator.exe.
+          2. Conecte o pendrive que sera apagado.
+          3. Abra OrdaX-Creator.exe.
+          4. Escolha o USB e clique em Criar OrdaX.
+          5. Confirme uma unica elevacao UAC para a gravacao.
+          6. Nao remova o USB ate a verificacao terminar.
+
+          Nao e necessario extrair ZIP, instalar backend, copiar seed ou manter arquivos auxiliares ao lado do aplicativo.
+          O backend interno usa a mesma build do EXE visivel e o seed autorizado e incorporado ao aplicativo.
+
+          Este ainda e o canal Owner Prototype: a assinatura Authenticode publica definitiva continua separada desta etapa.
+          TXT
+
+      - name: Publish standalone EXE and remove the public ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          repo='washingtonmsdj/prototipo-ordax-os'
+          release="$GITHUB_WORKSPACE/out/owner-standalone"
+          gh release upload creator-owner-prototype \
+            "$release/OrdaX-Creator.exe" \
+            "$release/SHA256SUMS.txt" \
+            "$release/LEIA-ME.txt" \
+            --repo "$repo" \
+            --clobber
+          gh release delete-asset creator-owner-prototype \
+            'OrdaX-Creator-Owner-Prototype.zip' \
+            --repo "$repo" \
+            --yes || true
+          gh release edit creator-owner-prototype \
+            --repo "$repo" \
+            --target "$SOURCE_COMMIT" \
+            --title 'OrdaX Creator - Owner Prototype (standalone EXE)' \
+            --notes 'Owner-only physical prototype. Download only OrdaX-Creator.exe. No ZIP extraction or side-by-side backend/seed is required. The application keeps system-disk exclusion, live target revalidation, UAC elevation and readback verification.'
+          echo 'OWNER_STANDALONE_EXE_PUBLISHED=YES'
+          echo "OWNER_STANDALONE_SOURCE=$SOURCE_COMMIT"

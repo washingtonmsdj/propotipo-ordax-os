@@ -1,4 +1,4 @@
-//go:build windows && ordax_owner_prototype
+//go:build windows && ordax_owner_prototype && !ordax_single_exe
 
 package main
 

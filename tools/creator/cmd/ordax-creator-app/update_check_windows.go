@@ -22,27 +22,27 @@ const ownerUpdateManifestURL = "https://github.com/washingtonmsdj/prototipo-orda
 var procShellExecuteW = shell32.NewProc("ShellExecuteW")
 
 type ownerUpdateManifest struct {
-	Schema       string `json:"$schema"`
-	Channel      string `json:"channel"`
-	Version      string `json:"version"`
-	SourceCommit string `json:"source_commit"`
-	DownloadURL  string `json:"download_url"`
-	SHA256       string `json:"sha256"`
-	Size         int64  `json:"size"`
+	Schema        string `json:"$schema"`
+	Channel       string `json:"channel"`
+	Version       string `json:"version"`
+	SourceCommit  string `json:"source_commit"`
+	DownloadURL   string `json:"download_url"`
+	SHA256        string `json:"sha256"`
+	Size          int64  `json:"size"`
 }
 
 type updateUIState struct {
-	Checking    bool
-	Manual      bool
-	Available   bool
-	Version     string
+	Checking     bool
+	Manual       bool
+	Available    bool
+	Version      string
 	SourceCommit string
-	DownloadURL string
-	Error       string
+	DownloadURL  string
+	Error        string
 }
 
 var (
-	updateMu    sync.Mutex
+	updateMu           sync.Mutex
 	currentUpdateState updateUIState
 )
 
@@ -59,7 +59,7 @@ func validLowerHexString(value string, size int) bool {
 }
 
 func validateOwnerUpdateManifest(manifest ownerUpdateManifest) error {
-	if manifest.Schema != "prototype-ordax.creator-owner-update/1" {
+	if manifest.Schema != "prototype-ordax.creator-owner-update/2" {
 		return errors.New("manifesto de atualização incompatível")
 	}
 	if manifest.Channel != "owner-prototype" {
@@ -72,14 +72,14 @@ func validateOwnerUpdateManifest(manifest ownerUpdateManifest) error {
 		return errors.New("versão não corresponde ao commit publicado")
 	}
 	if !validLowerHexString(manifest.SHA256, 64) || manifest.Size <= 0 || manifest.Size > 256<<20 {
-		return errors.New("vínculo do pacote de atualização inválido")
+		return errors.New("vínculo do executável de atualização inválido")
 	}
 	parsed, err := url.Parse(manifest.DownloadURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "github.com" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return errors.New("URL de atualização inválida")
 	}
-	if parsed.Path != "/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator-Owner-Prototype.zip" {
-		return errors.New("pacote de atualização fora do canal OrdaX")
+	if parsed.Path != "/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator.exe" {
+		return errors.New("executável de atualização fora do canal OrdaX")
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func fetchOwnerUpdateManifest() (ownerUpdateManifest, error) {
 	if err != nil {
 		return ownerUpdateManifest{}, err
 	}
-	req.Header.Set("User-Agent", "OrdaX-Creator-Owner-Updater/1")
+	req.Header.Set("User-Agent", "OrdaX-Creator-Owner-Updater/2")
 	req.Header.Set("Cache-Control", "no-cache")
 	resp, err := client.Do(req)
 	if err != nil {
@@ -130,7 +130,7 @@ func beginUpdateCheck(manual bool) {
 	_, currentSource, owner := ownerPrototypeBuildInfo()
 	if !owner {
 		if manual {
-			messageBox("Este build usa o canal de desenvolvimento. O pacote gravável possui o canal de atualização próprio.", "OrdaX Creator", mbOK|mbIconInformation)
+			messageBox("Este build usa o canal de desenvolvimento. O Creator gravável possui o canal de atualização próprio.", "OrdaX Creator", mbOK|mbIconInformation)
 		}
 		return
 	}
@@ -196,7 +196,7 @@ func renderUpdateDone() {
 	if state.Available {
 		setText(versionLabel, "OrdaX Creator • "+state.Version+" disponível")
 		if state.Manual {
-			messageBox("Há uma nova versão do OrdaX Creator. Clique em ‘Baixar atualização’ para obter o pacote mais recente.", "Atualização disponível", mbOK|mbIconInformation)
+			messageBox("Há uma nova versão do OrdaX Creator. Clique em ‘Baixar atualização’ para obter diretamente o novo OrdaX-Creator.exe; não há ZIP para extrair.", "Atualização disponível", mbOK|mbIconInformation)
 		}
 		return
 	}
