@@ -30,6 +30,8 @@
     "separate_usb_refresh_control": true,
     "post_uac_status_transition": true,
     "visible_progress_indicator": true,
+    "progress_completes_on_success": true,
+    "explicit_success_completion_notice": true,
     "single_usb_auto_selection": true,
     "multiple_usb_explicit_selection": true,
     "system_disk_exclusion": true,
