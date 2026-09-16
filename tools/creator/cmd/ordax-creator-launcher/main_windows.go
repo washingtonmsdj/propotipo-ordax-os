@@ -14,15 +14,23 @@ import (
 	appchannel "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/appchannel"
 )
 
-const launcherVersion = "1"
+const launcherVersion = "2"
+const createNoWindow = 0x08000000
 
 var (
 	buildCanonicalTrustBase64 = "UNRESOLVED"
 	buildCanonicalTrustSHA256 = "UNRESOLVED"
 
-	user32              = syscall.NewLazyDLL("user32.dll")
-	procMessageBoxW     = user32.NewProc("MessageBoxW")
+	user32          = syscall.NewLazyDLL("user32.dll")
+	procMessageBoxW = user32.NewProc("MessageBoxW")
 )
+
+type appResolution struct {
+	Installed appchannel.Installed
+	Pending   bool
+	Trust     []byte
+	TrustSHA  string
+}
 
 func trustBinding() ([]byte, string, error) {
 	encoded := strings.TrimSpace(buildCanonicalTrustBase64)
@@ -55,23 +63,37 @@ func showError(err error) {
 	)
 }
 
-func resolveApp() (appchannel.Installed, error) {
+func resolveApp() (appResolution, error) {
 	trust, trustSHA, err := trustBinding()
 	if err != nil {
-		return appchannel.Installed{}, err
+		return appResolution{}, err
 	}
-	installed, _, err := appchannel.AcquireCached(nil, "", "", trust, trustSHA)
+	installed, pending, err := appchannel.AcquirePending(nil, "", "", trust, trustSHA)
 	if err == nil {
-		return installed, nil
+		return appResolution{Installed: installed, Pending: pending, Trust: trust, TrustSHA: trustSHA}, nil
 	}
-	current, currentErr := appchannel.Current("", trust, trustSHA)
+	current, currentErr := appchannel.LastKnownGood("", trust, trustSHA)
 	if currentErr != nil {
-		return appchannel.Installed{}, fmt.Errorf("signed app update failed (%v) and no last-known-good signed app is available (%v)", err, currentErr)
+		return appResolution{}, fmt.Errorf("signed app update failed (%v) and no last-known-good signed app is available (%v)", err, currentErr)
 	}
-	return current, nil
+	return appResolution{Installed: current, Pending: false, Trust: trust, TrustSHA: trustSHA}, nil
 }
 
-func launch(installed appchannel.Installed) error {
+func healthCheck(installed appchannel.Installed) error {
+	command := exec.Command(installed.Executable, "--launcher-healthcheck")
+	command.Dir = installed.Directory
+	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("Creator app startup health-check failed: %w", err)
+	}
+	if !strings.Contains(string(output), "ORDAX_CREATOR_APP_HEALTH=PASS") {
+		return fmt.Errorf("Creator app startup health-check did not return the required proof marker")
+	}
+	return nil
+}
+
+func start(installed appchannel.Installed) error {
 	command := exec.Command(installed.Executable, os.Args[1:]...)
 	command.Dir = installed.Directory
 	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}
@@ -84,20 +106,41 @@ func launch(installed appchannel.Installed) error {
 	return nil
 }
 
+func launch(resolution appResolution) error {
+	if !resolution.Pending {
+		return start(resolution.Installed)
+	}
+	if err := healthCheck(resolution.Installed); err != nil {
+		_ = appchannel.DiscardPending("")
+		fallback, fallbackErr := appchannel.LastKnownGood("", resolution.Trust, resolution.TrustSHA)
+		if fallbackErr != nil {
+			return fmt.Errorf("new signed Creator app was rejected before activation (%v); no last-known-good app is available (%v)", err, fallbackErr)
+		}
+		return start(fallback)
+	}
+	promoted, err := appchannel.PromotePending("", resolution.Installed.SourceCommit, resolution.Trust, resolution.TrustSHA)
+	if err != nil {
+		_ = appchannel.DiscardPending("")
+		fallback, fallbackErr := appchannel.LastKnownGood("", resolution.Trust, resolution.TrustSHA)
+		if fallbackErr != nil {
+			return fmt.Errorf("health-checked Creator app could not be promoted (%v); no last-known-good app is available (%v)", err, fallbackErr)
+		}
+		return start(fallback)
+	}
+	return start(promoted)
+}
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "--launcher-version" {
-		// This diagnostic is intentionally invisible in normal GUI use, but is
-		// useful to publisher verification when the binary is launched from a
-		// console before end-user publication.
 		fmt.Printf("ORDAX_CREATOR_LAUNCHER_VERSION=%s\n", launcherVersion)
 		return
 	}
-	installed, err := resolveApp()
+	resolution, err := resolveApp()
 	if err != nil {
 		showError(err)
 		os.Exit(1)
 	}
-	if err := launch(installed); err != nil {
+	if err := launch(resolution); err != nil {
 		showError(err)
 		os.Exit(1)
 	}
