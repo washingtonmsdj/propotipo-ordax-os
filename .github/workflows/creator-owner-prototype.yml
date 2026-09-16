@@ -172,8 +172,8 @@ jobs:
           import json, pathlib, sys
           proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
           assert proof['status'] == 'pass'
+          assert proof['physical_write_authorized'] is False
           assert all(proof['checks'].values())
-          assert proof['real_hardware_touched'] is False
           PY
           echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/owner-prototype-seed-path"
 
