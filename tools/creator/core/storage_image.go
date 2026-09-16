@@ -133,7 +133,10 @@ func PreparePhysicalStorageImage(seedPath, outputPath string, targetBytes uint64
 	if err != nil {
 		return PreparedPhysicalImage{}, err
 	}
-	prepared, err = PreparePhysicalImage(seedPath, outputPath, targetBytes)
+	// The intermediate two-partition target-sized image is immediately mutated
+	// below. Do not spend target-capacity-sized I/O hashing bytes that cannot be
+	// the final authorized image; hash exactly once after storage-v2 is complete.
+	prepared, err = preparePhysicalImage(seedPath, outputPath, targetBytes, false)
 	if err != nil {
 		return PreparedPhysicalImage{}, err
 	}
