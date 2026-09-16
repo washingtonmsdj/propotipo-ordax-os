@@ -45,8 +45,24 @@ PACKAGES = [
     "linux-firmware-ath9k_htc",
     "linux-firmware-brcm",
 ]
+# External modules explicitly requested by bootstrap/kernel/config/ordax.fragment.
+# Wired Ethernet and USB tether drivers are built into the kernel, so they do not
+# need entries here. Dependency modules are discovered from modules.dep.
+DEV_MODULE_BASENAMES = {
+    "ata_generic.ko",
+    "pata_legacy.ko",
+    "pata_oldpiix.ko",
+    "pata_sch.ko",
+    "pata_acpi.ko",
+    "iwlwifi.ko",
+    "iwlmvm.ko",
+    "rtl8xxxu.ko",
+    "mt76x2u.ko",
+    "ath9k_htc.ko",
+}
 MAX_ROOTFS_BYTES = 220 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+SAFE_KERNEL_RELEASE_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 
 
 class BuildError(RuntimeError):
@@ -287,6 +303,100 @@ def install_runtime(rootfs: Path, kernel_modules: Path) -> None:
                 child.unlink()
 
 
+def module_basename(relative: str) -> str:
+    name = Path(relative).name
+    for suffix in (".xz", ".zst", ".gz"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    return name
+
+
+def prune_kernel_modules(rootfs: Path) -> tuple[int, int]:
+    """Keep only OrdaX-declared external modules and their recursive dependencies."""
+    modules_root = rootfs / "lib" / "modules"
+    if not modules_root.is_dir():
+        raise BuildError("kernel modules directory is missing")
+    releases = [path for path in modules_root.iterdir() if path.is_dir()]
+    if len(releases) != 1:
+        raise BuildError(f"expected one kernel module release, found {len(releases)}")
+    release = releases[0]
+    if not SAFE_KERNEL_RELEASE_RE.fullmatch(release.name):
+        raise BuildError(f"unsafe kernel release name: {release.name!r}")
+    dep_file = release / "modules.dep"
+    if not dep_file.is_file():
+        raise BuildError("kernel modules.dep is missing")
+
+    dependencies: dict[str, list[str]] = {}
+    by_basename: dict[str, list[str]] = {}
+    for raw in dep_file.read_text(encoding="utf-8").splitlines():
+        module, separator, raw_deps = raw.partition(":")
+        module = module.strip()
+        if not separator or not module:
+            continue
+        relative = Path(module)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise BuildError(f"unsafe module dependency path: {module}")
+        deps = raw_deps.split()
+        for dependency in deps:
+            path = Path(dependency)
+            if path.is_absolute() or ".." in path.parts:
+                raise BuildError(f"unsafe module dependency path: {dependency}")
+        dependencies[module] = deps
+        by_basename.setdefault(module_basename(module), []).append(module)
+
+    seeds: set[str] = set()
+    missing: list[str] = []
+    for basename in sorted(DEV_MODULE_BASENAMES):
+        matches = by_basename.get(basename, [])
+        if not matches:
+            missing.append(basename)
+        else:
+            seeds.update(matches)
+    if missing:
+        raise BuildError(f"required development kernel modules missing: {missing}")
+
+    keep: set[str] = set()
+    pending = list(seeds)
+    while pending:
+        module = pending.pop()
+        if module in keep:
+            continue
+        keep.add(module)
+        for dependency in dependencies.get(module, []):
+            if dependency not in dependencies:
+                raise BuildError(f"module dependency metadata missing entry: {dependency}")
+            pending.append(dependency)
+
+    removed = 0
+    removed_bytes = 0
+    for module in sorted(dependencies):
+        if module in keep:
+            continue
+        path = release / module
+        if path.is_file():
+            removed += 1
+            removed_bytes += path.stat().st_size
+            path.unlink()
+
+    for path in sorted(release.rglob("*"), reverse=True):
+        if path.is_dir():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+
+    proot_rootfs(rootfs, f"/sbin/depmod -a {release.name}")
+
+    for module in keep:
+        if not (release / module).is_file():
+            raise BuildError(f"required development module disappeared after pruning: {module}")
+    print(f"ORDAX_DEV_BASE_MODULES_KEPT={len(keep)}", flush=True)
+    print(f"ORDAX_DEV_BASE_MODULES_REMOVED={removed}", flush=True)
+    print(f"ORDAX_DEV_BASE_MODULE_BYTES_REMOVED={removed_bytes}", flush=True)
+    return len(keep), removed_bytes
+
+
 def unique_regular_bytes(rootfs: Path) -> int:
     seen: set[tuple[int, int]] = set()
     total = 0
@@ -394,6 +504,9 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
         stage("install-runtime")
         install_runtime(rootfs, kernel_modules.resolve())
         stage("install-runtime-complete")
+        stage("prune-kernel-modules")
+        kept_modules, removed_module_bytes = prune_kernel_modules(rootfs)
+        stage("prune-kernel-modules-complete")
         stage("flatten-symlinks")
         flattened = flatten_symlinks(rootfs)
         print(f"ORDAX_DEV_BASE_SYMLINKS_FLATTENED={flattened}", flush=True)
@@ -416,6 +529,9 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             "build_device_strategy": "proot-bind-host-dev",
             "symlinks_flattened": flattened,
             "unique_regular_bytes": size,
+            "development_module_basenames": sorted(DEV_MODULE_BASENAMES),
+            "development_modules_kept": kept_modules,
+            "kernel_module_bytes_removed": removed_module_bytes,
             "source_checkout_preseeded": False,
             "git_client_preseeded": True,
             "network_preseeded": True,
