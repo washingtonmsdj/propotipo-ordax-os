@@ -1,0 +1,98 @@
+#!/bin/sh
+set -eu
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+STATE_DIR=/state/network
+WPA_CONF=$STATE_DIR/wpa.conf
+mkdir -p "$STATE_DIR" /run
+
+have_ipv4() {
+    ip -4 -o addr show scope global 2>/dev/null | grep -q ' inet '
+}
+
+try_dhcp() {
+    iface=$1
+    ip link set "$iface" up >/dev/null 2>&1 || return 1
+    udhcpc -n -q -t 4 -T 3 -i "$iface" >/dev/null 2>&1 || return 1
+    have_ipv4
+}
+
+if have_ipv4; then
+    echo "ordax-network: rede ja disponivel"
+    exit 0
+fi
+
+for netpath in /sys/class/net/*; do
+    [ -e "$netpath" ] || continue
+    iface=${netpath##*/}
+    [ "$iface" = lo ] && continue
+    [ -d "$netpath/wireless" ] && continue
+    echo "ordax-network: tentando DHCP em $iface"
+    if try_dhcp "$iface"; then
+        echo "ordax-network: conectado em $iface"
+        exit 0
+    fi
+done
+
+wifi=""
+for netpath in /sys/class/net/*; do
+    [ -d "$netpath/wireless" ] || continue
+    wifi=${netpath##*/}
+    break
+done
+
+[ -n "$wifi" ] || {
+    echo "ordax-network: nenhuma interface Wi-Fi detectada; use Ethernet ou tethering USB" >&2
+    exit 1
+}
+
+ip link set "$wifi" up >/dev/null 2>&1 || true
+
+connect_saved_wifi() {
+    [ -s "$WPA_CONF" ] || return 1
+    killall wpa_supplicant >/dev/null 2>&1 || true
+    wpa_supplicant -B -i "$wifi" -c "$WPA_CONF" >/dev/null 2>&1 || return 1
+    sleep 2
+    try_dhcp "$wifi"
+}
+
+if connect_saved_wifi; then
+    echo "ordax-network: Wi-Fi conectado em $wifi"
+    exit 0
+fi
+
+echo "ordax-network: redes Wi-Fi detectadas:"
+iw dev "$wifi" scan 2>/dev/null \
+    | awk -F': ' '/^[[:space:]]*SSID: / {print $2}' \
+    | sed '/^$/d' | sort -u | head -30 || true
+
+printf 'SSID: '
+IFS= read -r ssid
+[ -n "$ssid" ] || {
+    echo "ordax-network: SSID vazio" >&2
+    exit 1
+}
+
+printf 'Senha WPA/WPA2: '
+stty -echo 2>/dev/null || true
+IFS= read -r password
+stty echo 2>/dev/null || true
+printf '\n'
+[ -n "$password" ] || {
+    echo "ordax-network: este bootstrap de desenvolvimento espera uma senha WPA/WPA2" >&2
+    exit 1
+}
+
+umask 077
+wpa_passphrase "$ssid" "$password" | sed '/^[[:space:]]*#psk=/d' > "$WPA_CONF"
+unset password
+
+if connect_saved_wifi; then
+    echo "ordax-network: Wi-Fi conectado em $wifi"
+    exit 0
+fi
+
+echo "ordax-network: nao foi possivel obter rede" >&2
+exit 1
