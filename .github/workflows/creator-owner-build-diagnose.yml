@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'bootstrap/dev-base/**'
       - '.github/workflows/creator-owner-build-diagnose.yml'
   workflow_dispatch:
 
@@ -39,7 +40,7 @@ jobs:
             dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
             meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
             liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
-            gdisk dosfstools e2fsprogs mtools util-linux
+            gdisk dosfstools e2fsprogs mtools util-linux proot
           python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
 
       - name: Build and verify boot ESP
@@ -72,23 +73,12 @@ jobs:
           python bootstrap/initramfs/build.py build --jobs 4
           python bootstrap/initramfs/build.py verify
 
-      - name: Verify privileged device-node capability
+      - name: Verify PRoot device virtualization
         run: |
           set -euo pipefail
-          sudo python - <<'PY'
-          import os
-          import pathlib
-          import stat
-          import tempfile
-
-          with tempfile.TemporaryDirectory(prefix='ordax-mknod-probe-') as temp:
-              target = pathlib.Path(temp) / 'null'
-              os.mknod(target, stat.S_IFCHR | 0o666, os.makedev(1, 3))
-              info = target.lstat()
-              assert stat.S_ISCHR(info.st_mode)
-              target.unlink()
-          print('DEV_BASE_MKNOD=PASS')
-          PY
+          proot --version
+          sudo proot -r / -b /dev:/mnt -w / /bin/sh -ec 'test -c /mnt/null'
+          echo 'DEV_BASE_PROOT_DEV=PASS'
 
       - name: Verify Alpine development seed access
         run: |
@@ -116,3 +106,14 @@ jobs:
           sudo chroot out/dev-base/rootfs /usr/bin/git --version
           test -x out/dev-base/rootfs/sbin/ordax-dev-init
           test -x out/dev-base/rootfs/usr/local/bin/ordax-pull
+          test -z "$(sudo find out/dev-base/rootfs/dev -mindepth 1 -print -quit)"
+          python - <<'PY'
+          import json
+          import pathlib
+
+          provenance = json.loads(pathlib.Path('out/dev-base/provenance.json').read_text(encoding='utf-8'))
+          assert provenance['build_device_strategy'] == 'proot-bind-host-dev'
+          assert provenance['source_checkout_preseeded'] is False
+          assert provenance['git_client_preseeded'] is True
+          print('DEV_BASE_NO_STATIC_DEVICES=PASS')
+          PY
