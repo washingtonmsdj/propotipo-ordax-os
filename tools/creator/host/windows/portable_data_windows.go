@@ -19,7 +19,8 @@ func powershellSingleQuoted(value string) string {
 // FormatPortableDataVolume runs only after the trusted raw write has completed
 // its byte-for-byte readback proof and the raw-device lease has been released.
 // It re-confirms the exact USB identity, verifies partition 3 geometry, formats
-// only that partition as exFAT, and verifies the resulting filesystem identity.
+// only that partition as exFAT, assigns a normal Windows drive letter, and
+// verifies the resulting filesystem identity before the Creator may succeed.
 func FormatPortableDataVolume(expected Target, dataStartLBA, dataBytes uint64) error {
 	if expected.SystemDisk || !expected.PrototypeSafe || expected.ConfirmationToken == "" {
 		return errors.New("portable data formatting requires a confirmed safe USB target")
@@ -78,7 +79,18 @@ if ($null -eq $volume) {
 $volume | Format-Volume -FileSystem exFAT -NewFileSystemLabel 'ORDAX-DATA' -Confirm:$false -Force | Out-Null
 Start-Sleep -Milliseconds 250
 Update-HostStorageCache -ErrorAction SilentlyContinue
+
 $checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
+    $checkPartition | Add-PartitionAccessPath -AssignDriveLetter -ErrorAction Stop
+    Start-Sleep -Milliseconds 250
+    Update-HostStorageCache -ErrorAction SilentlyContinue
+    $checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+}
+if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
+    throw "ORDAX-DATA did not receive a Windows drive letter"
+}
+
 $checkVolume = $checkPartition | Get-Volume -ErrorAction Stop
 if (([string]$checkVolume.FileSystemType) -ne 'exFAT') {
     throw "ORDAX-DATA filesystem verification failed"
