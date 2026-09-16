@@ -108,20 +108,47 @@ No private signing key belongs in Git, Creator payloads or downloadable installe
 
 ## Current implementation state
 
+The Windows Creator now has a native graphical shell. Normal users select an eligible USB in the window and never need Prompt, PowerShell or a `.cmd` file. The destructive path remains fail-closed until a publisher-bound physical candidate is available.
+
 ```text
-CHECK=IMPLEMENTED
-VERIFY_PAYLOAD=IMPLEMENTED_FAIL_CLOSED
-STAGE_TREE=IMPLEMENTED_TRANSACTIONAL
-DISPOSABLE_GPT_FILESYSTEM_PROOF=PASS
-RELEASE_CHANNEL=RESOLVED
-RELEASE_TRUST=UNRESOLVED
-PLAN=FAIL_CLOSED_UNTIL_FULL_MANIFEST_AND_AUTHORIZATION
-APPLY=NOT_IMPLEMENTED
-WINDOWS_RAW_DISK_ADAPTER=NOT_IMPLEMENTED
-PHYSICAL_USB_WRITE=NO
+CREATOR_NATIVE_WINDOWS_GUI=IMPLEMENTED
+USB_TARGET_DISCOVERY=IMPLEMENTED
+SYSTEM_DISK_EXCLUSION=IMPLEMENTED
+TARGET_REENUMERATION=IMPLEMENTED
+DESTRUCTIVE_CONFIRMATION_UI=IMPLEMENTED
+WINDOWS_UAC_HANDOFF=IMPLEMENTED
+RAW_DISK_BACKEND=IMPLEMENTED_BUILD_TAGGED
+PREPARE_EXACT_TARGET_IMAGE=IMPLEMENTED_GATED
+PHYSICAL_APPLY_FLOW=IMPLEMENTED_GATED
+POST_WRITE_READBACK=IMPLEMENTED_GATED
+PHYSICAL_SIGNED_CHANNEL=IMPLEMENTED
+OFFLINE_LAST_KNOWN_GOOD_PHYSICAL_BACKEND=IMPLEMENTED
+CREATOR_DEV_CHANNEL=READ_ONLY
+EXPLICIT_OWNER_AUTHORIZATION_FIRST_USB=RECORDED
+CANONICAL_RELEASE_TRUST=PENDING
+AUTHORIZED_PHYSICAL_CANDIDATE=PENDING_CANONICAL_TRUST
+PHYSICAL_USB_WRITE=BLOCKED_UNTIL_PROMOTION_GATES_PASS
 ```
 
-Examples once the manifest is fully resolved:
+The development `OrdaX-Creator.exe` is intentionally useful for the graphical workflow, automatic development updates and safe USB discovery, but it cannot acquire a raw writer because its physical trust binding is unresolved. This separation prevents an ordinary development build from becoming destructive by accident.
+
+The final physical flow is already wired:
+
+```text
+OrdaX-Creator.exe
+ -> refresh signed physical channel
+ -> select verified USB target
+ -> explicit destructive confirmation
+ -> prepare exact-size GPT image
+ -> Windows UAC elevation
+ -> raw write to the reverified target only
+ -> flush + byte-complete readback verification
+ -> success / fail-closed result in the GUI
+```
+
+Canonical publisher trust and the purpose-bound signed physical release must be completed before that flow is enabled for the first real USB.
+
+Examples for non-destructive engineering verification:
 
 ```text
 ordax-creator verify-payload \
@@ -134,6 +161,4 @@ ordax-creator stage-tree \
   --output-root <disposable-directory>
 ```
 
-The Windows/Linux Creator executables built by CI remain engineering candidates and cannot write disks yet.
-
-See `docs/CREATOR-INSTALLATION.md`, `docs/PHYSICAL-MEDIA.md` and `docs/PROMOTION-GATES.md`.
+See `docs/CREATOR-INSTALLATION.md`, `docs/PHYSICAL-MEDIA.md`, `docs/RELEASE-TRUST-CEREMONY.md` and `docs/PROMOTION-GATES.md`.
