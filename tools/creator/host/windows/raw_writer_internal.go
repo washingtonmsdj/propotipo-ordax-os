@@ -198,33 +198,18 @@ func applyRawDiskInternalWithProgress(runtime rawDiskRuntime, request RawDiskApp
 	if _, err := validateRawDiskApplyRequestPolicy(validated); err != nil {
 		return rawDiskApplyResult{}, err
 	}
+
 	reportRawApplyProgress(report, "validating-image", 0, 0)
-	source, streamImage, err := openVerifiedRawImageForApplyWithProgress(validated.Image.Path, validated.Image.SHA256, validated.Image.SizeBytes, func(completedBytes, totalBytes int64) {
-		reportRawApplyProgress(report, "validating-image", completedBytes, totalBytes)
-	})
+	source, streamImage, preparedPlan, err := openAuthorizedRawImageForApply(validated, report)
 	if err != nil {
-		return rawDiskApplyResult{}, fmt.Errorf("open stable verified raw image for streaming: %w", err)
+		return rawDiskApplyResult{}, fmt.Errorf("open stable authorized raw image for streaming: %w", err)
 	}
 	defer func() {
 		if err := source.Close(); err != nil && retErr == nil {
 			retErr = fmt.Errorf("close raw image: %w", err)
 		}
 	}()
-	reportRawApplyProgress(report, "planning-write", 0, 0)
-	var preparedPlan *creatorcore.PhysicalWritePlan
-	if _, layoutErr := creatorcore.PlanPhysicalStorage(uint64(streamImage.SizeBytes)); layoutErr == nil {
-		var plan creatorcore.PhysicalWritePlan
-		var planErr error
-		if validated.BootstrapSeedBytes > 0 {
-			plan, planErr = creatorcore.PlanPreparedPhysicalWrite(source, uint64(streamImage.SizeBytes), uint64(validated.BootstrapSeedBytes))
-		} else {
-			plan, planErr = creatorcore.PlanPreparedPhysicalWrite(source, uint64(streamImage.SizeBytes))
-		}
-		if planErr != nil {
-			return rawDiskApplyResult{}, fmt.Errorf("physical write blocked: prepared storage-v2 image validation failed: %w", planErr)
-		}
-		preparedPlan = &plan
-	}
+
 	reportRawApplyProgress(report, "locking-target", 0, 0)
 	lease, err := runtime.AcquireTargetVolumeLease(confirmed)
 	if err != nil {
@@ -264,7 +249,7 @@ func applyRawDiskInternalWithProgress(runtime rawDiskRuntime, request RawDiskApp
 	}
 	mode := "prepared-regions-sha256"
 	if validated.BootstrapSeedBytes > 0 {
-		mode = "seed-bounded-regions-sha256"
+		mode = "seed-bounded-write-plan-sha256"
 	}
 	reportRawApplyProgress(report, "verified", verified, preparedPlan.BytesToWrite)
 	return rawDiskApplyResult{DiskNumber: confirmed.DiskNumber, BytesWritten: written, BytesVerified: verified, SHA256: streamImage.SHA256, VerificationMode: mode}, nil
