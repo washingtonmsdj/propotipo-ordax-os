@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOME=/root
+export PATH HOME
+
+mkdir -p /workspace /state/ordax /state/network /home /run /tmp /root
+chmod 1777 /tmp
+
+printf '\033[2J\033[H'
+printf 'OrdaX Development Base\n'
+printf 'Kernel + drivers + network + Git\n\n'
+
+for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
+    modprobe "$module" >/dev/null 2>&1 || true
+done
+
+if ! /usr/local/bin/ordax-network; then
+    printf '\nRede ainda nao esta pronta.\n'
+    printf 'Corrija/conecte a rede e execute: ordax-pull\n'
+    exec /bin/sh
+fi
+
+if ! /usr/local/bin/ordax-pull; then
+    printf '\nNao foi possivel sincronizar o repositorio.\n'
+    printf 'Quando a rede estiver pronta, execute: ordax-pull\n'
+    exec /bin/sh
+fi
+
+printf '\nBase de desenvolvimento pronta.\n'
+printf 'Repositorio: /workspace/ordax\n'
+printf 'Atualizar:    ordax-pull\n'
+printf 'Executar:     ordax-run\n'
+printf 'Voltar:       ordax-rollback\n'
+printf '\nMudancas normais do OrdaX nao exigem regravar o pendrive.\n\n'
+exec /bin/sh
