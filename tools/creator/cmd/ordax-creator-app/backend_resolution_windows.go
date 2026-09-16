@@ -9,12 +9,41 @@ import (
 	creatorupdate "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/update"
 )
 
-// resolveRefreshState keeps the development bootstrap convenient while making
-// the publisher boundary explicit. A build with canonical trust compiled in is
-// an official-trust build and therefore may never execute the unsigned
-// creator-dev component channel. It accepts only the purpose-bound Ed25519
-// component channel (or the separately signed physical writer channel).
+func finishRefreshState(result appRefreshState, backendDirectory string) appRefreshState {
+	if backendDirectory == "" {
+		return result
+	}
+	result.BackendDirectory = backendDirectory
+
+	targets, ready, targetErr := loadTargets(backendDirectory)
+	if targetErr != nil {
+		if result.Error == "" {
+			result.Error = targetErr.Error()
+		} else {
+			result.Error += "\n" + targetErr.Error()
+		}
+		return result
+	}
+	result.Targets = targets
+	result.PhysicalReady = ready
+	return result
+}
+
+// resolveRefreshState keeps each distribution channel isolated. The
+// write-enabled owner prototype is a self-contained package: it must not
+// download or depend on the creator-dev payload before it can create a USB.
+// Normal development and future official-trust builds retain their existing
+// independently verified component channels.
 func resolveRefreshState() appRefreshState {
+	if ownerDirectory, owner := ownerPrototypePhysicalBackend(); owner {
+		result := appRefreshState{BackendDirectory: ownerDirectory}
+		if version, sourceCommit, ok := ownerPrototypeBuildInfo(); ok {
+			result.Version = version
+			result.SourceCommit = sourceCommit
+		}
+		return finishRefreshState(result, ownerDirectory)
+	}
+
 	result := appRefreshState{}
 	backendDirectory := ""
 
@@ -59,21 +88,5 @@ func resolveRefreshState() appRefreshState {
 	if physicalDirectory, ok := resolvePhysicalBackend(); ok {
 		backendDirectory = physicalDirectory
 	}
-	if backendDirectory == "" {
-		return result
-	}
-	result.BackendDirectory = backendDirectory
-
-	targets, ready, targetErr := loadTargets(backendDirectory)
-	if targetErr != nil {
-		if result.Error == "" {
-			result.Error = targetErr.Error()
-		} else {
-			result.Error += "\n" + targetErr.Error()
-		}
-		return result
-	}
-	result.Targets = targets
-	result.PhysicalReady = ready
-	return result
+	return finishRefreshState(result, backendDirectory)
 }
