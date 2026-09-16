@@ -16,19 +16,38 @@ SPEC.loader.exec_module(BUILD)
 
 
 class DevelopmentFirmwareTest(unittest.TestCase):
-    def test_required_firmware_names_are_read_from_selected_modules(self):
+    def test_available_alternative_is_selected_when_historical_name_is_missing(self):
         with tempfile.TemporaryDirectory() as temp:
             rootfs = Path(temp)
             modules = rootfs / "lib/modules/6.6.52/kernel/drivers/net/wireless"
+            firmware = rootfs / "lib/firmware"
             modules.mkdir(parents=True)
+            firmware.mkdir(parents=True)
             (modules / "wifi.ko").write_bytes(
-                b"ELF\x00firmware=iwlwifi-test.ucode\x00"
-                b"firmware=rtlwifi/rtl-test.bin\x00"
+                b"ELF\x00firmware=wifi-old.ucode\x00"
+                b"firmware=wifi-current.ucode\x00"
             )
+            (firmware / "wifi-current.ucode").write_bytes(b"current")
+
             self.assertEqual(
                 BUILD.required_firmware_names(rootfs),
-                {"iwlwifi-test.ucode", "rtlwifi/rtl-test.bin"},
+                {"wifi-current.ucode"},
             )
+
+    def test_module_with_no_available_declared_firmware_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            rootfs = Path(temp)
+            modules = rootfs / "lib/modules/6.6.52/kernel/drivers/net/wireless"
+            firmware = rootfs / "lib/firmware"
+            modules.mkdir(parents=True)
+            firmware.mkdir(parents=True)
+            (modules / "wifi.ko").write_bytes(
+                b"ELF\x00firmware=wifi-old.ucode\x00"
+                b"firmware=wifi-other.ucode\x00"
+            )
+
+            with self.assertRaises(BUILD.BuildError):
+                BUILD.required_firmware_names(rootfs)
 
     def test_pruning_materializes_required_alias_and_drops_unrelated_firmware(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -42,12 +61,12 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             alias.symlink_to("target.bin")
             (firmware / "brcm/unrelated.bin").write_bytes(b"unrelated")
 
-            original_proot = BUILD.proot_rootfs
-            BUILD.proot_rootfs = lambda _rootfs, _command: None
+            original_proot = BUILD.CORE.proot_rootfs
+            BUILD.CORE.proot_rootfs = lambda _rootfs, _command: None
             try:
                 BUILD.prune_firmware(rootfs, {"rtlwifi/alias.bin"})
             finally:
-                BUILD.proot_rootfs = original_proot
+                BUILD.CORE.proot_rootfs = original_proot
 
             self.assertTrue(alias.is_file())
             self.assertFalse(alias.is_symlink())
