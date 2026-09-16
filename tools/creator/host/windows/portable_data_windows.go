@@ -60,7 +60,11 @@ $expectedDataBytes = [UInt64]%d
 
 function Refresh-OrdaXStorage {
     Update-HostStorageCache -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 350
+    Start-Sleep -Milliseconds 400
+}
+
+function Get-OrdaXDataPartition {
+    return Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
 }
 
 Refresh-OrdaXStorage
@@ -79,7 +83,7 @@ $partition = $null
 $partitionDeadline = (Get-Date).AddSeconds(20)
 do {
     try {
-        $partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+        $partition = Get-OrdaXDataPartition
     } catch {
         $partition = $null
     }
@@ -113,7 +117,7 @@ do {
     if ($null -eq $volume) {
         Refresh-OrdaXStorage
         try {
-            $partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+            $partition = Get-OrdaXDataPartition
         } catch {
             $partition = $null
         }
@@ -123,25 +127,70 @@ if ($null -eq $volume) {
     throw "Windows did not expose ORDAX-DATA as a format-capable volume within 20 seconds"
 }
 
-$volume | Format-Volume -FileSystem exFAT -NewFileSystemLabel 'ORDAX-DATA' -Confirm:$false -Force | Out-Null
-Refresh-OrdaXStorage
+$formattedVolume = $volume | Format-Volume -FileSystem exFAT -NewFileSystemLabel 'ORDAX-DATA' -Confirm:$false -Force -ErrorAction Stop
+if ($null -eq $formattedVolume) {
+    throw "Format-Volume did not return the finalized ORDAX-DATA volume"
+}
 
-$checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
-if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
-    $checkPartition | Add-PartitionAccessPath -AssignDriveLetter -ErrorAction Stop
+# Windows storage metadata can remain stale for several seconds on slower USB
+# controllers after Format-Volume succeeds. Re-query the partition and volume
+# until filesystem, label and drive letter converge instead of treating the
+# first stale Get-Volume result as a failed installation.
+$verificationDeadline = (Get-Date).AddSeconds(20)
+$verified = $false
+$observedFileSystem = ''
+$observedLabel = ''
+$observedDriveLetter = ''
+do {
     Refresh-OrdaXStorage
-    $checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
-}
-if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
-    throw "ORDAX-DATA did not receive a Windows drive letter"
-}
+    try {
+        $checkPartition = Get-OrdaXDataPartition
+        if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
+            try {
+                $checkPartition | Add-PartitionAccessPath -AssignDriveLetter -ErrorAction Stop
+            } catch {
+                # The mount manager can reject assignment while the freshly
+                # formatted volume is still being published. Retry below.
+            }
+            Refresh-OrdaXStorage
+            $checkPartition = Get-OrdaXDataPartition
+        }
 
-$checkVolume = $checkPartition | Get-Volume -ErrorAction Stop
-if (([string]$checkVolume.FileSystemType) -ne 'exFAT') {
-    throw "ORDAX-DATA filesystem verification failed"
-}
-if (([string]$checkVolume.FileSystemLabel) -ne 'ORDAX-DATA') {
-    throw "ORDAX-DATA label verification failed"
+        $observedDriveLetter = [string]$checkPartition.DriveLetter
+        $checkVolume = $null
+        if (-not [string]::IsNullOrWhiteSpace($observedDriveLetter)) {
+            try {
+                $checkVolume = Get-Volume -DriveLetter $observedDriveLetter -ErrorAction Stop
+            } catch {
+                $checkVolume = $null
+            }
+        }
+        if ($null -eq $checkVolume) {
+            try {
+                $checkVolume = $checkPartition | Get-Volume -ErrorAction Stop
+            } catch {
+                $checkVolume = $null
+            }
+        }
+
+        if ($null -ne $checkVolume) {
+            $observedFileSystem = [string]$checkVolume.FileSystemType
+            if ([string]::IsNullOrWhiteSpace($observedFileSystem)) {
+                $observedFileSystem = [string]$checkVolume.FileSystem
+            }
+            $observedLabel = [string]$checkVolume.FileSystemLabel
+            $filesystemReady = [string]::Equals($observedFileSystem.Trim(), 'exFAT', [System.StringComparison]::OrdinalIgnoreCase)
+            $labelReady = [string]::Equals($observedLabel.Trim(), 'ORDAX-DATA', [System.StringComparison]::OrdinalIgnoreCase)
+            $driveReady = -not [string]::IsNullOrWhiteSpace($observedDriveLetter)
+            $verified = $filesystemReady -and $labelReady -and $driveReady
+        }
+    } catch {
+        $verified = $false
+    }
+} while (-not $verified -and (Get-Date) -lt $verificationDeadline)
+
+if (-not $verified) {
+    throw ("ORDAX-DATA verification timed out: filesystem='{0}' label='{1}' drive='{2}'" -f $observedFileSystem, $observedLabel, $observedDriveLetter)
 }
 `,
 		expected.DiskNumber,
