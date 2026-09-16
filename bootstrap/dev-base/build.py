@@ -114,14 +114,37 @@ def safe_extract(archive: Path, rootfs: Path) -> None:
             target = (rootfs / name).resolve(strict=False)
             if rootfs.resolve() != target and rootfs.resolve() not in target.parents:
                 raise BuildError(f"unsafe Alpine archive path: {member.name}")
-            if member.isdev() or member.isfifo():
-                continue
-        members = [m for m in tar.getmembers() if not m.isdev() and not m.isfifo()]
+        members = [member for member in tar.getmembers() if not member.isdev() and not member.isfifo()]
         tar.extractall(rootfs, members=members, filter="data")
 
 
 def chroot(rootfs: Path, command: str) -> None:
     run(["chroot", str(rootfs), "/bin/sh", "-ec", command])
+
+
+def package_chroot(rootfs: Path, command: str) -> None:
+    """Run package installation with host devices virtualized by PRoot.
+
+    The development root intentionally contains no device nodes. Runtime boot
+    binds the initramfs /dev into this root before switch_root, so creating
+    static devices during the build is unnecessary and makes CI depend on
+    CAP_MKNOD. PRoot provides chroot + bind semantics in user space instead.
+    """
+    proot = shutil.which("proot")
+    if not proot:
+        raise BuildError("proot is required to install Alpine packages without static device nodes")
+    run([
+        proot,
+        "-S",
+        str(rootfs),
+        "-b",
+        "/dev",
+        "-w",
+        "/",
+        "/bin/sh",
+        "-ec",
+        command,
+    ])
 
 
 def prune_firmware(rootfs: Path) -> None:
@@ -184,11 +207,11 @@ def resolve_rootfs_symlink(rootfs: Path, link: Path) -> Path | None:
 def flatten_symlinks(rootfs: Path) -> int:
     count = 0
     while True:
-        links = [p for p in rootfs.rglob("*") if p.is_symlink()]
+        links = [path for path in rootfs.rglob("*") if path.is_symlink()]
         if not links:
             break
         progress = False
-        for link in sorted(links, key=lambda p: len(p.parts), reverse=True):
+        for link in sorted(links, key=lambda path: len(path.parts), reverse=True):
             if not link.is_symlink():
                 continue
             final = resolve_rootfs_symlink(rootfs, link)
@@ -294,7 +317,13 @@ def source_commit() -> str:
     if re.fullmatch(r"[0-9a-fA-F]{40}", value):
         return value.lower()
     try:
-        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
     except Exception:
         return "unknown"
 
@@ -303,7 +332,9 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
     if platform.system() != "Linux" or platform.machine() not in {"x86_64", "amd64"}:
         raise BuildError("development base build requires x86_64 Linux")
     if os.geteuid() != 0:
-        raise BuildError("development base build must run as root (chroot/apk)")
+        raise BuildError("development base build must run as root (package ownership/chroot)")
+    if not shutil.which("proot"):
+        raise BuildError("development base build requires proot")
 
     out_dir = out_dir.resolve()
     shutil.rmtree(out_dir, ignore_errors=True)
@@ -323,26 +354,10 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
         host_resolv = Path("/etc/resolv.conf")
         if host_resolv.exists():
             shutil.copy2(host_resolv, rootfs / "etc/resolv.conf", follow_symlinks=True)
-        dev = rootfs / "dev"
-        dev.mkdir(parents=True, exist_ok=True)
-        temporary_devices = {
-            "null": (1, 3),
-            "zero": (1, 5),
-            "random": (1, 8),
-            "urandom": (1, 9),
-        }
-        for name, numbers in temporary_devices.items():
-            target = dev / name
-            if not target.exists():
-                os.mknod(target, stat.S_IFCHR | 0o666, os.makedev(*numbers))
-        try:
-            chroot(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
-            prune_firmware(rootfs)
-        finally:
-            for name in temporary_devices:
-                target = dev / name
-                if target.exists() or target.is_symlink():
-                    target.unlink()
+        (rootfs / "dev").mkdir(parents=True, exist_ok=True)
+
+        package_chroot(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
+        prune_firmware(rootfs)
         install_runtime(rootfs, kernel_modules.resolve())
         flattened = flatten_symlinks(rootfs)
         verify_rootfs(rootfs)
@@ -356,23 +371,32 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             "alpine_archive_sha256": archive_sha,
             "kernel_modules_sha256": sha256_file(kernel_modules.resolve()),
             "packages": PACKAGES,
+            "build_device_strategy": "proot-bind-host-dev",
             "symlinks_flattened": flattened,
             "unique_regular_bytes": size,
             "source_checkout_preseeded": False,
             "git_client_preseeded": True,
             "network_preseeded": True,
         }
-        (out_dir / "provenance.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        (out_dir / "provenance.json").write_text(
+            json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
         print(f"ORDAX_DEV_BASE_BYTES={size}")
         print("ORDAX_DEV_BASE_GIT=YES")
         print("ORDAX_DEV_BASE_SOURCE_CHECKOUT=NO")
+        print("ORDAX_DEV_BASE_STATIC_DEVICES=NO")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kernel-modules", type=Path, default=ROOT / "out/kernel/kernel-modules-6.6.52.tar")
+    parser.add_argument(
+        "--kernel-modules",
+        type=Path,
+        default=ROOT / "out/kernel/kernel-modules-6.6.52.tar",
+    )
     parser.add_argument("--out-dir", type=Path, default=ROOT / "out/dev-base")
     args = parser.parse_args()
     try:
