@@ -5,3 +5,7 @@ package main
 func ownerPrototypePhysicalBackend() (string, bool) {
 	return "", false
 }
+
+func ownerPrototypeBuildInfo() (string, string, bool) {
+	return "", "", false
+}
