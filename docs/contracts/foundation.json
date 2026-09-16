@@ -7,7 +7,20 @@
     "physical_media_is_source_authority": false,
     "notebook_is_source_authority": false
   },
+  "storage_architecture": {
+    "contract": "docs/contracts/storage-architecture.json",
+    "documentation": "docs/STORAGE-ARCHITECTURE.md",
+    "single_physical_layout_for_all_media": false,
+    "native_disk_profile": "native-disk",
+    "portable_usb_profile": "portable-usb",
+    "rigid_system_home_app_partition_sizing_required": false,
+    "user_data_preserved_by_default_during_system_repair": true,
+    "transactional_update_and_rollback_required": true
+  },
   "physical_media": {
+    "scope": "transitional-bootstrap-seed-proof-only",
+    "final_product_storage_layout": false,
+    "contract": "docs/contracts/physical-media.json",
     "partition_count": 2,
     "partitions": [
       {
