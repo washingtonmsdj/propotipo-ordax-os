@@ -2,7 +2,22 @@
   "$schema": "prototype-ordax.creator-consumer-flow/1",
   "status": "implemented-gated-signed-physical-release-pending",
   "audience": "end-user",
-  "principle": "the consumer Creator behaves like a USB creation utility; publisher trust and signing custody are never user tasks",
+  "principle": "the consumer Creator behaves like a Rufus-class USB creation utility with OrdaX defaults fully owned by the product; the USB target is the only configurable user input",
+  "user_configurable_inputs": [
+    "usb_target"
+  ],
+  "automatic_inputs": [
+    "ordax_version",
+    "signed_physical_candidate",
+    "bootstrap_image",
+    "partition_layout",
+    "filesystem_layout",
+    "bootloader",
+    "kernel",
+    "initramfs",
+    "release_channel",
+    "verification_policy"
+  ],
   "normal_flow": [
     "launch_creator",
     "automatic_component_update",
@@ -18,6 +33,13 @@
     "success"
   ],
   "forbidden_user_steps": [
+    "select_iso",
+    "select_image_file",
+    "select_ordax_version",
+    "select_partition_scheme",
+    "select_filesystem",
+    "select_bootloader",
+    "configure_release_channel",
     "generate_release_signing_key",
     "backup_release_signing_key",
     "provide_private_key",
