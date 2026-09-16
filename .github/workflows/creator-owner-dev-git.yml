@@ -80,9 +80,18 @@ jobs:
           sudo -E python bootstrap/dev-base/build.py \
             --kernel-modules out/kernel/kernel-modules-6.6.52.tar \
             --out-dir out/dev-base
-          sudo chroot out/dev-base/rootfs /usr/bin/git --version
+          rootfs=out/dev-base/rootfs
+          sudo touch "$rootfs/dev/null"
+          cleanup_dev_null() {
+            sudo rm -f "$rootfs/dev/null"
+          }
+          trap cleanup_dev_null EXIT
+          sudo chroot "$rootfs" /usr/bin/git --version
+          cleanup_dev_null
+          trap - EXIT
           test -x out/dev-base/rootfs/sbin/ordax-dev-init
           test -x out/dev-base/rootfs/usr/local/bin/ordax-pull
+          test -z "$(sudo find "$rootfs/dev" -mindepth 1 -print -quit)"
 
       - name: Create ephemeral prototype trust for Creator provenance
         run: |
