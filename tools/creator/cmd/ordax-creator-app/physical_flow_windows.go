@@ -132,7 +132,9 @@ func renderWriteProgress() {
 	writeMu.Unlock()
 	setText(statusLabel, state.Status)
 	setText(hintLabel, state.Hint)
+	setProgressActive()
 	enable(refreshButton, false)
+	enable(updateButton, false)
 	enable(writeButton, false)
 	enable(deviceCombo, false)
 }
@@ -145,17 +147,21 @@ func renderWriteDone() {
 	setText(statusLabel, state.Status)
 	setText(hintLabel, state.Hint)
 	if state.Success {
+		setProgressComplete()
 		messageBox(
 			"O pendrive OrdaX foi criado e passou pela verificação de leitura.\n\nAgora ele está pronto para o teste de boot no notebook.",
 			"OrdaX Creator",
 			mbOK|mbIconInformation,
 		)
-	} else if state.Error != "" {
-		messageBox(
-			"A criação do pendrive não foi concluída.\n\n"+state.Error,
-			"OrdaX Creator",
-			mbOK|mbIconError,
-		)
+	} else {
+		setProgressIdle()
+		if state.Error != "" {
+			messageBox(
+				"A criação do pendrive não foi concluída.\n\n"+state.Error,
+				"OrdaX Creator",
+				mbOK|mbIconError,
+			)
+		}
 	}
 
 	stateMu.Lock()
@@ -164,6 +170,7 @@ func renderWriteDone() {
 	enable(refreshButton, true)
 	enable(deviceCombo, len(current.Targets) > 0)
 	enable(writeButton, current.PhysicalReady && len(current.Targets) > 0)
+	renderUpdateUI()
 }
 
 func showWriteBusyMessage() {
@@ -179,7 +186,7 @@ func selectedPhysicalTarget() (physicalTarget, appRefreshState, error) {
 	state := refreshState
 	stateMu.Unlock()
 	if !state.PhysicalReady || state.BackendDirectory == "" {
-		return physicalTarget{}, state, fmt.Errorf("a candidata física oficial ainda não está pronta para gravação")
+		return physicalTarget{}, state, fmt.Errorf("a versão física do Creator ainda não está pronta para gravação")
 	}
 	index := int32(send(deviceCombo, cbGetCurSel, 0, 0))
 	if index < 0 || int(index) >= len(state.Targets) {
@@ -230,10 +237,10 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 	for _, path := range []string{backend, seed} {
 		info, err := os.Lstat(path)
 		if err != nil {
-			return fmt.Errorf("candidata física incompleta: %s não está disponível", filepath.Base(path))
+			return fmt.Errorf("pacote físico incompleto: %s não está disponível", filepath.Base(path))
 		}
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("candidata física inválida: %s não é um arquivo regular", filepath.Base(path))
+			return fmt.Errorf("pacote físico inválido: %s não é um arquivo regular", filepath.Base(path))
 		}
 	}
 
@@ -248,7 +255,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 	defer os.RemoveAll(workDir)
 	preparedPath := filepath.Join(workDir, "ordax-prepared.raw")
 
-	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem oficial e ajustando o layout GPT ao tamanho do pendrive.")
+	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem do OrdaX e ajustando o layout GPT ao tamanho do pendrive.")
 	output, err := runBackendHidden(
 		directory,
 		"prepare",
@@ -267,7 +274,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		return err
 	}
 
-	updateWriteProgress("Aguardando autorização do Windows…", "Confirme a janela de Controle de Conta de Usuário. Somente o pendrive selecionado será aberto para gravação.")
+	updateWriteProgress("Aguardando autorização do Windows…", "Confirme a janela de Controle de Conta de Usuário. Depois disso o status mudará automaticamente para gravação.")
 	args := []string{
 		"apply",
 		"--confirm", target.ConfirmationToken,
@@ -280,7 +287,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		return err
 	}
 
-	updateWriteProgress("Finalizando verificação…", "A gravação terminou; o Creator confirmou a leitura do conteúdo gravado antes de concluir.")
+	updateWriteProgress("Concluindo…", "A gravação e a verificação por leitura foram confirmadas. Finalizando o Creator.")
 	return nil
 }
 
@@ -328,6 +335,14 @@ func runElevatedAndWait(executable, directory string, args []string) error {
 		return fmt.Errorf("o Windows não retornou o processo elevado")
 	}
 	defer procCloseHandle.Call(info.Process)
+
+	// ShellExecuteEx returns only after the elevated child was actually created.
+	// At this point UAC was accepted, so keeping the UI at “waiting for
+	// authorization” is wrong and makes a healthy raw write look frozen.
+	updateWriteProgress(
+		"Gravando e verificando o pendrive…",
+		"Autorização do Windows confirmada. Não remova o USB; o Creator está gravando e fará a leitura de verificação antes de concluir.",
+	)
 
 	wait, _, waitErr := procWaitForSingleObject.Call(info.Process, infinite)
 	if wait != waitObject0 {
