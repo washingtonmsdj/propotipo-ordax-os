@@ -29,9 +29,12 @@ type preparedMediaContract struct {
 		SizePolicy                 any    `json:"size_policy"`
 	} `json:"partitions"`
 	Performance struct {
-		CurrentRawWriteScope string `json:"current_raw_write_scope"`
-		CurrentReadbackScope string `json:"current_readback_scope"`
-		ZeroRegionSkip       bool   `json:"zero-region-skip_implemented"`
+		PreparedImageIntegrityScope string `json:"prepared_image_integrity_scope"`
+		CurrentRawWriteScope        string `json:"current_raw_write_scope"`
+		CurrentReadbackScope        string `json:"current_readback_scope"`
+		ZeroRegionSkip              bool   `json:"zero-region-skip_implemented"`
+		SkippedRegionOwner          string `json:"skipped_region_owner"`
+		FailClosedRule              string `json:"fail_closed_rule"`
 	} `json:"performance"`
 }
 
@@ -105,11 +108,24 @@ func TestPreparedMediaContractMatchesStoragePlanner(t *testing.T) {
 	if !data.WindowsDriveLetterRequired {
 		t.Fatal("ORDAX-DATA must remain visible through a Windows drive letter")
 	}
-	if contract.Performance.CurrentRawWriteScope != "whole-target-capacity" || contract.Performance.CurrentReadbackScope != "whole-target-capacity-before-ORDAX-DATA-format" {
-		t.Fatal("contract must describe the current full-capacity write/readback behavior until optimized")
+
+	if contract.Performance.PreparedImageIntegrityScope != "whole-target-sha256-on-local-temporary-image" {
+		t.Fatalf("prepared image integrity scope drift: %q", contract.Performance.PreparedImageIntegrityScope)
 	}
-	if contract.Performance.ZeroRegionSkip {
-		t.Fatal("contract must not claim zero-region skipping before it is implemented")
+	if contract.Performance.CurrentRawWriteScope != "bootstrap-system-plus-16MiB-ORDAX-DATA-prefix-plus-1MiB-ORDAX-DATA-suffix-plus-secondary-gpt" {
+		t.Fatalf("raw write scope drift: %q", contract.Performance.CurrentRawWriteScope)
+	}
+	if contract.Performance.CurrentReadbackScope != "exactly-the-raw-regions-written-before-ORDAX-DATA-format" {
+		t.Fatalf("readback scope drift: %q", contract.Performance.CurrentReadbackScope)
+	}
+	if !contract.Performance.ZeroRegionSkip {
+		t.Fatal("prepared media must skip the unused ORDAX-DATA middle after validating exact storage-v2 GPT geometry")
+	}
+	if contract.Performance.SkippedRegionOwner != "the-unformatted-middle-of-ORDAX-DATA-is-immediately-replaced-by-Windows-exFAT-formatting" {
+		t.Fatalf("skipped region ownership drift: %q", contract.Performance.SkippedRegionOwner)
+	}
+	if contract.Performance.FailClosedRule != "supported-real-USB-capacities-require-exact-storage-v2-GPT-validation-and-never-fall-back-to-whole-disk-write-on-validation-failure" {
+		t.Fatalf("fail-closed write rule drift: %q", contract.Performance.FailClosedRule)
 	}
 }
 
