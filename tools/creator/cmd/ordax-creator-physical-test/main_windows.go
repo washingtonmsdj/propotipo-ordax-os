@@ -228,11 +228,26 @@ func runApply(args []string) error {
 	if err != nil {
 		return err
 	}
+
+	layout, err := creatorcore.PlanPhysicalStorage(target.PhysicalDiskBytes)
+	if err != nil {
+		return fmt.Errorf("rebuild authorized storage layout after raw verification: %w", err)
+	}
+	if err := windowsadapter.FormatPortableDataVolume(target, layout.DataStartLBA, layout.DataBytes); err != nil {
+		return fmt.Errorf("finalize portable ORDAX-DATA volume: %w", err)
+	}
+
 	return encode(struct {
-		Schema string                             `json:"$schema"`
-		Status string                             `json:"status"`
-		Result windowsadapter.PhysicalApplyResult `json:"result"`
-	}{Schema: "prototype-ordax.creator-physical-test-apply/1", Status: "pass-readback-verified", Result: result})
+		Schema       string                             `json:"$schema"`
+		Status       string                             `json:"status"`
+		PortableData string                             `json:"portable_data"`
+		Result       windowsadapter.PhysicalApplyResult `json:"result"`
+	}{
+		Schema:       "prototype-ordax.creator-physical-test-apply/2",
+		Status:       "pass-readback-verified-data-formatted",
+		PortableData: "ORDAX-DATA:exFAT:verified",
+		Result:       result,
+	})
 }
 
 func usage() {
