@@ -327,7 +327,14 @@ def verify_rootfs(rootfs: Path) -> None:
         if not path.is_file() or not os.access(path, os.X_OK):
             raise BuildError(f"required executable missing: /{rel}")
     stage("verify-rootfs-native-chroot-git")
-    run(["chroot", str(rootfs), "/usr/bin/git", "--version"])
+    dev_null = rootfs / "dev/null"
+    dev_null.touch(mode=0o666)
+    try:
+        run(["chroot", str(rootfs), "/usr/bin/git", "--version"])
+    finally:
+        dev_null.unlink(missing_ok=True)
+    if any((rootfs / "dev").iterdir()):
+        raise BuildError("temporary verification files remained in /dev")
     stage("verify-rootfs-complete")
 
 
