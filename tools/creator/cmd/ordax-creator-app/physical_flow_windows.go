@@ -24,9 +24,11 @@ const (
 	idYes             = 6
 
 	seeMaskNoCloseProcess = 0x00000040
-	swHide                 = 0
-	infinite               = 0xffffffff
-	waitObject0            = 0x00000000
+	swHide                = 0
+	infinite              = 0xffffffff
+	waitObject0           = 0x00000000
+	waitTimeout           = 0x00000102
+	progressPollMillis    = 200
 )
 
 var (
@@ -74,11 +76,13 @@ type physicalPreparationDocument struct {
 }
 
 type physicalWriteState struct {
-	Active  bool
-	Status  string
-	Hint    string
-	Success bool
-	Error   string
+	Active      bool
+	Status      string
+	Hint        string
+	Success     bool
+	Error       string
+	Determinate bool
+	Percent     int
 }
 
 func messageBox(text, title string, flags uint32) int {
@@ -104,6 +108,27 @@ func updateWriteProgress(status, hint string) {
 	writeState.Hint = hint
 	writeState.Success = false
 	writeState.Error = ""
+	writeState.Determinate = false
+	writeState.Percent = 0
+	writeMu.Unlock()
+	procPostMessageW.Call(mainWindow, wmAppWriteProgress, 0, 0)
+}
+
+func updateWritePercentage(status, hint string, percent int) {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	writeMu.Lock()
+	writeState.Active = true
+	writeState.Status = status
+	writeState.Hint = hint
+	writeState.Success = false
+	writeState.Error = ""
+	writeState.Determinate = true
+	writeState.Percent = percent
 	writeMu.Unlock()
 	procPostMessageW.Call(mainWindow, wmAppWriteProgress, 0, 0)
 }
@@ -116,11 +141,15 @@ func completeWrite(err error) {
 		writeState.Error = err.Error()
 		writeState.Status = "Não foi possível criar o pendrive OrdaX."
 		writeState.Hint = "Nenhuma conclusão foi assumida. Confira o erro e recarregue os dispositivos antes de tentar novamente."
+		writeState.Determinate = false
+		writeState.Percent = 0
 	} else {
 		writeState.Success = true
 		writeState.Error = ""
 		writeState.Status = "Pendrive OrdaX criado e verificado."
 		writeState.Hint = "Gravação, verificação por leitura e ORDAX-DATA foram concluídos. O espaço de arquivos está pronto no Windows; remova o USB com segurança e teste o boot no notebook."
+		writeState.Determinate = true
+		writeState.Percent = 100
 	}
 	writeMu.Unlock()
 	procPostMessageW.Call(mainWindow, wmAppWriteDone, 0, 0)
@@ -132,7 +161,11 @@ func renderWriteProgress() {
 	writeMu.Unlock()
 	setText(statusLabel, state.Status)
 	setText(hintLabel, state.Hint)
-	setProgressActive()
+	if state.Determinate {
+		setProgressPercent(state.Percent)
+	} else {
+		setProgressActive()
+	}
 	enable(refreshButton, false)
 	enable(updateButton, false)
 	enable(writeButton, false)
@@ -255,6 +288,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 	defer os.RemoveAll(workDir)
 	preparedPath := filepath.Join(workDir, "ordax-prepared.raw")
 	diagnosticPath := filepath.Join(workDir, "ordax-physical-error.txt")
+	progressPath := filepath.Join(workDir, "ordax-physical-progress.json")
 
 	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem do OrdaX e ajustando o layout GPT ao tamanho do pendrive, preservando o restante para ORDAX-DATA.")
 	output, err := runBackendHidden(
@@ -284,12 +318,13 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		"--size", strconv.FormatInt(preparation.PreparedImage.SizeBytes, 10),
 		"--authorize", preparation.DestructiveAuthorization,
 		"--diagnostic-log", diagnosticPath,
+		"--progress-log", progressPath,
 	}
-	if err := runElevatedAndWait(backend, directory, args, diagnosticPath); err != nil {
+	if err := runElevatedAndWait(backend, directory, args, diagnosticPath, progressPath); err != nil {
 		return err
 	}
 
-	updateWriteProgress("Concluindo…", "Gravação, verificação por leitura e ORDAX-DATA foram confirmados. Finalizando o Creator.")
+	updateWritePercentage("Concluindo…", "Gravação, verificação por leitura e ORDAX-DATA foram confirmados. Finalizando o Creator.", 100)
 	return nil
 }
 
@@ -311,7 +346,7 @@ func validatePhysicalPreparation(preparation physicalPreparationDocument, target
 	return nil
 }
 
-func runElevatedAndWait(executable, directory string, args []string, diagnosticPath string) error {
+func runElevatedAndWait(executable, directory string, args []string, diagnosticPath, progressPath string) error {
 	parameters := make([]string, 0, len(args))
 	for _, arg := range args {
 		parameters = append(parameters, syscall.EscapeArg(arg))
@@ -340,13 +375,23 @@ func runElevatedAndWait(executable, directory string, args []string, diagnosticP
 
 	updateWriteProgress(
 		"Gravando, verificando e preparando arquivos…",
-		"Autorização do Windows confirmada. Não remova o USB; o Creator está gravando, fará a leitura de verificação e preparará o volume ORDAX-DATA antes de concluir.",
+		"Autorização do Windows confirmada. Não remova o USB; o Creator está iniciando a gravação segura.",
 	)
 
-	wait, _, waitErr := procWaitForSingleObject.Call(info.Process, infinite)
-	if wait != waitObject0 {
+	lastProgress := ""
+	for {
+		wait, _, waitErr := procWaitForSingleObject.Call(info.Process, progressPollMillis)
+		applyPhysicalProgressSnapshot(progressPath, &lastProgress)
+		if wait == waitObject0 {
+			break
+		}
+		if wait == waitTimeout {
+			continue
+		}
 		return fmt.Errorf("falha aguardando a gravação elevada: %v", waitErr)
 	}
+	applyPhysicalProgressSnapshot(progressPath, &lastProgress)
+
 	var exitCode uint32
 	ok, _, exitErr := procGetExitCodeProcess.Call(info.Process, uintptr(unsafe.Pointer(&exitCode)))
 	if ok == 0 {

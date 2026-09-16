@@ -13,11 +13,36 @@ type PhysicalApplyResult struct {
 	VerificationMode string `json:"verification_mode"`
 }
 
+// PhysicalApplyProgress is UI-only telemetry from the elevated physical writer.
+// It never participates in authorization or target selection.
+type PhysicalApplyProgress struct {
+	Phase          string `json:"phase"`
+	CompletedBytes int64  `json:"completed_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
+}
+
 // ApplyPhysicalTest binds the already-tested fail-closed writer orchestration
 // to the real Windows runtime. This symbol exists only when both Windows and
 // the explicit ordax_raw_backend build tag are selected.
 func ApplyPhysicalTest(request RawDiskApplyRequest) (PhysicalApplyResult, error) {
-	result, err := applyRawDiskInternal(windowsRawDiskRuntimeUnbound{}, request)
+	return ApplyPhysicalTestWithProgress(request, nil)
+}
+
+// ApplyPhysicalTestWithProgress keeps the destructive path identical to
+// ApplyPhysicalTest while exposing non-authoritative progress telemetry for the
+// desktop Creator. The callback cannot change writer policy or I/O decisions.
+func ApplyPhysicalTestWithProgress(request RawDiskApplyRequest, report func(PhysicalApplyProgress)) (PhysicalApplyResult, error) {
+	var internal rawApplyProgressReporter
+	if report != nil {
+		internal = func(progress rawDiskApplyProgress) {
+			report(PhysicalApplyProgress{
+				Phase:          progress.Phase,
+				CompletedBytes: progress.CompletedBytes,
+				TotalBytes:     progress.TotalBytes,
+			})
+		}
+	}
+	result, err := applyRawDiskInternalWithProgress(windowsRawDiskRuntimeUnbound{}, request, internal)
 	if err != nil {
 		return PhysicalApplyResult{}, err
 	}

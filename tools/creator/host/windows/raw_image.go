@@ -34,11 +34,26 @@ func validLowerSHA256(value string) bool {
 	return err == nil && len(decoded) == sha256.Size
 }
 
+type rawImageProgressWriter struct {
+	onWrite func(int64)
+}
+
+func (writer rawImageProgressWriter) Write(data []byte) (int, error) {
+	if writer.onWrite != nil && len(data) > 0 {
+		writer.onWrite(int64(len(data)))
+	}
+	return len(data), nil
+}
+
 // openVerifiedRawImageForApply binds verification to the exact file handle that
 // will later be streamed. On Windows openRawImageReadLocked also denies write
 // sharing for the lifetime of this handle, closing the path-reopen TOCTOU gap
 // before any physical device can be opened.
 func openVerifiedRawImageForApply(path string, expectedSHA256 string, expectedSizeBytes int64) (*os.File, VerifiedRawImage, error) {
+	return openVerifiedRawImageForApplyWithProgress(path, expectedSHA256, expectedSizeBytes, nil)
+}
+
+func openVerifiedRawImageForApplyWithProgress(path string, expectedSHA256 string, expectedSizeBytes int64, report func(completedBytes, totalBytes int64)) (*os.File, VerifiedRawImage, error) {
 	if path == "" {
 		return nil, VerifiedRawImage{}, errors.New("raw image path is required")
 	}
@@ -80,8 +95,18 @@ func openVerifiedRawImageForApply(path string, expectedSHA256 string, expectedSi
 		return closeOnError(fmt.Errorf("raw image size mismatch: expected=%d actual=%d", expectedSizeBytes, handleInfo.Size()))
 	}
 
+	if report != nil {
+		report(0, expectedSizeBytes)
+	}
 	digest := sha256.New()
-	hashed, err := io.CopyN(digest, file, expectedSizeBytes)
+	var hashedProgress int64
+	counter := rawImageProgressWriter{onWrite: func(delta int64) {
+		hashedProgress += delta
+		if report != nil {
+			report(hashedProgress, expectedSizeBytes)
+		}
+	}}
+	hashed, err := io.CopyN(io.MultiWriter(digest, counter), file, expectedSizeBytes)
 	if err != nil {
 		return closeOnError(fmt.Errorf("hash raw image: expected=%d actual=%d: %w", expectedSizeBytes, hashed, err))
 	}
@@ -97,6 +122,9 @@ func openVerifiedRawImageForApply(path string, expectedSHA256 string, expectedSi
 	actual := hex.EncodeToString(digest.Sum(nil))
 	if actual != expectedSHA256 {
 		return closeOnError(fmt.Errorf("raw image SHA-256 mismatch: expected=%s actual=%s", expectedSHA256, actual))
+	}
+	if report != nil {
+		report(expectedSizeBytes, expectedSizeBytes)
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return closeOnError(fmt.Errorf("rewind verified raw image: %w", err))

@@ -53,15 +53,7 @@ func binding() buildBinding {
 		validLowerHex(buildManifestSHA256, sha256.Size) &&
 		validLowerHex(buildSeedImageSHA256, sha256.Size) &&
 		size > 0 && authorized
-	return buildBinding{
-		SourceCommit:            buildSourceCommit,
-		CanonicalTrustSHA256:    buildCanonicalTrustSHA256,
-		ManifestSHA256:          buildManifestSHA256,
-		SeedImageSHA256:         buildSeedImageSHA256,
-		SeedImageSize:           size,
-		PhysicalWriteAuthorized: authorized,
-		Ready:                   ready,
-	}
+	return buildBinding{SourceCommit: buildSourceCommit, CanonicalTrustSHA256: buildCanonicalTrustSHA256, ManifestSHA256: buildManifestSHA256, SeedImageSHA256: buildSeedImageSHA256, SeedImageSize: size, PhysicalWriteAuthorized: authorized, Ready: ready}
 }
 
 func encode(value any) error {
@@ -126,13 +118,7 @@ func runStatus() error {
 		RawBackendLinked        bool         `json:"raw_backend_linked"`
 		PublicCreatorUnaffected bool         `json:"public_creator_unaffected"`
 		Build                   buildBinding `json:"build"`
-	}{
-		Schema:                  "prototype-ordax.creator-physical-test-status/2",
-		Mode:                    "physical-test-only",
-		RawBackendLinked:        true,
-		PublicCreatorUnaffected: true,
-		Build:                   b,
-	})
+	}{Schema: "prototype-ordax.creator-physical-test-status/2", Mode: "physical-test-only", RawBackendLinked: true, PublicCreatorUnaffected: true, Build: b})
 }
 
 func runTargets() error {
@@ -144,11 +130,7 @@ func runTargets() error {
 		Schema  string                  `json:"$schema"`
 		Mode    string                  `json:"mode"`
 		Targets []windowsadapter.Target `json:"targets"`
-	}{
-		Schema:  "prototype-ordax.creator-physical-test-targets/1",
-		Mode:    "read-only",
-		Targets: targets,
-	})
+	}{Schema: "prototype-ordax.creator-physical-test-targets/1", Mode: "read-only", Targets: targets})
 }
 
 func runPrepare(args []string) error {
@@ -186,17 +168,7 @@ func runPrepare(args []string) error {
 		PreparedImage            creatorcore.PreparedPhysicalImage `json:"prepared_image"`
 		DestructiveAuthorization string                             `json:"destructive_authorization"`
 		Next                     string                             `json:"next"`
-	}{
-		Schema:                   "prototype-ordax.creator-physical-test-preparation/2",
-		SourceCommit:             b.SourceCommit,
-		CanonicalTrustSHA256:     b.CanonicalTrustSHA256,
-		ManifestSHA256:           b.ManifestSHA256,
-		AuthorizedSeedSHA256:     b.SeedImageSHA256,
-		Target:                   target,
-		PreparedImage:            prepared,
-		DestructiveAuthorization: authorization,
-		Next:                     "consumer Creator must request Windows elevation and call apply with the exact same target token, image SHA/size and destructive authorization token",
-	})
+	}{Schema: "prototype-ordax.creator-physical-test-preparation/2", SourceCommit: b.SourceCommit, CanonicalTrustSHA256: b.CanonicalTrustSHA256, ManifestSHA256: b.ManifestSHA256, AuthorizedSeedSHA256: b.SeedImageSHA256, Target: target, PreparedImage: prepared, DestructiveAuthorization: authorization, Next: "consumer Creator must request Windows elevation and call apply with the exact same target token, image SHA/size and destructive authorization token"})
 }
 
 func runApply(args []string) error {
@@ -207,61 +179,56 @@ func runApply(args []string) error {
 	imageSize := fs.Int64("size", 0, "prepared image size in bytes")
 	authorize := fs.String("authorize", "", "destructive authorization token emitted by prepare")
 	diagnosticLog := fs.String("diagnostic-log", "", "optional UTF-8 error report path owned by the parent Creator")
+	progressLog := fs.String("progress-log", "", "optional JSON progress path owned by the parent Creator")
 	if err := fs.Parse(args); err != nil {
 		return err
-	}
-	applyDiagnosticLog = strings.TrimSpace(*diagnosticLog)
-	if applyDiagnosticLog != "" {
-		_ = os.Remove(applyDiagnosticLog)
 	}
 	b := requireReady()
 	if *confirm == "" || *imagePath == "" || *imageSHA == "" || *imageSize <= 0 || *authorize == "" || fs.NArg() != 0 {
 		return fmt.Errorf("apply requires --confirm, --image, --sha256, --size and --authorize")
 	}
+	diagnosticPath, err := validateApplySidecarPath(*imagePath, *diagnosticLog, "ordax-physical-error.txt")
+	if err != nil {
+		return fmt.Errorf("validate diagnostic log path: %w", err)
+	}
+	progressPath, err := validateApplySidecarPath(*imagePath, *progressLog, "ordax-physical-progress.json")
+	if err != nil {
+		return fmt.Errorf("validate progress log path: %w", err)
+	}
+	applyDiagnosticLog = diagnosticPath
+	if applyDiagnosticLog != "" {
+		_ = os.Remove(applyDiagnosticLog)
+	}
+	if progressPath != "" {
+		_ = os.Remove(progressPath)
+	}
+	progressReporter := newApplyProgressReporter(progressPath)
+	progressReporter(windowsadapter.PhysicalApplyProgress{Phase: "starting"})
 	target, err := enumerateConfirmed(*confirm)
 	if err != nil {
 		return err
 	}
-	// Do not hash the target-sized sparse prepared image here and then again in
-	// the writer. The physical writer opens it write-locked, verifies its SHA-256
-	// once on that exact handle and keeps the handle stable through raw I/O.
-	image := windowsadapter.VerifiedRawImage{
-		Path:      *imagePath,
-		SHA256:    *imageSHA,
-		SizeBytes: *imageSize,
-	}
-	request := windowsadapter.RawDiskApplyRequest{
-		Target:                   target,
-		ConfirmationToken:        *confirm,
-		Image:                    image,
-		BootstrapSeedBytes:       b.SeedImageSize,
-		CanonicalTrustResolved:   true,
-		DestructiveAuthorization: *authorize,
-	}
-	result, err := windowsadapter.ApplyPhysicalTest(request)
+	image := windowsadapter.VerifiedRawImage{Path: *imagePath, SHA256: *imageSHA, SizeBytes: *imageSize}
+	request := windowsadapter.RawDiskApplyRequest{Target: target, ConfirmationToken: *confirm, Image: image, BootstrapSeedBytes: b.SeedImageSize, CanonicalTrustResolved: true, DestructiveAuthorization: *authorize}
+	result, err := windowsadapter.ApplyPhysicalTestWithProgress(request, progressReporter)
 	if err != nil {
 		return err
 	}
-
 	layout, err := creatorcore.PlanPhysicalStorage(target.PhysicalDiskBytes)
 	if err != nil {
 		return fmt.Errorf("rebuild authorized storage layout after raw verification: %w", err)
 	}
+	progressReporter(windowsadapter.PhysicalApplyProgress{Phase: "formatting-data"})
 	if err := windowsadapter.FormatPortableDataVolume(target, layout.DataStartLBA, layout.DataBytes); err != nil {
 		return fmt.Errorf("finalize portable ORDAX-DATA volume: %w", err)
 	}
-
+	progressReporter(windowsadapter.PhysicalApplyProgress{Phase: "complete", CompletedBytes: 1, TotalBytes: 1})
 	return encode(struct {
 		Schema       string                             `json:"$schema"`
 		Status       string                             `json:"status"`
 		PortableData string                             `json:"portable_data"`
 		Result       windowsadapter.PhysicalApplyResult `json:"result"`
-	}{
-		Schema:       "prototype-ordax.creator-physical-test-apply/2",
-		Status:       "pass-readback-verified-data-formatted",
-		PortableData: "ORDAX-DATA:exFAT:verified",
-		Result:       result,
-	})
+	}{Schema: "prototype-ordax.creator-physical-test-apply/2", Status: "pass-readback-verified-data-formatted", PortableData: "ORDAX-DATA:exFAT:verified", Result: result})
 }
 
 func usage() {
