@@ -2,7 +2,7 @@
   "$schema": "prototype-ordax.physical-write-authorization/1",
   "status": "blocked-canonical-trust-pending",
   "physical_write_allowed": false,
-  "explicit_owner_authorization": false,
+  "explicit_owner_authorization": true,
   "scope": "first-real-usb-proof",
   "source_repository": "washingtonmsdj/prototipo-ordax-os",
   "release_sequence": 1,
