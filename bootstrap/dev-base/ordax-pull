@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+REPO_URL=${ORDAX_REPO_URL:-https://github.com/washingtonmsdj/prototipo-ordax-os.git}
+BRANCH=${ORDAX_REPO_BRANCH:-main}
+WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+STATE_DIR=/state/ordax
+PREVIOUS_FILE=$STATE_DIR/previous-commit
+CURRENT_FILE=$STATE_DIR/current-commit
+
+mkdir -p /workspace "$STATE_DIR"
+
+if [ ! -d "$WORKTREE/.git" ]; then
+    echo "ordax-git: clonando $REPO_URL ($BRANCH)"
+    git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$WORKTREE"
+else
+    previous=$(git -C "$WORKTREE" rev-parse HEAD)
+    printf '%s\n' "$previous" > "$PREVIOUS_FILE"
+    echo "ordax-git: git pull --ff-only origin $BRANCH"
+    git -C "$WORKTREE" pull --ff-only origin "$BRANCH"
+fi
+
+current=$(git -C "$WORKTREE" rev-parse HEAD)
+printf '%s\n' "$current" > "$CURRENT_FILE"
+printf 'ORDAX_SOURCE_SHA=%s\n' "$current"
