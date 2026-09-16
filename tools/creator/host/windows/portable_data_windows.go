@@ -12,15 +12,12 @@ import (
 
 const portableDataSectorBytes = uint64(512)
 
-func powershellSingleQuoted(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
 // FormatPortableDataVolume runs only after the trusted raw write has completed
 // its byte-for-byte readback proof and the raw-device lease has been released.
-// It re-confirms the exact USB identity, verifies partition 3 geometry, formats
-// only that partition as exFAT, assigns a normal Windows drive letter, and
-// verifies the resulting filesystem identity before the Creator may succeed.
+// The pre-write confirmation token intentionally includes volume identity, so
+// it cannot be reused after the partition table has changed. Instead this
+// boundary revalidates the exact physical disk number through the same native
+// read-only PhysicalDrive identity primitive used during initial discovery.
 func FormatPortableDataVolume(expected Target, dataStartLBA, dataBytes uint64) error {
 	if expected.SystemDisk || !expected.PrototypeSafe || expected.ConfirmationToken == "" {
 		return errors.New("portable data formatting requires a confirmed safe USB target")
@@ -28,36 +25,49 @@ func FormatPortableDataVolume(expected Target, dataStartLBA, dataBytes uint64) e
 	if dataStartLBA == 0 || dataBytes == 0 || dataStartLBA > ^uint64(0)/portableDataSectorBytes {
 		return errors.New("portable data geometry is invalid")
 	}
-	liveTargets, err := EnumerateRemovableTargets()
+
+	systemDisk, err := windowsSystemDiskNumber()
 	if err != nil {
-		return fmt.Errorf("re-enumerate USB before ORDAX-DATA format: %w", err)
+		return fmt.Errorf("re-establish Windows system disk before ORDAX-DATA format: %w", err)
 	}
-	confirmed, err := MatchConfirmedTarget(liveTargets, expected.ConfirmationToken)
+	if expected.DiskNumber == systemDisk {
+		return errors.New("portable data formatting blocked: target now resolves to the Windows system disk")
+	}
+	busType, deviceRemovable, deviceSerial, diskBytes, err := physicalDeviceIdentity(expected.DiskNumber)
 	if err != nil {
-		return fmt.Errorf("re-confirm USB before ORDAX-DATA format: %w", err)
+		return fmt.Errorf("revalidate PhysicalDrive%d before ORDAX-DATA format: %w", expected.DiskNumber, err)
 	}
-	if confirmed.DiskNumber != expected.DiskNumber || confirmed.PhysicalDiskBytes != expected.PhysicalDiskBytes {
-		return errors.New("USB identity changed before ORDAX-DATA format")
+	if busType != BusTypeUSB {
+		return errors.New("portable data formatting blocked: target is no longer a USB disk")
+	}
+	if diskBytes != expected.PhysicalDiskBytes {
+		return errors.New("portable data formatting blocked: physical disk capacity changed")
+	}
+	if deviceRemovable != expected.DeviceRemovable {
+		return errors.New("portable data formatting blocked: physical removable identity changed")
+	}
+	if serial := strings.TrimSpace(expected.DeviceSerial); serial != "" && strings.TrimSpace(deviceSerial) != serial {
+		return errors.New("portable data formatting blocked: physical device serial changed")
 	}
 
 	offsetBytes := dataStartLBA * portableDataSectorBytes
-	serial := strings.TrimSpace(confirmed.DeviceSerial)
 	script := fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 $diskNumber = %d
 $expectedDiskBytes = [UInt64]%d
 $expectedOffset = [UInt64]%d
 $expectedDataBytes = [UInt64]%d
-$expectedSerial = %s
 
 Update-HostStorageCache -ErrorAction SilentlyContinue
 $disk = Get-Disk -Number $diskNumber -ErrorAction Stop
 if ([UInt64]$disk.Size -ne $expectedDiskBytes) {
     throw "target disk size changed before ORDAX-DATA format"
 }
-$diskSerial = ([string]$disk.SerialNumber).Trim()
-if ($expectedSerial.Length -gt 0 -and $diskSerial.Length -gt 0 -and $diskSerial -ne $expectedSerial) {
-    throw "target disk serial changed before ORDAX-DATA format"
+if (([string]$disk.BusType).ToUpperInvariant() -ne 'USB') {
+    throw "target disk is no longer reported as USB"
+}
+if ([bool]$disk.IsSystem -or [bool]$disk.IsBoot) {
+    throw "refusing to format ORDAX-DATA on a Windows system/boot disk"
 }
 
 $partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
@@ -99,11 +109,10 @@ if (([string]$checkVolume.FileSystemLabel) -ne 'ORDAX-DATA') {
     throw "ORDAX-DATA label verification failed"
 }
 `,
-		confirmed.DiskNumber,
-		confirmed.PhysicalDiskBytes,
+		expected.DiskNumber,
+		expected.PhysicalDiskBytes,
 		offsetBytes,
 		dataBytes,
-		powershellSingleQuoted(serial),
 	)
 
 	command := exec.Command(
