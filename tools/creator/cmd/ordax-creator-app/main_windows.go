@@ -26,6 +26,7 @@ const (
 	wmAppRefreshDone   = wmApp + 1
 	wmAppWriteProgress = wmApp + 2
 	wmAppWriteDone     = wmApp + 3
+	wmAppUpdateDone    = wmApp + 4
 
 	wsOverlappedWindow = 0x00CF0000
 	wsVisible          = 0x10000000
@@ -37,6 +38,11 @@ const (
 	bsPushButton    = 0x00000000
 	bsDefPushButton = 0x00000001
 	cbsDropDownList = 0x0003
+	pbsMarquee      = 0x00000008
+
+	iccProgressClass = 0x00000020
+	pbmSetPos        = 0x0402
+	pbmSetMarquee    = 0x040A
 
 	cwUseDefault = 0x80000000
 	swShow       = 5
@@ -47,6 +53,8 @@ const (
 	idStatus      = 1004
 	idVersion     = 1005
 	idHint        = 1006
+	idUpdate      = 1007
+	idProgress    = 1008
 
 	cbAddString    = 0x0143
 	cbResetContent = 0x014B
@@ -62,30 +70,34 @@ var (
 	user32   = syscall.NewLazyDLL("user32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
+	comctl32 = syscall.NewLazyDLL("comctl32.dll")
 
-	procRegisterClassExW = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procShowWindow       = user32.NewProc("ShowWindow")
-	procUpdateWindow     = user32.NewProc("UpdateWindow")
-	procGetMessageW      = user32.NewProc("GetMessageW")
-	procTranslateMessage = user32.NewProc("TranslateMessage")
-	procDispatchMessageW = user32.NewProc("DispatchMessageW")
-	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procPostMessageW     = user32.NewProc("PostMessageW")
-	procSendMessageW     = user32.NewProc("SendMessageW")
-	procSetWindowTextW   = user32.NewProc("SetWindowTextW")
-	procEnableWindow     = user32.NewProc("EnableWindow")
-	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
-	procGetStockObject   = gdi32.NewProc("GetStockObject")
+	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
+	procShowWindow          = user32.NewProc("ShowWindow")
+	procUpdateWindow        = user32.NewProc("UpdateWindow")
+	procGetMessageW         = user32.NewProc("GetMessageW")
+	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procPostMessageW        = user32.NewProc("PostMessageW")
+	procSendMessageW        = user32.NewProc("SendMessageW")
+	procSetWindowTextW      = user32.NewProc("SetWindowTextW")
+	procEnableWindow        = user32.NewProc("EnableWindow")
+	procGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
+	procGetStockObject      = gdi32.NewProc("GetStockObject")
+	procInitCommonControlsEx = comctl32.NewProc("InitCommonControlsEx")
 
 	mainWindow    uintptr
 	deviceCombo   uintptr
 	refreshButton uintptr
+	updateButton  uintptr
 	writeButton   uintptr
 	statusLabel   uintptr
 	versionLabel  uintptr
 	hintLabel     uintptr
+	progressBar   uintptr
 
 	stateMu      sync.Mutex
 	refreshState appRefreshState
@@ -119,6 +131,11 @@ type wndClassEx struct {
 	MenuName   *uint16
 	ClassName  *uint16
 	IconSm     uintptr
+}
+
+type initCommonControlsEx struct {
+	Size uint32
+	ICC  uint32
 }
 
 type physicalTargetsDocument struct {
@@ -194,6 +211,29 @@ func createControl(class, text string, style uint32, x, y, width, height int32, 
 	font, _, _ := procGetStockObject.Call(17)
 	procSendMessageW.Call(hwnd, 0x0030, font, 1)
 	return hwnd
+}
+
+func setProgressIdle() {
+	if progressBar == 0 {
+		return
+	}
+	send(progressBar, pbmSetMarquee, 0, 0)
+	send(progressBar, pbmSetPos, 0, 0)
+}
+
+func setProgressActive() {
+	if progressBar == 0 {
+		return
+	}
+	send(progressBar, pbmSetMarquee, 1, 35)
+}
+
+func setProgressComplete() {
+	if progressBar == 0 {
+		return
+	}
+	send(progressBar, pbmSetMarquee, 0, 0)
+	send(progressBar, pbmSetPos, 100, 0)
 }
 
 func formatBytes(value uint64) string {
@@ -298,7 +338,7 @@ func updateSelectionUI() {
 	}
 	if state.PhysicalReady {
 		setText(statusLabel, "Pendrive selecionado. Pronto para criar o OrdaX.")
-		setText(hintLabel, "Clique em Criar OrdaX. O Creator baixa, prepara, grava e verifica automaticamente.")
+		setText(hintLabel, "Clique em Criar OrdaX. O Creator prepara, grava e verifica automaticamente.")
 	}
 }
 
@@ -330,19 +370,23 @@ func renderRefresh() {
 		setText(hintLabel, state.Error)
 	case len(state.Targets) == 0:
 		setText(statusLabel, "Conecte um pendrive USB.")
-		setText(hintLabel, "O Creator detecta pendrives automaticamente. Se você acabou de conectar um, clique em Atualizar.")
+		setText(hintLabel, "O Creator detecta pendrives automaticamente. Se acabou de conectar um, clique em Recarregar USB.")
 	case !state.PhysicalReady:
 		setText(statusLabel, fmt.Sprintf("%d pendrive(s) encontrado(s).", len(state.Targets)))
-		setText(hintLabel, "A criação será liberada automaticamente quando a versão física oficial assinada estiver disponível.")
+		setText(hintLabel, "A criação não está habilitada neste canal do Creator.")
 	default:
 		setText(statusLabel, "Escolha o pendrive que receberá o OrdaX.")
 		setText(hintLabel, "Você não precisa escolher ISO, imagem, versão ou configuração técnica.")
 	}
 
+	if !writeInProgress() {
+		setProgressIdle()
+	}
 	busy := writeInProgress()
 	enable(refreshButton, !busy)
 	enable(deviceCombo, !busy && len(state.Targets) > 0)
 	updateSelectionUI()
+	renderUpdateUI()
 }
 
 func beginRefresh() {
@@ -350,7 +394,7 @@ func beginRefresh() {
 		return
 	}
 	setText(statusLabel, "Procurando pendrives…")
-	setText(hintLabel, "O OrdaX Creator também confere atualizações automaticamente.")
+	setText(hintLabel, "Atualizando a lista de dispositivos USB disponíveis.")
 	enable(refreshButton, false)
 	enable(writeButton, false)
 	enable(deviceCombo, false)
@@ -370,6 +414,10 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 			beginRefresh()
 			return 0
 		}
+		if id == idUpdate && notify == bnClicked {
+			handleUpdateButton()
+			return 0
+		}
 		if id == idWrite && notify == bnClicked {
 			beginPhysicalWrite()
 			return 0
@@ -382,6 +430,9 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 		return 0
 	case wmAppWriteDone:
 		renderWriteDone()
+		return 0
+	case wmAppUpdateDone:
+		renderUpdateDone()
 		return 0
 	case wmClose:
 		if writeInProgress() {
@@ -399,6 +450,9 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 }
 
 func createMainWindow() {
+	controls := initCommonControlsEx{Size: uint32(unsafe.Sizeof(initCommonControlsEx{})), ICC: iccProgressClass}
+	procInitCommonControlsEx.Call(uintptr(unsafe.Pointer(&controls)))
+
 	instance, _, _ := procGetModuleHandleW.Call(0)
 	className := utf16Ptr(windowClassName)
 	class := wndClassEx{
@@ -419,7 +473,7 @@ func createMainWindow() {
 		uintptr(unsafe.Pointer(utf16Ptr(windowTitle))),
 		wsOverlappedWindow,
 		cwUseDefault, cwUseDefault,
-		680, 360,
+		700, 390,
 		0, 0, instance, 0,
 	)
 	if hwnd == 0 {
@@ -427,19 +481,23 @@ func createMainWindow() {
 	}
 	mainWindow = hwnd
 
-	createControl("STATIC", "Criar pendrive OrdaX", 0, 28, 24, 610, 28, 0)
-	createControl("STATIC", "Conecte o USB, escolha o pendrive e pronto. O restante é automático.", 0, 28, 56, 610, 22, 0)
-	createControl("STATIC", "Pendrive", 0, 28, 96, 610, 20, 0)
-	deviceCombo = createControl("COMBOBOX", "", wsTabStop|wsVScroll|cbsDropDownList|wsDisabled, 28, 122, 610, 220, idDeviceCombo)
-	statusLabel = createControl("STATIC", "Procurando pendrives…", 0, 28, 172, 610, 22, idStatus)
-	hintLabel = createControl("STATIC", "", 0, 28, 202, 610, 44, idHint)
-	versionLabel = createControl("STATIC", "OrdaX Creator • verificando versão…", 0, 28, 282, 330, 20, idVersion)
-	refreshButton = createControl("BUTTON", "Atualizar", wsTabStop|bsPushButton, 366, 270, 116, 36, idRefresh)
-	writeButton = createControl("BUTTON", "Criar OrdaX", wsTabStop|bsDefPushButton|wsDisabled, 494, 270, 144, 36, idWrite)
+	createControl("STATIC", "Criar pendrive OrdaX", 0, 28, 24, 630, 28, 0)
+	createControl("STATIC", "Conecte o USB, escolha o pendrive e pronto. O restante é automático.", 0, 28, 56, 630, 22, 0)
+	createControl("STATIC", "Pendrive", 0, 28, 96, 630, 20, 0)
+	deviceCombo = createControl("COMBOBOX", "", wsTabStop|wsVScroll|cbsDropDownList|wsDisabled, 28, 122, 630, 220, idDeviceCombo)
+	statusLabel = createControl("STATIC", "Procurando pendrives…", 0, 28, 172, 630, 22, idStatus)
+	hintLabel = createControl("STATIC", "", 0, 28, 202, 630, 42, idHint)
+	progressBar = createControl("msctls_progress32", "", pbsMarquee, 28, 250, 630, 14, idProgress)
+	versionLabel = createControl("STATIC", "OrdaX Creator • verificando versão…", 0, 28, 292, 245, 20, idVersion)
+	updateButton = createControl("BUTTON", "Atualizações", wsTabStop|bsPushButton, 280, 280, 118, 36, idUpdate)
+	refreshButton = createControl("BUTTON", "Recarregar USB", wsTabStop|bsPushButton, 406, 280, 118, 36, idRefresh)
+	writeButton = createControl("BUTTON", "Criar OrdaX", wsTabStop|bsDefPushButton|wsDisabled, 532, 280, 126, 36, idWrite)
+	setProgressIdle()
 
 	procShowWindow.Call(mainWindow, swShow)
 	procUpdateWindow.Call(mainWindow)
 	beginRefresh()
+	beginUpdateCheck(false)
 }
 
 func messageLoop() int {
