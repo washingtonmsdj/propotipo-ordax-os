@@ -39,14 +39,12 @@ PACKAGES = [
     "zstd",
     "linux-firmware-other",
     "linux-firmware-rtlwifi",
-    "linux-firmware-rtl_nic",
-    "linux-firmware-realtek",
     "linux-firmware-mediatek",
     "linux-firmware-ath9k_htc",
-    "linux-firmware-brcm",
 ]
 MAX_ROOTFS_BYTES = 220 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+FIRMWARE_FIELD_RE = re.compile(rb"(?:^|\x00)firmware=([^\x00]+)")
 DEV_MODULE_BASENAMES = {
     "iwlwifi",
     "iwlmvm",
@@ -165,43 +163,35 @@ def proot_rootfs(rootfs: Path, command: str) -> None:
     ])
 
 
-def prune_firmware(rootfs: Path) -> None:
-    firmware = rootfs / "lib" / "firmware"
-    if not firmware.is_dir():
-        raise BuildError("firmware directory is missing")
+def required_firmware_names(rootfs: Path) -> set[str]:
+    modules_root = rootfs / "lib" / "modules"
+    if not modules_root.is_dir():
+        raise BuildError("kernel modules directory is missing")
+    release_dirs = [path for path in modules_root.iterdir() if path.is_dir()]
+    if len(release_dirs) != 1:
+        raise BuildError(f"expected one installed kernel release, found {len(release_dirs)}")
 
-    def keep(relative: str) -> bool:
-        low = relative.lower()
-        base = Path(relative).name.lower()
-        prefixes = (
-            "iwlwifi-",
-            "rtl",
-            "rtlwifi/",
-            "mediatek/",
-            "mt",
-            "ath9k_htc/",
-            "htc_",
-            "brcm/",
-        )
-        return low.startswith(prefixes) or base.startswith(("iwlwifi-", "rtl", "mt", "htc_"))
+    module_files = sorted(release_dirs[0].rglob("*.ko"))
+    if not module_files:
+        raise BuildError("development kernel modules are missing")
 
-    for path in sorted(firmware.rglob("*"), reverse=True):
-        relative = path.relative_to(firmware).as_posix()
-        if path.is_symlink():
-            continue
-        if path.is_file() and not keep(relative):
-            path.unlink()
-        elif path.is_dir():
+    required: set[str] = set()
+    for module in module_files:
+        data = module.read_bytes()
+        for match in FIRMWARE_FIELD_RE.finditer(data):
             try:
-                path.rmdir()
-            except OSError:
-                pass
+                name = match.group(1).decode("ascii")
+            except UnicodeDecodeError as exc:
+                raise BuildError(f"invalid firmware declaration in {module.name}") from exc
+            relative = Path(name)
+            if not name or relative.is_absolute() or ".." in relative.parts:
+                raise BuildError(f"unsafe firmware declaration in {module.name}: {name}")
+            required.add(relative.as_posix())
 
-    proot_rootfs(
-        rootfs,
-        "find /lib/firmware -type f -name '*.zst' -print | "
-        "while IFS= read -r f; do zstd -q -d --rm \"$f\" -o \"${f%.zst}\"; done",
-    )
+    if not required:
+        raise BuildError("selected Wi-Fi modules declared no firmware")
+    print(f"ORDAX_DEV_BASE_FIRMWARE_DECLARED={len(required)}", flush=True)
+    return required
 
 
 def resolve_rootfs_symlink(rootfs: Path, link: Path) -> Path | None:
@@ -224,6 +214,122 @@ def resolve_rootfs_symlink(rootfs: Path, link: Path) -> Path | None:
         except ValueError:
             return None
     return None
+
+
+def prune_firmware(rootfs: Path, required: set[str]) -> None:
+    firmware = rootfs / "lib" / "firmware"
+    if not firmware.is_dir():
+        raise BuildError("firmware directory is missing")
+
+    keep: set[str] = set()
+    sources: dict[str, Path] = {}
+    resolved_sources: dict[str, Path] = {}
+    missing: list[str] = []
+
+    for name in sorted(required):
+        exact = firmware / name
+        candidates = (exact, Path(str(exact) + ".zst"))
+        source = next(
+            (candidate for candidate in candidates if candidate.exists() or candidate.is_symlink()),
+            None,
+        )
+        if source is None:
+            missing.append(name)
+            continue
+
+        current = source
+        seen: set[Path] = set()
+        while True:
+            try:
+                relative = current.relative_to(firmware).as_posix()
+            except ValueError as exc:
+                raise BuildError(f"firmware symlink escaped /lib/firmware: {current}") from exc
+            keep.add(relative)
+            if not current.is_symlink():
+                break
+            if current in seen:
+                raise BuildError(f"firmware symlink loop: {name}")
+            seen.add(current)
+            value = os.readlink(current)
+            if os.path.isabs(value):
+                current = rootfs / value.lstrip("/")
+            else:
+                current = current.parent / value
+            current = Path(os.path.normpath(current))
+            try:
+                current.relative_to(firmware)
+            except ValueError as exc:
+                raise BuildError(f"firmware symlink escaped /lib/firmware: {name}") from exc
+            if not current.exists() and not current.is_symlink():
+                compressed = Path(str(current) + ".zst")
+                if compressed.exists() or compressed.is_symlink():
+                    current = compressed
+                else:
+                    raise BuildError(f"firmware symlink target is missing: {name}")
+
+        if not current.is_file():
+            raise BuildError(f"firmware source is not a regular file: {name}")
+        sources[name] = source
+        resolved_sources[name] = current
+
+    if missing:
+        preview = ", ".join(missing[:12])
+        raise BuildError(f"required firmware missing ({len(missing)}): {preview}")
+
+    for path in sorted(firmware.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        relative = path.relative_to(firmware).as_posix()
+        if path.is_dir() and not path.is_symlink():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+        elif relative not in keep:
+            path.unlink()
+
+    proot_rootfs(
+        rootfs,
+        "find /lib/firmware -type f -name '*.zst' -print | "
+        "while IFS= read -r f; do zstd -q -d --rm \"$f\" -o \"${f%.zst}\"; done",
+    )
+
+    for name in sorted(required):
+        exact = firmware / name
+        if exact.is_file() and not exact.is_symlink():
+            continue
+
+        resolved = resolved_sources[name]
+        if resolved.name.endswith(".zst"):
+            resolved = Path(str(resolved)[:-4])
+        if not resolved.is_file() or resolved.is_symlink():
+            raise BuildError(f"required firmware could not be materialized: {name}")
+
+        exact.parent.mkdir(parents=True, exist_ok=True)
+        if exact.exists() or exact.is_symlink():
+            exact.unlink()
+        try:
+            os.link(resolved, exact)
+        except OSError:
+            shutil.copy2(resolved, exact)
+
+    for path in sorted(firmware.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        relative = path.relative_to(firmware).as_posix()
+        if path.is_dir() and not path.is_symlink():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+        elif relative not in required:
+            path.unlink()
+
+    missing_after = [name for name in sorted(required) if not (firmware / name).is_file()]
+    if missing_after:
+        raise BuildError(f"firmware missing after pruning: {missing_after[:12]}")
+
+    firmware_bytes = sum((firmware / name).stat().st_size for name in required)
+    print(
+        f"ORDAX_DEV_BASE_FIRMWARE_SELECTED={len(required)} bytes={firmware_bytes}",
+        flush=True,
+    )
 
 
 def flatten_symlinks(rootfs: Path) -> int:
@@ -477,12 +583,13 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
         stage("proot-apk-add")
         proot_rootfs(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
         stage("proot-apk-add-complete")
-        stage("prune-firmware")
-        prune_firmware(rootfs)
-        stage("prune-firmware-complete")
         stage("install-runtime")
         install_runtime(rootfs, kernel_modules.resolve())
         stage("install-runtime-complete")
+        stage("prune-firmware")
+        required_firmware = required_firmware_names(rootfs)
+        prune_firmware(rootfs, required_firmware)
+        stage("prune-firmware-complete")
         stage("flatten-symlinks")
         flattened = flatten_symlinks(rootfs)
         print(f"ORDAX_DEV_BASE_SYMLINKS_FLATTENED={flattened}", flush=True)
@@ -502,6 +609,8 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             "alpine_archive_sha256": archive_sha,
             "kernel_modules_sha256": sha256_file(kernel_modules.resolve()),
             "packages": PACKAGES,
+            "firmware_selection": "selected-kernel-module-declarations",
+            "firmware_files": len(required_firmware),
             "build_device_strategy": "proot-bind-host-dev",
             "symlinks_flattened": flattened,
             "unique_regular_bytes": size,
