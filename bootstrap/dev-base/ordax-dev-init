@@ -5,6 +5,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 HOME=/root
 export PATH HOME
 
+WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+
 mkdir -p /workspace /state/ordax /state/network /home /run /tmp /root
 chmod 1777 /tmp
 
@@ -16,19 +18,37 @@ for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
     modprobe "$module" >/dev/null 2>&1 || true
 done
 
-if ! /usr/local/bin/ordax-network; then
+network_ok=0
+if /usr/local/bin/ordax-network; then
+    network_ok=1
+else
     printf '\nRede ainda nao esta pronta.\n'
-    printf 'Corrija/conecte a rede e execute: ordax-pull\n'
-    exec /bin/sh
 fi
 
-if ! /usr/local/bin/ordax-pull; then
-    printf '\nNao foi possivel sincronizar o repositorio.\n'
-    printf 'Quando a rede estiver pronta, execute: ordax-pull\n'
-    exec /bin/sh
+pull_ok=0
+if [ "$network_ok" -eq 1 ]; then
+    if /usr/local/bin/ordax-pull; then
+        pull_ok=1
+    else
+        printf '\nNao foi possivel sincronizar a main.\n'
+    fi
 fi
 
-printf '\nBase de desenvolvimento pronta.\n'
+if [ "$pull_ok" -eq 0 ] && [ -x "$WORKTREE/system/entrypoint" ]; then
+    printf 'Usando o ultimo checkout local valido.\n'
+fi
+
+if [ -x "$WORKTREE/system/entrypoint" ]; then
+    printf '\nIniciando OrdaX...\n'
+    if /usr/local/bin/ordax-run; then
+        exit 0
+    fi
+    printf '\nOrdaX encerrou ou falhou ao iniciar.\n'
+else
+    printf '\nAinda nao existe um checkout executavel em %s.\n' "$WORKTREE"
+fi
+
+printf '\nBase de desenvolvimento pronta para manutencao.\n'
 printf 'Repositorio: /workspace/ordax\n'
 printf 'Atualizar:    ordax-pull\n'
 printf 'Executar:     ordax-run\n'
