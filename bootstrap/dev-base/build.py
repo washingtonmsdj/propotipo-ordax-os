@@ -47,6 +47,13 @@ PACKAGES = [
 ]
 MAX_ROOTFS_BYTES = 220 * 1024 * 1024
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+DEV_MODULE_BASENAMES = {
+    "iwlwifi",
+    "iwlmvm",
+    "rtl8xxxu",
+    "mt76x2u",
+    "ath9k_htc",
+}
 
 
 class BuildError(RuntimeError):
@@ -260,6 +267,87 @@ def copy_script(source: Path, destination: Path) -> None:
     destination.chmod(0o755)
 
 
+def module_basename(path: str) -> str:
+    name = Path(path).name
+    for suffix in (".zst", ".xz", ".gz"):
+        if name.endswith(suffix):
+            name = name[: -len(suffix)]
+            break
+    if name.endswith(".ko"):
+        name = name[:-3]
+    return name.replace("-", "_")
+
+
+def select_dev_module_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
+    members = archive.getmembers()
+    regular = {member.name: member for member in members if member.isfile()}
+    dep_names = [
+        name
+        for name in regular
+        if name.startswith("lib/modules/") and name.endswith("/modules.dep")
+    ]
+    if len(dep_names) != 1:
+        raise BuildError(f"kernel modules archive must contain one modules.dep, found {len(dep_names)}")
+
+    dep_name = dep_names[0]
+    prefix = dep_name[: -len("modules.dep")]
+    dep_file = archive.extractfile(regular[dep_name])
+    if dep_file is None:
+        raise BuildError("could not read modules.dep")
+    dependencies: dict[str, list[str]] = {}
+    for raw_line in dep_file.read().decode("utf-8").splitlines():
+        if not raw_line.strip():
+            continue
+        module_path, separator, dependency_text = raw_line.partition(":")
+        if not separator:
+            raise BuildError(f"invalid modules.dep entry: {raw_line}")
+        dependencies[module_path.strip()] = dependency_text.split()
+
+    targets: dict[str, str] = {}
+    for module_path in dependencies:
+        basename = module_basename(module_path)
+        if basename in DEV_MODULE_BASENAMES:
+            targets[basename] = module_path
+    missing = sorted(DEV_MODULE_BASENAMES - targets.keys())
+    if missing:
+        raise BuildError(f"development Wi-Fi modules missing from archive: {missing}")
+
+    selected_paths = set(targets.values())
+    pending = list(selected_paths)
+    while pending:
+        module_path = pending.pop()
+        for dependency in dependencies.get(module_path, []):
+            if dependency not in dependencies:
+                raise BuildError(
+                    f"dependency metadata missing for {module_path}: {dependency}"
+                )
+            if dependency not in selected_paths:
+                selected_paths.add(dependency)
+                pending.append(dependency)
+
+    selected_names = {prefix + path for path in selected_paths}
+    metadata_names = {
+        name
+        for name in regular
+        if name.startswith(prefix)
+        and "/" not in name[len(prefix):]
+        and Path(name).name.startswith("modules.")
+    }
+    selected_names.update(metadata_names)
+
+    missing_files = sorted(name for name in selected_names if name not in regular)
+    if missing_files:
+        raise BuildError(f"kernel module files missing from archive: {missing_files[:10]}")
+
+    selected = [regular[name] for name in sorted(selected_names)]
+    print(
+        "ORDAX_DEV_BASE_KERNEL_MODULES_SELECTED="
+        f"{len(selected_paths)} metadata={len(metadata_names)}",
+        flush=True,
+    )
+    return selected
+
+
 def install_runtime(rootfs: Path, kernel_modules: Path) -> None:
     if not kernel_modules.is_file() or kernel_modules.is_symlink():
         raise BuildError("kernel modules archive is missing or unsafe")
@@ -267,7 +355,8 @@ def install_runtime(rootfs: Path, kernel_modules: Path) -> None:
         for member in archive.getmembers():
             if member.isdev() or member.isfifo():
                 raise BuildError(f"unsafe kernel-module archive entry: {member.name}")
-        archive.extractall(rootfs, filter="data")
+        selected_members = select_dev_module_members(archive)
+        archive.extractall(rootfs, members=selected_members, filter="data")
 
     copy_script(ROOT / "bootstrap/dev-base/ordax-dev-init", rootfs / "sbin/ordax-dev-init")
     for name in ("ordax-network", "ordax-pull", "ordax-rollback", "ordax-run"):
