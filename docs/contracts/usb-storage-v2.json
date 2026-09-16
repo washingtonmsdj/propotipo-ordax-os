@@ -1,0 +1,66 @@
+{
+  "$schema": "prototype-ordax.usb-storage-v2/1",
+  "status": "implementation-in-progress",
+  "goal": "keep OrdaX system storage bounded and expose the remaining USB capacity as portable user storage",
+  "logical_sector_bytes": 512,
+  "alignment_bytes": 1048576,
+  "partitions": [
+    {
+      "index": 1,
+      "name": "ORDAX-ESP",
+      "role": "uefi-boot",
+      "filesystem": "fat32",
+      "filesystem_label": "ORDAX-ESP",
+      "size_bytes": 268435456,
+      "windows_visibility": "hidden-system"
+    },
+    {
+      "index": 2,
+      "name": "ORDAX",
+      "role": "system",
+      "filesystem": "ext4",
+      "filesystem_label": "ORDAX",
+      "size_policy": {
+        "preferred_fraction_of_device": 0.25,
+        "minimum_bytes": 2147483648,
+        "maximum_bytes": 8589934592,
+        "alignment": "1MiB"
+      },
+      "windows_visibility": "not-mounted"
+    },
+    {
+      "index": 3,
+      "name": "ORDAX-DATA",
+      "role": "portable-user-data",
+      "filesystem": "exfat",
+      "filesystem_label": "ORDAX-DATA",
+      "size_policy": "fill-remaining-usable",
+      "minimum_bytes": 1073741824,
+      "windows_visibility": "normal-volume",
+      "ordax_mount_policy": "portable-data-not-system-home"
+    }
+  ],
+  "creator_policy": {
+    "user_selectable_inputs": [
+      "usb_target"
+    ],
+    "partitioning_is_automatic": true,
+    "formatting_is_automatic": true,
+    "shared_data_volume_is_automatic": true,
+    "full_device_zero_fill_required": false,
+    "verify_written_system_regions": true,
+    "verify_partition_table": true,
+    "verify_shared_volume_identity": true,
+    "completion_notice_required": true
+  },
+  "compatibility": {
+    "windows": "ORDAX-DATA visible as exFAT",
+    "linux": "ORDAX-DATA mountable as exFAT",
+    "uefi": "ORDAX-ESP remains a dedicated EFI System Partition"
+  },
+  "migration": {
+    "current_layout": "ORDAX-ESP + ORDAX(fill remaining)",
+    "target_layout": "ORDAX-ESP + bounded ORDAX + ORDAX-DATA(fill remaining)",
+    "activation_rule": "do not switch the physical release until GPT planning, exFAT creation, readback verification and Windows native tests all pass"
+  }
+}
