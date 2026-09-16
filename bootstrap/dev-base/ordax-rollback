@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+PREVIOUS_FILE=/state/ordax/previous-commit
+CURRENT_FILE=/state/ordax/current-commit
+
+[ -d "$WORKTREE/.git" ] || { echo "ordax-rollback: repositorio ainda nao existe" >&2; exit 1; }
+[ -s "$PREVIOUS_FILE" ] || { echo "ordax-rollback: nao ha commit anterior registrado" >&2; exit 1; }
+
+previous=$(cat "$PREVIOUS_FILE")
+case "$previous" in
+    *[!0-9a-f]*|'') echo "ordax-rollback: commit anterior invalido" >&2; exit 1 ;;
+esac
+
+git -C "$WORKTREE" reset --hard "$previous"
+printf '%s\n' "$previous" > "$CURRENT_FILE"
+printf 'ORDAX_ROLLBACK_SHA=%s\n' "$previous"
