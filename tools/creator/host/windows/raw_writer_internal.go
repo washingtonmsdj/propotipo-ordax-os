@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	creatorcore "github.com/washingtonmsdj/prototipo-ordax-os/tools/creator/core"
 )
 
 // rawDiskDevice is the narrow I/O surface required by the internal writer.
@@ -39,14 +41,126 @@ type rawDiskRuntime interface {
 }
 
 type rawDiskApplyResult struct {
-	DiskNumber   uint32
-	BytesWritten int64
-	SHA256       string
+	DiskNumber       uint32
+	BytesWritten     int64
+	BytesVerified    int64
+	SHA256           string
+	VerificationMode string
 }
 
-// applyRawDiskInternal is the fail-closed orchestration primitive for a future
-// Windows physical writer. It is intentionally unexported and has no CLI path.
-// Tests exercise it only through fake in-memory runtimes.
+type writtenRegionProof struct {
+	region creatorcore.PhysicalWriteRegion
+	sha256 string
+}
+
+func writePreparedRegions(source io.ReaderAt, device rawDiskDevice, plan creatorcore.PhysicalWritePlan) ([]writtenRegionProof, int64, error) {
+	proofs := make([]writtenRegionProof, 0, len(plan.Regions))
+	var total int64
+	for _, region := range plan.Regions {
+		if region.OffsetBytes < 0 || region.LengthBytes <= 0 || region.OffsetBytes > int64(plan.TargetBytes)-region.LengthBytes {
+			return nil, total, fmt.Errorf("prepared write region %q is out of bounds", region.Role)
+		}
+		digest := sha256.New()
+		reader := io.NewSectionReader(source, region.OffsetBytes, region.LengthBytes)
+		destination := io.NewOffsetWriter(device, region.OffsetBytes)
+		written, err := io.Copy(io.MultiWriter(destination, digest), reader)
+		if err != nil {
+			return nil, total + written, fmt.Errorf("write prepared region %q: %w", region.Role, err)
+		}
+		if written != region.LengthBytes {
+			return nil, total + written, fmt.Errorf(
+				"prepared region %q write length mismatch: expected=%d actual=%d",
+				region.Role,
+				region.LengthBytes,
+				written,
+			)
+		}
+		proofs = append(proofs, writtenRegionProof{
+			region: region,
+			sha256: hex.EncodeToString(digest.Sum(nil)),
+		})
+		total += written
+	}
+	if total != plan.BytesToWrite {
+		return nil, total, fmt.Errorf("prepared write total mismatch: expected=%d actual=%d", plan.BytesToWrite, total)
+	}
+	return proofs, total, nil
+}
+
+func verifyPreparedRegions(device rawDiskDevice, proofs []writtenRegionProof, expectedBytes int64) (int64, error) {
+	var total int64
+	for _, proof := range proofs {
+		digest := sha256.New()
+		reader := io.NewSectionReader(device, proof.region.OffsetBytes, proof.region.LengthBytes)
+		readBytes, err := io.Copy(digest, reader)
+		if err != nil {
+			return total + readBytes, fmt.Errorf("read back prepared region %q: %w", proof.region.Role, err)
+		}
+		if readBytes != proof.region.LengthBytes {
+			return total + readBytes, fmt.Errorf(
+				"prepared region %q read-back length mismatch: expected=%d actual=%d",
+				proof.region.Role,
+				proof.region.LengthBytes,
+				readBytes,
+			)
+		}
+		actual := hex.EncodeToString(digest.Sum(nil))
+		if actual != proof.sha256 {
+			return total + readBytes, fmt.Errorf(
+				"prepared region %q read-back SHA-256 mismatch: expected=%s actual=%s",
+				proof.region.Role,
+				proof.sha256,
+				actual,
+			)
+		}
+		total += readBytes
+	}
+	if total != expectedBytes {
+		return total, fmt.Errorf("prepared read-back total mismatch: expected=%d actual=%d", expectedBytes, total)
+	}
+	return total, nil
+}
+
+func writeAndVerifyWholeImage(source io.Reader, device rawDiskDevice, streamImage VerifiedRawImage, diskNumber uint32) (rawDiskApplyResult, error) {
+	destination := io.NewOffsetWriter(device, 0)
+	written, err := streamRawImageVerified(source, destination, streamImage.SHA256, streamImage.SizeBytes)
+	if err != nil {
+		return rawDiskApplyResult{}, err
+	}
+	if written != streamImage.SizeBytes {
+		return rawDiskApplyResult{}, fmt.Errorf("raw write length mismatch: expected=%d actual=%d", streamImage.SizeBytes, written)
+	}
+	if err := device.Sync(); err != nil {
+		return rawDiskApplyResult{}, fmt.Errorf("flush PhysicalDrive%d: %w", diskNumber, err)
+	}
+
+	digest := sha256.New()
+	reader := io.NewSectionReader(device, 0, streamImage.SizeBytes)
+	readBytes, err := io.Copy(digest, reader)
+	if err != nil {
+		return rawDiskApplyResult{}, fmt.Errorf("read back PhysicalDrive%d: %w", diskNumber, err)
+	}
+	if readBytes != streamImage.SizeBytes {
+		return rawDiskApplyResult{}, fmt.Errorf("physical read-back length mismatch: expected=%d actual=%d", streamImage.SizeBytes, readBytes)
+	}
+	actual := hex.EncodeToString(digest.Sum(nil))
+	if actual != streamImage.SHA256 {
+		return rawDiskApplyResult{}, fmt.Errorf("physical read-back SHA-256 mismatch: expected=%s actual=%s", streamImage.SHA256, actual)
+	}
+	return rawDiskApplyResult{
+		DiskNumber:       diskNumber,
+		BytesWritten:     written,
+		BytesVerified:    readBytes,
+		SHA256:           actual,
+		VerificationMode: "full-image-sha256",
+	}, nil
+}
+
+// applyRawDiskInternal is the fail-closed orchestration primitive for the
+// Windows physical writer. Supported real USB capacities require a validated
+// storage-v2 GPT and use region-scoped raw I/O; intentionally tiny unit-test
+// fixtures retain the legacy byte-complete path so generic writer invariants
+// remain independently exercised.
 func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (result rawDiskApplyResult, retErr error) {
 	if runtime == nil {
 		return rawDiskApplyResult{}, errors.New("raw-disk runtime is required")
@@ -60,16 +174,10 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		return rawDiskApplyResult{}, errors.New("physical write blocked: elevated Windows process is required")
 	}
 
-	// Validate the request-carried target before consulting the host. This
-	// rejects a Target whose identity fields were modified while retaining an
-	// old token.
 	if _, err := MatchConfirmedTarget([]Target{request.Target}, request.ConfirmationToken); err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("validate requested target identity: %w", err)
 	}
 
-	// Re-enumeration happens at the destructive boundary, immediately before
-	// any physical handle can be opened. A swapped or remapped USB therefore
-	// invalidates the confirmation token.
 	liveTargets, err := runtime.EnumerateTargets()
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("re-enumerate Windows USB targets: %w", err)
@@ -85,10 +193,6 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		return rawDiskApplyResult{}, err
 	}
 
-	// Re-open and revalidate the exact source handle before any future
-	// disruptive volume operation is allowed. On Windows this source handle
-	// denies write sharing for its lifetime, so a path replacement or concurrent
-	// writer cannot mutate the authorized image while the target is leased.
 	source, streamImage, err := openVerifiedRawImageForApply(
 		validated.Image.Path,
 		validated.Image.SHA256,
@@ -103,9 +207,15 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		}
 	}()
 
-	// A future Windows runtime must lock/dismount the complete, isolated volume
-	// inventory here and keep that lease until the exact physical device has
-	// been closed after byte-complete read-back.
+	var preparedPlan *creatorcore.PhysicalWritePlan
+	if _, layoutErr := creatorcore.PlanPhysicalStorage(uint64(streamImage.SizeBytes)); layoutErr == nil {
+		plan, planErr := creatorcore.PlanPreparedPhysicalWrite(source, uint64(streamImage.SizeBytes))
+		if planErr != nil {
+			return rawDiskApplyResult{}, fmt.Errorf("physical write blocked: prepared storage-v2 image validation failed: %w", planErr)
+		}
+		preparedPlan = &plan
+	}
+
 	lease, err := runtime.AcquireTargetVolumeLease(confirmed)
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("acquire PhysicalDrive%d target-volume lease: %w", confirmed.DiskNumber, err)
@@ -119,10 +229,6 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		}
 	}()
 
-	// The acquired lease is explicitly passed into the physical-device open.
-	// This compile-time boundary prevents a native implementation from opening a
-	// writable PhysicalDrive without acknowledging the exact lease held by the
-	// orchestrator.
 	device, err := runtime.OpenVerifiedPhysicalDrive(confirmed, lease)
 	if err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("open verified PhysicalDrive%d: %w", confirmed.DiskNumber, err)
@@ -133,42 +239,27 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		}
 	}()
 
-	// OffsetWriter makes the starting offset explicit rather than depending on
-	// an inherited file cursor. streamRawImageVerified caps writes at the exact
-	// authorized image size and refuses any changed source identity.
-	destination := io.NewOffsetWriter(device, 0)
-	written, err := streamRawImageVerified(source, destination, streamImage.SHA256, streamImage.SizeBytes)
+	if preparedPlan == nil {
+		return writeAndVerifyWholeImage(source, device, streamImage, confirmed.DiskNumber)
+	}
+
+	proofs, written, err := writePreparedRegions(source, device, *preparedPlan)
 	if err != nil {
 		return rawDiskApplyResult{}, err
 	}
-	if written != streamImage.SizeBytes {
-		return rawDiskApplyResult{}, fmt.Errorf("raw write length mismatch: expected=%d actual=%d", streamImage.SizeBytes, written)
-	}
-
 	if err := device.Sync(); err != nil {
 		return rawDiskApplyResult{}, fmt.Errorf("flush PhysicalDrive%d: %w", confirmed.DiskNumber, err)
 	}
-
-	// Success requires byte-complete read-back verification from the same open
-	// physical device. The target-volume lease remains held through this proof
-	// and through device close, so no remount can race the verified operation.
-	digest := sha256.New()
-	reader := io.NewSectionReader(device, 0, streamImage.SizeBytes)
-	readBytes, err := io.Copy(digest, reader)
+	verified, err := verifyPreparedRegions(device, proofs, preparedPlan.BytesToWrite)
 	if err != nil {
-		return rawDiskApplyResult{}, fmt.Errorf("read back PhysicalDrive%d: %w", confirmed.DiskNumber, err)
-	}
-	if readBytes != streamImage.SizeBytes {
-		return rawDiskApplyResult{}, fmt.Errorf("physical read-back length mismatch: expected=%d actual=%d", streamImage.SizeBytes, readBytes)
-	}
-	actual := hex.EncodeToString(digest.Sum(nil))
-	if actual != streamImage.SHA256 {
-		return rawDiskApplyResult{}, fmt.Errorf("physical read-back SHA-256 mismatch: expected=%s actual=%s", streamImage.SHA256, actual)
+		return rawDiskApplyResult{}, err
 	}
 
 	return rawDiskApplyResult{
-		DiskNumber:   confirmed.DiskNumber,
-		BytesWritten: written,
-		SHA256:       actual,
+		DiskNumber:       confirmed.DiskNumber,
+		BytesWritten:     written,
+		BytesVerified:    verified,
+		SHA256:           streamImage.SHA256,
+		VerificationMode: "prepared-regions-sha256",
 	}, nil
 }
