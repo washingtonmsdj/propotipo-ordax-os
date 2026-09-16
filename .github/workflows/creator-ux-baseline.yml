@@ -53,8 +53,8 @@ jobs:
 
           required_main = [
               'Criar OrdaX', 'Recarregar USB', 'Atualizações',
-              'beginUpdateCheck(false)', 'msctls_progress32',
-              'len(state.Targets) == 1', 'cbSetCurSel',
+              'beginUpdateCheck(false)', 'markOwnerUpdateHealthy()',
+              'msctls_progress32', 'len(state.Targets) == 1', 'cbSetCurSel',
           ]
           required_physical = [
               'Aguardando autorização do Windows',
@@ -73,11 +73,20 @@ jobs:
           ]
           required_update = [
               'creator-owner-update.json',
-              'Baixar atualização',
+              'Atualizar agora',
               'beginUpdateCheck',
-              'openUpdateDownload',
               'prototype-ordax.creator-owner-update/2',
               '/OrdaX-Creator.exe',
+              'ownerSelfUpdateHelperCommand',
+              'prototype-ordax.creator-self-update/1',
+              'ownerUpdateIsForward',
+              '/compare/',
+              'downloadOwnerUpdate',
+              'SHA-256 da atualização não corresponde',
+              'waitForUpdateHealth',
+              'rollback acionado',
+              'markOwnerUpdateHealthy',
+              'retryRename',
           ]
           required_backend = [
               'ownerPrototypePhysicalBackend()',
@@ -136,4 +145,7 @@ jobs:
           print('CREATOR_SINGLE_STANDALONE_EXE=YES')
           print('CREATOR_OWNER_ZIP_REQUIRED=NO')
           print('CREATOR_UPDATE_ARTIFACT=OrdaX-Creator.exe')
+          print('CREATOR_IN_APP_UPDATE=YES')
+          print('CREATOR_UPDATE_ANTI_DOWNGRADE=YES')
+          print('CREATOR_UPDATE_ROLLBACK=YES')
           PY
