@@ -53,12 +53,21 @@ class BuildError(RuntimeError):
     pass
 
 
+def stage(name: str) -> None:
+    print(f"ORDAX_DEV_BASE_STAGE={name}", flush=True)
+
+
 def run(argv: list[str], *, cwd: Path | None = None) -> None:
-    print("+", " ".join(argv), flush=True)
+    command = " ".join(argv)
+    print("+", command, flush=True)
     try:
-        subprocess.run(argv, cwd=cwd, check=True)
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise BuildError(f"command failed: {' '.join(argv)}") from exc
+        completed = subprocess.run(argv, cwd=cwd, check=False)
+    except OSError as exc:
+        print(f"ORDAX_DEV_BASE_COMMAND_ERROR={command}: {exc}", flush=True)
+        raise BuildError(f"command failed: {command}") from exc
+    print(f"ORDAX_DEV_BASE_COMMAND_RC={completed.returncode}", flush=True)
+    if completed.returncode != 0:
+        raise BuildError(f"command failed ({completed.returncode}): {command}")
 
 
 def sha256_file(path: Path) -> str:
@@ -119,13 +128,7 @@ def safe_extract(archive: Path, rootfs: Path) -> None:
 
 
 def proot_rootfs(rootfs: Path, command: str) -> None:
-    """Run commands before symlinks are flattened, without requiring CAP_MKNOD.
-
-    PRoot's -S mode supplies the device and pseudo-filesystem bindings needed by
-    package tooling while the development root still contains Alpine symlinks.
-    Runtime does not depend on PRoot: after flattening, verify_rootfs executes
-    Git through a native chroot.
-    """
+    """Run commands before symlinks are flattened, without requiring CAP_MKNOD."""
     proot = shutil.which("proot")
     if not proot:
         raise BuildError("proot is required for pre-flatten rootfs commands")
@@ -284,6 +287,7 @@ def unique_regular_bytes(rootfs: Path) -> int:
 
 
 def verify_rootfs(rootfs: Path) -> None:
+    stage("verify-rootfs-objects")
     bad = []
     for path in rootfs.rglob("*"):
         mode = path.lstat().st_mode
@@ -294,6 +298,7 @@ def verify_rootfs(rootfs: Path) -> None:
     if bad:
         raise BuildError(f"rootfs still contains unsafe objects: {bad}")
 
+    stage("verify-rootfs-required-executables")
     required = [
         "bin/sh",
         "usr/bin/git",
@@ -307,7 +312,9 @@ def verify_rootfs(rootfs: Path) -> None:
         path = rootfs / rel
         if not path.is_file() or not os.access(path, os.X_OK):
             raise BuildError(f"required executable missing: /{rel}")
+    stage("verify-rootfs-native-chroot-git")
     run(["chroot", str(rootfs), "/usr/bin/git", "--version"])
+    stage("verify-rootfs-complete")
 
 
 def source_commit() -> str:
@@ -339,10 +346,13 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
     out_dir.mkdir(parents=True)
     work = Path(tempfile.mkdtemp(prefix="ordax-dev-base-"))
     try:
+        stage("download-alpine")
         archive, archive_sha = download_verified(work / "cache")
         rootfs = out_dir / "rootfs"
         rootfs.mkdir()
+        stage("extract-alpine")
         safe_extract(archive, rootfs)
+        stage("extract-alpine-complete")
         (rootfs / "etc/apk").mkdir(parents=True, exist_ok=True)
         (rootfs / "etc/apk/repositories").write_text(
             f"https://dl-cdn.alpinelinux.org/alpine/{ALPINE_BRANCH}/main\n"
@@ -354,14 +364,27 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             shutil.copy2(host_resolv, rootfs / "etc/resolv.conf", follow_symlinks=True)
         (rootfs / "dev").mkdir(parents=True, exist_ok=True)
 
+        stage("proot-apk-add")
         proot_rootfs(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
+        stage("proot-apk-add-complete")
+        stage("prune-firmware")
         prune_firmware(rootfs)
+        stage("prune-firmware-complete")
+        stage("install-runtime")
         install_runtime(rootfs, kernel_modules.resolve())
+        stage("install-runtime-complete")
+        stage("flatten-symlinks")
         flattened = flatten_symlinks(rootfs)
+        print(f"ORDAX_DEV_BASE_SYMLINKS_FLATTENED={flattened}", flush=True)
+        stage("flatten-symlinks-complete")
+        stage("verify-rootfs")
         verify_rootfs(rootfs)
+        stage("measure-rootfs")
         size = unique_regular_bytes(rootfs)
+        print(f"ORDAX_DEV_BASE_MEASURED_BYTES={size}", flush=True)
         if size > MAX_ROOTFS_BYTES:
             raise BuildError(f"development base too large: {size} > {MAX_ROOTFS_BYTES}")
+        stage("measure-rootfs-complete")
         provenance = {
             "$schema": "prototype-ordax.dev-base/1",
             "source_commit": source_commit(),
@@ -380,6 +403,7 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             json.dumps(provenance, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        stage("build-complete")
         print(f"ORDAX_DEV_BASE_BYTES={size}")
         print("ORDAX_DEV_BASE_GIT=YES")
         print("ORDAX_DEV_BASE_SOURCE_CHECKOUT=NO")
