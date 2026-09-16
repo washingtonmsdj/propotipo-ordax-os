@@ -1,0 +1,87 @@
+name: Creator UX Baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/creator/cmd/ordax-creator-app/**'
+      - 'docs/contracts/creator-ux-baseline.json'
+      - '.github/workflows/creator-ux-baseline.yml'
+  pull_request:
+    paths:
+      - 'tools/creator/cmd/ordax-creator-app/**'
+      - 'docs/contracts/creator-ux-baseline.json'
+      - '.github/workflows/creator-ux-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  non-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Creator UX contract and implementation anchors
+        run: |
+          python - <<'PY'
+          import json, pathlib
+
+          contract = json.loads(pathlib.Path('docs/contracts/creator-ux-baseline.json').read_text(encoding='utf-8'))
+          assert contract['$schema'] == 'prototype-ordax.creator-ux-baseline/1'
+          assert contract['status'] == 'minimum-rufus-class-baseline'
+          assert contract['user_selectable_inputs'] == ['usb_target']
+          assert all(contract['requirements'].values())
+
+          main = pathlib.Path('tools/creator/cmd/ordax-creator-app/main_windows.go').read_text(encoding='utf-8')
+          physical = pathlib.Path('tools/creator/cmd/ordax-creator-app/physical_flow_windows.go').read_text(encoding='utf-8')
+          update = pathlib.Path('tools/creator/cmd/ordax-creator-app/update_check_windows.go').read_text(encoding='utf-8')
+          backend = pathlib.Path('tools/creator/cmd/ordax-creator-app/backend_resolution_windows.go').read_text(encoding='utf-8')
+
+          required_main = [
+              'Criar OrdaX', 'Recarregar USB', 'Atualizações',
+              'beginUpdateCheck(false)', 'msctls_progress32',
+              'len(state.Targets) == 1', 'cbSetCurSel',
+          ]
+          required_physical = [
+              'Aguardando autorização do Windows',
+              'Gravando e verificando o pendrive',
+              'runElevatedAndWait', 'SystemDisk', 'PrototypeSafe',
+              'DestructiveAuthorization', 'verificação por leitura',
+          ]
+          required_update = [
+              'creator-owner-update.json',
+              'Baixar atualização',
+              'beginUpdateCheck',
+              'openUpdateDownload',
+          ]
+          required_backend = [
+              'ownerPrototypePhysicalBackend()',
+              'return finishRefreshState(result, ownerDirectory)',
+          ]
+
+          for text in required_main:
+              assert text in main, f'missing Creator main UX anchor: {text}'
+          for text in required_physical:
+              assert text in physical, f'missing Creator physical UX/safety anchor: {text}'
+          for text in required_update:
+              assert text in update, f'missing Creator update anchor: {text}'
+          for text in required_backend:
+              assert text in backend, f'missing owner isolation anchor: {text}'
+
+          # The owner branch must return before the development updater path.
+          owner_pos = backend.index('ownerPrototypePhysicalBackend()')
+          dev_pos = backend.index('creatorupdate.Ensure')
+          assert owner_pos < dev_pos
+
+          print('CREATOR_UX_BASELINE=PASS')
+          print('CREATOR_USER_REQUIRED_INPUT=usb_target')
+          print('CREATOR_VISIBLE_UPDATE_CONTROL=YES')
+          print('CREATOR_POST_UAC_STATUS_TRANSITION=YES')
+          print('CREATOR_PROGRESS_INDICATOR=YES')
+          PY
