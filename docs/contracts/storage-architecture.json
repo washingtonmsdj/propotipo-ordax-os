@@ -1,0 +1,221 @@
+{
+  "$schema": "prototype-ordax.storage-architecture/1",
+  "status": "architecture-adopted-implementation-in-progress",
+  "decision_scope": "durable-storage-architecture-for-native-disk-and-portable-usb",
+  "principles": [
+    "share-capacity-logically-instead-of-preallocating-rigid-user-and-system-partitions",
+    "separate-boot-recovery-authority-from-mutable-user-state",
+    "transactional-system-updates-with-rollback",
+    "system-recovery-must-preserve-user-data-by-default",
+    "full-user-data-erasure-requires-an-explicit-factory-reset-path",
+    "storage-policy-must-be-media-capability-aware-not-bus-name-only",
+    "portable-usb-must-minimize-random-writes-and-write-amplification",
+    "published-release-integrity-must-fail-closed"
+  ],
+  "profiles": {
+    "native-disk": {
+      "intended_media": [
+        "internal-ssd",
+        "internal-nvme",
+        "internal-hdd",
+        "external-ssd-selected-for-full-install"
+      ],
+      "partition_table": "gpt",
+      "physical_layout": [
+        {
+          "name": "ORDAX-ESP",
+          "role": "uefi-boot-and-minimal-recovery",
+          "filesystem": "fat32",
+          "size_policy": {
+            "minimum_bytes": 536870912,
+            "default_bytes": 1073741824,
+            "reason": "room-for-signed-current-fallback-and-recovery-boot-artifacts-without-consuming-main-pool-capacity"
+          },
+          "user_data_allowed": false
+        },
+        {
+          "name": "ORDAX-POOL",
+          "role": "shared-system-state-app-and-user-capacity",
+          "filesystem": "btrfs",
+          "size_policy": "fill-all-remaining-install-target-capacity",
+          "encryption": {
+            "format": "luks2",
+            "default_when-supported": true,
+            "tpm2_auto_unlock_allowed": true,
+            "recovery_key_required_when-tpm2-auto-unlock-is-enabled": true
+          }
+        }
+      ],
+      "pool_model": {
+        "hard_partition_boundaries_between-system-apps-home": false,
+        "subvolumes_share_free_space": true,
+        "recommended_subvolumes": [
+          {
+            "name": "ordax-state",
+            "mount": "/var",
+            "purpose": "persistent-machine-and-application-state"
+          },
+          {
+            "name": "ordax-home",
+            "mount": "/var/home",
+            "exposed_as": "/home",
+            "purpose": "user-files-and-user-state"
+          },
+          {
+            "name": "ordax-apps",
+            "mount": "/var/lib/ordax/apps",
+            "purpose": "application-payloads-and-managed-app-state"
+          },
+          {
+            "name": "ordax-containers",
+            "mount": "/var/lib/containers",
+            "purpose": "optional-container-storage"
+          },
+          {
+            "name": "ordax-snapshots",
+            "mount": "/.ordax-snapshots",
+            "purpose": "bounded-recovery-snapshots-and-maintenance"
+          }
+        ],
+        "fixed-size-home": false,
+        "fixed-size-app-partition": false,
+        "fixed-size-system-partition": false,
+        "quotas": "soft-policy-only-by-default",
+        "free-space-safety-reserve": "managed-logically-for-update-staging-and-rollback-not-by-a-fixed-partition"
+      },
+      "system_delivery": {
+        "model": "immutable-versioned-deployments",
+        "preferred-initial-engine": "bootc-ostree-compatible-transactional-deployments",
+        "ordax-owned-contract": true,
+        "physical-a-b-root-partitions": false,
+        "stage-new-version-without-mutating-running-root": true,
+        "retain-known-good-rollback-deployment": true,
+        "activate-on-reboot": true
+      },
+      "recovery": {
+        "minimal-signed-recovery-environment": "ORDAX-ESP",
+        "normal-rollback": "previous-known-good-system-deployment",
+        "repair-reinstall-default": "replace-system-deployment-preserve-user-home-and-user-owned-data",
+        "factory-reset": "explicit-separate-action-that-may-erase-user-state",
+        "dedicated-large-recovery-partition-required": false,
+        "oem-offline-recovery-partition": "optional-future-profile-not-default"
+      },
+      "swap": {
+        "default": "zram",
+        "dedicated-swap-partition": false,
+        "hibernation": "optional-managed-swapfile-profile-if-later-required"
+      },
+      "performance": {
+        "compression": "btrfs-zstd-low-overhead-by-default-for-suitable-data",
+        "ssd_nvme": "optimize-for-low-latency-and-discard-capability",
+        "hdd": "avoid-assuming-ssd-latency-and-control-fragmentation-sensitive-workloads",
+        "high-write-special-cases": "tune-specific-subvolumes-only-after-measurement-never-disable-cow-globally"
+      }
+    },
+    "portable-usb": {
+      "intended_media": [
+        "removable-usb-flash-drive",
+        "portable-live-media"
+      ],
+      "partition_table": "gpt",
+      "target_physical_layout": [
+        {
+          "name": "ORDAX-ESP",
+          "role": "uefi-boot-current-fallback-and-recovery",
+          "filesystem": "fat32",
+          "size_policy": {
+            "minimum_bytes": 536870912,
+            "growth_requires_creator-migration": true
+          },
+          "user_data_allowed": false
+        },
+        {
+          "name": "ORDAX-DATA",
+          "role": "portable-shared-capacity-for-user-files-and-versioned-ordax-artifacts",
+          "filesystem": "exfat",
+          "size_policy": "fill-all-remaining-capacity",
+          "windows-visible": true,
+          "direct-overlayfs-upper": false
+        }
+      ],
+      "system_image": {
+        "format": "erofs",
+        "compressed": true,
+        "read_only": true,
+        "storage": "versioned-files-under-ORDAX-DATA/.ordax/releases",
+        "integrity": "signed-release-manifest-plus-on-demand-block-integrity-such-as-dm-verity",
+        "current-and-rollback-images-may-coexist": true,
+        "fixed-system-partition": false
+      },
+      "persistent_state": {
+        "format": "ext4-filesystem-image",
+        "storage": "ORDAX-DATA/.ordax/state",
+        "mounted-through-loop-device": true,
+        "overlayfs-upper": true,
+        "exfat-used-directly-as-overlay-upper": false,
+        "growth_policy": "expand-state-image-in-bounded-chunks-using-current-free-space-with-safety-reserve",
+        "portable-tpm-binding": false,
+        "optional-user-passphrase-or-fido2-encryption": true
+      },
+      "user_files": {
+        "filesystem": "exfat",
+        "windows-visible": true,
+        "system-reset-preserves-by-default": true,
+        "ordax-internal-directory": ".ordax",
+        "internal-directory-hidden-when-host-filesystem-supports-it": true
+      },
+      "update_model": {
+        "download-new-image-as-new-file": true,
+        "verify-before-activation": true,
+        "never-overwrite-current-known-good-image-in-place": true,
+        "activate-via-versioned-boot-metadata": true,
+        "retain-previous-known-good-until-new-boot-is-confirmed": true,
+        "garbage-collect-old-images-after-confirmed-success": true
+      },
+      "recovery": {
+        "minimal-signed-recovery-environment": "ORDAX-ESP",
+        "reset-system-image-without-erasing-user-files": true,
+        "reset-persistent-state-image-without-erasing-user-files": true,
+        "full-usb-recreate": "last-resort-or-major-layout-migration"
+      },
+      "performance": {
+        "system_reads": "compressed-read-only-image-oriented",
+        "runtime-writes": "redirect-only-required-persistent-state-to-ext4-image",
+        "ephemeral-cache-and-logs": "prefer-tmpfs-zram-or-bounded-writeback",
+        "avoid-whole-device-zero-streaming": true,
+        "avoid-whole-device-readback-of-unused-capacity": true,
+        "random-write-heavy-package-management-on-base-root": false
+      }
+    }
+  },
+  "media_classification": {
+    "bus-name-alone-is-authoritative": false,
+    "signals": [
+      "user-selected-mode-live-or-installed",
+      "removable-flag",
+      "device-capacity",
+      "rotational-flag",
+      "discard-trim-capability",
+      "measured-sequential-throughput",
+      "measured-random-write-latency-or-conservative-device-class"
+    ],
+    "external-ssd-over-usb-may-use-native-disk-profile": true,
+    "thumb-drive-live-mode-uses-portable-usb-profile": true
+  },
+  "forbidden_default_architectures": [
+    "one-identical-storage-layout-for-native-disk-and-portable-usb",
+    "fixed-size-home-partition-on-native-disk",
+    "fixed-size-applications-partition-on-native-disk",
+    "physical-a-b-root-partitions-as-the-default-native-update-model",
+    "using-exfat-directly-as-a-linux-overlayfs-upper-layer",
+    "growing-the-system-partition-to-consume-all-portable-user-capacity",
+    "requiring-whole-usb-capacity-to-be-written-and-read-back-when-most-bytes-are-unused"
+  ],
+  "prototype_migration": {
+    "current_three_partition_usb_layout": "transitional-proof-only",
+    "current_layout_may_remain_for-immediate-physical-boot-validation": true,
+    "must_not_be_promoted_as-long-term-portable-storage-contract": true,
+    "target_next_layout": "two-physical-partition-portable-usb-with-file-based-immutable-system-and-linux-native-persistent-state-image",
+    "migration_requires-new-contract-major-and-regression-gates-before-destructive-use": true
+  }
+}
