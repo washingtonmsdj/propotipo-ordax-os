@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+ENTRYPOINT=$WORKTREE/system/entrypoint
+
+[ -x "$ENTRYPOINT" ] || {
+    echo "ordax-run: $ENTRYPOINT nao existe ou nao e executavel" >&2
+    exit 1
+}
+
+exec "$ENTRYPOINT"
