@@ -40,6 +40,7 @@ jobs:
 
           main = pathlib.Path('tools/creator/cmd/ordax-creator-app/main_windows.go').read_text(encoding='utf-8')
           physical = pathlib.Path('tools/creator/cmd/ordax-creator-app/physical_flow_windows.go').read_text(encoding='utf-8')
+          progress = pathlib.Path('tools/creator/cmd/ordax-creator-app/physical_progress_windows.go').read_text(encoding='utf-8')
           update = pathlib.Path('tools/creator/cmd/ordax-creator-app/update_check_windows.go').read_text(encoding='utf-8')
           backend = pathlib.Path('tools/creator/cmd/ordax-creator-app/backend_resolution_windows.go').read_text(encoding='utf-8')
 
@@ -50,12 +51,23 @@ jobs:
           ]
           required_physical = [
               'Aguardando autorização do Windows',
-              'Gravando e verificando o pendrive',
               'runElevatedAndWait', 'SystemDisk', 'PrototypeSafe',
               'DestructiveAuthorization', 'verificação por leitura',
               'setProgressComplete()',
               'Pendrive OrdaX criado e verificado.',
-              'O pendrive OrdaX foi criado e passou pela verificação de leitura.',
+              'O pendrive OrdaX foi criado, passou pela verificação de leitura',
+              '--progress-log', 'progressPollMillis',
+              'ordax-physical-error.txt',
+          ]
+          required_progress = [
+              'prototype-ordax.creator-physical-progress/1',
+              'CompletedBytes', 'TotalBytes',
+              'setProgressPercent',
+              'Gravando OrdaX no pendrive',
+              'Verificando a gravação por leitura',
+              'Preparando ORDAX-DATA',
+              'float64(document.CompletedBytes)',
+              'float64(document.TotalBytes)',
           ]
           required_update = [
               'creator-owner-update.json',
@@ -72,6 +84,8 @@ jobs:
               assert text in main, f'missing Creator main UX anchor: {text}'
           for text in required_physical:
               assert text in physical, f'missing Creator physical UX/safety anchor: {text}'
+          for text in required_progress:
+              assert text in progress, f'missing Creator progress UX anchor: {text}'
           for text in required_update:
               assert text in update, f'missing Creator update anchor: {text}'
           for text in required_backend:
@@ -87,6 +101,9 @@ jobs:
           print('CREATOR_VISIBLE_UPDATE_CONTROL=YES')
           print('CREATOR_POST_UAC_STATUS_TRANSITION=YES')
           print('CREATOR_PROGRESS_INDICATOR=YES')
+          print('CREATOR_DETERMINATE_WRITE_VERIFY_PROGRESS=YES')
+          print('CREATOR_PROGRESS_REPORTS_ACTUAL_BYTES=YES')
           print('CREATOR_PROGRESS_COMPLETION=YES')
+          print('CREATOR_DETAILED_FAILURE_REASON=YES')
           print('CREATOR_SUCCESS_NOTICE=YES')
           PY
