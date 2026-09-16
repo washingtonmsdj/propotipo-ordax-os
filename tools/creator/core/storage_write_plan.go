@@ -28,8 +28,8 @@ var (
 // PhysicalWriteRegion describes one exact source-image interval that must be
 // copied to and read back from the physical USB. Regions are non-overlapping,
 // ordered and cover every byte controlled by the signed prepared image while
-// intentionally excluding the middle of ORDAX-DATA, which Windows formats as
-// exFAT immediately after raw verification.
+// intentionally excluding capacity-only sparse space that the bootstrap or
+// Windows will initialize later.
 type PhysicalWriteRegion struct {
 	Role        string `json:"role"`
 	OffsetBytes int64  `json:"offset_bytes"`
@@ -148,6 +148,9 @@ func sectionIsZero(file *os.File, offset, length int64) (bool, error) {
 	return true, nil
 }
 
+// buildPreparedWriteRegions is retained for generic fixtures and compatibility.
+// It covers the complete bounded ORDAX partition and therefore remains more
+// conservative but slower than the canonical-seed-aware physical path.
 func buildPreparedWriteRegions(layout PhysicalStorageLayout) (PhysicalWritePlan, error) {
 	dataStartBytes := layout.DataStartLBA * storageSectorBytes
 	dataEndBytes := (layout.DataLastLBA + 1) * storageSectorBytes
@@ -189,13 +192,86 @@ func buildPreparedWriteRegions(layout PhysicalStorageLayout) (PhysicalWritePlan,
 	}, nil
 }
 
+// buildPreparedWriteRegionsFromSeed uses the exact canonical bootstrap seed
+// size compiled into the physical backend. The seed already contains every
+// byte of the FAT32 ESP and the current ext4 filesystem. Bytes between the end
+// of that seed and ORDAX-DATA are capacity-only growth space for resize2fs and
+// do not need to be copied or read back during USB creation.
+func buildPreparedWriteRegionsFromSeed(layout PhysicalStorageLayout, seedBytes uint64) (PhysicalWritePlan, error) {
+	if seedBytes == 0 || seedBytes%storageSectorBytes != 0 {
+		return PhysicalWritePlan{}, errors.New("bootstrap seed size must be positive and sector aligned")
+	}
+	dataStartBytes := layout.DataStartLBA * storageSectorBytes
+	dataEndBytes := (layout.DataLastLBA + 1) * storageSectorBytes
+	if layout.DataBytes < portableDataClearPrefixBytes+portableDataClearSuffixBytes {
+		return PhysicalWritePlan{}, errors.New("ORDAX-DATA is too small for the raw signature-clearing policy")
+	}
+	if dataEndBytes > layout.TargetBytes || dataStartBytes >= dataEndBytes {
+		return PhysicalWritePlan{}, errors.New("ORDAX-DATA byte geometry is invalid")
+	}
+	if seedBytes >= dataStartBytes {
+		return PhysicalWritePlan{}, errors.New("bootstrap seed overlaps target-specific ORDAX-DATA")
+	}
+	dataPrefixEnd := dataStartBytes + portableDataClearPrefixBytes
+	tailStart := dataEndBytes - portableDataClearSuffixBytes
+	if dataPrefixEnd >= tailStart {
+		return PhysicalWritePlan{}, errors.New("prepared seed-aware write regions overlap")
+	}
+	if tailStart >= layout.TargetBytes {
+		return PhysicalWritePlan{}, errors.New("prepared tail region does not include secondary GPT")
+	}
+
+	regions := []PhysicalWriteRegion{
+		{
+			Role:        "canonical-bootstrap-seed",
+			OffsetBytes: 0,
+			LengthBytes: int64(seedBytes),
+		},
+		{
+			Role:        "data-signature-clear-prefix",
+			OffsetBytes: int64(dataStartBytes),
+			LengthBytes: int64(portableDataClearPrefixBytes),
+		},
+		{
+			Role:        "data-suffix-and-secondary-gpt",
+			OffsetBytes: int64(tailStart),
+			LengthBytes: int64(layout.TargetBytes - tailStart),
+		},
+	}
+	var bytesToWrite int64
+	for index, region := range regions {
+		if region.LengthBytes <= 0 || region.OffsetBytes < 0 {
+			return PhysicalWritePlan{}, errors.New("prepared seed-aware region is invalid")
+		}
+		if index > 0 {
+			previous := regions[index-1]
+			if previous.OffsetBytes+previous.LengthBytes > region.OffsetBytes {
+				return PhysicalWritePlan{}, errors.New("prepared seed-aware regions overlap")
+			}
+		}
+		bytesToWrite += region.LengthBytes
+	}
+	if bytesToWrite <= 0 || uint64(bytesToWrite) >= layout.TargetBytes {
+		return PhysicalWritePlan{}, errors.New("seed-aware region plan does not reduce physical I/O")
+	}
+	return PhysicalWritePlan{
+		TargetBytes:  layout.TargetBytes,
+		BytesToWrite: bytesToWrite,
+		Regions:      regions,
+	}, nil
+}
+
 // PlanPreparedPhysicalWrite validates the exact target-specific GPT before any
-// destructive sparse write is permitted. A real supported USB never falls back
-// from this validation to a whole-disk write: callers must treat an error as a
-// hard stop. Only the intentionally unformatted middle of ORDAX-DATA is skipped.
-func PlanPreparedPhysicalWrite(file *os.File, targetBytes uint64) (PhysicalWritePlan, error) {
+// destructive sparse write is permitted. Passing one bootstrapSeedBytes value
+// enables the production fast path: only the canonical seed plus the required
+// ORDAX-DATA signature-clearing/GPT regions are copied and read back. Omitting
+// it keeps the broader legacy plan used by generic writer fixtures.
+func PlanPreparedPhysicalWrite(file *os.File, targetBytes uint64, bootstrapSeedBytes ...uint64) (PhysicalWritePlan, error) {
 	if file == nil {
 		return PhysicalWritePlan{}, errors.New("prepared image is required")
+	}
+	if len(bootstrapSeedBytes) > 1 {
+		return PhysicalWritePlan{}, errors.New("at most one bootstrap seed size may be supplied")
 	}
 	layout, err := PlanPhysicalStorage(targetBytes)
 	if err != nil {
@@ -280,10 +356,6 @@ func PlanPreparedPhysicalWrite(file *os.File, targetBytes uint64) (PhysicalWrite
 		return PhysicalWritePlan{}, err
 	}
 
-	plan, err := buildPreparedWriteRegions(layout)
-	if err != nil {
-		return PhysicalWritePlan{}, err
-	}
 	dataStartBytes := int64(layout.DataStartLBA * storageSectorBytes)
 	prefixZero, err := sectionIsZero(file, dataStartBytes, int64(portableDataClearPrefixBytes))
 	if err != nil {
@@ -300,5 +372,9 @@ func PlanPreparedPhysicalWrite(file *os.File, targetBytes uint64) (PhysicalWrite
 	if !suffixZero {
 		return PhysicalWritePlan{}, errors.New("prepared ORDAX-DATA suffix is not zero-filled")
 	}
-	return plan, nil
+
+	if len(bootstrapSeedBytes) == 1 {
+		return buildPreparedWriteRegionsFromSeed(layout, bootstrapSeedBytes[0])
+	}
+	return buildPreparedWriteRegions(layout)
 }
