@@ -1,6 +1,8 @@
 {
   "$schema": "prototype-ordax.physical-media/1",
   "status": "prototype-proof-only",
+  "scope": "capacity-independent-bootstrap-seed-and-disposable-proof",
+  "prepared_target_contract": "docs/contracts/physical-prepared-media.json",
   "physical_write_allowed": false,
   "partition_table": "gpt",
   "logical_sector_bytes": 512,
@@ -24,7 +26,7 @@
     {
       "index": 2,
       "name": "ORDAX",
-      "role": "main",
+      "role": "main-bootstrap-seed",
       "gpt_type_guid": "0fc63daf-8483-4772-8e79-3d69d8477de4",
       "filesystem": "ext4",
       "filesystem_label": "ORDAX",
@@ -33,10 +35,11 @@
     }
   ],
   "filesystem_capacity": {
-    "prepared_partition_policy": "fill-remaining-usable",
-    "seed_ext4_policy": "may-remain-smaller-than-prepared-ORDAX-partition",
+    "seed_partition_policy": "fill-remaining-usable-within-proof-image",
+    "final_target_partition_policy": "defined-by-docs/contracts/physical-prepared-media.json",
+    "seed_ext4_policy": "may-remain-smaller-than-final-target-ORDAX-partition",
     "normal_boot_growth_owner": "bootstrap/initramfs/source.json#storage_growth",
-    "normal_boot_growth_target": "largest-valid-ext4-size-within-ORDAX-block-device",
+    "normal_boot_growth_target": "largest-valid-ext4-size-within-bounded-ORDAX-block-device",
     "maximum_unusable_tail": "less-than-one-ext4-block-group-when-upstream-resize2fs-matches",
     "recovery_growth_allowed": false,
     "data_preservation_required": true,
@@ -48,18 +51,18 @@
   ],
   "proof_requirements": [
     "gpt-valid",
-    "exactly-two-partitions",
+    "exactly-two-bootstrap-seed-partitions",
     "partition-starts-match-contract",
     "partition-type-guids-match-contract",
     "filesystem-types-match-contract",
     "filesystem-labels-match-contract",
     "staged-files-reverified-after-filesystem-materialization",
     "raw-image-partition-bytes-match-filesystem-images",
-    "creator-prepared-ordax-partition-fills-new-last-usable-lba",
-    "creator-prepared-ext4-remains-seed-sized-before-boot-growth",
-    "boot-time-ext4-growth-matches-upstream-resize2fs-maximum",
+    "bootstrap-seed-remains-capacity-independent",
+    "boot-time-ext4-growth-matches-upstream-resize2fs-maximum-within-bounded-ORDAX",
     "boot-time-ext4-growth-preserves-existing-file-content",
     "recovery-never-grows-filesystem",
-    "physical-write-remains-blocked"
+    "final-target-layout-is-governed-by-physical-prepared-media-contract",
+    "physical-write-remains-blocked-by-this-proof-contract"
   ]
 }
