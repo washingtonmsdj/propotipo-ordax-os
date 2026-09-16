@@ -90,7 +90,7 @@
     "prepared_image_integrity_scope": "canonical-write-plan-sha256-over-target-capacity-region-metadata-and-exact-source-bytes",
     "current_raw_write_scope": "bootstrap-system-plus-16MiB-ORDAX-DATA-prefix-plus-1MiB-ORDAX-DATA-suffix-plus-secondary-gpt",
     "current_readback_scope": "exactly-the-raw-regions-written-before-ORDAX-DATA-format",
-    "zero_region_skip_implemented": true,
+    "zero-region-skip_implemented": true,
     "skipped_region_owner": "the-unformatted-middle-of-ORDAX-DATA-is-immediately-replaced-by-Windows-exFAT-formatting",
     "fail_closed_rule": "supported-real-USB-capacities-require-exact-storage-v2-GPT-validation-and-never-fall-back-to-whole-disk-write-on-validation-failure"
   }
