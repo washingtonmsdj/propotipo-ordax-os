@@ -169,7 +169,7 @@ func runPrepare(args []string) error {
 	if err := verifyFile(*seed, b.SeedImageSHA256, b.SeedImageSize); err != nil {
 		return fmt.Errorf("verify authorized seed image: %w", err)
 	}
-	prepared, err := creatorcore.PreparePhysicalImage(*seed, *out, target.PhysicalDiskBytes)
+	prepared, err := creatorcore.PreparePhysicalStorageImage(*seed, *out, target.PhysicalDiskBytes)
 	if err != nil {
 		return err
 	}
