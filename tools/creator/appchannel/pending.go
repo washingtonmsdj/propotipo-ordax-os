@@ -235,7 +235,7 @@ func PromotePending(root, expectedSourceCommit string, trustBytes []byte, expect
 			}
 			return Installed{}, errors.New("current Creator app matches pending identity but its version slot is damaged; refusing in-place repair")
 		}
-		if current, err := installedFrom(actualRoot, currentManifest); err == nil {
+		if _, err := installedFrom(actualRoot, currentManifest); err == nil {
 			if err := writeEnvelopeAtomic(filepath.Join(actualRoot, previousEnvelopeName), currentBytes); err != nil {
 				return Installed{}, fmt.Errorf("preserve previous signed Creator app: %w", err)
 			}
