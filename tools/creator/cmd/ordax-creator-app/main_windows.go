@@ -52,6 +52,7 @@ const (
 	cbResetContent = 0x014B
 	cbSetCurSel    = 0x014E
 	cbGetCurSel    = 0x0147
+	cbnSelChange   = 1
 	bnClicked      = 0
 
 	createNoWindow = 0x08000000
@@ -209,7 +210,7 @@ func targetLabel(target physicalTarget) string {
 	if label == "" {
 		label = "Sem nome"
 	}
-	return fmt.Sprintf("%s  —  %s  —  Disco %d  —  %s", target.DriveLetter, label, target.DiskNumber, formatBytes(target.PhysicalDiskBytes))
+	return fmt.Sprintf("%s  —  %s  —  %s", target.DriveLetter, label, formatBytes(target.PhysicalDiskBytes))
 }
 
 func runBackendHidden(directory string, args ...string) ([]byte, error) {
@@ -269,6 +270,38 @@ func refreshAsync() {
 	}()
 }
 
+func selectedTargetIndex() int {
+	index := int32(send(deviceCombo, cbGetCurSel, 0, 0))
+	if index < 0 {
+		return -1
+	}
+	return int(index)
+}
+
+func updateSelectionUI() {
+	stateMu.Lock()
+	state := refreshState
+	stateMu.Unlock()
+
+	busy := writeInProgress()
+	index := selectedTargetIndex()
+	selected := index >= 0 && index < len(state.Targets)
+	enable(writeButton, !busy && state.PhysicalReady && selected)
+
+	if busy || len(state.Targets) == 0 {
+		return
+	}
+	if !selected {
+		setText(statusLabel, "Escolha o pendrive que receberá o OrdaX.")
+		setText(hintLabel, "Só o USB selecionado será apagado. Nenhuma ISO ou configuração é necessária.")
+		return
+	}
+	if state.PhysicalReady {
+		setText(statusLabel, "Pendrive selecionado. Pronto para criar o OrdaX.")
+		setText(hintLabel, "Clique em Criar OrdaX. O Creator baixa, prepara, grava e verifica automaticamente.")
+	}
+}
+
 func renderRefresh() {
 	stateMu.Lock()
 	state := refreshState
@@ -279,14 +312,14 @@ func renderRefresh() {
 		label := targetLabel(target)
 		send(deviceCombo, cbAddString, 0, uintptr(unsafe.Pointer(utf16Ptr(label))))
 	}
-	if len(state.Targets) > 0 {
+	if len(state.Targets) == 1 {
 		send(deviceCombo, cbSetCurSel, 0, 0)
 	}
 
 	if state.Version != "" {
-		version := "Versão: " + state.Version
+		version := "OrdaX Creator • " + state.Version
 		if state.Updated {
-			version += "  •  atualizada agora"
+			version += " • atualizado"
 		}
 		setText(versionLabel, version)
 	}
@@ -296,28 +329,28 @@ func renderRefresh() {
 		setText(statusLabel, "Não foi possível preparar o Creator.")
 		setText(hintLabel, state.Error)
 	case len(state.Targets) == 0:
-		setText(statusLabel, "Nenhum pendrive USB elegível encontrado.")
-		setText(hintLabel, "Conecte um pendrive USB e clique em Recarregar dispositivos.")
-	case state.PhysicalReady:
-		setText(statusLabel, fmt.Sprintf("%d pendrive(s) pronto(s) para criar o OrdaX.", len(state.Targets)))
-		setText(hintLabel, "Escolha o dispositivo correto e clique em Criar pendrive OrdaX. O conteúdo do USB selecionado será apagado.")
+		setText(statusLabel, "Conecte um pendrive USB.")
+		setText(hintLabel, "O Creator detecta pendrives automaticamente. Se você acabou de conectar um, clique em Atualizar.")
+	case !state.PhysicalReady:
+		setText(statusLabel, fmt.Sprintf("%d pendrive(s) encontrado(s).", len(state.Targets)))
+		setText(hintLabel, "A criação será liberada automaticamente quando a versão física oficial assinada estiver disponível.")
 	default:
-		setText(statusLabel, fmt.Sprintf("%d pendrive(s) detectado(s).", len(state.Targets)))
-		setText(hintLabel, "A criação do pendrive será habilitada automaticamente quando uma candidata física oficial e assinada estiver disponível.")
+		setText(statusLabel, "Escolha o pendrive que receberá o OrdaX.")
+		setText(hintLabel, "Você não precisa escolher ISO, imagem, versão ou configuração técnica.")
 	}
 
 	busy := writeInProgress()
 	enable(refreshButton, !busy)
 	enable(deviceCombo, !busy && len(state.Targets) > 0)
-	enable(writeButton, !busy && state.PhysicalReady && len(state.Targets) > 0)
+	updateSelectionUI()
 }
 
 func beginRefresh() {
 	if writeInProgress() {
 		return
 	}
-	setText(statusLabel, "Verificando atualização e dispositivos USB…")
-	setText(hintLabel, "Isso não grava nem altera nenhum disco.")
+	setText(statusLabel, "Procurando pendrives…")
+	setText(hintLabel, "O OrdaX Creator também confere atualizações automaticamente.")
 	enable(refreshButton, false)
 	enable(writeButton, false)
 	enable(deviceCombo, false)
@@ -329,6 +362,10 @@ func wndProc(hwnd uintptr, message uint32, wParam, lParam uintptr) uintptr {
 	case wmCommand:
 		id := int(loword(wParam))
 		notify := hiword(wParam)
+		if id == idDeviceCombo && notify == cbnSelChange {
+			updateSelectionUI()
+			return 0
+		}
 		if id == idRefresh && notify == bnClicked {
 			beginRefresh()
 			return 0
@@ -382,7 +419,7 @@ func createMainWindow() {
 		uintptr(unsafe.Pointer(utf16Ptr(windowTitle))),
 		wsOverlappedWindow,
 		cwUseDefault, cwUseDefault,
-		720, 430,
+		680, 360,
 		0, 0, instance, 0,
 	)
 	if hwnd == 0 {
@@ -390,15 +427,15 @@ func createMainWindow() {
 	}
 	mainWindow = hwnd
 
-	createControl("STATIC", "OrdaX Creator", 0, 28, 24, 640, 28, 0)
-	createControl("STATIC", "Crie seu pendrive OrdaX em poucos passos.", 0, 28, 56, 640, 22, 0)
-	createControl("STATIC", "Dispositivo USB", 0, 28, 104, 640, 20, 0)
-	deviceCombo = createControl("COMBOBOX", "", wsTabStop|wsVScroll|cbsDropDownList|wsDisabled, 28, 130, 646, 220, idDeviceCombo)
-	statusLabel = createControl("STATIC", "Inicializando…", 0, 28, 184, 646, 22, idStatus)
-	hintLabel = createControl("STATIC", "", 0, 28, 214, 646, 48, idHint)
-	versionLabel = createControl("STATIC", "Versão: verificando…", 0, 28, 282, 360, 20, idVersion)
-	refreshButton = createControl("BUTTON", "Recarregar dispositivos", wsTabStop|bsPushButton, 28, 326, 200, 38, idRefresh)
-	writeButton = createControl("BUTTON", "Criar pendrive OrdaX", wsTabStop|bsDefPushButton|wsDisabled, 454, 326, 220, 38, idWrite)
+	createControl("STATIC", "Criar pendrive OrdaX", 0, 28, 24, 610, 28, 0)
+	createControl("STATIC", "Conecte o USB, escolha o pendrive e pronto. O restante é automático.", 0, 28, 56, 610, 22, 0)
+	createControl("STATIC", "Pendrive", 0, 28, 96, 610, 20, 0)
+	deviceCombo = createControl("COMBOBOX", "", wsTabStop|wsVScroll|cbsDropDownList|wsDisabled, 28, 122, 610, 220, idDeviceCombo)
+	statusLabel = createControl("STATIC", "Procurando pendrives…", 0, 28, 172, 610, 22, idStatus)
+	hintLabel = createControl("STATIC", "", 0, 28, 202, 610, 44, idHint)
+	versionLabel = createControl("STATIC", "OrdaX Creator • verificando versão…", 0, 28, 282, 330, 20, idVersion)
+	refreshButton = createControl("BUTTON", "Atualizar", wsTabStop|bsPushButton, 366, 270, 116, 36, idRefresh)
+	writeButton = createControl("BUTTON", "Criar OrdaX", wsTabStop|bsDefPushButton|wsDisabled, 494, 270, 144, 36, idWrite)
 
 	procShowWindow.Call(mainWindow, swShow)
 	procUpdateWindow.Call(mainWindow)
