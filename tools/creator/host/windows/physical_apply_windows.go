@@ -6,9 +6,11 @@ package windowsadapter
 // by the tagged physical-test build. The normal/public Creator never compiles
 // this boundary.
 type PhysicalApplyResult struct {
-	DiskNumber   uint32 `json:"disk_number"`
-	BytesWritten int64  `json:"bytes_written"`
-	SHA256       string `json:"sha256"`
+	DiskNumber       uint32 `json:"disk_number"`
+	BytesWritten     int64  `json:"bytes_written"`
+	BytesVerified    int64  `json:"bytes_verified"`
+	SHA256           string `json:"sha256"`
+	VerificationMode string `json:"verification_mode"`
 }
 
 // ApplyPhysicalTest binds the already-tested fail-closed writer orchestration
@@ -20,8 +22,10 @@ func ApplyPhysicalTest(request RawDiskApplyRequest) (PhysicalApplyResult, error)
 		return PhysicalApplyResult{}, err
 	}
 	return PhysicalApplyResult{
-		DiskNumber:   result.DiskNumber,
-		BytesWritten: result.BytesWritten,
-		SHA256:       result.SHA256,
+		DiskNumber:       result.DiskNumber,
+		BytesWritten:     result.BytesWritten,
+		BytesVerified:    result.BytesVerified,
+		SHA256:           result.SHA256,
+		VerificationMode: result.VerificationMode,
 	}, nil
 }
