@@ -32,7 +32,7 @@ type preparedMediaContract struct {
 		PreparedImageIntegrityScope string `json:"prepared_image_integrity_scope"`
 		CurrentRawWriteScope        string `json:"current_raw_write_scope"`
 		CurrentReadbackScope        string `json:"current_readback_scope"`
-		ZeroRegionSkip              bool   `json:"zero-region-skip_implemented"`
+		ZeroRegionSkip              bool   `json:"zero_region_skip_implemented"`
 		SkippedRegionOwner          string `json:"skipped_region_owner"`
 		FailClosedRule              string `json:"fail_closed_rule"`
 	} `json:"performance"`
@@ -109,7 +109,7 @@ func TestPreparedMediaContractMatchesStoragePlanner(t *testing.T) {
 		t.Fatal("ORDAX-DATA must remain visible through a Windows drive letter")
 	}
 
-	if contract.Performance.PreparedImageIntegrityScope != "whole-target-sha256-on-local-temporary-image" {
+	if contract.Performance.PreparedImageIntegrityScope != "canonical-write-plan-sha256-over-target-capacity-region-metadata-and-exact-source-bytes" {
 		t.Fatalf("prepared image integrity scope drift: %q", contract.Performance.PreparedImageIntegrityScope)
 	}
 	if contract.Performance.CurrentRawWriteScope != "bootstrap-system-plus-16MiB-ORDAX-DATA-prefix-plus-1MiB-ORDAX-DATA-suffix-plus-secondary-gpt" {
@@ -119,7 +119,7 @@ func TestPreparedMediaContractMatchesStoragePlanner(t *testing.T) {
 		t.Fatalf("readback scope drift: %q", contract.Performance.CurrentReadbackScope)
 	}
 	if !contract.Performance.ZeroRegionSkip {
-		t.Fatal("prepared media must skip the unused ORDAX-DATA middle after validating exact storage-v2 GPT geometry")
+		t.Fatal("prepared media must skip capacity-only space after validating exact storage-v2 GPT geometry")
 	}
 	if contract.Performance.SkippedRegionOwner != "the-unformatted-middle-of-ORDAX-DATA-is-immediately-replaced-by-Windows-exFAT-formatting" {
 		t.Fatalf("skipped region ownership drift: %q", contract.Performance.SkippedRegionOwner)
