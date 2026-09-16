@@ -24,6 +24,7 @@ var (
 	buildSeedImageSHA256         = "UNRESOLVED"
 	buildSeedImageSize           = "0"
 	buildPhysicalWriteAuthorized = "NO"
+	applyDiagnosticLog           string
 )
 
 type buildBinding struct {
@@ -199,16 +200,21 @@ func runPrepare(args []string) error {
 }
 
 func runApply(args []string) error {
-	b := requireReady()
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	confirm := fs.String("confirm", "", "confirmation token from the selected target")
 	imagePath := fs.String("image", "", "prepared target-sized RAW image")
 	imageSHA := fs.String("sha256", "", "prepared image SHA-256")
 	imageSize := fs.Int64("size", 0, "prepared image size in bytes")
 	authorize := fs.String("authorize", "", "destructive authorization token emitted by prepare")
+	diagnosticLog := fs.String("diagnostic-log", "", "optional UTF-8 error report path owned by the parent Creator")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	applyDiagnosticLog = strings.TrimSpace(*diagnosticLog)
+	if applyDiagnosticLog != "" {
+		_ = os.Remove(applyDiagnosticLog)
+	}
+	b := requireReady()
 	if *confirm == "" || *imagePath == "" || *imageSHA == "" || *imageSize <= 0 || *authorize == "" || fs.NArg() != 0 {
 		return fmt.Errorf("apply requires --confirm, --image, --sha256, --size and --authorize")
 	}
@@ -282,6 +288,9 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
+		if applyDiagnosticLog != "" {
+			_ = os.WriteFile(applyDiagnosticLog, []byte(err.Error()+"\n"), 0o600)
+		}
 		fmt.Fprintln(os.Stderr, "ordax-creator-physical-test:", err)
 		os.Exit(1)
 	}
