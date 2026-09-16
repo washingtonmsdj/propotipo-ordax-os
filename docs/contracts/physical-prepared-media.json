@@ -53,9 +53,11 @@
     "plan-target-specific-gpt",
     "bound-ORDAX-system-partition",
     "reserve-remaining-capacity-for-ORDAX-DATA",
-    "write-prepared-raw-image",
+    "validate-primary-and-secondary-prepared-gpt",
+    "validate-ORDAX-DATA-clear-edges",
+    "write-verified-prepared-regions",
     "flush-device",
-    "readback-verify-prepared-raw-image",
+    "readback-verify-written-regions",
     "format-ORDAX-DATA-as-exfat",
     "assign-windows-drive-letter",
     "verify-ORDAX-DATA-geometry-filesystem-label-and-access",
@@ -65,8 +67,9 @@
     "target-is-not-windows-system-disk",
     "target-physical-usb-identity-remains-stable",
     "prepared-gpt-has-exactly-ORDAX-ESP-ORDAX-ORDAX-DATA",
+    "primary-and-secondary-gpt-copies-agree",
     "ORDAX-does-not-consume-portable-data-capacity",
-    "raw-write-readback-verification-passes-before-exfat-format",
+    "all-raw-written-regions-pass-readback-sha256-before-exfat-format",
     "ORDAX-DATA-is-exfat",
     "ORDAX-DATA-label-is-ORDAX-DATA",
     "ORDAX-DATA-has-windows-drive-letter",
@@ -82,9 +85,11 @@
     "reason": "ORDAX-DATA is target-capacity-specific and is created by the Creator; it is not part of the signed capacity-independent bootstrap seed"
   },
   "performance": {
-    "current_raw_write_scope": "whole-target-capacity",
-    "current_readback_scope": "whole-target-capacity-before-ORDAX-DATA-format",
-    "zero-region-skip_implemented": false,
-    "future_optimization_boundary": "trusted-region-write-and-verify-without-streaming-unused-ORDAX-DATA-zeroes"
+    "prepared_image_integrity_scope": "whole-target-sha256-on-local-temporary-image",
+    "current_raw_write_scope": "bootstrap-system-plus-16MiB-ORDAX-DATA-prefix-plus-1MiB-ORDAX-DATA-suffix-plus-secondary-gpt",
+    "current_readback_scope": "exactly-the-raw-regions-written-before-ORDAX-DATA-format",
+    "zero-region-skip_implemented": true,
+    "skipped_region_owner": "the-unformatted-middle-of-ORDAX-DATA-is-immediately-replaced-by-Windows-exFAT-formatting",
+    "fail_closed_rule": "supported-real-USB-capacities-require-exact-storage-v2-GPT-validation-and-never-fall-back-to-whole-disk-write-on-validation-failure"
   }
 }
