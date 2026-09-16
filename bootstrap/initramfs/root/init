@@ -20,21 +20,36 @@ case " $(cat /proc/cmdline 2>/dev/null || true) " in
 esac
 
 ORDAX_DEVICE="$(findfs LABEL=ORDAX 2>/dev/null || true)"
-[ -n "$ORDAX_DEVICE" ] || rescue "ORDAX partition not found"
+case "$ORDAX_DEVICE" in
+    "") rescue "ORDAX partition not found" ;;
+esac
 
-if [ "$RECOVERY_MODE" -eq 1 ]; then
-    mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
-    if [ -x /ordax/bootstrap/recovery/entrypoint ]; then
+case "$RECOVERY_MODE" in
+    1)
+        mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
+        RECOVERY_ENTRYPOINT="$(command -v /ordax/bootstrap/recovery/entrypoint 2>/dev/null || true)"
+        case "$RECOVERY_ENTRYPOINT" in
+            "") rescue "recovery entrypoint is missing" ;;
+        esac
         exec /ordax/bootstrap/recovery/entrypoint
-    fi
-    rescue "recovery entrypoint is missing"
-fi
+        ;;
+esac
 
 mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
-if [ -x /sbin/ordax-grow-ext4 ]; then
-    if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
-        echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
-    fi
-fi
-[ -x /ordax/bootstrap/entrypoint ] || rescue "bootstrap entrypoint is missing"
+GROW_HELPER="$(command -v /sbin/ordax-grow-ext4 2>/dev/null || true)"
+case "$GROW_HELPER" in
+    "")
+        echo "ordax-initramfs: warning: ext4 growth helper is missing; continuing with current verified filesystem" >&2
+        ;;
+    *)
+        if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
+            echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
+        fi
+        ;;
+esac
+
+BOOTSTRAP_ENTRYPOINT="$(command -v /ordax/bootstrap/entrypoint 2>/dev/null || true)"
+case "$BOOTSTRAP_ENTRYPOINT" in
+    "") rescue "bootstrap entrypoint is missing" ;;
+esac
 exec /ordax/bootstrap/entrypoint
