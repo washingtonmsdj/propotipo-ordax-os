@@ -118,27 +118,21 @@ def safe_extract(archive: Path, rootfs: Path) -> None:
         tar.extractall(rootfs, members=members, filter="data")
 
 
-def chroot(rootfs: Path, command: str) -> None:
-    run(["chroot", str(rootfs), "/bin/sh", "-ec", command])
+def proot_rootfs(rootfs: Path, command: str) -> None:
+    """Run commands before symlinks are flattened, without requiring CAP_MKNOD.
 
-
-def package_chroot(rootfs: Path, command: str) -> None:
-    """Run package installation with host devices virtualized by PRoot.
-
-    The development root intentionally contains no device nodes. Runtime boot
-    binds the initramfs /dev into this root before switch_root, so creating
-    static devices during the build is unnecessary and makes CI depend on
-    CAP_MKNOD. PRoot provides chroot + bind semantics in user space instead.
+    PRoot's -S mode supplies the device and pseudo-filesystem bindings needed by
+    package tooling while the development root still contains Alpine symlinks.
+    Runtime does not depend on PRoot: after flattening, verify_rootfs executes
+    Git through a native chroot.
     """
     proot = shutil.which("proot")
     if not proot:
-        raise BuildError("proot is required to install Alpine packages without static device nodes")
+        raise BuildError("proot is required for pre-flatten rootfs commands")
     run([
         proot,
         "-S",
         str(rootfs),
-        "-b",
-        "/dev",
         "-w",
         "/",
         "/bin/sh",
@@ -179,7 +173,11 @@ def prune_firmware(rootfs: Path) -> None:
             except OSError:
                 pass
 
-    chroot(rootfs, "find /lib/firmware -type f -name '*.zst' -print | while IFS= read -r f; do zstd -q -d --rm \"$f\" -o \"${f%.zst}\"; done")
+    proot_rootfs(
+        rootfs,
+        "find /lib/firmware -type f -name '*.zst' -print | "
+        "while IFS= read -r f; do zstd -q -d --rm \"$f\" -o \"${f%.zst}\"; done",
+    )
 
 
 def resolve_rootfs_symlink(rootfs: Path, link: Path) -> Path | None:
@@ -356,7 +354,7 @@ def build(kernel_modules: Path, out_dir: Path) -> None:
             shutil.copy2(host_resolv, rootfs / "etc/resolv.conf", follow_symlinks=True)
         (rootfs / "dev").mkdir(parents=True, exist_ok=True)
 
-        package_chroot(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
+        proot_rootfs(rootfs, "apk add --no-cache " + " ".join(PACKAGES))
         prune_firmware(rootfs)
         install_runtime(rootfs, kernel_modules.resolve())
         flattened = flatten_symlinks(rootfs)
