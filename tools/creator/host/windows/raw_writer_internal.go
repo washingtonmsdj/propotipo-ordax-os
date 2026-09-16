@@ -189,10 +189,13 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 
 	validated := request
 	validated.Target = confirmed
-	if err := ValidateRawDiskApplyRequest(validated); err != nil {
+	if _, err := validateRawDiskApplyRequestPolicy(validated); err != nil {
 		return rawDiskApplyResult{}, err
 	}
 
+	// Hash the target-sized prepared image exactly once, on the same read-locked
+	// handle that will feed the raw writer. Older code hashed it repeatedly in
+	// runApply, request validation and again here.
 	source, streamImage, err := openVerifiedRawImageForApply(
 		validated.Image.Path,
 		validated.Image.SHA256,
@@ -209,7 +212,17 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 
 	var preparedPlan *creatorcore.PhysicalWritePlan
 	if _, layoutErr := creatorcore.PlanPhysicalStorage(uint64(streamImage.SizeBytes)); layoutErr == nil {
-		plan, planErr := creatorcore.PlanPreparedPhysicalWrite(source, uint64(streamImage.SizeBytes))
+		var plan creatorcore.PhysicalWritePlan
+		var planErr error
+		if validated.BootstrapSeedBytes > 0 {
+			plan, planErr = creatorcore.PlanPreparedPhysicalWrite(
+				source,
+				uint64(streamImage.SizeBytes),
+				uint64(validated.BootstrapSeedBytes),
+			)
+		} else {
+			plan, planErr = creatorcore.PlanPreparedPhysicalWrite(source, uint64(streamImage.SizeBytes))
+		}
 		if planErr != nil {
 			return rawDiskApplyResult{}, fmt.Errorf("physical write blocked: prepared storage-v2 image validation failed: %w", planErr)
 		}
@@ -255,11 +268,15 @@ func applyRawDiskInternal(runtime rawDiskRuntime, request RawDiskApplyRequest) (
 		return rawDiskApplyResult{}, err
 	}
 
+	mode := "prepared-regions-sha256"
+	if validated.BootstrapSeedBytes > 0 {
+		mode = "seed-bounded-regions-sha256"
+	}
 	return rawDiskApplyResult{
 		DiskNumber:       confirmed.DiskNumber,
 		BytesWritten:     written,
 		BytesVerified:    verified,
 		SHA256:           streamImage.SHA256,
-		VerificationMode: "prepared-regions-sha256",
+		VerificationMode: mode,
 	}, nil
 }
