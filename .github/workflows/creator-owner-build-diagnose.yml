@@ -1,0 +1,74 @@
+name: Diagnose Creator Git USB build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/creator-owner-build-diagnose.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creator-owner-build-diagnose-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
+            gdisk dosfstools e2fsprogs mtools util-linux
+          python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
+
+      - name: Build and verify boot ESP
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+
+      - name: Build and verify kernel
+        run: |
+          set -euo pipefail
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+
+      - name: Build and verify initramfs
+        run: |
+          set -euo pipefail
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+
+      - name: Build and verify Git development base
+        run: |
+          set -euo pipefail
+          sudo -E python bootstrap/dev-base/build.py \
+            --kernel-modules out/kernel/kernel-modules-6.6.52.tar \
+            --out-dir out/dev-base
+          sudo chroot out/dev-base/rootfs /usr/bin/git --version
+          test -x out/dev-base/rootfs/sbin/ordax-dev-init
+          test -x out/dev-base/rootfs/usr/local/bin/ordax-pull
