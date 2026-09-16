@@ -100,9 +100,11 @@ jobs:
       - name: Build and verify Git development base
         run: |
           set -euo pipefail
+          mkdir -p out/diagnostic
           sudo -E python bootstrap/dev-base/build.py \
             --kernel-modules out/kernel/kernel-modules-6.6.52.tar \
-            --out-dir out/dev-base
+            --out-dir out/dev-base \
+            2>&1 | tee out/diagnostic/dev-base-build.log
           sudo chroot out/dev-base/rootfs /usr/bin/git --version
           test -x out/dev-base/rootfs/sbin/ordax-dev-init
           test -x out/dev-base/rootfs/usr/local/bin/ordax-pull
@@ -117,3 +119,11 @@ jobs:
           assert provenance['git_client_preseeded'] is True
           print('DEV_BASE_NO_STATIC_DEVICES=PASS')
           PY
+
+      - name: Upload development base diagnostic log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: dev-base-diagnostic-${{ github.sha }}
+          path: out/diagnostic/dev-base-build.log
+          if-no-files-found: warn
