@@ -53,6 +53,9 @@ jobs:
               'Gravando e verificando o pendrive',
               'runElevatedAndWait', 'SystemDisk', 'PrototypeSafe',
               'DestructiveAuthorization', 'verificação por leitura',
+              'setProgressComplete()',
+              'Pendrive OrdaX criado e verificado.',
+              'O pendrive OrdaX foi criado e passou pela verificação de leitura.',
           ]
           required_update = [
               'creator-owner-update.json',
@@ -84,4 +87,6 @@ jobs:
           print('CREATOR_VISIBLE_UPDATE_CONTROL=YES')
           print('CREATOR_POST_UAC_STATUS_TRANSITION=YES')
           print('CREATOR_PROGRESS_INDICATOR=YES')
+          print('CREATOR_PROGRESS_COMPLETION=YES')
+          print('CREATOR_SUCCESS_NOTICE=YES')
           PY
