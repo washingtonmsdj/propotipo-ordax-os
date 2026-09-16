@@ -16,20 +16,28 @@ const (
 	previousEnvelopeName = "previous-envelope.json"
 )
 
-func readInstalledEnvelope(root, name string, trustBytes []byte, expectedTrustSHA256 string) (Installed, []byte, error) {
+func readVerifiedEnvelope(root, name string, trustBytes []byte, expectedTrustSHA256 string) (Manifest, []byte, error) {
 	path := filepath.Join(root, name)
 	info, err := os.Lstat(path)
 	if err != nil {
-		return Installed{}, nil, err
+		return Manifest{}, nil, err
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return Installed{}, nil, fmt.Errorf("cached Creator app envelope %s is unsafe", name)
+		return Manifest{}, nil, fmt.Errorf("cached Creator app envelope %s is unsafe", name)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Installed{}, nil, err
+		return Manifest{}, nil, err
 	}
 	manifest, err := VerifyEnvelope(data, trustBytes, expectedTrustSHA256)
+	if err != nil {
+		return Manifest{}, nil, err
+	}
+	return manifest, data, nil
+}
+
+func readInstalledEnvelope(root, name string, trustBytes []byte, expectedTrustSHA256 string) (Installed, []byte, error) {
+	manifest, data, err := readVerifiedEnvelope(root, name, trustBytes, expectedTrustSHA256)
 	if err != nil {
 		return Installed{}, nil, err
 	}
@@ -53,7 +61,7 @@ func Previous(root string, trustBytes []byte, expectedTrustSHA256 string) (Insta
 }
 
 // LastKnownGood prefers the current signed app and falls back to the previous
-// signed app when the current slot or envelope is unavailable/corrupted.
+// signed app when the current slot or executable is unavailable/corrupted.
 func LastKnownGood(root string, trustBytes []byte, expectedTrustSHA256 string) (Installed, error) {
 	current, currentErr := Current(root, trustBytes, expectedTrustSHA256)
 	if currentErr == nil {
@@ -64,6 +72,39 @@ func LastKnownGood(root string, trustBytes []byte, expectedTrustSHA256 string) (
 		return previous, nil
 	}
 	return Installed{}, fmt.Errorf("current Creator app invalid (%v) and previous signed app unavailable (%v)", currentErr, previousErr)
+}
+
+func checkManifestAgainstBaseline(candidate, baseline Manifest) error {
+	if candidate.ReleaseSequence < baseline.ReleaseSequence {
+		return fmt.Errorf("Creator app rollback rejected: candidate sequence %d is older than signed baseline sequence %d", candidate.ReleaseSequence, baseline.ReleaseSequence)
+	}
+	if candidate.ReleaseSequence == baseline.ReleaseSequence && candidate.SourceCommit != baseline.SourceCommit {
+		return fmt.Errorf("Creator app release sequence %d was reused by a different source commit", candidate.ReleaseSequence)
+	}
+	return nil
+}
+
+// checkPendingRollback uses the signed current envelope as the monotonic
+// baseline even when the current executable bytes are damaged. That lets a
+// newer signed release repair an executable failure without forgetting the
+// highest authenticated sequence. If the current envelope itself is invalid,
+// updates fail closed rather than falling back to an older sequence baseline.
+func checkPendingRollback(root string, candidate Manifest, trustBytes []byte, expectedTrustSHA256 string) error {
+	current, _, currentErr := readVerifiedEnvelope(root, currentEnvelopeName, trustBytes, expectedTrustSHA256)
+	if currentErr == nil {
+		return checkManifestAgainstBaseline(candidate, current)
+	}
+	if !errors.Is(currentErr, os.ErrNotExist) {
+		return fmt.Errorf("signed current Creator app identity is invalid; refusing rollback-sensitive update: %w", currentErr)
+	}
+	previous, _, previousErr := readVerifiedEnvelope(root, previousEnvelopeName, trustBytes, expectedTrustSHA256)
+	if previousErr == nil {
+		return checkManifestAgainstBaseline(candidate, previous)
+	}
+	if errors.Is(previousErr, os.ErrNotExist) {
+		return nil
+	}
+	return fmt.Errorf("signed previous Creator app identity is invalid; refusing rollback-sensitive update: %w", previousErr)
 }
 
 func installCandidate(client *http.Client, root string, manifest Manifest) (Installed, bool, error) {
@@ -126,7 +167,7 @@ func AcquirePending(client *http.Client, root, envelopeURL string, trustBytes []
 	if err != nil {
 		return Installed{}, false, err
 	}
-	if err := checkRollback(actualRoot, manifest, trustBytes, expectedTrustSHA256); err != nil {
+	if err := checkPendingRollback(actualRoot, manifest, trustBytes, expectedTrustSHA256); err != nil {
 		return Installed{}, false, err
 	}
 	if current, err := Current(actualRoot, trustBytes, expectedTrustSHA256); err == nil && current.SourceCommit == manifest.SourceCommit {
@@ -153,7 +194,7 @@ func AcquirePending(client *http.Client, root, envelopeURL string, trustBytes []
 	if verifyManifest.SourceCommit != manifest.SourceCommit || verifyManifest.ReleaseSequence != manifest.ReleaseSequence {
 		return Installed{}, false, errors.New("Creator app envelope identity changed while preparing update")
 	}
-	if err := checkRollback(actualRoot, verifyManifest, trustBytes, expectedTrustSHA256); err != nil {
+	if err := checkPendingRollback(actualRoot, verifyManifest, trustBytes, expectedTrustSHA256); err != nil {
 		return Installed{}, false, err
 	}
 	if _, err := installedFrom(actualRoot, verifyManifest); err != nil {
@@ -165,8 +206,10 @@ func AcquirePending(client *http.Client, root, envelopeURL string, trustBytes []
 	return installed, true, nil
 }
 
-// PromotePending atomically preserves the previous verified envelope before
-// replacing current with the health-checked pending candidate.
+// PromotePending preserves a verified previous executable before replacing
+// current with the health-checked pending candidate. If the current executable
+// is damaged but its signed envelope is still valid, the existing previous LKG
+// is retained while the newer candidate repairs current.
 func PromotePending(root, expectedSourceCommit string, trustBytes []byte, expectedTrustSHA256 string) (Installed, error) {
 	actualRoot, err := appRoot(root)
 	if err != nil {
@@ -179,21 +222,30 @@ func PromotePending(root, expectedSourceCommit string, trustBytes []byte, expect
 	if pending.SourceCommit != expectedSourceCommit {
 		return Installed{}, errors.New("pending Creator app does not match the health-checked source commit")
 	}
-	if err := checkRollback(actualRoot, pending.Manifest, trustBytes, expectedTrustSHA256); err != nil {
+	if err := checkPendingRollback(actualRoot, pending.Manifest, trustBytes, expectedTrustSHA256); err != nil {
 		return Installed{}, err
 	}
 
-	current, currentBytes, currentErr := readInstalledEnvelope(actualRoot, currentEnvelopeName, trustBytes, expectedTrustSHA256)
-	if currentErr == nil {
-		if current.SourceCommit == pending.SourceCommit {
-			_ = os.Remove(filepath.Join(actualRoot, pendingEnvelopeName))
-			return current, nil
+	currentManifest, currentBytes, currentEnvelopeErr := readVerifiedEnvelope(actualRoot, currentEnvelopeName, trustBytes, expectedTrustSHA256)
+	if currentEnvelopeErr == nil {
+		if currentManifest.SourceCommit == pending.SourceCommit {
+			if current, err := installedFrom(actualRoot, currentManifest); err == nil {
+				_ = os.Remove(filepath.Join(actualRoot, pendingEnvelopeName))
+				return current, nil
+			}
+			return Installed{}, errors.New("current Creator app matches pending identity but its version slot is damaged; refusing in-place repair")
 		}
-		if err := writeEnvelopeAtomic(filepath.Join(actualRoot, previousEnvelopeName), currentBytes); err != nil {
-			return Installed{}, fmt.Errorf("preserve previous signed Creator app: %w", err)
+		if current, err := installedFrom(actualRoot, currentManifest); err == nil {
+			if err := writeEnvelopeAtomic(filepath.Join(actualRoot, previousEnvelopeName), currentBytes); err != nil {
+				return Installed{}, fmt.Errorf("preserve previous signed Creator app: %w", err)
+			}
+		} else {
+			if _, previousErr := Previous(actualRoot, trustBytes, expectedTrustSHA256); previousErr != nil {
+				return Installed{}, fmt.Errorf("current Creator app bytes are invalid and no verified previous executable is available: %w", previousErr)
+			}
 		}
-	} else if !errors.Is(currentErr, os.ErrNotExist) {
-		return Installed{}, fmt.Errorf("current Creator app is invalid; refusing pending promotion: %w", currentErr)
+	} else if !errors.Is(currentEnvelopeErr, os.ErrNotExist) {
+		return Installed{}, fmt.Errorf("signed current Creator app identity is invalid; refusing pending promotion: %w", currentEnvelopeErr)
 	}
 
 	if err := writeEnvelopeAtomic(filepath.Join(actualRoot, currentEnvelopeName), pendingBytes); err != nil {
