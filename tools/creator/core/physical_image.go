@@ -29,15 +29,15 @@ type PreparedPhysicalImage struct {
 }
 
 type parsedGPTHeader struct {
-	HeaderSize       uint32
-	CurrentLBA       uint64
-	BackupLBA        uint64
-	FirstUsableLBA   uint64
-	LastUsableLBA    uint64
+	HeaderSize        uint32
+	CurrentLBA        uint64
+	BackupLBA         uint64
+	FirstUsableLBA    uint64
+	LastUsableLBA     uint64
 	PartitionEntryLBA uint64
-	EntryCount       uint32
-	EntrySize        uint32
-	EntryCRC32       uint32
+	EntryCount        uint32
+	EntrySize         uint32
+	EntryCRC32        uint32
 }
 
 func parseGPTHeader(block []byte) (parsedGPTHeader, error) {
@@ -55,15 +55,15 @@ func parseGPTHeader(block []byte) (parsedGPTHeader, error) {
 		return parsedGPTHeader{}, fmt.Errorf("GPT header CRC mismatch: expected=%08x actual=%08x", storedCRC, actual)
 	}
 	header := parsedGPTHeader{
-		HeaderSize:       headerSize,
-		CurrentLBA:       binary.LittleEndian.Uint64(block[24:32]),
-		BackupLBA:        binary.LittleEndian.Uint64(block[32:40]),
-		FirstUsableLBA:   binary.LittleEndian.Uint64(block[40:48]),
-		LastUsableLBA:    binary.LittleEndian.Uint64(block[48:56]),
+		HeaderSize:        headerSize,
+		CurrentLBA:        binary.LittleEndian.Uint64(block[24:32]),
+		BackupLBA:         binary.LittleEndian.Uint64(block[32:40]),
+		FirstUsableLBA:    binary.LittleEndian.Uint64(block[40:48]),
+		LastUsableLBA:     binary.LittleEndian.Uint64(block[48:56]),
 		PartitionEntryLBA: binary.LittleEndian.Uint64(block[72:80]),
-		EntryCount:       binary.LittleEndian.Uint32(block[80:84]),
-		EntrySize:        binary.LittleEndian.Uint32(block[84:88]),
-		EntryCRC32:       binary.LittleEndian.Uint32(block[88:92]),
+		EntryCount:        binary.LittleEndian.Uint32(block[80:84]),
+		EntrySize:         binary.LittleEndian.Uint32(block[84:88]),
+		EntryCRC32:        binary.LittleEndian.Uint32(block[88:92]),
 	}
 	if header.EntryCount == 0 || header.EntryCount > 1024 {
 		return parsedGPTHeader{}, fmt.Errorf("unsupported GPT entry count: %d", header.EntryCount)
@@ -228,6 +228,14 @@ func hashOpenFile(file *os.File, size int64) (string, error) {
 // The ext4 filesystem itself is intentionally not grown here; that is a later
 // filesystem concern and keeps this operation limited to disk geometry.
 func PreparePhysicalImage(seedPath, outputPath string, targetBytes uint64) (PreparedPhysicalImage, error) {
+	return preparePhysicalImage(seedPath, outputPath, targetBytes, true)
+}
+
+// preparePhysicalImage is also used as the first phase of storage-v2
+// preparation. Storage-v2 immediately rewrites GPT entries and therefore must
+// hash only its final bytes; hashing this intermediate image first is pure
+// target-capacity-sized overhead.
+func preparePhysicalImage(seedPath, outputPath string, targetBytes uint64, computeDigest bool) (PreparedPhysicalImage, error) {
 	if strings.TrimSpace(seedPath) == "" || strings.TrimSpace(outputPath) == "" {
 		return PreparedPhysicalImage{}, errors.New("seed and output paths are required")
 	}
@@ -406,9 +414,12 @@ func PreparePhysicalImage(seedPath, outputPath string, targetBytes uint64) (Prep
 		return PreparedPhysicalImage{}, fmt.Errorf("flush prepared physical image: %w", err)
 	}
 
-	digest, err := hashOpenFile(temp, int64(targetBytes))
-	if err != nil {
-		return PreparedPhysicalImage{}, fmt.Errorf("hash prepared physical image: %w", err)
+	digest := ""
+	if computeDigest {
+		digest, err = hashOpenFile(temp, int64(targetBytes))
+		if err != nil {
+			return PreparedPhysicalImage{}, fmt.Errorf("hash prepared physical image: %w", err)
+		}
 	}
 	if err := temp.Close(); err != nil {
 		return PreparedPhysicalImage{}, fmt.Errorf("close prepared physical image: %w", err)
