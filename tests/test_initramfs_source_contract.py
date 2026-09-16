@@ -49,11 +49,18 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn("mount -t ext4 -o rw \"$ORDAX_DEVICE\" /ordax", INIT)
         self.assertIn('/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax', INIT)
         self.assertIn("/ordax/bootstrap/entrypoint", INIT)
-        recovery_pos = INIT.index('if [ "$RECOVERY_MODE" -eq 1 ]')
+        recovery_pos = INIT.index('case "$RECOVERY_MODE" in')
         grow_pos = INIT.index('/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax')
         self.assertLess(recovery_pos, grow_pos)
         for forbidden in ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden.lower(), INIT.lower())
+
+    def test_pid1_does_not_depend_on_unbuilt_test_applet(self):
+        self.assertNotIn("if [", INIT)
+        self.assertNotIn("[ -", INIT)
+        self.assertIn('case "$ORDAX_DEVICE" in', INIT)
+        self.assertIn("command -v /ordax/bootstrap/entrypoint", INIT)
+        self.assertIn("command -v /ordax/bootstrap/recovery/entrypoint", INIT)
 
     def test_builder_uses_minimal_busybox_and_explicit_musl_target_compiler(self):
         self.assertIn('"CONFIG_BUSYBOX": "y"', BUILDER)
