@@ -199,7 +199,7 @@ func runPrepare(args []string) error {
 }
 
 func runApply(args []string) error {
-	_ = requireReady()
+	b := requireReady()
 	fs := flag.NewFlagSet("apply", flag.ContinueOnError)
 	confirm := fs.String("confirm", "", "confirmation token from the selected target")
 	imagePath := fs.String("image", "", "prepared target-sized RAW image")
@@ -216,13 +216,21 @@ func runApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	verified, err := windowsadapter.VerifyRawImage(*imagePath, *imageSHA, *imageSize)
-	if err != nil {
-		return fmt.Errorf("verify prepared image: %w", err)
+	// Do not hash the target-sized sparse prepared image here and then again in
+	// the writer. The physical writer opens it write-locked, verifies its SHA-256
+	// once on that exact handle and keeps the handle stable through raw I/O.
+	image := windowsadapter.VerifiedRawImage{
+		Path:      *imagePath,
+		SHA256:    *imageSHA,
+		SizeBytes: *imageSize,
 	}
 	request := windowsadapter.RawDiskApplyRequest{
-		Target: target, ConfirmationToken: *confirm, Image: verified,
-		CanonicalTrustResolved: true, DestructiveAuthorization: *authorize,
+		Target:                   target,
+		ConfirmationToken:        *confirm,
+		Image:                    image,
+		BootstrapSeedBytes:       b.SeedImageSize,
+		CanonicalTrustResolved:   true,
+		DestructiveAuthorization: *authorize,
 	}
 	result, err := windowsadapter.ApplyPhysicalTest(request)
 	if err != nil {
