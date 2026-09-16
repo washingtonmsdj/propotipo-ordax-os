@@ -1,0 +1,310 @@
+name: Creator Owner Development Git USB
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'boot/esp/**'
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'bootstrap/dev/**'
+      - 'bootstrap/dev-base/**'
+      - 'bootstrap/recovery/**'
+      - 'tools/creator/**'
+      - 'tools/release-signing/**'
+      - 'docs/contracts/minimal-bootstrap.json'
+      - 'docs/contracts/physical-media.json'
+      - '.github/workflows/creator-owner-dev-git.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: creator-owner-dev-git-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Test Creator core
+        run: |
+          set -euo pipefail
+          (cd tools/creator && go test -count=1 ./...)
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            meson ninja-build gperf libcap-dev libmount-dev libblkid-dev \
+            liblz4-dev libzstd-dev liblzma-dev libpcre2-dev \
+            gdisk dosfstools e2fsprogs mtools util-linux
+          python -m pip install --disable-pip-version-check --no-cache-dir jinja2 pyelftools
+
+      - name: Build boot kernel initramfs and Git development base
+        run: |
+          set -euo pipefail
+          python boot/esp/build.py check
+          python boot/esp/build.py build
+          python boot/esp/build.py verify
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+          sudo -E python bootstrap/dev-base/build.py \
+            --kernel-modules out/kernel/kernel-modules-6.6.52.tar \
+            --out-dir out/dev-base
+          sudo chroot out/dev-base/rootfs /usr/bin/git --version
+          test -x out/dev-base/rootfs/sbin/ordax-dev-init
+          test -x out/dev-base/rootfs/usr/local/bin/ordax-pull
+
+      - name: Create ephemeral prototype trust for Creator provenance
+        run: |
+          set -euo pipefail
+          mkdir -p out/owner-prototype bootstrap/trust
+          (
+            cd tools/release-signing
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/owner-prototype/ordax-release-signing .
+          )
+          signer="$PWD/out/owner-prototype/ordax-release-signing"
+          private="$RUNNER_TEMP/owner-prototype-private.pem"
+          "$signer" generate-key \
+            --private-key "$private" \
+            --trust bootstrap/trust/release-ed25519.json \
+            --key-id owner-dev-${GITHUB_SHA::12}
+          echo "$private" > "$RUNNER_TEMP/owner-prototype-private-path"
+
+      - name: Derive development Git bootstrap manifest
+        run: |
+          set -euo pipefail
+          python - "$RUNNER_TEMP/minimal-bootstrap-owner-dev.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          def digest(path):
+              return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+          output = pathlib.Path(sys.argv[1])
+          manifest = json.loads(pathlib.Path('docs/contracts/minimal-bootstrap.json').read_text(encoding='utf-8'))
+          keep = {'uefi-boot', 'kernel', 'initramfs', 'bootstrap-orchestrator', 'bootstrap-recovery'}
+          manifest['artifact_groups'] = [group for group in manifest['artifact_groups'] if group['id'] in keep]
+          groups = {group['id']: group for group in manifest['artifact_groups']}
+          groups['kernel']['artifacts'][0]['sha256'] = digest('out/kernel/vmlinuz-6.6.52')
+          groups['initramfs']['artifacts'][0]['sha256'] = digest('out/initramfs/initramfs.cpio.gz')
+          orchestrator = groups['bootstrap-orchestrator']
+          orchestrator['source_owner'] = 'bootstrap/dev'
+          orchestrator['artifacts'] = [{
+              'source_path': 'bootstrap/dev/entrypoint',
+              'target_path': '/ordax/bootstrap/entrypoint',
+              'sha256': digest('bootstrap/dev/entrypoint'),
+              'mode': '0755',
+              'logical_owner': 'bootstrap-dev-orchestrator',
+              'reason': 'Development-only handoff into the preseeded network and Git base'
+          }]
+          manifest['status'] = 'owner-dev-git-bootstrap'
+          manifest['policy'] = 'minimum-release-acquisition-first'
+          manifest['all_artifacts_resolved'] = True
+          manifest['physical_write_allowed'] = False
+          manifest['required_capabilities_before_first_release'] = [
+              'uefi-boot', 'kernel', 'initramfs', 'development-network', 'git-client'
+          ]
+          manifest['optional_after_first_release'] = []
+          manifest['boot_policy'] = {
+              'development_mode': True,
+              'network_before_git': True,
+              'git_repository': 'https://github.com/washingtonmsdj/prototipo-ordax-os.git',
+              'branch': 'main',
+              'source_checkout_path': '/workspace/ordax',
+              'ordinary_change_requires_usb_reflash': False
+          }
+          manifest['runtime_roots_created_empty'] = []
+          manifest['current_pointer_initial_state'] = 'unset'
+          output.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Assemble boot payload and overlay Git development base
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/minimal-bootstrap-owner-dev.json"
+          payload="$RUNNER_TEMP/owner-prototype-payload"
+          stage="$RUNNER_TEMP/owner-prototype-stage"
+          python tools/creator/assemble.py build --manifest "$manifest" --out-dir "$payload"
+          python tools/creator/assemble.py verify --manifest "$manifest" --payload-root "$payload"
+          pushd tools/creator >/dev/null
+          go run ./cmd/ordax-creator verify-payload --manifest "$manifest" --payload-root "$payload"
+          go run ./cmd/ordax-creator stage-tree --manifest "$manifest" --payload-root "$payload" --output-root "$stage"
+          popd >/dev/null
+          sudo mkdir -p "$stage/ORDAX/dev-base"
+          sudo cp -a out/dev-base/rootfs/. "$stage/ORDAX/dev-base/"
+          if sudo find "$stage" -type l -print -quit | grep -q .; then
+            echo 'development seed may not contain symlinks' >&2
+            exit 1
+          fi
+          echo "$stage" > "$RUNNER_TEMP/owner-prototype-stage-path"
+
+      - name: Materialize and verify RAW development seed
+        run: |
+          set -euo pipefail
+          stage="$(cat "$RUNNER_TEMP/owner-prototype-stage-path")"
+          proof="$RUNNER_TEMP/owner-prototype-media"
+          sudo python tools/creator/proof/disposable_media.py \
+            --contract docs/contracts/physical-media.json \
+            --stage-root "$stage" \
+            --output-root "$proof"
+          sudo chown -R "$(id -u):$(id -g)" "$proof"
+          python - "$proof/proof.json" <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert proof['status'] == 'pass'
+          assert proof['physical_write_authorized'] is False
+          assert all(proof['checks'].values())
+          PY
+          echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/owner-prototype-seed-path"
+
+      - name: Build one-file Windows Creator
+        run: |
+          set -euo pipefail
+          seed="$(cat "$RUNNER_TEMP/owner-prototype-seed-path")"
+          manifest="$RUNNER_TEMP/minimal-bootstrap-owner-dev.json"
+          payload='tools/creator/cmd/ordax-creator-app/owner_payload'
+          release="$GITHUB_WORKSPACE/out/owner-prototype/release"
+          mkdir -p "$payload" "$release"
+          trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
+          manifest_sha="$(sha256sum "$manifest" | cut -d' ' -f1)"
+          seed_sha="$(sha256sum "$seed" | cut -d' ' -f1)"
+          seed_size="$(stat -c '%s' "$seed")"
+          gzip -9 -n -c "$seed" > "$payload/ordax-bootstrap-seed.raw.gz"
+          python - "$payload/provenance.json" "$trust_sha" "$manifest_sha" "$seed_sha" "$seed_size" <<'PY'
+          import json, os, pathlib, sys
+          data = {
+              '$schema': 'prototype-ordax.creator-owner-physical/1',
+              'status': 'owner-prototype-write-enabled',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'canonical_public_release': False,
+              'ephemeral_prototype_trust': True,
+              'private_key_in_package': False,
+              'raw_backend_linked': True,
+              'physical_write_authorized_in_binary': True,
+              'system_disk_exclusion_required': True,
+              'live_target_revalidation_required': True,
+              'windows_uac_required': True,
+              'readback_verification_required': True,
+              'trust_sha256': sys.argv[2],
+              'prototype_manifest_sha256': sys.argv[3],
+              'seed_sha256': sys.argv[4],
+              'seed_size': int(sys.argv[5])
+          }
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+          pushd tools/creator >/dev/null
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false \
+              -tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend' \
+              -ldflags='-s -w -H=windowsgui' \
+              -o "$release/OrdaX-Creator.exe" \
+              ./cmd/ordax-creator-app
+          popd >/dev/null
+          test -s "$release/OrdaX-Creator.exe"
+          sha256sum "$release/OrdaX-Creator.exe" > "$release/SHA256SUMS.txt"
+          exe_sha="$(cut -d' ' -f1 "$release/SHA256SUMS.txt")"
+          exe_size="$(stat -c '%s' "$release/OrdaX-Creator.exe")"
+          version="owner-${GITHUB_SHA:0:12}"
+          cat > "$release/LEIA-ME.txt" <<'TXT'
+          OrdaX Creator - Development Git USB
+
+          Grave esta base uma vez. Ela contem boot, kernel, drivers, rede e Git.
+          No notebook, o OrdaX fica em /workspace/ordax e vem da main por git clone/pull.
+
+          Fluxo normal:
+          ordax-pull     atualiza da main
+          ordax-run      executa o checkout atual
+          ordax-rollback volta ao commit anterior registrado
+
+          Mudancas normais do OrdaX nao exigem regravar o USB nem recompilar o kernel.
+          TXT
+          python - "$release/creator-owner-update.json" "$GITHUB_SHA" "$version" "$exe_sha" "$exe_size" <<'PY'
+          import json, pathlib, sys
+          output, source, version, digest, size = sys.argv[1:]
+          data = {
+              '$schema': 'prototype-ordax.creator-owner-update/2',
+              'channel': 'owner-prototype',
+              'version': version,
+              'source_commit': source,
+              'download_url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator.exe',
+              'sha256': digest,
+              'size': int(size)
+          }
+          pathlib.Path(output).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          PY
+          rm -rf "$payload"
+          echo "OWNER_STANDALONE_SOURCE=$GITHUB_SHA"
+          echo "OWNER_STANDALONE_EXE_SHA256=$exe_sha"
+          echo "OWNER_STANDALONE_SEED_SHA256=$seed_sha"
+
+      - name: Destroy ephemeral private key before publish
+        run: |
+          set -euo pipefail
+          private="$(cat "$RUNNER_TEMP/owner-prototype-private-path")"
+          rm -f "$private"
+          test ! -e "$private"
+          rm -f out/owner-prototype/ordax-release-signing
+
+      - name: Publish development Creator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='washingtonmsdj/prototipo-ordax-os'
+          release="$GITHUB_WORKSPACE/out/owner-prototype/release"
+          if ! gh release view creator-owner-prototype --repo "$repo" >/dev/null 2>&1; then
+            gh release create creator-owner-prototype --repo "$repo" --target "$GITHUB_SHA" \
+              --title 'OrdaX Creator - Development Git USB' --prerelease \
+              --notes 'Development-only Git USB.'
+          fi
+          gh release upload creator-owner-prototype \
+            "$release/OrdaX-Creator.exe" "$release/SHA256SUMS.txt" \
+            "$release/LEIA-ME.txt" "$release/creator-owner-update.json" \
+            --repo "$repo" --clobber
+          gh release delete-asset creator-owner-prototype 'OrdaX-Creator-Owner-Prototype.zip' \
+            --repo "$repo" --yes || true
+          gh release edit creator-owner-prototype --repo "$repo" --target "$GITHUB_SHA" \
+            --title 'OrdaX Creator - Development Git USB' \
+            --notes 'One-time development base flash. Ordinary changes: remote main -> ordax-pull -> ordax-run.'
+          echo 'OWNER_RELEASE_PIPELINE=UNIFIED'
+          echo 'OWNER_STANDALONE_EXE_PUBLISHED=YES'
+
+      - name: Cleanup ephemeral private material
+        if: ${{ always() }}
+        run: |
+          set +e
+          if [ -f "$RUNNER_TEMP/owner-prototype-private-path" ]; then
+            private="$(cat "$RUNNER_TEMP/owner-prototype-private-path")"
+            rm -f "$private"
+          fi
+          rm -rf tools/creator/cmd/ordax-creator-app/owner_payload
+          rm -f out/owner-prototype/ordax-release-signing
