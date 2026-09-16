@@ -118,11 +118,26 @@ jobs:
           import hashlib, json, pathlib, sys
           source = pathlib.Path('docs/contracts/minimal-bootstrap.json')
           trust = pathlib.Path('bootstrap/trust/release-ed25519.json')
+          initramfs = pathlib.Path('out/initramfs/initramfs.cpio.gz')
           output = pathlib.Path(sys.argv[1])
           manifest = json.loads(source.read_text(encoding='utf-8'))
+          if not initramfs.is_file() or initramfs.is_symlink():
+              raise SystemExit('rebuilt owner-prototype initramfs is missing or unsafe')
           payload = trust.read_bytes()
           digest = hashlib.sha256(payload).hexdigest()
+          initramfs_digest = hashlib.sha256(initramfs.read_bytes()).hexdigest()
           groups = {group['id']: group for group in manifest['artifact_groups']}
+          initramfs_group = groups.get('initramfs')
+          if not initramfs_group:
+              raise SystemExit('initramfs artifact group is missing from minimal bootstrap manifest')
+          initramfs_artifacts = [
+              artifact for artifact in initramfs_group.get('artifacts', [])
+              if artifact.get('source_path') == 'bootstrap/initramfs/initramfs.cpio.gz'
+          ]
+          if len(initramfs_artifacts) != 1:
+              raise SystemExit('expected exactly one canonical initramfs artifact to rebind')
+          previous_initramfs_digest = initramfs_artifacts[0]['sha256']
+          initramfs_artifacts[0]['sha256'] = initramfs_digest
           group = groups['bootstrap-release-trust']
           group['resolved'] = True
           group['artifacts'] = [{
@@ -138,6 +153,8 @@ jobs:
           manifest['physical_write_allowed'] = False
           output.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
           print('OWNER_PROTOTYPE_TRUST_SHA256=' + digest)
+          print('OWNER_PROTOTYPE_INITRAMFS_CANONICAL_SHA256=' + previous_initramfs_digest)
+          print('OWNER_PROTOTYPE_INITRAMFS_REBUILT_SHA256=' + initramfs_digest)
           PY
 
       - name: Assemble and stage the complete bootstrap payload
