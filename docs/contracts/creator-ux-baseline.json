@@ -42,6 +42,11 @@
     "owner_distribution_requires_no_zip_extraction": true,
     "owner_elevated_backend_is_same_creator_build": true,
     "physical_write_has_single_uac_elevation_boundary": true,
-    "owner_update_artifact_is_standalone_executable": true
+    "owner_update_artifact_is_standalone_executable": true,
+    "owner_update_applies_inside_creator": true,
+    "owner_update_validates_sha256_and_size": true,
+    "owner_update_blocks_downgrade": true,
+    "owner_update_restarts_automatically": true,
+    "owner_update_has_automatic_rollback": true
   }
 }
