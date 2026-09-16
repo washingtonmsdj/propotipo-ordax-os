@@ -58,7 +58,12 @@ $expectedDiskBytes = [UInt64]%d
 $expectedOffset = [UInt64]%d
 $expectedDataBytes = [UInt64]%d
 
-Update-HostStorageCache -ErrorAction SilentlyContinue
+function Refresh-OrdaXStorage {
+    Update-HostStorageCache -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 350
+}
+
+Refresh-OrdaXStorage
 $disk = Get-Disk -Number $diskNumber -ErrorAction Stop
 if ([UInt64]$disk.Size -ne $expectedDiskBytes) {
     throw "target disk size changed before ORDAX-DATA format"
@@ -70,7 +75,22 @@ if ([bool]$disk.IsSystem -or [bool]$disk.IsBoot) {
     throw "refusing to format ORDAX-DATA on a Windows system/boot disk"
 }
 
-$partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+$partition = $null
+$partitionDeadline = (Get-Date).AddSeconds(20)
+do {
+    try {
+        $partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+    } catch {
+        $partition = $null
+    }
+    if ($null -eq $partition) {
+        Refresh-OrdaXStorage
+    }
+} while ($null -eq $partition -and (Get-Date) -lt $partitionDeadline)
+if ($null -eq $partition) {
+    throw "Windows did not expose the new ORDAX-DATA partition within 20 seconds"
+}
+
 if ([UInt64]$partition.Offset -ne $expectedOffset) {
     throw "ORDAX-DATA partition offset does not match the authorized layout"
 }
@@ -82,19 +102,34 @@ if (([string]$partition.GptType).ToUpperInvariant() -ne $expectedType) {
     throw "ORDAX-DATA partition is not Microsoft Basic Data"
 }
 
-$volume = $partition | Get-Volume -ErrorAction SilentlyContinue
+$volume = $null
+$volumeDeadline = (Get-Date).AddSeconds(20)
+do {
+    try {
+        $volume = $partition | Get-Volume -ErrorAction Stop
+    } catch {
+        $volume = $null
+    }
+    if ($null -eq $volume) {
+        Refresh-OrdaXStorage
+        try {
+            $partition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
+        } catch {
+            $partition = $null
+        }
+    }
+} while ($null -eq $volume -and (Get-Date) -lt $volumeDeadline)
 if ($null -eq $volume) {
-    throw "Windows did not expose ORDAX-DATA as a format-capable volume"
+    throw "Windows did not expose ORDAX-DATA as a format-capable volume within 20 seconds"
 }
+
 $volume | Format-Volume -FileSystem exFAT -NewFileSystemLabel 'ORDAX-DATA' -Confirm:$false -Force | Out-Null
-Start-Sleep -Milliseconds 250
-Update-HostStorageCache -ErrorAction SilentlyContinue
+Refresh-OrdaXStorage
 
 $checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
 if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
     $checkPartition | Add-PartitionAccessPath -AssignDriveLetter -ErrorAction Stop
-    Start-Sleep -Milliseconds 250
-    Update-HostStorageCache -ErrorAction SilentlyContinue
+    Refresh-OrdaXStorage
     $checkPartition = Get-Partition -DiskNumber $diskNumber -PartitionNumber 3 -ErrorAction Stop
 }
 if ([string]::IsNullOrWhiteSpace([string]$checkPartition.DriveLetter)) {
