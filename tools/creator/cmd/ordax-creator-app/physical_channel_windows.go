@@ -30,12 +30,19 @@ func physicalTrustBinding() ([]byte, string, bool) {
 	return trust, digest, true
 }
 
-// resolvePhysicalBackend returns only a backend that came from the dedicated
-// purpose-bound, Ed25519-signed physical channel. Online acquisition persists
-// an offline pointer only after a second signed-envelope verification. Network
-// failure can use that cached envelope, which is reverified and whose five
-// critical files are rehashed before the backend is returned.
+// resolvePhysicalBackend has two deliberately separate paths:
+//  1. owner-prototype builds compiled with ordax_owner_prototype may use only
+//     the raw backend and seed shipped beside that exact executable;
+//  2. normal builds accept only the dedicated purpose-bound Ed25519-signed
+//     physical channel.
+//
+// The special owner path is compile-time isolated. The ordinary creator-dev
+// build does not contain it and therefore remains non-destructive.
 func resolvePhysicalBackend() (string, bool) {
+	if directory, ok := ownerPrototypePhysicalBackend(); ok {
+		return directory, true
+	}
+
 	trust, trustSHA, ok := physicalTrustBinding()
 	if !ok {
 		return "", false
