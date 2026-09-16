@@ -120,7 +120,7 @@ func completeWrite(err error) {
 		writeState.Success = true
 		writeState.Error = ""
 		writeState.Status = "Pendrive OrdaX criado e verificado."
-		writeState.Hint = "A gravação e a verificação por leitura foram concluídas. Remova o USB com segurança e teste o boot no notebook."
+		writeState.Hint = "Gravação, verificação por leitura e ORDAX-DATA foram concluídos. O espaço de arquivos está pronto no Windows; remova o USB com segurança e teste o boot no notebook."
 	}
 	writeMu.Unlock()
 	procPostMessageW.Call(mainWindow, wmAppWriteDone, 0, 0)
@@ -149,7 +149,7 @@ func renderWriteDone() {
 	if state.Success {
 		setProgressComplete()
 		messageBox(
-			"O pendrive OrdaX foi criado e passou pela verificação de leitura.\n\nAgora ele está pronto para o teste de boot no notebook.",
+			"O pendrive OrdaX foi criado, passou pela verificação de leitura e o espaço ORDAX-DATA foi preparado em exFAT.\n\nO volume de arquivos deve aparecer normalmente no Windows. Agora o USB está pronto para o teste de boot no notebook.",
 			"OrdaX Creator",
 			mbOK|mbIconInformation,
 		)
@@ -255,7 +255,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 	defer os.RemoveAll(workDir)
 	preparedPath := filepath.Join(workDir, "ordax-prepared.raw")
 
-	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem do OrdaX e ajustando o layout GPT ao tamanho do pendrive.")
+	updateWriteProgress("Preparando imagem para o USB…", "O Creator está conferindo a imagem do OrdaX e ajustando o layout GPT ao tamanho do pendrive, preservando o restante para ORDAX-DATA.")
 	output, err := runBackendHidden(
 		directory,
 		"prepare",
@@ -274,7 +274,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		return err
 	}
 
-	updateWriteProgress("Aguardando autorização do Windows…", "Confirme a janela de Controle de Conta de Usuário. Depois disso o status mudará automaticamente para gravação.")
+	updateWriteProgress("Aguardando autorização do Windows…", "Confirme a janela de Controle de Conta de Usuário. Depois disso o Creator gravará, verificará e preparará automaticamente o espaço ORDAX-DATA.")
 	args := []string{
 		"apply",
 		"--confirm", target.ConfirmationToken,
@@ -287,7 +287,7 @@ func executePhysicalWrite(directory string, target physicalTarget) error {
 		return err
 	}
 
-	updateWriteProgress("Concluindo…", "A gravação e a verificação por leitura foram confirmadas. Finalizando o Creator.")
+	updateWriteProgress("Concluindo…", "Gravação, verificação por leitura e ORDAX-DATA foram confirmados. Finalizando o Creator.")
 	return nil
 }
 
@@ -340,8 +340,8 @@ func runElevatedAndWait(executable, directory string, args []string) error {
 	// At this point UAC was accepted, so keeping the UI at “waiting for
 	// authorization” is wrong and makes a healthy raw write look frozen.
 	updateWriteProgress(
-		"Gravando e verificando o pendrive…",
-		"Autorização do Windows confirmada. Não remova o USB; o Creator está gravando e fará a leitura de verificação antes de concluir.",
+		"Gravando, verificando e preparando arquivos…",
+		"Autorização do Windows confirmada. Não remova o USB; o Creator está gravando, fará a leitura de verificação e preparará o volume ORDAX-DATA antes de concluir.",
 	)
 
 	wait, _, waitErr := procWaitForSingleObject.Call(info.Process, infinite)
