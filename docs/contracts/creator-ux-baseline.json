@@ -1,0 +1,40 @@
+{
+  "$schema": "prototype-ordax.creator-ux-baseline/1",
+  "status": "minimum-rufus-class-baseline",
+  "primary_flow": [
+    "detect_usb",
+    "select_usb",
+    "create_ordax",
+    "confirm_destructive_action",
+    "windows_uac",
+    "write",
+    "readback_verify",
+    "complete"
+  ],
+  "user_selectable_inputs": [
+    "usb_target"
+  ],
+  "forbidden_required_inputs": [
+    "iso_path",
+    "image_path",
+    "partition_scheme",
+    "filesystem",
+    "bootloader",
+    "release_channel",
+    "terminal_command",
+    "publisher_key"
+  ],
+  "requirements": {
+    "automatic_update_check_on_launch": true,
+    "visible_update_control": true,
+    "separate_usb_refresh_control": true,
+    "post_uac_status_transition": true,
+    "visible_progress_indicator": true,
+    "single_usb_auto_selection": true,
+    "multiple_usb_explicit_selection": true,
+    "system_disk_exclusion": true,
+    "destructive_confirmation": true,
+    "readback_verification": true,
+    "owner_write_package_independent_from_creator_dev": true
+  }
+}
