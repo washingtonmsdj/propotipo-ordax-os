@@ -102,7 +102,7 @@ export function mountSystemMetricsControls(root, systemMetrics = null) {
         documentObject,
         "p",
         "ordax-app-panel-body",
-        "Somente métricas agregadas e somente leitura atravessam este contrato; detalhes de /proc, hardware e caminhos internos não são expostos à Surface.",
+        "Somente métricas agregadas e somente leitura atravessam este contrato; detalhes internos do host e do hardware não são expostos à Surface.",
       ),
     );
     body.append(section);
