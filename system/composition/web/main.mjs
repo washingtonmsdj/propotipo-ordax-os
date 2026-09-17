@@ -2,6 +2,7 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
+import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 
@@ -12,6 +13,7 @@ if (!root) {
 
 const host = createWebSurfaceHost(window);
 const preferenceStore = createWebPreferenceStore(window);
+const workspaceStore = createWebWorkspaceStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
 validateAccountRuntime(
@@ -25,6 +27,7 @@ const surface = mountSurface(
   preferenceStore,
   identitySession,
   identityActions,
+  workspaceStore,
 );
 
 window.addEventListener(
