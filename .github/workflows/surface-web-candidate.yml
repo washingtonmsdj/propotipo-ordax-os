@@ -6,16 +6,13 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
-      - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
       - 'system/contracts/update-status.mjs'
-      - 'system/contracts/app-activation.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
-      - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/adapters/web/**'
@@ -27,8 +24,6 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
-      - 'tests/test_app_activation.mjs'
-      - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -40,16 +35,13 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
-      - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
       - 'system/contracts/update-status.mjs'
-      - 'system/contracts/app-activation.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
-      - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/adapters/web/**'
@@ -61,8 +53,6 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
-      - 'tests/test_app_activation.mjs'
-      - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -101,7 +91,6 @@ jobs:
           find \
             system/contracts \
             system/services/account \
-            system/services/apps \
             system/services/preferences \
             system/services/sync \
             system/apps \
@@ -115,8 +104,6 @@ jobs:
             | xargs -0 -n1 node --check
           node --test tests/test_surface_preferences.mjs
           node --test tests/test_surface_workspace.mjs
-          node --test tests/test_app_activation.mjs
-          node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
