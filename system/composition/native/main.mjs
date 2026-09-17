@@ -2,6 +2,7 @@ import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
+import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
@@ -9,6 +10,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountSystemMetricsControls } from "../../surface/ui/system-metrics-controls.mjs";
 import { mountSystemStatusControls } from "../../surface/ui/system-status-controls.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
@@ -37,13 +39,22 @@ async function start() {
     console.warn("OrdaX native user file-space unavailable", error);
   }
 
+  let systemMetrics = null;
+  try {
+    systemMetrics = await createNativeSystemMetrics(window);
+  } catch (error) {
+    console.warn("OrdaX native system metrics unavailable", error);
+  }
+
   const bootControlAvailable = Boolean(
     powerActions?.getSnapshot().supportedActions.length,
   );
   const userFileSpaceAvailable = fileSpace !== null;
+  const systemMetricsAvailable = systemMetrics !== null;
   const host = createNativeSurfaceHost(window, {
     bootControlAvailable,
     userFileSpaceAvailable,
+    systemMetricsAvailable,
   });
 
   validateAccountRuntime(
@@ -59,6 +70,7 @@ async function start() {
     identityActions,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
+  const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics);
   const systemStatusControls = mountSystemStatusControls(root, updateWatcher);
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
@@ -74,6 +86,7 @@ async function start() {
       powerControls.destroy();
       updateControls.destroy();
       systemStatusControls.destroy();
+      systemMetricsControls.destroy();
       fileSpaceControls.destroy();
       updateWatcher.dispose();
       surface.destroy();
