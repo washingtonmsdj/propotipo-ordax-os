@@ -52,8 +52,8 @@ export function createDesktopShellMarkup() {
 
         <section class="ordax-desktop" aria-labelledby="surface-home-title">
           <div class="ordax-home-panel">
-            <p class="ordax-area-kicker">Área 01</p>
-            <h1 id="surface-home-title" class="ordax-clock" data-ordax-clock>--:--</h1>
+            <p class="ordax-area-kicker" data-area-kicker>Área 01</p>
+            <h1 id="surface-home-title" class="ordax-clock"><time data-ordax-clock>--:--</time></h1>
             <p class="ordax-date" data-ordax-date>Carregando data…</p>
 
             <button type="button" class="ordax-command" data-launcher-toggle aria-expanded="false" aria-controls="ordax-launcher">
@@ -96,13 +96,7 @@ export function createDesktopShellMarkup() {
       </div>
 
       <footer class="ordax-dock ordax-statusbar" aria-label="Estado e áreas da Surface">
-        <div class="ordax-area-switcher" aria-label="Áreas de trabalho">
-          <button type="button" class="ordax-area-button" data-show-desktop data-active="true" aria-current="true">
-            <span class="ordax-area-dot" aria-hidden="true"></span>Área 01
-          </button>
-          <button type="button" class="ordax-area-button" disabled title="Áreas múltiplas entram na próxima etapa">02</button>
-          <button type="button" class="ordax-area-button ordax-area-add" disabled title="Áreas múltiplas entram na próxima etapa">+</button>
-        </div>
+        <div class="ordax-area-switcher" data-area-switcher aria-label="Áreas de trabalho"></div>
         <div class="ordax-running-apps" data-running-apps aria-label="Aplicações abertas"></div>
         <div class="ordax-status-actions" data-update-slot></div>
         <div class="ordax-status" role="status" aria-live="polite">

@@ -7,14 +7,25 @@ import {
 import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
-import { assertWorkspaceStore, validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
+import {
+  MAX_WORKSPACE_AREAS,
+  assertWorkspaceStore,
+  validateWorkspaceRecord,
+} from "../../contracts/workspace-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
-import { createSurfaceState, createWorkspaceSnapshot, reduceSurfaceState } from "./surface-state.mjs";
+import {
+  createSurfaceState,
+  createWorkspaceSnapshot,
+  getActiveArea,
+  reduceSurfaceState,
+} from "./surface-state.mjs";
 
 const MOVABLE_WORKSPACE_MIN_WIDTH = 761;
 const KEYBOARD_MOVE_STEP = 24;
 const WORKSPACE_PERSIST_ACTIONS = new Set([
+  "area.create",
+  "area.switch",
   "app.launch",
   "window.focus",
   "window.move",
@@ -46,6 +57,10 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function areaLabel(area) {
+  return `Área ${String(area.ordinal).padStart(2, "0")}`;
 }
 
 function capabilityState(capabilityIds, capabilityId) {
@@ -173,9 +188,10 @@ function createWindow(
   identityActionMessage,
   index,
 ) {
+  const activeArea = getActiveArea(state);
   const windowNode = element("article", "ordax-window");
   windowNode.dataset.windowId = windowState.id;
-  windowNode.dataset.active = String(state.activeWindowId === windowState.id);
+  windowNode.dataset.active = String(activeArea.activeWindowId === windowState.id);
   windowNode.dataset.maximized = String(windowState.maximized);
   const placementOrdinal = windowState.placementOrdinal ?? index + 1;
   windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 8) * 22}px`);
@@ -277,6 +293,8 @@ export function mountSurface(
   const appLauncher = root.querySelector("[data-app-launcher]");
   const windowLayer = root.querySelector("[data-window-layer]");
   const runningApps = root.querySelector("[data-running-apps]");
+  const areaSwitcher = root.querySelector("[data-area-switcher]");
+  const areaKicker = root.querySelector("[data-area-kicker]");
 
   const findRenderedWindow = (windowId) =>
     Array.from(windowLayer.children).find((node) => node.dataset.windowId === windowId) ?? null;
@@ -330,9 +348,10 @@ export function mountSurface(
   };
 
   const renderWindows = () => {
+    const area = getActiveArea(state);
     windowLayer.replaceChildren();
     let visibleIndex = 0;
-    for (const windowState of state.windows) {
+    for (const windowState of area.windows) {
       if (windowState.minimized) continue;
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
@@ -353,14 +372,15 @@ export function mountSurface(
   };
 
   const renderDock = () => {
+    const area = getActiveArea(state);
     runningApps.replaceChildren();
-    for (const windowState of state.windows) {
+    for (const windowState of area.windows) {
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
       const button = element("button", "ordax-running-app", app.monogram);
       button.type = "button";
       button.dataset.openWindow = windowState.id;
-      button.dataset.active = String(state.activeWindowId === windowState.id && !windowState.minimized);
+      button.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
       button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
       button.title = app.title;
       runningApps.append(button);
@@ -368,13 +388,41 @@ export function mountSurface(
   };
 
   const renderSidebar = () => {
-    const activeWindow = state.windows.find((item) => item.id === state.activeWindowId) ?? null;
+    const area = getActiveArea(state);
+    const activeWindow = area.windows.find((item) => item.id === area.activeWindowId) ?? null;
     for (const button of root.querySelectorAll("[data-sidebar-app]")) {
       const appId = button.dataset.sidebarApp;
       const app = getFirstPartyApp(appId);
       button.disabled = !isAppAvailable(app, state.capabilityIds);
       button.dataset.active = String(activeWindow?.appId === appId);
     }
+  };
+
+  const renderAreas = () => {
+    const activeArea = getActiveArea(state);
+    areaSwitcher.replaceChildren();
+    for (const area of state.areas) {
+      const active = area.id === state.activeAreaId;
+      const button = element("button", "ordax-area-button", areaLabel(area));
+      button.type = "button";
+      button.dataset.areaId = area.id;
+      button.dataset.active = String(active);
+      button.setAttribute("aria-current", active ? "true" : "false");
+      button.setAttribute("aria-label", `Mudar para ${areaLabel(area)}`);
+      if (active) {
+        button.prepend(element("span", "ordax-area-dot"));
+        button.firstElementChild.setAttribute("aria-hidden", "true");
+      }
+      areaSwitcher.append(button);
+    }
+    if (state.areas.length < MAX_WORKSPACE_AREAS) {
+      const add = element("button", "ordax-area-button ordax-area-add", "+");
+      add.type = "button";
+      add.dataset.areaCreate = "";
+      add.setAttribute("aria-label", "Criar nova área de trabalho");
+      areaSwitcher.append(add);
+    }
+    areaKicker.textContent = areaLabel(activeArea);
   };
 
   const render = () => {
@@ -390,6 +438,7 @@ export function mountSurface(
     renderWindows();
     renderDock();
     renderSidebar();
+    renderAreas();
   };
 
   const dispatch = (action) => {
@@ -439,6 +488,20 @@ export function mountSurface(
   };
 
   const onClick = (event) => {
+    const areaButton = event.target.closest("[data-area-id]");
+    if (areaButton) {
+      dispatch({ type: "area.switch", areaId: areaButton.dataset.areaId });
+      workspace.focus({ preventScroll: true });
+      return;
+    }
+
+    const areaCreate = event.target.closest("[data-area-create]");
+    if (areaCreate) {
+      dispatch({ type: "area.create" });
+      workspace.focus({ preventScroll: true });
+      return;
+    }
+
     const launcherButton = event.target.closest("[data-launcher-toggle]");
     if (launcherButton) {
       if (state.launcherOpen) {
@@ -511,7 +574,8 @@ export function mountSurface(
     const titlebar = event.target.closest("[data-window-titlebar]");
     const windowNode = titlebar?.closest("[data-window-id]");
     if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
-    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
+    const area = getActiveArea(state);
+    const windowState = area.windows.find((item) => item.id === windowNode.dataset.windowId);
     if (!windowState || windowState.maximized) return;
 
     const geometry = renderedGeometry(windowNode);
@@ -622,7 +686,8 @@ export function mountSurface(
     const titlebar = event.target.closest("[data-window-titlebar]");
     const windowNode = titlebar?.closest("[data-window-id]");
     if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
-    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
+    const area = getActiveArea(state);
+    const windowState = area.windows.find((item) => item.id === windowNode.dataset.windowId);
     if (!windowState || windowState.maximized) return;
 
     const geometry = renderedGeometry(windowNode);
