@@ -4,20 +4,43 @@ Status: CANONICAL FOR PROTOTYPE
 
 ## Goal
 
-The first physical USB must contain only the minimum trusted substrate required to boot, reach the network, acquire a verified system release and recover if acquisition fails.
+The bootstrap seed contains only the minimum trusted substrate required to boot and reach the selected acquisition mechanism. It is not a preinstalled copy of the complete OrdaX product.
 
-The initial USB is not a preinstalled copy of the complete OrdaX product.
+There are two supported acquisition profiles:
 
-## Physical layout
+- owner/development Git-first: network -> Git -> partial+sparse checkout of `main` -> `system/entrypoint`;
+- canonical signed release: network -> signed release acquisition -> verification -> immutable activation.
+
+The profiles share the same source authority (`main`) and the same principle: ordinary `system/` changes must not require reflashing the USB.
+
+## Physical layout model
+
+### Capacity-independent bootstrap seed
 
 ```text
 ORDAX-ESP
 ORDAX
 ```
 
-Exactly two physical partitions.
+Exactly two seed partitions.
 
-## Initial USB payload
+The seed is capacity-independent and is the object described by `docs/contracts/physical-media.json`.
+
+### Final USB prepared by the Creator
+
+```text
+ORDAX-ESP
+ORDAX
+ORDAX-DATA
+```
+
+Exactly three prepared-target partitions.
+
+`ORDAX-DATA` is created by the Creator after target capacity is known. It is exFAT portable user-data space and is therefore intentionally absent from the signed/capacity-independent seed. Exact geometry and size policy live in `docs/contracts/physical-prepared-media.json`.
+
+This does **not** introduce a separate HOME partition. `/ordax/home` remains a logical path in `ORDAX`.
+
+## Bootstrap seed payload
 
 ### ORDAX-ESP
 
@@ -33,7 +56,24 @@ recovery entry when required
 
 ### ORDAX main partition
 
-Only the mandatory pre-release bootstrap and empty runtime roots:
+Common roots are limited to bootstrap/runtime state. The exact payload depends on the acquisition profile.
+
+Owner/development Git-first base:
+
+```text
+/ordax/dev-base/            # minimal runtime substrate
+  shell/libc/libs
+  selected drivers/modules
+  selected firmware
+  network tools
+  CA certificates
+  Git
+
+/workspace/ordax/           # created at runtime, persistent, not preseeded
+/state/ordax/               # current/previous/pinned Git state after switch_root
+```
+
+Canonical signed-release base:
 
 ```text
 /ordax/bootstrap/
@@ -41,23 +81,23 @@ Only the mandatory pre-release bootstrap and empty runtime roots:
   release-acquisition/
   recovery/
 
-/ordax/releases/        # initially empty
-/ordax/current          # unset until first release is verified
-/ordax/state/           # empty/minimal runtime root
-/ordax/home/            # user-data root
+/ordax/releases/            # initially empty
+/ordax/current              # unset until first release is verified
+/ordax/state/               # empty/minimal runtime root
+/ordax/home/                # user-data root
 ```
 
-## Explicitly absent from the first USB
+## Explicitly absent from the seed
 
 ```text
-Surface/desktop = NO
-normal apps = NO
+normal full Surface/runtime preinstall = NO
+normal apps preinstall = NO
 high-level services = NO
 stable device identity service = NO
 Remote Core = NO
 Control Plane = NO
 SSH = NO
-complete source checkout = NO
+complete repository checkout = NO
 build toolchain = NO
 WSL/QEMU payload = NO
 legacy repository dump = NO
@@ -65,14 +105,45 @@ legacy repository dump = NO
 
 A tiny local status/recovery presentation is allowed only if required to show network, acquisition, verification or failure state.
 
-## First boot
+## Owner/development Git-first boot
+
+```text
+UEFI
+ -> kernel/initramfs
+ -> mount LABEL=ORDAX
+ -> switch_root to development base
+ -> selected drivers/firmware
+ -> network
+ -> Git
+ -> partial+sparse clone of main when checkout is absent
+ -> otherwise git pull --ff-only
+ -> /workspace/ordax/system/entrypoint
+ -> OrdaX
+```
+
+Current checkout policy:
+
+```text
+REMOTE=origin expected repository only
+BRANCH=main expected branch only
+LOCAL_MODIFICATIONS=BLOCK_PULL
+CLONE_FILTER=blob:none
+SPARSE_CHECKOUT=/system/
+PERSISTENT_CHECKOUT=YES
+ROLLBACK_PIN_SURVIVES_REBOOT=YES
+EXPLICIT_ORDAX_PULL_RELEASES_PIN=YES
+```
+
+A valid local checkout may boot when the network is unavailable. A rollback is sticky across reboot and must not be silently advanced by boot-time synchronization.
+
+## Canonical signed-release first boot
 
 ```text
 UEFI
  -> kernel/initramfs
  -> minimal bootstrap
  -> network
- -> Git/GitHub release acquisition
+ -> acquire release envelope/artifacts over HTTPS
  -> verify integrity/authenticity
  -> materialize /ordax/releases/<commit>
  -> atomically activate /ordax/current
@@ -81,49 +152,79 @@ UEFI
 
 Remote access is not needed for this path.
 
-## After the first successful release
+## After acquisition
 
-At least one known-good verified release remains local.
+Owner/development:
+
+```text
+NETWORK_REQUIRED_FOR_VALID_LOCAL_CHECKOUT_BOOT=NO
+LOCAL_CHECKOUT_PRESERVED=YES
+ROLLBACK_LOCAL=YES
+NORMAL_SYSTEM_CHANGE_REQUIRES_REFLASH=NO
+```
+
+Canonical release:
 
 ```text
 NETWORK_REQUIRED_FOR_KNOWN_GOOD_BOOT=NO
 KNOWN_GOOD_RELEASE_PRESERVED=YES
 ROLLBACK_LOCAL=YES
+NORMAL_SYSTEM_CHANGE_REQUIRES_REFLASH=NO
 ```
 
-Network/Git are required to acquire new releases, not to boot an already verified current release.
+Network/Git are required to acquire new development source or new release bytes, not to boot an already valid local state.
 
 ## Development model
+
+Owner/development USB:
+
+```text
+system/Surface/app change
+ -> Git push main
+ -> ordax-pull
+ -> ordax-run
+ -> no USB reflash
+
+boot/kernel/initramfs/dev-base hardware support change
+ -> separately gated base build
+ -> reflash/base update only when required
+```
+
+Canonical release:
 
 ```text
 system/Surface/app change
  -> Git push
- -> Web receives same source change
- -> OrdaX updater acquires release/delta
+ -> CI builds signed release/delta
+ -> updater acquires
  -> verify + activate
  -> no USB reflash
-
-boot/kernel/initramfs change
- -> separately gated base update
- -> reboot only when required
 ```
 
 ## Source/media relationship
 
 Everything needed to reproduce the bootstrap is represented in this repository through source, manifests, configuration, provenance and build recipes.
 
-Private/runtime data is not committed to public Git.
+Private/runtime data is not committed to public Git. The USB is never source authority.
 
-## Prototype rule
+## Trust boundary
+
+The owner/development Creator may use explicitly marked ephemeral prototype trust for development provenance. This does not satisfy canonical release trust and must never be promoted as such.
+
+Canonical public release acquisition remains blocked until the user-controlled release signing ceremony/public anchor is completed.
+
+## Prototype rules
 
 ```text
-INITIAL_USB_POLICY=MINIMUM_GIT_ACQUISITION_FIRST
+GIT_MAIN_IS_SOURCE_AUTHORITY=YES
+BOOTSTRAP_SEED_PARTITIONS=2
+PREPARED_USB_PARTITIONS=3
+SEPARATE_HOME_PARTITION=NO
 REMOTE_CONTROL_PRESEEDED=NO
 SSH_PRESEEDED=NO
 FULL_SYSTEM_PRESEEDED=NO
-SURFACE_PRESEEDED=NO
-APPS_PRESEEDED=NO
-FIRST_FULL_RELEASE_ACQUIRED_AFTER_BOOT=YES
+COMPLETE_SOURCE_CHECKOUT_PRESEEDED=NO
+BUILD_TOOLCHAIN_PRESEEDED=NO
 REFLASH_FOR_NORMAL_SYSTEM_CHANGES=NO
 ```
 
