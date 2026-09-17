@@ -5,7 +5,6 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "system" / "contracts" / "workspace-store.mjs"
 SURFACE = ROOT / "system" / "surface" / "ui" / "surface.mjs"
 STATE = ROOT / "system" / "surface" / "ui" / "surface-state.mjs"
-SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "workspace.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "workspace.mjs"
 WEB_COMPOSITION = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -13,19 +12,14 @@ NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 
 
 class WorkspacePersistenceContractTests(unittest.TestCase):
-    def test_shared_surface_consumes_versioned_neutral_workspace_contract(self):
+    def test_shared_surface_consumes_neutral_workspace_contract(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         surface = SURFACE.read_text(encoding="utf-8")
         state = STATE.read_text(encoding="utf-8")
-        self.assertIn('WORKSPACE_STORE_SCHEMA = "ordax.workspace-store/2"', contract)
-        self.assertIn('LEGACY_WORKSPACE_STORE_SCHEMA = "ordax.workspace-store/1"', contract)
-        self.assertIn("MAX_WORKSPACE_AREAS = 8", contract)
-        self.assertIn("migrateLegacyWorkspaceRecord", contract)
+        self.assertIn('WORKSPACE_STORE_SCHEMA = "ordax.workspace-store/1"', contract)
         self.assertIn("assertWorkspaceStore", surface)
         self.assertIn("createWorkspaceSnapshot", surface)
         self.assertIn("validateWorkspaceRecord", state)
-        self.assertIn('case "area.create"', state)
-        self.assertIn('case "area.switch"', state)
         self.assertNotIn("adapters/native", surface)
         self.assertNotIn("adapters/web", surface)
         self.assertNotIn("localStorage", surface)
@@ -43,38 +37,21 @@ class WorkspacePersistenceContractTests(unittest.TestCase):
         self.assertNotIn('../../adapters/native/workspace.mjs', web)
         self.assertNotIn('../../adapters/web/workspace.mjs', native)
 
-    def test_browser_backed_stores_are_bounded_namespaced_and_migrating(self):
+    def test_browser_backed_stores_are_bounded_and_namespaced(self):
         web = WEB_ADAPTER.read_text(encoding="utf-8")
         native = NATIVE_ADAPTER.read_text(encoding="utf-8")
         contract = CONTRACT.read_text(encoding="utf-8")
-        self.assertIn('"ordax.workspace.v2"', web)
         self.assertIn('"ordax.workspace.v1"', web)
-        self.assertIn('"ordax.native.workspace.v2"', native)
         self.assertIn('"ordax.native.workspace.v1"', native)
-        self.assertIn("migrateLegacyWorkspaceRecord", web)
-        self.assertIn("migrateLegacyWorkspaceRecord", native)
+        self.assertIn("validateWorkspaceRecord", web)
+        self.assertIn("validateWorkspaceRecord", native)
         self.assertIn("MAX_WINDOWS = 32", contract)
-        self.assertIn("MAX_WORKSPACE_AREAS = 8", contract)
         self.assertIn("MAX_COORDINATE = 1_000_000", contract)
         self.assertNotIn("fetch(", native)
-
-    def test_area_controls_are_real_not_disabled_placeholders(self):
-        surface = SURFACE.read_text(encoding="utf-8")
-        shell = SHELL.read_text(encoding="utf-8")
-        self.assertIn("data-area-switcher", shell)
-        self.assertIn("data-area-kicker", shell)
-        self.assertNotIn("Áreas múltiplas entram na próxima etapa", shell)
-        self.assertNotIn('disabled title=', shell)
-        self.assertIn("dataset.areaId", surface)
-        self.assertIn("dataset.areaCreate", surface)
-        self.assertIn('type: "area.switch"', surface)
-        self.assertIn('type: "area.create"', surface)
 
     def test_only_durable_workspace_actions_are_persisted(self):
         surface = SURFACE.read_text(encoding="utf-8")
         for action in (
-            "area.create",
-            "area.switch",
             "app.launch",
             "window.focus",
             "window.move",

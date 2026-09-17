@@ -1,12 +1,10 @@
 import {
   WORKSPACE_STORE_SCHEMA,
   assertWorkspaceStore,
-  migrateLegacyWorkspaceRecord,
   validateWorkspaceRecord,
 } from "../../contracts/workspace-store.mjs";
 
-const STORAGE_KEY = "ordax.native.workspace.v2";
-const LEGACY_STORAGE_KEY = "ordax.native.workspace.v1";
+const STORAGE_KEY = "ordax.native.workspace.v1";
 
 function resolveStorage(windowRef) {
   try {
@@ -20,43 +18,23 @@ function resolveStorage(windowRef) {
   return null;
 }
 
-function readStored(storage, key, validator) {
-  const raw = storage.getItem(key);
-  if (raw === null) return null;
-  return validator(JSON.parse(raw));
-}
-
 export function createNativeWorkspaceStore(windowRef = globalThis.window) {
   const storage = resolveStorage(windowRef);
   let memory = validateWorkspaceRecord(null);
 
-  const load = () => {
-    if (!storage) return memory;
-    const currentRaw = storage.getItem(STORAGE_KEY);
-    if (currentRaw !== null) {
-      try {
-        memory = validateWorkspaceRecord(JSON.parse(currentRaw));
-      } catch {
-        memory = validateWorkspaceRecord(null);
-      }
-      return memory;
-    }
-
-    try {
-      const legacy = readStored(storage, LEGACY_STORAGE_KEY, migrateLegacyWorkspaceRecord);
-      if (legacy) {
-        memory = legacy;
-        storage.setItem(STORAGE_KEY, JSON.stringify(memory));
-      }
-    } catch {
-      memory = validateWorkspaceRecord(null);
-    }
-    return memory;
-  };
-
   const store = {
     schema: WORKSPACE_STORE_SCHEMA,
-    load,
+    load() {
+      if (!storage) return memory;
+      try {
+        const raw = storage.getItem(STORAGE_KEY);
+        if (raw === null) return memory;
+        memory = validateWorkspaceRecord(JSON.parse(raw));
+      } catch {
+        // Corrupt or inaccessible browser state never blocks the Surface.
+      }
+      return memory;
+    },
     save(snapshot) {
       const validated = validateWorkspaceRecord(snapshot);
       memory = validated;

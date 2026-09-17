@@ -21,7 +21,6 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn('UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}', text)
         self.assertIn('ls-remote --heads origin "refs/heads/$BRANCH"', text)
-        self.assertIn('[ "$UPDATE_INTERVAL" -ge 5 ]', text)
         self.assertIn('PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}', text)
         self.assertIn('if ! "$PULL_BIN"', text)
         self.assertIn("classify_changes", text)

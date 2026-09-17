@@ -44,9 +44,10 @@ export function mountPowerControls(root, powerActions = null) {
   let snapshot = validatePowerActionsSnapshot(port.getSnapshot());
   const documentObject = root.ownerDocument;
   const shell = root.querySelector("[data-ordax-shell]");
-  const slot = root.querySelector("[data-power-slot]");
-  if (!shell || !slot) {
-    throw new Error("Surface power controls require the shared shell power slot");
+  const dock = root.querySelector(".ordax-dock");
+  const runningApps = root.querySelector("[data-running-apps]");
+  if (!shell || !dock || !runningApps) {
+    throw new Error("Surface power controls require the shared shell and dock");
   }
 
   const availableActions = () => ACTIONS.filter((item) => isPowerActionSupported(snapshot, item.id));
@@ -54,16 +55,12 @@ export function mountPowerControls(root, powerActions = null) {
     return Object.freeze({ destroy() {} });
   }
 
-  const toggle = node(documentObject, "button", "ordax-rail-button ordax-rail-power");
+  const toggle = node(documentObject, "button", "ordax-dock-button", "Energia");
   toggle.type = "button";
   toggle.dataset.powerToggle = "";
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-label", "Abrir controles de energia");
-  toggle.append(
-    node(documentObject, "span", "ordax-rail-power-icon", "⏻"),
-    node(documentObject, "span", "", "Desligar"),
-  );
-  slot.append(toggle);
+  dock.insertBefore(toggle, runningApps);
 
   const overlay = node(documentObject, "div", "ordax-launcher ordax-power-menu");
   overlay.dataset.powerMenu = "";
