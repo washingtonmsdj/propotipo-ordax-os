@@ -1,25 +1,241 @@
 #!/bin/sh
 set -eu
 
-SURFACE_ENTRYPOINT="${0%/*}/surface/entrypoint"
+SYSTEM_ROOT=${0%/*}
+SYSTEM_ENTRYPOINT=$SYSTEM_ROOT/entrypoint
+SURFACE_ENTRYPOINT=$SYSTEM_ROOT/surface/entrypoint
 RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
+WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
+PINNED_FILE=$STATE_DIR/pinned-commit
+BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
+UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
+UPDATE_STATE=$UPDATE_RUN_DIR/state.json
+UPDATE_LOG=$UPDATE_RUN_DIR/update.log
+PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}
+GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
+BRANCH=${ORDAX_REPO_BRANCH:-main}
+UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-20}
+SURFACE_PID=""
 
 log() {
     echo "ordax-system: $*" >&2
 }
 
+case "$UPDATE_INTERVAL" in
+    ''|*[!0-9]*) UPDATE_INTERVAL=20 ;;
+esac
+[ "$UPDATE_INTERVAL" -ge 5 ] 2>/dev/null || UPDATE_INTERVAL=5
+
+/bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR"
+chmod 700 "$UPDATE_RUN_DIR"
+: >"$UPDATE_LOG"
+
+current_sha() {
+    "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
+}
+
+write_update_state() {
+    source_sha=$1
+    status=$2
+    apply_mode=$3
+    boot_refresh=false
+    [ -f "$BOOT_REFRESH_FILE" ] && boot_refresh=true
+    temporary=$UPDATE_STATE.tmp.$$
+    printf '{"sourceSha":"%s","status":"%s","applyMode":"%s","bootRefreshRequired":%s}\n' \
+        "$source_sha" "$status" "$apply_mode" "$boot_refresh" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
+}
+
+mark_boot_refresh_required() {
+    source_sha=$1
+    temporary=$BOOT_REFRESH_FILE.tmp.$$
+    printf '%s\n' "$source_sha" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$BOOT_REFRESH_FILE"
+}
+
+start_surface() {
+    [ -x "$SURFACE_ENTRYPOINT" ] || return 1
+    ORDAX_SYSTEM_ROOT=$SYSTEM_ROOT
+    export ORDAX_SYSTEM_ROOT
+    "$SURFACE_ENTRYPOINT" &
+    SURFACE_PID=$!
+    log "Surface started as pid $SURFACE_PID"
+}
+
+stop_surface() {
+    [ -n "$SURFACE_PID" ] || return 0
+    if kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
+        kill "$SURFACE_PID" >/dev/null 2>&1 || true
+        remaining=5
+        while kill -0 "$SURFACE_PID" >/dev/null 2>&1 && [ "$remaining" -gt 0 ]; do
+            /bin/busybox sleep 1
+            remaining=$((remaining - 1))
+        done
+        if kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
+            log "Surface did not stop gracefully; forcing pid $SURFACE_PID"
+            kill -KILL "$SURFACE_PID" >/dev/null 2>&1 || true
+        fi
+    fi
+    wait "$SURFACE_PID" 2>/dev/null || true
+    SURFACE_PID=""
+}
+
+terminate() {
+    trap - EXIT HUP INT TERM
+    stop_surface
+    exit 0
+}
+
 fail_closed() {
     log "$*"
+    stop_surface
     if [ -x "$RECOVERY_ENTRYPOINT" ]; then
+        trap - EXIT HUP INT TERM
         exec "$RECOVERY_ENTRYPOINT"
     fi
     log "recovery entrypoint unavailable"
     exit 1
 }
 
+classify_changes() {
+    old_sha=$1
+    new_sha=$2
+    APPLY_MODE=none
+    LOW_LEVEL_CHANGED=0
+    supervisor_changed=0
+    surface_host_changed=0
+    live_surface_changed=0
+
+    if ! changed_paths=$("$GIT_BIN" -C "$WORKTREE" diff --name-only "$old_sha" "$new_sha" 2>>"$UPDATE_LOG"); then
+        APPLY_MODE=surface-restart
+        return 0
+    fi
+
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        case "$path" in
+            boot/*|bootstrap/*)
+                LOW_LEVEL_CHANGED=1
+                ;;
+            system/entrypoint)
+                supervisor_changed=1
+                ;;
+            system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint)
+                surface_host_changed=1
+                ;;
+            system/apps/*|system/adapters/*|system/contracts/*|system/services/*|system/composition/*|system/surface/ui/*)
+                live_surface_changed=1
+                ;;
+            system/*)
+                surface_host_changed=1
+                ;;
+        esac
+    done <<EOF
+$changed_paths
+EOF
+
+    if [ "$supervisor_changed" -eq 1 ]; then
+        APPLY_MODE=supervisor-restart
+    elif [ "$surface_host_changed" -eq 1 ]; then
+        APPLY_MODE=surface-restart
+    elif [ "$live_surface_changed" -eq 1 ]; then
+        APPLY_MODE=reload
+    fi
+}
+
+check_for_update() {
+    current=$(current_sha)
+
+    if [ -s "$PINNED_FILE" ]; then
+        write_update_state "$current" pinned none
+        return 0
+    fi
+    if [ ! -x "$GIT_BIN" ] || [ ! -x "$PULL_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
+        write_update_state "$current" disabled none
+        return 0
+    fi
+
+    if ! remote_output=$("$GIT_BIN" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
+        write_update_state "$current" network-error none
+        return 0
+    fi
+    set -- $remote_output
+    remote_sha=${1:-}
+    case "$remote_sha" in
+        ''|*[!0-9a-f]*)
+            write_update_state "$current" remote-error none
+            return 0
+            ;;
+    esac
+
+    [ "$remote_sha" = "$current" ] && return 0
+
+    old_sha=$current
+    write_update_state "$old_sha" updating none
+    log "update available: $old_sha -> $remote_sha"
+
+    if ! "$PULL_BIN" >>"$UPDATE_LOG" 2>&1; then
+        log "automatic ordax-pull failed; keeping running Surface"
+        write_update_state "$old_sha" pull-error none
+        return 0
+    fi
+
+    new_sha=$(current_sha)
+    if [ "$new_sha" = "$old_sha" ] || [ "$new_sha" = unknown ]; then
+        write_update_state "$old_sha" pull-error none
+        return 0
+    fi
+
+    classify_changes "$old_sha" "$new_sha"
+    if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
+        mark_boot_refresh_required "$new_sha"
+        log "boot/bootstrap changes detected; current session remains running and boot refresh is marked pending"
+    fi
+
+    write_update_state "$new_sha" applied "$APPLY_MODE"
+    case "$APPLY_MODE" in
+        reload)
+            log "live-safe system update applied; native Surface will reload itself"
+            ;;
+        surface-restart)
+            log "native host update applied; restarting Surface only"
+            stop_surface
+            start_surface || fail_closed "updated Surface entrypoint could not be started"
+            write_update_state "$new_sha" running surface-restart
+            ;;
+        supervisor-restart)
+            log "supervisor update applied; restarting system supervisor without reboot"
+            stop_surface
+            trap - EXIT HUP INT TERM
+            exec "$SYSTEM_ENTRYPOINT"
+            ;;
+        none)
+            log "repository update has no running-system effect"
+            ;;
+    esac
+}
+
+trap stop_surface EXIT
+trap terminate HUP INT TERM
+
 [ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
 
-ORDAX_SYSTEM_ROOT=${0%/*}
-export ORDAX_SYSTEM_ROOT
-log "starting shared OrdaX Surface"
-exec "$SURFACE_ENTRYPOINT"
+initial_sha=$(current_sha)
+write_update_state "$initial_sha" running initial
+log "starting shared OrdaX Surface with Git hot-update supervisor"
+start_surface || fail_closed "surface entrypoint could not be started"
+
+while :; do
+    /bin/busybox sleep "$UPDATE_INTERVAL"
+
+    if [ -n "$SURFACE_PID" ] && ! kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
+        surface_rc=0
+        wait "$SURFACE_PID" 2>/dev/null || surface_rc=$?
+        SURFACE_PID=""
+        log "Surface exited with status $surface_rc; restarting without reboot"
+        start_surface || fail_closed "Surface restart failed"
+    fi
+
+    check_for_update
+ done

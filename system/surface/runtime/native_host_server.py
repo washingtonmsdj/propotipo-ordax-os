@@ -15,6 +15,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
+UPDATE_PATH = "/__ordax/native/update"
+UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 MAX_CONTROL_BODY = 512
 POWER_COMMANDS = {
@@ -58,6 +60,20 @@ def perform_power_action(action: str) -> None:
             )
     except Exception as exc:  # pragma: no cover - physical-host diagnostic path
         print(f"ordax-native-host: power action {action} failed: {exc}", file=sys.stderr, flush=True)
+
+
+def read_update_state() -> dict | None:
+    try:
+        with open(UPDATE_STATE_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    source_sha = payload.get("sourceSha")
+    if not isinstance(source_sha, str) or not source_sha:
+        return None
+    return payload
 
 
 class NativeHostServer(ThreadingHTTPServer):
@@ -106,6 +122,21 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                     "supportedActions": list(self.server.supported_actions),
                 },
             )
+            return
+        if self.path == UPDATE_PATH:
+            update_state = read_update_state()
+            if update_state is None:
+                self._write_json(
+                    503,
+                    {
+                        "sourceSha": "unavailable",
+                        "status": "unavailable",
+                        "applyMode": "none",
+                        "bootRefreshRequired": False,
+                    },
+                )
+                return
+            self._write_json(200, update_state)
             return
         super().do_GET()
 
