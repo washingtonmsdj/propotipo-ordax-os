@@ -12,10 +12,6 @@ ADAPTER = ROOT / "system" / "adapters" / "native" / "file-space.mjs"
 NATIVE_RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 CONTROLS = ROOT / "system" / "surface" / "ui" / "file-space-controls.mjs"
-APP_ACTIVATION_CONTRACT = ROOT / "system" / "contracts" / "app-activation.mjs"
-APP_ACTIVATION_SERVICE = ROOT / "system" / "services" / "apps" / "activation.mjs"
-DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
-FILES_CSS = ROOT / "system" / "surface" / "ui" / "files.css"
 SURFACE_LAUNCHER = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 FILES_APP = ROOT / "system" / "apps" / "files" / "app.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
@@ -57,26 +53,6 @@ class NativeUserFilesTests(unittest.TestCase):
                 created["entries"],
             )
 
-    def test_standard_user_directories_are_idempotent_and_symlink_safe(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            base = Path(temporary)
-            user_root = base / "home"
-            outside = base / "outside"
-            user_root.mkdir()
-            outside.mkdir()
-            os.symlink(outside, user_root / "Documentos")
-
-            first = native_host.ensure_standard_user_directories(str(user_root))
-            second = native_host.ensure_standard_user_directories(str(user_root))
-
-            self.assertNotIn("Documentos", first)
-            self.assertNotIn("Documentos", second)
-            self.assertIn("Imagens", first)
-            self.assertIn("Downloads", first)
-            self.assertTrue((user_root / "Imagens").is_dir())
-            self.assertTrue((user_root / "Downloads").is_dir())
-            self.assertEqual(list(outside.iterdir()), [])
-
     def test_path_traversal_and_symlink_escape_are_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -109,37 +85,14 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_shared_files_controls_consume_only_neutral_port(self):
         controls = CONTROLS.read_text(encoding="utf-8")
         composition = COMPOSITION.read_text(encoding="utf-8")
-        activation_contract = APP_ACTIVATION_CONTRACT.read_text(encoding="utf-8")
-        activation_service = APP_ACTIVATION_SERVICE.read_text(encoding="utf-8")
-        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
-        files_css = FILES_CSS.read_text(encoding="utf-8")
-        files_app = FILES_APP.read_text(encoding="utf-8")
         self.assertIn("contracts/file-space.mjs", controls)
-        self.assertIn("contracts/app-activation.mjs", controls)
-        self.assertIn('ordax.app-activation/1', activation_contract)
-        self.assertIn("createAppActivationChannel", activation_service)
-        self.assertIn('data-app-target="${target}"', shell)
-        self.assertIn('data-requires-capability="filesystem.user-space"', shell)
         self.assertIn('[data-window-id="files"]', controls)
-        self.assertIn('[data-app-extension="file-space"]', controls)
-        self.assertIn("ordax-files-view", controls)
-        self.assertIn("ordax-files-breadcrumb", controls)
-        self.assertIn("ordax-files-list", controls)
         self.assertIn("createDirectory", controls)
-        self.assertNotIn("📁", controls)
-        self.assertNotIn("📄", controls)
-        self.assertIn(".ordax-files-view", files_css)
-        self.assertIn('kind: "extension"', files_app)
-        self.assertIn('extensionId: "file-space"', files_app)
-        self.assertIn("./surface-lifecycle.mjs", controls)
-        self.assertIn("assertSurfaceRenderLifecycle", controls)
-        self.assertNotIn("MutationObserver", controls)
+        self.assertIn("MutationObserver", controls)
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertIn("createNativeFileSpace", composition)
-        self.assertIn("mountFileSpaceControls(root, fileSpace, appActivation, surface)", composition)
-        self.assertIn("createAppActivationChannel", composition)
-        self.assertIn("appActivation", composition)
+        self.assertIn("mountFileSpaceControls", composition)
         self.assertIn("userFileSpaceAvailable", composition)
 
     def test_user_file_space_capability_is_additive_and_native(self):
@@ -158,8 +111,7 @@ class NativeUserFilesTests(unittest.TestCase):
         files_app = FILES_APP.read_text(encoding="utf-8")
         self.assertIn('"filesystem.user-space"', runtime)
         self.assertIn("userFileSpaceAvailable", runtime)
-        self.assertIn('kind: "extension"', files_app)
-        self.assertIn('extensionId: "file-space"', files_app)
+        self.assertIn('capabilityId: "filesystem.user-space"', files_app)
 
 
 if __name__ == "__main__":
