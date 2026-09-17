@@ -1,4 +1,5 @@
 import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
+import { validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
 import { getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import {
   recoverPreferenceSnapshot,
@@ -48,15 +49,58 @@ function validateWindowCoordinate(value, name) {
   return Math.round(value);
 }
 
-export function createSurfaceState(snapshot, preferenceSeed = {}) {
+function recoverWorkspaceWindows(workspace, capabilityIds) {
+  const windows = [];
+  const singletonApps = new Set();
+  for (const windowState of workspace.windows) {
+    const app = getFirstPartyApp(windowState.appId);
+    if (!isAppAvailable(app, capabilityIds)) continue;
+    if (app.singleton) {
+      if (windowState.id !== app.id || singletonApps.has(app.id)) continue;
+      singletonApps.add(app.id);
+    } else if (!windowState.id.startsWith(`${app.id}:`)) {
+      continue;
+    }
+    windows.push({ ...windowState });
+  }
+  return windows;
+}
+
+export function createWorkspaceSnapshot(state) {
+  return validateWorkspaceRecord({
+    windows: state.windows.map((windowState) => ({
+      id: windowState.id,
+      appId: windowState.appId,
+      minimized: windowState.minimized,
+      maximized: windowState.maximized,
+      placementOrdinal: windowState.placementOrdinal,
+      positionX: windowState.positionX,
+      positionY: windowState.positionY,
+    })),
+    activeWindowId: state.activeWindowId,
+    nextWindowOrdinal: state.nextWindowOrdinal,
+  });
+}
+
+export function createSurfaceState(snapshot, preferenceSeed = {}, workspaceSeed = null) {
   const safeSnapshot = validateSurfaceSnapshot(snapshot);
+  const workspace = validateWorkspaceRecord(workspaceSeed);
+  const windows = recoverWorkspaceWindows(workspace, safeSnapshot.capabilityIds);
+  const highestOrdinal = windows.reduce(
+    (highest, windowState) => Math.max(highest, windowState.placementOrdinal),
+    0,
+  );
+  const persistedActive = windows.find(
+    (windowState) => windowState.id === workspace.activeWindowId && !windowState.minimized,
+  );
+
   return freezeState({
     launcherOpen: false,
     connectivity: safeSnapshot.connectivity,
     capabilityIds: safeSnapshot.capabilityIds,
-    windows: [],
-    activeWindowId: null,
-    nextWindowOrdinal: 1,
+    windows,
+    activeWindowId: persistedActive?.id ?? activeFallback(windows),
+    nextWindowOrdinal: Math.max(workspace.nextWindowOrdinal, highestOrdinal + 1),
     preferences: recoverPreferenceSnapshot(preferenceSeed),
   });
 }
