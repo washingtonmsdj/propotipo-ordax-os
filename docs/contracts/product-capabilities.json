@@ -77,6 +77,11 @@
       "security_boundary": "bounded-user-root"
     },
     {
+      "id": "system.metrics",
+      "owner": "system/adapters",
+      "security_boundary": "read-only-device-observability"
+    },
+    {
       "id": "creator.usb-media",
       "owner": "system/adapters/desktop",
       "security_boundary": "explicit-privileged-capability"
@@ -170,6 +175,7 @@
         "sync.safe-state",
         "network.https",
         "filesystem.user-space",
+        "system.metrics",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
@@ -186,6 +192,7 @@
         "sync.safe-state",
         "network.https",
         "filesystem.user-space",
+        "system.metrics",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
