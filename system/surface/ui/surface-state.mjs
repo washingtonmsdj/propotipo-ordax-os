@@ -1,8 +1,5 @@
 import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
-import {
-  MAX_WORKSPACE_AREAS,
-  validateWorkspaceRecord,
-} from "../../contracts/workspace-store.mjs";
+import { validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
 import { getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import {
   recoverPreferenceSnapshot,
@@ -13,18 +10,15 @@ function freezeWindow(windowState) {
   return Object.freeze({ ...windowState });
 }
 
-function freezeArea(area) {
-  return Object.freeze({
-    ...area,
-    windows: Object.freeze(area.windows.map(freezeWindow)),
-  });
+function freezeWindows(windows) {
+  return Object.freeze(windows.map(freezeWindow));
 }
 
 function freezeState(state) {
   return Object.freeze({
     ...state,
     capabilityIds: Object.freeze([...state.capabilityIds]),
-    areas: Object.freeze(state.areas.map(freezeArea)),
+    windows: freezeWindows(state.windows),
     preferences: Object.freeze({ ...state.preferences }),
   });
 }
@@ -36,46 +30,16 @@ function activeFallback(windows) {
   return null;
 }
 
-export function getActiveArea(state) {
-  const area = state.areas.find((item) => item.id === state.activeAreaId);
-  if (!area) throw new TypeError("Surface state active area is missing");
-  return area;
-}
-
-export function getActiveWindows(state) {
-  return getActiveArea(state).windows;
-}
-
-export function getActiveWindowId(state) {
-  return getActiveArea(state).activeWindowId;
-}
-
-function replaceArea(state, areaId, nextArea, extra = {}) {
-  const index = state.areas.findIndex((item) => item.id === areaId);
-  if (index < 0) return state;
-  const areas = state.areas.map((item, itemIndex) => itemIndex === index ? nextArea : item);
-  return freezeState({ ...state, ...extra, areas });
-}
-
-function updateActiveArea(state, updater, extra = {}) {
-  const area = getActiveArea(state);
-  const nextArea = updater(area);
-  if (nextArea === area && Object.keys(extra).length === 0) return state;
-  return replaceArea(state, area.id, nextArea, extra);
-}
-
 function focusWindow(state, windowId) {
-  return updateActiveArea(state, (area) => {
-    const index = area.windows.findIndex((item) => item.id === windowId);
-    if (index < 0) return area;
-    const target = { ...area.windows[index], minimized: false };
-    const windows = [
-      ...area.windows.slice(0, index),
-      ...area.windows.slice(index + 1),
-      target,
-    ];
-    return { ...area, windows, activeWindowId: windowId };
-  }, { launcherOpen: false });
+  const index = state.windows.findIndex((item) => item.id === windowId);
+  if (index < 0) return state;
+  const target = { ...state.windows[index], minimized: false };
+  const windows = [
+    ...state.windows.slice(0, index),
+    ...state.windows.slice(index + 1),
+    target,
+  ];
+  return freezeState({ ...state, windows, activeWindowId: windowId, launcherOpen: false });
 }
 
 function validateWindowCoordinate(value, name) {
@@ -102,56 +66,41 @@ function recoverWorkspaceWindows(workspace, capabilityIds) {
   return windows;
 }
 
-function recoverArea(area, capabilityIds) {
-  const windows = recoverWorkspaceWindows(area, capabilityIds);
-  const highestOrdinal = windows.reduce(
-    (highest, windowState) => Math.max(highest, windowState.placementOrdinal),
-    0,
-  );
-  const persistedActive = windows.find(
-    (windowState) => windowState.id === area.activeWindowId && !windowState.minimized,
-  );
-  return {
-    id: area.id,
-    ordinal: area.ordinal,
-    windows,
-    activeWindowId: persistedActive?.id ?? activeFallback(windows),
-    nextWindowOrdinal: Math.max(area.nextWindowOrdinal, highestOrdinal + 1),
-  };
-}
-
 export function createWorkspaceSnapshot(state) {
   return validateWorkspaceRecord({
-    activeAreaId: state.activeAreaId,
-    nextAreaOrdinal: state.nextAreaOrdinal,
-    areas: state.areas.map((area) => ({
-      id: area.id,
-      ordinal: area.ordinal,
-      windows: area.windows.map((windowState) => ({
-        id: windowState.id,
-        appId: windowState.appId,
-        minimized: windowState.minimized,
-        maximized: windowState.maximized,
-        placementOrdinal: windowState.placementOrdinal,
-        positionX: windowState.positionX,
-        positionY: windowState.positionY,
-      })),
-      activeWindowId: area.activeWindowId,
-      nextWindowOrdinal: area.nextWindowOrdinal,
+    windows: state.windows.map((windowState) => ({
+      id: windowState.id,
+      appId: windowState.appId,
+      minimized: windowState.minimized,
+      maximized: windowState.maximized,
+      placementOrdinal: windowState.placementOrdinal,
+      positionX: windowState.positionX,
+      positionY: windowState.positionY,
     })),
+    activeWindowId: state.activeWindowId,
+    nextWindowOrdinal: state.nextWindowOrdinal,
   });
 }
 
 export function createSurfaceState(snapshot, preferenceSeed = {}, workspaceSeed = null) {
   const safeSnapshot = validateSurfaceSnapshot(snapshot);
   const workspace = validateWorkspaceRecord(workspaceSeed);
+  const windows = recoverWorkspaceWindows(workspace, safeSnapshot.capabilityIds);
+  const highestOrdinal = windows.reduce(
+    (highest, windowState) => Math.max(highest, windowState.placementOrdinal),
+    0,
+  );
+  const persistedActive = windows.find(
+    (windowState) => windowState.id === workspace.activeWindowId && !windowState.minimized,
+  );
+
   return freezeState({
     launcherOpen: false,
     connectivity: safeSnapshot.connectivity,
     capabilityIds: safeSnapshot.capabilityIds,
-    activeAreaId: workspace.activeAreaId,
-    nextAreaOrdinal: workspace.nextAreaOrdinal,
-    areas: workspace.areas.map((area) => recoverArea(area, safeSnapshot.capabilityIds)),
+    windows,
+    activeWindowId: persistedActive?.id ?? activeFallback(windows),
+    nextWindowOrdinal: Math.max(workspace.nextWindowOrdinal, highestOrdinal + 1),
     preferences: recoverPreferenceSnapshot(preferenceSeed),
   });
 }
@@ -162,44 +111,20 @@ export function reduceSurfaceState(state, action) {
       return freezeState({ ...state, launcherOpen: !state.launcherOpen });
     case "launcher.close":
       return state.launcherOpen ? freezeState({ ...state, launcherOpen: false }) : state;
-    case "area.switch": {
-      if (action.areaId === state.activeAreaId) {
-        return state.launcherOpen ? freezeState({ ...state, launcherOpen: false }) : state;
-      }
-      if (!state.areas.some((area) => area.id === action.areaId)) return state;
-      return freezeState({ ...state, activeAreaId: action.areaId, launcherOpen: false });
-    }
-    case "area.create": {
-      if (state.areas.length >= MAX_WORKSPACE_AREAS) return state;
-      const ordinal = state.nextAreaOrdinal;
-      const area = {
-        id: `area-${ordinal}`,
-        ordinal,
-        windows: [],
-        activeWindowId: null,
-        nextWindowOrdinal: 1,
-      };
-      return freezeState({
-        ...state,
-        launcherOpen: false,
-        activeAreaId: area.id,
-        nextAreaOrdinal: ordinal + 1,
-        areas: [...state.areas, area],
-      });
-    }
     case "app.launch": {
       const app = getFirstPartyApp(action.appId);
       if (!isAppAvailable(app, state.capabilityIds)) return state;
-      const area = getActiveArea(state);
-      const existing = area.windows.find((item) => item.appId === app.id && app.singleton);
+
+      const existing = state.windows.find((item) => item.appId === app.id && app.singleton);
       if (existing) return focusWindow(state, existing.id);
 
-      const ordinal = area.nextWindowOrdinal;
+      const ordinal = state.nextWindowOrdinal;
       const windowId = app.singleton ? app.id : `${app.id}:${ordinal}`;
-      return updateActiveArea(state, (current) => ({
-        ...current,
+      return freezeState({
+        ...state,
+        launcherOpen: false,
         windows: [
-          ...current.windows,
+          ...state.windows,
           {
             id: windowId,
             appId: app.id,
@@ -212,73 +137,68 @@ export function reduceSurfaceState(state, action) {
         ],
         activeWindowId: windowId,
         nextWindowOrdinal: ordinal + 1,
-      }), { launcherOpen: false });
+      });
     }
     case "window.focus":
       return focusWindow(state, action.windowId);
     case "window.move": {
+      const index = state.windows.findIndex((item) => item.id === action.windowId);
+      if (index < 0 || state.windows[index].maximized) return state;
       const positionX = validateWindowCoordinate(action.x, "x");
       const positionY = validateWindowCoordinate(action.y, "y");
-      return updateActiveArea(state, (area) => {
-        const index = area.windows.findIndex((item) => item.id === action.windowId);
-        if (index < 0 || area.windows[index].maximized) return area;
-        const current = area.windows[index];
-        if (current.positionX === positionX && current.positionY === positionY) return area;
-        const windows = area.windows.map((item, itemIndex) =>
-          itemIndex === index ? { ...item, positionX, positionY } : item
-        );
-        return { ...area, windows };
+      const current = state.windows[index];
+      if (current.positionX === positionX && current.positionY === positionY) return state;
+      const windows = state.windows.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, positionX, positionY } : item
+      );
+      return freezeState({ ...state, windows });
+    }
+    case "window.minimize": {
+      const index = state.windows.findIndex((item) => item.id === action.windowId);
+      if (index < 0) return state;
+      const windows = state.windows.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, minimized: true } : item
+      );
+      return freezeState({
+        ...state,
+        windows,
+        activeWindowId:
+          state.activeWindowId === action.windowId ? activeFallback(windows) : state.activeWindowId,
       });
     }
-    case "window.minimize":
-      return updateActiveArea(state, (area) => {
-        const index = area.windows.findIndex((item) => item.id === action.windowId);
-        if (index < 0) return area;
-        const windows = area.windows.map((item, itemIndex) =>
-          itemIndex === index ? { ...item, minimized: true } : item
-        );
-        return {
-          ...area,
-          windows,
-          activeWindowId:
-            area.activeWindowId === action.windowId ? activeFallback(windows) : area.activeWindowId,
-        };
+    case "window.maximize": {
+      const index = state.windows.findIndex((item) => item.id === action.windowId);
+      if (index < 0) return state;
+      const updated = {
+        ...state.windows[index],
+        minimized: false,
+        maximized: !state.windows[index].maximized,
+      };
+      const windows = [
+        ...state.windows.slice(0, index),
+        ...state.windows.slice(index + 1),
+        updated,
+      ];
+      return freezeState({ ...state, windows, activeWindowId: action.windowId });
+    }
+    case "window.close": {
+      const windows = state.windows.filter((item) => item.id !== action.windowId);
+      if (windows.length === state.windows.length) return state;
+      return freezeState({
+        ...state,
+        windows,
+        activeWindowId:
+          state.activeWindowId === action.windowId ? activeFallback(windows) : state.activeWindowId,
       });
-    case "window.maximize":
-      return updateActiveArea(state, (area) => {
-        const index = area.windows.findIndex((item) => item.id === action.windowId);
-        if (index < 0) return area;
-        const updated = {
-          ...area.windows[index],
-          minimized: false,
-          maximized: !area.windows[index].maximized,
-        };
-        const windows = [
-          ...area.windows.slice(0, index),
-          ...area.windows.slice(index + 1),
-          updated,
-        ];
-        return { ...area, windows, activeWindowId: action.windowId };
-      });
-    case "window.close":
-      return updateActiveArea(state, (area) => {
-        const windows = area.windows.filter((item) => item.id !== action.windowId);
-        if (windows.length === area.windows.length) return area;
-        return {
-          ...area,
-          windows,
-          activeWindowId:
-            area.activeWindowId === action.windowId ? activeFallback(windows) : area.activeWindowId,
-        };
-      });
+    }
     case "workspace.show-desktop": {
-      const area = getActiveArea(state);
-      if (!area.windows.some((item) => !item.minimized) && !state.launcherOpen) return state;
-      return updateActiveArea(state, (current) => ({
-        ...current,
-        windows: current.windows.map((item) => ({ ...item, minimized: true })),
+      if (!state.windows.some((item) => !item.minimized) && !state.launcherOpen) return state;
+      return freezeState({
+        ...state,
+        launcherOpen: false,
+        windows: state.windows.map((item) => ({ ...item, minimized: true })),
         activeWindowId: null,
-      }), { launcherOpen: false });
+      });
     }
     case "preference.set": {
       const preferences = setPreferenceValue(
