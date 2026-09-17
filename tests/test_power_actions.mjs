@@ -8,6 +8,14 @@ import {
   validatePowerActionsSnapshot,
 } from "../system/contracts/power-actions.mjs";
 import { createNativePowerActions } from "../system/adapters/native/power-actions.mjs";
+import {
+  createNativeUpdateWatcher,
+  shouldReloadForUpdate,
+} from "../system/adapters/native/update-runtime.mjs";
+
+function flushAsyncWork() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 test("power action contract normalizes supported actions", () => {
   const snapshot = validatePowerActionsSnapshot({ supportedActions: ["restart", "shutdown"] });
@@ -73,4 +81,84 @@ test("native power adapter acquires same-origin session and sends authenticated 
   assert.equal(requests[1].options.headers["X-OrdaX-Power-Token"], "01234567890123456789012345678901");
   assert.deepEqual(JSON.parse(requests[1].options.body), { action: "restart" });
   await assert.rejects(() => port.execute("hibernate"), TypeError);
+});
+
+test("native update policy reloads only a new live-safe source SHA", () => {
+  assert.equal(
+    shouldReloadForUpdate("aaa", { sourceSha: "bbb", applyMode: "reload" }),
+    true,
+  );
+  assert.equal(
+    shouldReloadForUpdate("aaa", { sourceSha: "aaa", applyMode: "reload" }),
+    false,
+  );
+  assert.equal(
+    shouldReloadForUpdate("aaa", { sourceSha: "bbb", applyMode: "surface-restart" }),
+    false,
+  );
+});
+
+test("native update watcher turns a live-safe Git update into one page reload", async () => {
+  const responses = [
+    { sourceSha: "aaa", applyMode: "initial", status: "running" },
+    { sourceSha: "bbb", applyMode: "reload", status: "applied" },
+  ];
+  let scheduled = null;
+  let reloads = 0;
+
+  const fakeWindow = {
+    fetch: async () => ({
+      ok: true,
+      json: async () => responses.shift(),
+    }),
+    location: {
+      reload() {
+        reloads += 1;
+      },
+    },
+    setTimeout(callback) {
+      scheduled = callback;
+      return 1;
+    },
+    clearTimeout() {},
+  };
+
+  const watcher = createNativeUpdateWatcher(fakeWindow, { intervalMs: 1 });
+  await flushAsyncWork();
+  assert.equal(watcher.getObservedSha(), "aaa");
+  assert.equal(reloads, 0);
+
+  scheduled();
+  await flushAsyncWork();
+  assert.equal(watcher.getObservedSha(), "bbb");
+  assert.equal(reloads, 1);
+  watcher.dispose();
+});
+
+test("native watcher leaves host-restart updates to the system supervisor", async () => {
+  const responses = [
+    { sourceSha: "aaa", applyMode: "initial", status: "running" },
+    { sourceSha: "bbb", applyMode: "surface-restart", status: "restarting" },
+  ];
+  let scheduled = null;
+  let reloads = 0;
+
+  const fakeWindow = {
+    fetch: async () => ({ ok: true, json: async () => responses.shift() }),
+    location: { reload: () => { reloads += 1; } },
+    setTimeout(callback) {
+      scheduled = callback;
+      return 1;
+    },
+    clearTimeout() {},
+  };
+
+  const watcher = createNativeUpdateWatcher(fakeWindow, { intervalMs: 1 });
+  await flushAsyncWork();
+  scheduled();
+  await flushAsyncWork();
+
+  assert.equal(watcher.getObservedSha(), "bbb");
+  assert.equal(reloads, 0);
+  watcher.dispose();
 });
