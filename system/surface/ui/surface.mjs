@@ -1,11 +1,5 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
-import {
-  assertIdentityActionsPort,
-  isIdentityActionSupported,
-  validateIdentityActionsSnapshot,
-} from "../../contracts/identity-actions.mjs";
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import {
@@ -43,17 +37,6 @@ const CONNECTIVITY_LABELS = {
   unknown: "Conectividade desconhecida",
 };
 
-const IDENTITY_LABELS = {
-  unavailable: "Identidade indisponível neste host",
-  "signed-out": "Sem sessão ativa",
-  "signed-in": "Sessão ativa",
-};
-
-const IDENTITY_ACTION_LABELS = {
-  "sign-in": "Entrar",
-  "sign-out": "Sair",
-};
-
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -84,53 +67,7 @@ function renderPreferenceChoice(panel, state) {
   return choices;
 }
 
-function desiredIdentityAction(identitySnapshot) {
-  if (identitySnapshot.state === "signed-out") return "sign-in";
-  if (identitySnapshot.state === "signed-in") return "sign-out";
-  return null;
-}
-
-function renderIdentityActions(identitySnapshot, actionsSnapshot, pendingAction, actionMessage) {
-  const container = element("div", "ordax-preference-choices");
-  const action = desiredIdentityAction(identitySnapshot);
-
-  if (!action || !isIdentityActionSupported(actionsSnapshot, action)) {
-    const status = element(
-      "span",
-      "ordax-inline-status",
-      identitySnapshot.state === "unavailable"
-        ? "Ações de autenticação indisponíveis neste host"
-        : "Nenhuma ação de autenticação disponível",
-    );
-    status.dataset.state = "unavailable";
-    container.append(status);
-  } else {
-    const pending = pendingAction === action;
-    const label = pending
-      ? action === "sign-in" ? "Entrando…" : "Saindo…"
-      : IDENTITY_ACTION_LABELS[action];
-    const button = element("button", "ordax-preference-choice", label);
-    button.type = "button";
-    button.dataset.identityAction = action;
-    button.disabled = pendingAction !== null;
-    button.setAttribute("aria-busy", String(pending));
-    container.append(button);
-  }
-
-  if (actionMessage) {
-    container.append(element("span", "ordax-empty", actionMessage));
-  }
-  return container;
-}
-
-function renderPanel(
-  panel,
-  state,
-  identitySnapshot,
-  identityActionsSnapshot,
-  identityActionPending,
-  identityActionMessage,
-) {
+function renderPanel(panel, state) {
   const section = element(
     "section",
     panel.kind === "extension" ? "ordax-app-extension" : "ordax-app-panel",
@@ -146,23 +83,6 @@ function renderPanel(
     const badge = element("span", "ordax-inline-status", label);
     badge.dataset.state = state.connectivity;
     section.append(badge);
-  } else if (panel.kind === "identity-session") {
-    const label = IDENTITY_LABELS[identitySnapshot.state] ?? IDENTITY_LABELS.unavailable;
-    const badge = element("span", "ordax-inline-status", label);
-    badge.dataset.state = identitySnapshot.state;
-    section.append(badge);
-    if (identitySnapshot.state === "signed-in") {
-      section.append(element("p", "ordax-app-panel-body", identitySnapshot.displayName));
-    }
-  } else if (panel.kind === "identity-actions") {
-    section.append(
-      renderIdentityActions(
-        identitySnapshot,
-        identityActionsSnapshot,
-        identityActionPending,
-        identityActionMessage,
-      ),
-    );
   } else if (panel.kind === "capability") {
     const available = state.capabilityIds.includes(panel.capabilityId);
     const badge = element("span", "ordax-inline-status", capabilityState(state.capabilityIds, panel.capabilityId));
@@ -186,16 +106,7 @@ function renderPanel(
   return section;
 }
 
-function createWindow(
-  app,
-  windowState,
-  state,
-  identitySnapshot,
-  identityActionsSnapshot,
-  identityActionPending,
-  identityActionMessage,
-  index,
-) {
+function createWindow(app, windowState, state, index) {
   const activeArea = getActiveArea(state);
   const windowNode = element("article", "ordax-window");
   windowNode.dataset.windowId = windowState.id;
@@ -247,16 +158,7 @@ function createWindow(
 
   const body = element("div", "ordax-window-body");
   for (const panel of app.panels) {
-    body.append(
-      renderPanel(
-        panel,
-        state,
-        identitySnapshot,
-        identityActionsSnapshot,
-        identityActionPending,
-        identityActionMessage,
-      ),
-    );
+    body.append(renderPanel(panel, state));
   }
   windowNode.append(titlebar, body);
   return windowNode;
@@ -266,8 +168,6 @@ export function mountSurface(
   root,
   host,
   preferenceStore = null,
-  identitySession = null,
-  identityActions = null,
   workspaceStore = null,
   appActivation = null,
 ) {
@@ -276,20 +176,10 @@ export function mountSurface(
   }
   assertSurfaceHost(host);
   const store = preferenceStore === null ? null : assertPreferenceStore(preferenceStore);
-  const identityPort = identitySession === null ? null : assertIdentitySessionPort(identitySession);
-  const identityActionsPort = identityActions === null ? null : assertIdentityActionsPort(identityActions);
   const workspacePort = workspaceStore === null ? null : assertWorkspaceStore(workspaceStore);
   const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
   const workspaceSeed = workspacePort ? validateWorkspaceRecord(workspacePort.load()) : null;
-  let identitySnapshot = validateIdentitySessionSnapshot(
-    identityPort ? identityPort.getSnapshot() : { state: "unavailable" },
-  );
-  let identityActionsSnapshot = validateIdentityActionsSnapshot(
-    identityActionsPort ? identityActionsPort.getSnapshot() : { supportedActions: [] },
-  );
-  let identityActionPending = null;
-  let identityActionMessage = null;
   let dragSession = null;
   const renderListeners = new Set();
 
@@ -367,16 +257,7 @@ export function mountSurface(
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
       windowLayer.append(
-        createWindow(
-          app,
-          windowState,
-          state,
-          identitySnapshot,
-          identityActionsSnapshot,
-          identityActionPending,
-          identityActionMessage,
-          visibleIndex,
-        ),
+        createWindow(app, windowState, state, visibleIndex),
       );
       visibleIndex += 1;
     }
@@ -474,31 +355,6 @@ export function mountSurface(
     render();
   };
 
-  const invokeIdentityAction = (action) => {
-    if (
-      !identityActionsPort ||
-      identityActionPending !== null ||
-      !isIdentityActionSupported(identityActionsSnapshot, action)
-    ) {
-      return;
-    }
-
-    identityActionPending = action;
-    identityActionMessage = null;
-    render();
-    Promise.resolve()
-      .then(() => identityActionsPort.execute(action))
-      .then(() => {
-        identityActionPending = null;
-        render();
-      })
-      .catch(() => {
-        identityActionPending = null;
-        identityActionMessage = "A ação de conta não pôde ser concluída.";
-        render();
-      });
-  };
-
   const openLauncher = () => {
     if (!state.launcherOpen) dispatch({ type: "launcher.toggle" });
     queueMicrotask(() => {
@@ -549,12 +405,6 @@ export function mountSurface(
         activationPort.publish({ appId, target });
       }
       launcherQuery.value = "";
-      return;
-    }
-
-    const identityActionButton = event.target.closest("[data-identity-action]");
-    if (identityActionButton) {
-      invokeIdentityAction(identityActionButton.dataset.identityAction);
       return;
     }
 
@@ -743,16 +593,6 @@ export function mountSurface(
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
-  const unsubscribeIdentity = identityPort?.subscribe((snapshot) => {
-    identitySnapshot = validateIdentitySessionSnapshot(snapshot);
-    identityActionMessage = null;
-    render();
-  });
-  const unsubscribeIdentityActions = identityActionsPort?.subscribe((snapshot) => {
-    identityActionsSnapshot = validateIdentityActionsSnapshot(snapshot);
-    identityActionMessage = null;
-    render();
-  });
   render();
 
   return Object.freeze({
@@ -773,8 +613,6 @@ export function mountSurface(
         dragSession = null;
       }
       unsubscribeHost?.();
-      unsubscribeIdentity?.();
-      unsubscribeIdentityActions?.();
       root.removeEventListener("click", onClick);
       root.removeEventListener("input", onInput);
       root.removeEventListener("pointerdown", onPointerDown);
