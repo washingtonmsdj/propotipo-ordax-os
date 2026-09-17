@@ -58,10 +58,20 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("alpine/v3.22/main", text)
         self.assertIn("alpine/v3.22/community", text)
         self.assertIn("barkery-browser", text)
+        self.assertIn("xwayland", text)
         self.assertNotIn("\n        cog ", text)
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
         self.assertIn("$RUNTIME_ROOT/usr/bin/python3", text)
+        self.assertIn("$RUNTIME_ROOT/usr/bin/Xwayland", text)
+
+    def test_existing_runtime_is_extended_without_full_reprovision(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("runtime_base_is_ready", text)
+        self.assertIn("upgrade_existing_runtime", text)
+        self.assertIn('add xwayland \\', text)
+        self.assertIn("extending existing graphical runtime with Xwayland", text)
+        self.assertIn("RUNTIME_ID=alpine-v3.22-cage-barkery-v1", text)
 
     def test_native_browser_is_configured_for_local_shared_surface(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -77,8 +87,19 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("/usr/bin/python3 -m http.server 8765", text)
         self.assertIn("--bind 127.0.0.1", text)
         self.assertIn("--directory /srv/ordax-system", text)
+        self.assertIn("/sbin/ip link set dev lo up", text)
+        self.assertIn("/sbin/ip address replace 127.0.0.1/8 dev lo", text)
         self.assertNotIn("/bin/busybox httpd", text)
         self.assertNotIn("--bind 0.0.0.0", text)
+
+    def test_wlroots_physical_prerequisites_are_prepared(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("ensure_shared_memory", text)
+        self.assertIn("mkdir -p /dev/shm", text)
+        self.assertIn("chmod 1777 /dev/shm", text)
+        self.assertIn("WLR_LIBINPUT_NO_DEVICES=1", text)
+        self.assertIn("failed to prepare /dev/shm for wlroots/Xwayland", text)
+        self.assertIn("failed to configure IPv4 loopback for local Surface HTTP", text)
 
     def test_native_surface_fallback_exposes_physical_diagnostics(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
