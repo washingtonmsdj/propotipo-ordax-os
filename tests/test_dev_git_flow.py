@@ -123,9 +123,13 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertIn("runtime-v1", self._script(RUN).stdout)
 
         # A boot while pinned must not touch network/pull and must run the pinned checkout.
+        # The real dev-base builder installs these scripts as executable files. Mirror that
+        # installation boundary here instead of relying on the source-tree executable bit.
         bin_dir = self.root / "bin"
         bin_dir.mkdir()
-        (bin_dir / "ordax-run").symlink_to(RUN)
+        (bin_dir / "ordax-run").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{RUN}'\n", encoding="utf-8"
+        )
         network_marker = self.root / "network-called"
         pull_marker = self.root / "pull-called"
         (bin_dir / "ordax-network").write_text(
@@ -134,7 +138,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         (bin_dir / "ordax-pull").write_text(
             f"#!/bin/sh\ntouch '{pull_marker}'\nexit 99\n", encoding="utf-8"
         )
-        for path in (bin_dir / "ordax-network", bin_dir / "ordax-pull"):
+        for path in (bin_dir / "ordax-run", bin_dir / "ordax-network", bin_dir / "ordax-pull"):
             path.chmod(0o755)
 
         boot_env = self._env()
@@ -148,6 +152,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         boot = self._script(DEV_INIT, env=boot_env)
         self.assertIn("Rollback fixado", boot.stdout)
         self.assertIn("runtime-v1", boot.stdout)
+        self.assertNotIn("OrdaX fixado encerrou ou falhou", boot.stdout)
         self.assertFalse(network_marker.exists())
         self.assertFalse(pull_marker.exists())
 
