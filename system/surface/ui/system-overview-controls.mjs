@@ -170,7 +170,9 @@ export function mountSystemOverviewControls(
       ? "Atenção necessária"
       : hostSnapshot.connectivity === "offline"
         ? "Offline"
-        : "Operando normalmente";
+        : updateSnapshot
+          ? "Operando normalmente"
+          : "Surface ativa";
     header.append(copy, health);
     view.append(header);
   };
