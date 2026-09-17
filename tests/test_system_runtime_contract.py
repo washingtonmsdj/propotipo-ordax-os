@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_ENTRYPOINT = ROOT / "system" / "entrypoint"
 SURFACE_ENTRYPOINT = ROOT / "system" / "surface" / "entrypoint"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
+NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
+NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 
 
 class SystemRuntimeContractTests(unittest.TestCase):
@@ -16,10 +18,19 @@ class SystemRuntimeContractTests(unittest.TestCase):
             self.assertTrue(path.is_file(), path)
             mode = stat.S_IMODE(path.stat().st_mode)
             self.assertEqual(mode, 0o755, f"{path} mode={mode:o}")
+        self.assertTrue(NATIVE_HOST_SERVER.is_file(), NATIVE_HOST_SERVER)
+        self.assertTrue((NATIVE_COMPOSITION / "index.html").is_file())
+        self.assertTrue((NATIVE_COMPOSITION / "main.mjs").is_file())
 
     def test_shell_syntax_is_valid(self):
         for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME):
             subprocess.run(["sh", "-n", str(path)], check=True)
+
+    def test_native_host_server_python_syntax_is_valid(self):
+        subprocess.run(
+            ["python3", "-m", "py_compile", str(NATIVE_HOST_SERVER)],
+            check=True,
+        )
 
     def test_system_entrypoint_is_fail_closed(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
@@ -36,9 +47,13 @@ class SystemRuntimeContractTests(unittest.TestCase):
         for forbidden in ("curl ", "wget ", "udhcpc", "ssh ", "exec sh"):
             self.assertNotIn(forbidden, text)
 
-    def test_native_surface_reuses_shared_web_composition(self):
+    def test_native_surface_reuses_shared_surface_through_native_composition(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
-        self.assertIn("composition/web/index.html", text)
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        self.assertIn("composition/native/index.html", text)
+        self.assertNotIn("start_uri = http://127.0.0.1:8765/composition/web/index.html", text)
+        self.assertIn("../../surface/ui/surface.mjs", native_main)
+        self.assertIn("../../surface/ui/power-controls.mjs", native_main)
         self.assertIn("/usr/bin/cage", text)
         self.assertIn("/usr/bin/barkery", text)
         self.assertNotIn("/usr/bin/cog", text)
@@ -80,21 +95,32 @@ class SystemRuntimeContractTests(unittest.TestCase):
     def test_native_browser_is_configured_for_local_shared_surface(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("/etc/barkery/barkery.conf", text)
-        self.assertIn("start_uri = http://127.0.0.1:8765/composition/web/index.html", text)
+        self.assertIn("start_uri = http://127.0.0.1:8765/composition/native/index.html", text)
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
 
-    def test_native_surface_http_server_is_runtime_owned_and_loopback_only(self):
-        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
-        self.assertIn('/bin/busybox mount -o bind "$SYSTEM_ROOT"', text)
-        self.assertIn("$RUNTIME_ROOT/srv/ordax-system", text)
-        self.assertIn("/usr/bin/python3 -m http.server 8765", text)
-        self.assertIn("--bind 127.0.0.1", text)
-        self.assertIn("--directory /srv/ordax-system", text)
-        self.assertIn("/sbin/ip link set dev lo up", text)
-        self.assertIn("/sbin/ip address replace 127.0.0.1/8 dev lo", text)
-        self.assertNotIn("/bin/busybox httpd", text)
-        self.assertNotIn("--bind 0.0.0.0", text)
+    def test_native_surface_server_is_runtime_owned_loopback_only_and_control_capable(self):
+        launcher = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        server = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        self.assertIn('/bin/busybox mount -o bind "$SYSTEM_ROOT"', launcher)
+        self.assertIn("$RUNTIME_ROOT/srv/ordax-system", launcher)
+        self.assertIn("/usr/bin/python3 /srv/ordax-system/surface/runtime/native_host_server.py", launcher)
+        self.assertIn("--bind 127.0.0.1", launcher)
+        self.assertIn("--directory /srv/ordax-system", launcher)
+        self.assertIn("/sbin/ip link set dev lo up", launcher)
+        self.assertIn("/sbin/ip address replace 127.0.0.1/8 dev lo", launcher)
+        self.assertNotIn("/usr/bin/python3 -m http.server", launcher)
+        self.assertNotIn("/bin/busybox httpd", launcher)
+        self.assertNotIn("--bind 0.0.0.0", launcher)
+        self.assertIn('SESSION_PATH = "/__ordax/native/session"', server)
+        self.assertIn('POWER_PATH = "/__ordax/native/power"', server)
+        self.assertIn('TOKEN_HEADER = "X-OrdaX-Power-Token"', server)
+        self.assertIn("secrets.token_urlsafe(32)", server)
+        self.assertIn('"restart": ("/bin/busybox", "reboot", "-f")', server)
+        self.assertIn('"shutdown": ("/bin/busybox", "poweroff", "-f")', server)
+        self.assertIn("self.client_address[0] != \"127.0.0.1\"", server)
+        self.assertIn("hmac.compare_digest", server)
+        self.assertIn("Deliberately no CORS headers", server)
 
     def test_wlroots_physical_prerequisites_are_prepared(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -135,7 +161,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
         self.assertIn("failed to bind host resources into graphical runtime", text)
-        self.assertIn("loopback Surface HTTP server failed to start", text)
+        self.assertIn("native Surface HTTP/control server failed to start", text)
         self.assertIn("native Cage/Barkery host exited with status", text)
 
 
