@@ -32,8 +32,7 @@ POWER_CONTROLS = SURFACE / "power-controls.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
-SYSTEM_METRICS_CONTROLS = SURFACE / "system-metrics-controls.mjs"
-SYSTEM_STATUS_CONTROLS = SURFACE / "system-status-controls.mjs"
+SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -46,11 +45,11 @@ class SurfaceUiContractTests(unittest.TestCase):
             DESKTOP_SHELL,
             SURFACE_LIFECYCLE,
             FILE_SPACE_CONTROLS,
-            SYSTEM_METRICS_CONTROLS,
-            SYSTEM_STATUS_CONTROLS,
+            SYSTEM_OVERVIEW_CONTROLS,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
+            SURFACE / "system.css",
             POWER_CONTROLS,
             APP_CATALOG,
             APP_CONTRACT,
@@ -101,7 +100,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
         self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
-        for path in (FILE_SPACE_CONTROLS, SYSTEM_METRICS_CONTROLS, SYSTEM_STATUS_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
@@ -146,6 +145,22 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('.ordax-files-view', css)
         self.assertIn("../../surface/ui/files.css", web_html)
         self.assertIn("../../surface/ui/files.css", native_html)
+
+    def test_system_uses_formal_shared_overview_extension(self):
+        system = APP_OWNERS["system"].read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
+        css = (SURFACE / "system.css").read_text(encoding="utf-8")
+        web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
+        native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
+        self.assertIn('kind: "extension"', system)
+        self.assertIn('extensionId: "system-overview"', system)
+        self.assertIn('SYSTEM_EXTENSION_SELECTOR', overview)
+        self.assertIn("assertSurfaceHost", overview)
+        self.assertIn("assertUpdateStatusPort", overview)
+        self.assertIn("assertSystemMetricsPort", overview)
+        self.assertIn(".ordax-system-view", css)
+        self.assertIn("../../surface/ui/system.css", web_html)
+        self.assertIn("../../surface/ui/system.css", native_html)
 
     def test_settings_uses_shared_appearance_preference(self):
         settings = APP_OWNERS["settings"].read_text(encoding="utf-8")
@@ -288,6 +303,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertIn("../../surface/ui/files.css", html)
+        self.assertIn("../../surface/ui/system.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
