@@ -191,10 +191,12 @@ test("web and native workspace adapters persist independently", () => {
 
   assert.equal(createWebWorkspaceStore(windowRef).load().windows.length, 1);
   assert.equal(createNativeWorkspaceStore(windowRef).load().windows.length, 0);
+  assert.equal(typeof storage.raw("ordax.workspace.v1"), "string");
+  assert.equal(storage.raw("ordax.native.workspace.v1"), undefined);
 
   nativeStore.save(snapshot);
   assert.equal(createNativeWorkspaceStore(windowRef).load().windows.length, 1);
-  assert.notEqual(storage.raw("ordax.workspace.v1"), storage.raw("ordax.native.workspace.v1"));
+  assert.equal(typeof storage.raw("ordax.native.workspace.v1"), "string");
 });
 
 test("corrupt browser workspace state fails soft to an empty workspace", () => {
