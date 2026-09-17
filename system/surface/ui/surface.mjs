@@ -1,28 +1,19 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
-import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import { PREFERENCE_RUNTIME_SCHEMA } from "../../contracts/preference-runtime.mjs";
+import {
+  assertIdentityActionsPort,
+  isIdentityActionSupported,
+  validateIdentityActionsSnapshot,
+} from "../../contracts/identity-actions.mjs";
+import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
-import {
-  MAX_WORKSPACE_AREAS,
-  assertWorkspaceStore,
-  validateWorkspaceRecord,
-} from "../../contracts/workspace-store.mjs";
+import { assertWorkspaceStore, validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
-import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
-import { SURFACE_RENDER_LIFECYCLE_SCHEMA } from "./surface-lifecycle.mjs";
-import {
-  createSurfaceState,
-  createWorkspaceSnapshot,
-  getActiveArea,
-  reduceSurfaceState,
-} from "./surface-state.mjs";
+import { createSurfaceState, createWorkspaceSnapshot, reduceSurfaceState } from "./surface-state.mjs";
 
 const MOVABLE_WORKSPACE_MIN_WIDTH = 761;
 const KEYBOARD_MOVE_STEP = 24;
 const WORKSPACE_PERSIST_ACTIONS = new Set([
-  "area.create",
-  "area.switch",
   "app.launch",
   "window.focus",
   "window.move",
@@ -32,10 +23,85 @@ const WORKSPACE_PERSIST_ACTIONS = new Set([
   "workspace.show-desktop",
 ]);
 
+const SHELL_MARKUP = `
+  <div class="ordax-shell" data-ordax-shell>
+    <header class="ordax-topbar">
+      <div class="ordax-brand" aria-label="OrdaX">
+        <span class="ordax-brand-mark" aria-hidden="true">O</span>
+        <span>OrdaX</span>
+      </div>
+      <div class="ordax-status" role="status" aria-live="polite">
+        <span class="ordax-status-dot" data-connectivity-dot aria-hidden="true"></span>
+        <span data-connectivity-label>Conectividade desconhecida</span>
+      </div>
+    </header>
+
+    <main class="ordax-workspace" tabindex="-1" data-workspace>
+      <section class="ordax-desktop" aria-labelledby="surface-home-title">
+        <div class="ordax-desktop-intro">
+          <p class="ordax-eyebrow">Surface compartilhada</p>
+          <h1 id="surface-home-title">Seu espaço OrdaX.</h1>
+          <p class="ordax-lead">
+            Uma única Surface e um único modelo de aplicações para Web, Mobile, Desktop, USB e Native.
+            O host expõe capacidades; os apps e o workspace continuam os mesmos.
+          </p>
+        </div>
+        <div class="ordax-card-grid">
+          <article class="ordax-card">
+            <span class="ordax-card-label">Workspace</span>
+            <strong data-window-count>0 apps abertos</strong>
+            <p>Janelas pertencem à Surface compartilhada e não ao adapter de uma plataforma.</p>
+          </article>
+          <article class="ordax-card">
+            <span class="ordax-card-label">Conectividade</span>
+            <strong data-connectivity-card>Desconhecida</strong>
+            <p>O estado vem do host por contrato e pode mudar sem recarregar a Surface.</p>
+          </article>
+          <article class="ordax-card">
+            <span class="ordax-card-label">Capacidades disponíveis</span>
+            <strong data-capability-count>0</strong>
+            <p>A Surface reage a capacidades disponíveis, nunca ao nome da plataforma.</p>
+          </article>
+        </div>
+      </section>
+      <div class="ordax-window-layer" data-window-layer aria-live="polite"></div>
+    </main>
+
+    <div class="ordax-launcher" data-launcher hidden>
+      <div class="ordax-launcher-panel" role="menu" aria-label="Aplicações OrdaX">
+        <div class="ordax-launcher-heading">
+          <span>Aplicações</span>
+          <small>Fonte compartilhada</small>
+        </div>
+        <div class="ordax-launcher-grid" data-app-launcher></div>
+      </div>
+    </div>
+
+    <nav class="ordax-dock" aria-label="Controles da Surface">
+      <button type="button" class="ordax-dock-button ordax-primary" data-launcher-toggle aria-expanded="false" aria-label="Abrir lançador">
+        <span aria-hidden="true">O</span>
+      </button>
+      <button type="button" class="ordax-dock-button" data-show-desktop aria-label="Mostrar área de trabalho">Mesa</button>
+      <div class="ordax-dock-running" data-running-apps aria-label="Aplicações abertas"></div>
+    </nav>
+  </div>
+`;
+
 const CONNECTIVITY_LABELS = {
   online: "Online",
   offline: "Offline",
   unknown: "Conectividade desconhecida",
+};
+
+const IDENTITY_LABELS = {
+  unavailable: "Identidade indisponível neste host",
+  "signed-out": "Sem sessão ativa",
+  "signed-in": "Sessão ativa",
+};
+
+const IDENTITY_ACTION_LABELS = {
+  "sign-in": "Entrar",
+  "sign-out": "Sair",
 };
 
 function element(tag, className, text) {
@@ -43,10 +109,6 @@ function element(tag, className, text) {
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
-}
-
-function areaLabel(area) {
-  return `Área ${String(area.ordinal).padStart(2, "0")}`;
 }
 
 function capabilityState(capabilityIds, capabilityId) {
@@ -68,22 +130,79 @@ function renderPreferenceChoice(panel, state) {
   return choices;
 }
 
-function renderPanel(panel, state) {
-  const section = element(
-    "section",
-    panel.kind === "extension" ? "ordax-app-extension" : "ordax-app-panel",
-  );
+function desiredIdentityAction(identitySnapshot) {
+  if (identitySnapshot.state === "signed-out") return "sign-in";
+  if (identitySnapshot.state === "signed-in") return "sign-out";
+  return null;
+}
+
+function renderIdentityActions(identitySnapshot, actionsSnapshot, pendingAction, actionMessage) {
+  const container = element("div", "ordax-preference-choices");
+  const action = desiredIdentityAction(identitySnapshot);
+
+  if (!action || !isIdentityActionSupported(actionsSnapshot, action)) {
+    const status = element(
+      "span",
+      "ordax-inline-status",
+      identitySnapshot.state === "unavailable"
+        ? "Ações de autenticação indisponíveis neste host"
+        : "Nenhuma ação de autenticação disponível",
+    );
+    status.dataset.state = "unavailable";
+    container.append(status);
+  } else {
+    const pending = pendingAction === action;
+    const label = pending
+      ? action === "sign-in" ? "Entrando…" : "Saindo…"
+      : IDENTITY_ACTION_LABELS[action];
+    const button = element("button", "ordax-preference-choice", label);
+    button.type = "button";
+    button.dataset.identityAction = action;
+    button.disabled = pendingAction !== null;
+    button.setAttribute("aria-busy", String(pending));
+    container.append(button);
+  }
+
+  if (actionMessage) {
+    container.append(element("span", "ordax-empty", actionMessage));
+  }
+  return container;
+}
+
+function renderPanel(
+  panel,
+  state,
+  identitySnapshot,
+  identityActionsSnapshot,
+  identityActionPending,
+  identityActionMessage,
+) {
+  const section = element("section", "ordax-app-panel");
   section.append(element("span", "ordax-app-panel-label", panel.label));
   section.append(element("h3", "ordax-app-panel-title", panel.title));
 
-  if (panel.kind === "extension") {
-    section.dataset.appExtension = panel.extensionId;
-    section.setAttribute("aria-label", panel.title);
-  } else if (panel.kind === "connectivity") {
+  if (panel.kind === "connectivity") {
     const label = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
     const badge = element("span", "ordax-inline-status", label);
     badge.dataset.state = state.connectivity;
     section.append(badge);
+  } else if (panel.kind === "identity-session") {
+    const label = IDENTITY_LABELS[identitySnapshot.state] ?? IDENTITY_LABELS.unavailable;
+    const badge = element("span", "ordax-inline-status", label);
+    badge.dataset.state = identitySnapshot.state;
+    section.append(badge);
+    if (identitySnapshot.state === "signed-in") {
+      section.append(element("p", "ordax-app-panel-body", identitySnapshot.displayName));
+    }
+  } else if (panel.kind === "identity-actions") {
+    section.append(
+      renderIdentityActions(
+        identitySnapshot,
+        identityActionsSnapshot,
+        identityActionPending,
+        identityActionMessage,
+      ),
+    );
   } else if (panel.kind === "capability") {
     const available = state.capabilityIds.includes(panel.capabilityId);
     const badge = element("span", "ordax-inline-status", capabilityState(state.capabilityIds, panel.capabilityId));
@@ -107,11 +226,19 @@ function renderPanel(panel, state) {
   return section;
 }
 
-function createWindow(app, windowState, state, index) {
-  const activeArea = getActiveArea(state);
+function createWindow(
+  app,
+  windowState,
+  state,
+  identitySnapshot,
+  identityActionsSnapshot,
+  identityActionPending,
+  identityActionMessage,
+  index,
+) {
   const windowNode = element("article", "ordax-window");
   windowNode.dataset.windowId = windowState.id;
-  windowNode.dataset.active = String(activeArea.activeWindowId === windowState.id);
+  windowNode.dataset.active = String(state.activeWindowId === windowState.id);
   windowNode.dataset.maximized = String(windowState.maximized);
   const placementOrdinal = windowState.placementOrdinal ?? index + 1;
   windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 8) * 22}px`);
@@ -159,7 +286,16 @@ function createWindow(app, windowState, state, index) {
 
   const body = element("div", "ordax-window-body");
   for (const panel of app.panels) {
-    body.append(renderPanel(panel, state));
+    body.append(
+      renderPanel(
+        panel,
+        state,
+        identitySnapshot,
+        identityActionsSnapshot,
+        identityActionPending,
+        identityActionMessage,
+      ),
+    );
   }
   windowNode.append(titlebar, body);
   return windowNode;
@@ -169,35 +305,39 @@ export function mountSurface(
   root,
   host,
   preferenceStore = null,
+  identitySession = null,
+  identityActions = null,
   workspaceStore = null,
-  appActivation = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Surface root must be a DOM Element");
   }
   assertSurfaceHost(host);
   const store = preferenceStore === null ? null : assertPreferenceStore(preferenceStore);
+  const identityPort = identitySession === null ? null : assertIdentitySessionPort(identitySession);
+  const identityActionsPort = identityActions === null ? null : assertIdentityActionsPort(identityActions);
   const workspacePort = workspaceStore === null ? null : assertWorkspaceStore(workspaceStore);
-  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
   const workspaceSeed = workspacePort ? validateWorkspaceRecord(workspacePort.load()) : null;
+  let identitySnapshot = validateIdentitySessionSnapshot(
+    identityPort ? identityPort.getSnapshot() : { state: "unavailable" },
+  );
+  let identityActionsSnapshot = validateIdentityActionsSnapshot(
+    identityActionsPort ? identityActionsPort.getSnapshot() : { supportedActions: [] },
+  );
+  let identityActionPending = null;
+  let identityActionMessage = null;
   let dragSession = null;
-  const renderListeners = new Set();
-  const preferenceListeners = new Set();
 
-  root.innerHTML = createDesktopShellMarkup();
-  const desktopClock = mountDesktopClock(root);
+  root.innerHTML = SHELL_MARKUP;
   let state = createSurfaceState(host.getSnapshot(), preferenceSeed, workspaceSeed);
 
   const workspace = root.querySelector("[data-workspace]");
   const launcher = root.querySelector("[data-launcher]");
   const launcherToggle = root.querySelector("[data-launcher-toggle]");
-  const launcherQuery = root.querySelector("[data-launcher-query]");
   const appLauncher = root.querySelector("[data-app-launcher]");
   const windowLayer = root.querySelector("[data-window-layer]");
   const runningApps = root.querySelector("[data-running-apps]");
-  const areaSwitcher = root.querySelector("[data-area-switcher]");
-  const areaKicker = root.querySelector("[data-area-kicker]");
 
   const findRenderedWindow = (windowId) =>
     Array.from(windowLayer.children).find((node) => node.dataset.windowId === windowId) ?? null;
@@ -226,16 +366,13 @@ export function mountSurface(
 
   const renderLauncher = () => {
     appLauncher.replaceChildren();
-    const query = launcherQuery.value.trim().toLocaleLowerCase("pt-BR");
-    let visible = 0;
     for (const app of listFirstPartyApps()) {
       const available = isAppAvailable(app, state.capabilityIds);
-      const searchable = `${app.title} ${app.description} ${app.id}`.toLocaleLowerCase("pt-BR");
-      if (query && !searchable.includes(query)) continue;
       const button = element("button", "ordax-launcher-app");
       button.type = "button";
       button.dataset.launchApp = app.id;
       button.disabled = !available;
+      button.setAttribute("role", "menuitem");
       button.setAttribute("aria-label", available ? `Abrir ${app.title}` : `${app.title} indisponível`);
       button.append(element("span", "ordax-app-mark", app.monogram));
       const copy = element("span", "ordax-launcher-app-copy");
@@ -243,80 +380,45 @@ export function mountSurface(
       copy.append(element("small", "", available ? app.description : "Capacidades necessárias indisponíveis"));
       button.append(copy);
       appLauncher.append(button);
-      visible += 1;
-    }
-    if (visible === 0) {
-      appLauncher.append(element("p", "ordax-launcher-empty", "Nenhum aplicativo encontrado."));
     }
   };
 
   const renderWindows = () => {
-    const area = getActiveArea(state);
     windowLayer.replaceChildren();
     let visibleIndex = 0;
-    for (const windowState of area.windows) {
+    for (const windowState of state.windows) {
       if (windowState.minimized) continue;
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
       windowLayer.append(
-        createWindow(app, windowState, state, visibleIndex),
+        createWindow(
+          app,
+          windowState,
+          state,
+          identitySnapshot,
+          identityActionsSnapshot,
+          identityActionPending,
+          identityActionMessage,
+          visibleIndex,
+        ),
       );
       visibleIndex += 1;
     }
   };
 
   const renderDock = () => {
-    const area = getActiveArea(state);
     runningApps.replaceChildren();
-    for (const windowState of area.windows) {
+    for (const windowState of state.windows) {
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
-      const button = element("button", "ordax-running-app", app.monogram);
+      const button = element("button", "ordax-dock-button ordax-running-app", app.monogram);
       button.type = "button";
       button.dataset.openWindow = windowState.id;
-      button.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
+      button.dataset.active = String(state.activeWindowId === windowState.id && !windowState.minimized);
       button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
       button.title = app.title;
       runningApps.append(button);
     }
-  };
-
-  const renderSidebar = () => {
-    const area = getActiveArea(state);
-    const activeWindow = area.windows.find((item) => item.id === area.activeWindowId) ?? null;
-    for (const button of root.querySelectorAll("[data-sidebar-app]")) {
-      const appId = button.dataset.sidebarApp;
-      const app = getFirstPartyApp(appId);
-      button.disabled = !isAppAvailable(app, state.capabilityIds);
-      button.dataset.active = String(activeWindow?.appId === appId);
-    }
-  };
-
-  const renderAreas = () => {
-    const activeArea = getActiveArea(state);
-    areaSwitcher.replaceChildren();
-    for (const area of state.areas) {
-      const active = area.id === state.activeAreaId;
-      const button = element("button", "ordax-area-button", areaLabel(area));
-      button.type = "button";
-      button.dataset.areaId = area.id;
-      button.dataset.active = String(active);
-      button.setAttribute("aria-current", active ? "true" : "false");
-      button.setAttribute("aria-label", `Mudar para ${areaLabel(area)}`);
-      if (active) {
-        button.prepend(element("span", "ordax-area-dot"));
-        button.firstElementChild.setAttribute("aria-hidden", "true");
-      }
-      areaSwitcher.append(button);
-    }
-    if (state.areas.length < MAX_WORKSPACE_AREAS) {
-      const add = element("button", "ordax-area-button ordax-area-add", "+");
-      add.type = "button";
-      add.dataset.areaCreate = "";
-      add.setAttribute("aria-label", "Criar nova área de trabalho");
-      areaSwitcher.append(add);
-    }
-    areaKicker.textContent = areaLabel(activeArea);
   };
 
   const render = () => {
@@ -326,92 +428,70 @@ export function mountSurface(
 
     const connectivityLabel = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
     root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
+    root.querySelector("[data-connectivity-card]").textContent = connectivityLabel;
     root.querySelector("[data-connectivity-dot]").dataset.state = state.connectivity;
-
-    for (const targetButton of root.querySelectorAll("[data-requires-capability]")) {
-      const capabilityId = targetButton.dataset.requiresCapability;
-      const available = state.capabilityIds.includes(capabilityId);
-      targetButton.disabled = !available;
-      targetButton.setAttribute("aria-disabled", String(!available));
-      targetButton.title = available ? "" : "Este destino requer o espaço local do usuário.";
-    }
+    root.querySelector("[data-capability-count]").textContent = String(state.capabilityIds.length);
+    root.querySelector("[data-window-count]").textContent = `${state.windows.length} ${state.windows.length === 1 ? "app aberto" : "apps abertos"}`;
 
     renderLauncher();
     renderWindows();
     renderDock();
-    renderSidebar();
-    renderAreas();
-    for (const listener of [...renderListeners]) listener();
   };
 
   const dispatch = (action) => {
-    const previousPreferences = state.preferences;
     const next = reduceSurfaceState(state, action);
     if (next === state) return;
     state = next;
-    const preferencesChanged = state.preferences !== previousPreferences;
-    if (preferencesChanged && store) {
+    if (action?.type === "preference.set" && store) {
       store.save(state.preferences);
     }
     if (workspacePort && WORKSPACE_PERSIST_ACTIONS.has(action?.type)) {
       workspacePort.save(createWorkspaceSnapshot(state));
     }
     render();
-    if (preferencesChanged) {
-      for (const listener of [...preferenceListeners]) listener(state.preferences);
-    }
   };
 
-  const openLauncher = () => {
-    if (!state.launcherOpen) dispatch({ type: "launcher.toggle" });
-    queueMicrotask(() => {
-      launcherQuery.focus();
-      launcherQuery.select();
-    });
+  const invokeIdentityAction = (action) => {
+    if (
+      !identityActionsPort ||
+      identityActionPending !== null ||
+      !isIdentityActionSupported(identityActionsSnapshot, action)
+    ) {
+      return;
+    }
+
+    identityActionPending = action;
+    identityActionMessage = null;
+    render();
+    Promise.resolve()
+      .then(() => identityActionsPort.execute(action))
+      .then(() => {
+        identityActionPending = null;
+        render();
+      })
+      .catch(() => {
+        identityActionPending = null;
+        identityActionMessage = "A ação de conta não pôde ser concluída.";
+        render();
+      });
   };
 
   const onClick = (event) => {
-    const areaButton = event.target.closest("[data-area-id]");
-    if (areaButton) {
-      dispatch({ type: "area.switch", areaId: areaButton.dataset.areaId });
-      workspace.focus({ preventScroll: true });
-      return;
-    }
-
-    const areaCreate = event.target.closest("[data-area-create]");
-    if (areaCreate) {
-      dispatch({ type: "area.create" });
-      workspace.focus({ preventScroll: true });
-      return;
-    }
-
     const launcherButton = event.target.closest("[data-launcher-toggle]");
     if (launcherButton) {
-      if (state.launcherOpen) {
-        dispatch({ type: "launcher.close" });
-      } else {
-        openLauncher();
-      }
+      dispatch({ type: "launcher.toggle" });
       return;
     }
 
     const appButton = event.target.closest("[data-launch-app]");
     if (appButton) {
-      const appId = appButton.dataset.launchApp;
-      const requiredCapability = appButton.dataset.requiresCapability;
-      const app = getFirstPartyApp(appId);
-      if (
-        (requiredCapability && !state.capabilityIds.includes(requiredCapability)) ||
-        !isAppAvailable(app, state.capabilityIds)
-      ) {
-        return;
-      }
-      dispatch({ type: "app.launch", appId });
-      const target = appButton.dataset.appTarget;
-      if (target && activationPort) {
-        activationPort.publish({ appId, target });
-      }
-      launcherQuery.value = "";
+      dispatch({ type: "app.launch", appId: appButton.dataset.launchApp });
+      return;
+    }
+
+    const identityActionButton = event.target.closest("[data-identity-action]");
+    if (identityActionButton) {
+      invokeIdentityAction(identityActionButton.dataset.identityAction);
       return;
     }
 
@@ -455,17 +535,12 @@ export function mountSurface(
     }
   };
 
-  const onInput = (event) => {
-    if (event.target === launcherQuery) renderLauncher();
-  };
-
   const onPointerDown = (event) => {
     if (event.button !== 0 || !isMovableWorkspace()) return;
     const titlebar = event.target.closest("[data-window-titlebar]");
     const windowNode = titlebar?.closest("[data-window-id]");
     if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
-    const area = getActiveArea(state);
-    const windowState = area.windows.find((item) => item.id === windowNode.dataset.windowId);
+    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
     if (!windowState || windowState.maximized) return;
 
     const geometry = renderedGeometry(windowNode);
@@ -538,30 +613,10 @@ export function mountSurface(
   };
 
   const onKeyDown = (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
-      event.preventDefault();
-      openLauncher();
-      return;
-    }
-
     if (event.key === "Escape" && state.launcherOpen) {
       dispatch({ type: "launcher.close" });
       launcherToggle.focus();
       return;
-    }
-
-    if (event.target === launcherQuery && state.launcherOpen) {
-      const firstApp = appLauncher.querySelector("button:not(:disabled)");
-      if (event.key === "ArrowDown" && firstApp) {
-        firstApp.focus();
-        event.preventDefault();
-        return;
-      }
-      if (event.key === "Enter" && firstApp) {
-        firstApp.click();
-        event.preventDefault();
-        return;
-      }
     }
 
     if (!event.altKey || !isMovableWorkspace()) return;
@@ -576,8 +631,7 @@ export function mountSurface(
     const titlebar = event.target.closest("[data-window-titlebar]");
     const windowNode = titlebar?.closest("[data-window-id]");
     if (!titlebar || !windowNode || event.target.closest("[data-window-action]")) return;
-    const area = getActiveArea(state);
-    const windowState = area.windows.find((item) => item.id === windowNode.dataset.windowId);
+    const windowState = state.windows.find((item) => item.id === windowNode.dataset.windowId);
     if (!windowState || windowState.maximized) return;
 
     const geometry = renderedGeometry(windowNode);
@@ -592,7 +646,6 @@ export function mountSurface(
   };
 
   root.addEventListener("click", onClick);
-  root.addEventListener("input", onInput);
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
@@ -600,56 +653,35 @@ export function mountSurface(
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
+  const unsubscribeIdentity = identityPort?.subscribe((snapshot) => {
+    identitySnapshot = validateIdentitySessionSnapshot(snapshot);
+    identityActionMessage = null;
+    render();
+  });
+  const unsubscribeIdentityActions = identityActionsPort?.subscribe((snapshot) => {
+    identityActionsSnapshot = validateIdentityActionsSnapshot(snapshot);
+    identityActionMessage = null;
+    render();
+  });
   render();
 
-  const preferences = Object.freeze({
-    schema: PREFERENCE_RUNTIME_SCHEMA,
-    getSnapshot() {
-      return state.preferences;
-    },
-    set(preferenceId, value) {
-      dispatch({ type: "preference.set", preferenceId, value });
-      return state.preferences;
-    },
-    subscribe(listener) {
-      if (typeof listener !== "function") {
-        throw new TypeError("Preference runtime listener must be a function");
-      }
-      preferenceListeners.add(listener);
-      listener(state.preferences);
-      return () => preferenceListeners.delete(listener);
-    },
-  });
-
   return Object.freeze({
-    schema: SURFACE_RENDER_LIFECYCLE_SCHEMA,
-    preferences,
-    subscribeRender(listener) {
-      if (typeof listener !== "function") {
-        throw new TypeError("Surface render listener must be a function");
-      }
-      renderListeners.add(listener);
-      listener();
-      return () => renderListeners.delete(listener);
-    },
     destroy() {
       if (workspacePort) workspacePort.save(createWorkspaceSnapshot(state));
-      desktopClock.destroy();
       if (dragSession) {
         dragSession.titlebar.releasePointerCapture?.(dragSession.pointerId);
         dragSession = null;
       }
       unsubscribeHost?.();
+      unsubscribeIdentity?.();
+      unsubscribeIdentityActions?.();
       root.removeEventListener("click", onClick);
-      root.removeEventListener("input", onInput);
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("pointermove", onPointerMove);
       root.removeEventListener("pointerup", onPointerUp);
       root.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
-      preferenceListeners.clear();
-      renderListeners.clear();
       delete root.dataset.ordaxTheme;
       root.replaceChildren();
     },
