@@ -174,9 +174,23 @@ do {
         }
 
         if ($null -ne $checkVolume) {
-            $observedFileSystem = [string]$checkVolume.FileSystemType
-            if ([string]::IsNullOrWhiteSpace($observedFileSystem)) {
-                $observedFileSystem = [string]$checkVolume.FileSystem
+            # FileSystemType can legitimately remain the enum value Unknown on
+            # some Windows/storage-driver combinations even after Format-Volume
+            # completed and FileSystem already reports exFAT. Prefer FileSystem,
+            # treat Unknown as unresolved metadata, then fall back to DriveInfo.
+            $observedFileSystem = [string]$checkVolume.FileSystem
+            if ([string]::IsNullOrWhiteSpace($observedFileSystem) -or [string]::Equals($observedFileSystem.Trim(), 'Unknown', [System.StringComparison]::OrdinalIgnoreCase)) {
+                $observedFileSystem = [string]$checkVolume.FileSystemType
+            }
+            if (([string]::IsNullOrWhiteSpace($observedFileSystem) -or [string]::Equals($observedFileSystem.Trim(), 'Unknown', [System.StringComparison]::OrdinalIgnoreCase)) -and -not [string]::IsNullOrWhiteSpace($observedDriveLetter)) {
+                try {
+                    $driveInfo = [System.IO.DriveInfo]::new(($observedDriveLetter + ':\'))
+                    if ($driveInfo.IsReady) {
+                        $observedFileSystem = [string]$driveInfo.DriveFormat
+                    }
+                } catch {
+                    # Keep retrying until the mount manager exposes a ready drive.
+                }
             }
             $observedLabel = [string]$checkVolume.FileSystemLabel
             $filesystemReady = [string]::Equals($observedFileSystem.Trim(), 'exFAT', [System.StringComparison]::OrdinalIgnoreCase)
