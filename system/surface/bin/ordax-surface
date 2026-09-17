@@ -16,6 +16,7 @@ DEV_BOUND=0
 PROC_BOUND=0
 SYS_BOUND=0
 RUN_BOUND=0
+SYSTEM_BOUND=0
 
 mkdir -p "$SESSION_DIR"
 chmod 700 "$SESSION_DIR"
@@ -27,6 +28,10 @@ cleanup() {
         kill "$HTTP_PID" >/dev/null 2>&1 || true
         wait "$HTTP_PID" 2>/dev/null || true
         HTTP_PID=""
+    fi
+    if [ "$SYSTEM_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/srv/ordax-system" >/dev/null 2>&1 || true
+        SYSTEM_BOUND=0
     fi
     if [ "$RUN_BOUND" -eq 1 ]; then
         /bin/busybox umount "$RUNTIME_ROOT/run" >/dev/null 2>&1 || true
@@ -60,12 +65,21 @@ console_fallback() {
     printf 'Mode: %s\n' "${ORDAX_SURFACE_MODE:-unknown}"
     printf '\nThe graphical host could not be started.\n'
     printf 'Host log: %s\n' "$HOST_LOG"
+    printf 'HTTP log: %s\n' "$HTTP_LOG"
     if [ -s "$HOST_LOG" ]; then
         printf '\nDiagnostic:\n'
         if [ -x /bin/busybox ]; then
             /bin/busybox tail -n 20 "$HOST_LOG" 2>/dev/null || cat "$HOST_LOG" 2>/dev/null || true
         else
             cat "$HOST_LOG" 2>/dev/null || true
+        fi
+    fi
+    if [ -s "$HTTP_LOG" ]; then
+        printf '\nHTTP diagnostic:\n'
+        if [ -x /bin/busybox ]; then
+            /bin/busybox tail -n 20 "$HTTP_LOG" 2>/dev/null || cat "$HTTP_LOG" 2>/dev/null || true
+        else
+            cat "$HTTP_LOG" 2>/dev/null || true
         fi
     fi
     printf '\nThe checked-out system remains available for maintenance.\n'
@@ -84,6 +98,7 @@ runtime_is_ready() {
     [ -f "$RUNTIME_READY" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/cage" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/barkery" ] &&
+        [ -x "$RUNTIME_ROOT/usr/bin/python3" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
         [ -x "$RUNTIME_ROOT/bin/busybox" ]
 }
@@ -142,13 +157,14 @@ REPOSITORIES
         return 1
     fi
 
-    for directory in dev proc sys run tmp root; do
+    for directory in dev proc sys run tmp root srv/ordax-system; do
         mkdir -p "$STAGING_DIR/rootfs/$directory"
     done
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
 
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/usr/bin/python3" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/seatd-launch" ] || return 1
 
     printf '%s\n' "$RUNTIME_ID" >"$STAGING_DIR/ready"
@@ -177,6 +193,9 @@ BARKERY
 }
 
 bind_runtime_mounts() {
+    mkdir -p "$RUNTIME_ROOT/srv/ordax-system" || return 1
+    /bin/busybox mount -o bind "$SYSTEM_ROOT" "$RUNTIME_ROOT/srv/ordax-system" >>"$HOST_LOG" 2>&1 || return 1
+    SYSTEM_BOUND=1
     /bin/busybox mount -o bind /dev "$RUNTIME_ROOT/dev" >>"$HOST_LOG" 2>&1 || return 1
     DEV_BOUND=1
     /bin/busybox mount -o bind /proc "$RUNTIME_ROOT/proc" >>"$HOST_LOG" 2>&1 || return 1
@@ -194,17 +213,21 @@ bind_runtime_mounts() {
 [ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
 ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
 configure_browser || fallback_with_reason "failed to configure Barkery browser runtime"
-bind_runtime_mounts || fallback_with_reason "failed to bind host devices into graphical runtime"
+bind_runtime_mounts || fallback_with_reason "failed to bind host resources into graphical runtime"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
 export GDK_BACKEND=wayland
 export ORDAX_SURFACE_MODE=native-graphical
 
-# Serve the checked-out shared system tree locally. The visual source and this
-# runtime bootstrap both arrive through Git; only the minimal apk client and
-# trusted Alpine keys belong to the fixed development base.
-/bin/busybox httpd -f -p 127.0.0.1:8765 -h "$SYSTEM_ROOT" >"$HTTP_LOG" 2>&1 &
+# Serve the checked-out shared system tree from the replaceable graphical
+# runtime itself. The fixed bootstrap intentionally does not carry an HTTP
+# server applet; Barkery already brings Python into this runtime.
+/bin/busybox chroot "$RUNTIME_ROOT" \
+    /usr/bin/python3 -m http.server 8765 \
+    --bind 127.0.0.1 \
+    --directory /srv/ordax-system \
+    >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
 kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "loopback Surface HTTP server failed to start"

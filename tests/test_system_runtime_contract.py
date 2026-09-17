@@ -61,6 +61,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("\n        cog ", text)
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
+        self.assertIn("$RUNTIME_ROOT/usr/bin/python3", text)
 
     def test_native_browser_is_configured_for_local_shared_surface(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -69,18 +70,26 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
 
-    def test_native_surface_http_server_is_loopback_only(self):
+    def test_native_surface_http_server_is_runtime_owned_and_loopback_only(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
-        self.assertIn("-p 127.0.0.1:8765", text)
-        self.assertNotIn("-p 0.0.0.0", text)
+        self.assertIn('/bin/busybox mount -o bind "$SYSTEM_ROOT"', text)
+        self.assertIn("$RUNTIME_ROOT/srv/ordax-system", text)
+        self.assertIn("/usr/bin/python3 -m http.server 8765", text)
+        self.assertIn("--bind 127.0.0.1", text)
+        self.assertIn("--directory /srv/ordax-system", text)
+        self.assertNotIn("/bin/busybox httpd", text)
+        self.assertNotIn("--bind 0.0.0.0", text)
 
     def test_native_surface_fallback_exposes_physical_diagnostics(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("fallback_with_reason", text)
         self.assertIn("Diagnostic:", text)
+        self.assertIn("HTTP diagnostic:", text)
+        self.assertIn("HTTP log:", text)
         self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
-        self.assertIn("failed to bind host devices into graphical runtime", text)
+        self.assertIn("failed to bind host resources into graphical runtime", text)
+        self.assertIn("loopback Surface HTTP server failed to start", text)
         self.assertIn("native Cage/Barkery host exited with status", text)
 
 
