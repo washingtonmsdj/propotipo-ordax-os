@@ -30,8 +30,11 @@ func TestPortableDataWindowsWaitsForStableFormattedVolume(t *testing.T) {
 		}
 	}
 
-	fileSystemPos := strings.Index(text, "$observedFileSystem = [string]$checkVolume.FileSystem\n")
-	fileSystemTypePos := strings.Index(text, "$observedFileSystem = [string]$checkVolume.FileSystemType\n")
+	// Git may check this source out with CRLF on native Windows runners. Normalize
+	// line endings before asserting the exact preference order.
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	fileSystemPos := strings.Index(normalized, "$observedFileSystem = [string]$checkVolume.FileSystem\n")
+	fileSystemTypePos := strings.Index(normalized, "$observedFileSystem = [string]$checkVolume.FileSystemType\n")
 	if fileSystemPos < 0 || fileSystemTypePos < 0 || fileSystemPos >= fileSystemTypePos {
 		t.Fatalf("portable ORDAX-DATA verification must prefer FileSystem before FileSystemType; positions filesystem=%d filesystemType=%d", fileSystemPos, fileSystemTypePos)
 	}
