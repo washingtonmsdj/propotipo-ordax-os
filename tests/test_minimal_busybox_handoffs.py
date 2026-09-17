@@ -10,8 +10,7 @@ DEV_BOOTSTRAP = (ROOT / "bootstrap/dev/entrypoint").read_text(encoding="utf-8")
 class MinimalBusyBoxHandoffTests(unittest.TestCase):
     def test_pid1_does_not_depend_on_optional_ash_command_builtin(self):
         self.assertNotIn("command -v", INIT)
-        self.assertIn('GROW_HELPER=/sbin/ordax-grow-ext4', INIT)
-        self.assertIn('if ! "$GROW_HELPER" "$ORDAX_DEVICE" /ordax; then', INIT)
+        self.assertIn('if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then', INIT)
         self.assertIn('cat "$BOOTSTRAP_PATH" >/dev/null 2>&1', INIT)
         self.assertIn('exec "$BOOTSTRAP_PATH"', INIT)
         self.assertIn('cat "$RECOVERY_BOOTSTRAP_PATH" >/dev/null 2>&1', INIT)
