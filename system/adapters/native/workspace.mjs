@@ -4,51 +4,47 @@ import {
   validateWorkspaceRecord,
 } from "../../contracts/workspace-store.mjs";
 
-const WORKSPACE_ENDPOINT = "/__ordax/native/workspace";
+const STORAGE_KEY = "ordax.native.workspace.v1";
 
-export async function createNativeWorkspaceStore(windowRef = globalThis.window) {
-  if (!windowRef || typeof windowRef.fetch !== "function") {
-    throw new TypeError("Native workspace store requires window.fetch");
+function resolveStorage(windowRef) {
+  try {
+    const storage = windowRef?.localStorage;
+    if (storage && typeof storage.getItem === "function" && typeof storage.setItem === "function") {
+      return storage;
+    }
+  } catch {
+    // Native browser policy may deny storage access; memory remains usable.
   }
+  return null;
+}
 
+export function createNativeWorkspaceStore(windowRef = globalThis.window) {
+  const storage = resolveStorage(windowRef);
   let memory = validateWorkspaceRecord(null);
-  const response = await windowRef.fetch(WORKSPACE_ENDPOINT, {
-    method: "GET",
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-  if (!response.ok) {
-    throw new Error(`Native workspace load failed: ${response.status}`);
-  }
-  memory = validateWorkspaceRecord(await response.json());
-  let pendingWrite = Promise.resolve();
-
-  const persist = (snapshot) => {
-    pendingWrite = pendingWrite
-      .catch(() => {})
-      .then(async () => {
-        const writeResponse = await windowRef.fetch(WORKSPACE_ENDPOINT, {
-          method: "POST",
-          cache: "no-store",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(snapshot),
-        });
-        if (!writeResponse.ok) {
-          throw new Error(`Native workspace save failed: ${writeResponse.status}`);
-        }
-      });
-  };
 
   const store = {
     schema: WORKSPACE_STORE_SCHEMA,
     load() {
+      if (!storage) return memory;
+      try {
+        const raw = storage.getItem(STORAGE_KEY);
+        if (raw === null) return memory;
+        memory = validateWorkspaceRecord(JSON.parse(raw));
+      } catch {
+        // Corrupt or inaccessible browser state never blocks the Surface.
+      }
       return memory;
     },
     save(snapshot) {
-      memory = validateWorkspaceRecord(snapshot);
-      persist(memory);
-      return true;
+      const validated = validateWorkspaceRecord(snapshot);
+      memory = validated;
+      if (!storage) return false;
+      try {
+        storage.setItem(STORAGE_KEY, JSON.stringify(validated));
+        return true;
+      } catch {
+        return false;
+      }
     },
   };
 
