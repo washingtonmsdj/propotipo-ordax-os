@@ -38,3 +38,16 @@ test("app contract rejects invalid extension identifiers", () => {
     /valid extensionId/,
   );
 });
+
+test("app contract rejects obsolete identity-specific panel kinds", () => {
+  for (const kind of ["identity-session", "identity-actions"]) {
+    assert.throws(
+      () => defineFirstPartyApp(baseSpec({
+        kind,
+        label: "Legacy identity panel",
+        title: "Legacy",
+      })),
+      /unsupported panel kind/,
+    );
+  }
+});
