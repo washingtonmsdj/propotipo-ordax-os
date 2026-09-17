@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
+import math
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -18,11 +20,15 @@ SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
+PREFERENCES_PATH = "/__ordax/native/preferences"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
+PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
+MAX_PREFERENCE_BODY = 8192
+PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_COMMANDS = {
     "restart": ("/bin/busybox", "reboot", "-f"),
     "shutdown": ("/bin/busybox", "poweroff", "-f"),
@@ -88,6 +94,55 @@ def valid_commit_sha(value: object) -> bool:
     )
 
 
+def valid_preference_record(value: object) -> bool:
+    if not isinstance(value, dict) or len(value) > 128:
+        return False
+    for preference_id, preference_value in value.items():
+        if not isinstance(preference_id, str) or not PREFERENCE_ID_RE.fullmatch(preference_id):
+            return False
+        if preference_value is None or isinstance(preference_value, (str, bool, int)):
+            if isinstance(preference_value, str) and len(preference_value) > 4096:
+                return False
+            continue
+        if isinstance(preference_value, float) and math.isfinite(preference_value):
+            continue
+        return False
+    return True
+
+
+def read_preferences() -> dict:
+    try:
+        with open(PREFERENCES_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if valid_preference_record(payload) else {}
+
+
+def write_preferences(preferences: dict) -> None:
+    if not valid_preference_record(preferences):
+        raise ValueError("invalid preference record")
+    directory = os.path.dirname(PREFERENCES_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    temporary = f"{PREFERENCES_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(preferences, handle, separators=(",", ":"), sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, PREFERENCES_FILE)
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
 def record_surface_health(source_sha: str) -> None:
     directory = os.path.dirname(HEALTH_STATE_FILE)
     os.makedirs(directory, exist_ok=True)
@@ -130,12 +185,12 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
-    def _read_json_body(self) -> dict | None:
+    def _read_json_body(self, max_bytes: int = MAX_CONTROL_BODY) -> dict | None:
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             return None
-        if length <= 0 or length > MAX_CONTROL_BODY:
+        if length <= 0 or length > max_bytes:
             return None
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if content_type != "application/json":
@@ -148,8 +203,8 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         if self.path.startswith("/__ordax/native/"):
-            # Deliberately no CORS headers. Cross-origin callers cannot obtain or
-            # submit either native session token using custom request headers.
+            # Deliberately no CORS headers. Cross-origin callers cannot use the
+            # native control/state APIs through browser preflight.
             self._empty(403)
             return
         self._empty(405)
@@ -184,6 +239,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             update_state["healthToken"] = self.server.health_token
             self._write_json(status, update_state)
             return
+        if self.path == PREFERENCES_PATH:
+            self._write_json(200, read_preferences())
+            return
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -205,6 +263,20 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 record_surface_health(source_sha)
             except OSError as exc:
                 print(f"ordax-native-host: could not record Surface health: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path == PREFERENCES_PATH:
+            payload = self._read_json_body(MAX_PREFERENCE_BODY)
+            if payload is None or not valid_preference_record(payload):
+                self._empty(400)
+                return
+            try:
+                write_preferences(payload)
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not persist preferences: {exc}", file=sys.stderr, flush=True)
                 self._empty(500)
                 return
             self._empty(204)
