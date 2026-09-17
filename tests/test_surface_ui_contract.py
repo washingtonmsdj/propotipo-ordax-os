@@ -413,6 +413,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/services/account/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/services/preferences/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/preference-runtime.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)
