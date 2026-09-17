@@ -22,13 +22,6 @@ function joinPath(path, name) {
   return path === "/" ? `/${name}` : `${path}/${name}`;
 }
 
-function parentPath(path) {
-  if (path === "/") return "/";
-  const parts = path.split("/").filter(Boolean);
-  parts.pop();
-  return parts.length ? `/${parts.join("/")}` : "/";
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -132,7 +125,6 @@ export function mountFileSpaceControls(
 
   const renderEntries = (container) => {
     const list = node(documentObject, "div", "ordax-files-list");
-    list.setAttribute("role", "list");
     const header = node(documentObject, "div", "ordax-files-list-header");
     header.append(
       node(documentObject, "span", "", "Nome"),
@@ -167,8 +159,6 @@ export function mountFileSpaceControls(
         row.type = "button";
         row.dataset.fileOpenPath = joinPath(listing.path, entry.name);
         row.setAttribute("aria-label", `Abrir pasta ${entry.name}`);
-      } else {
-        row.setAttribute("role", "listitem");
       }
       row.dataset.kind = entry.kind;
 
