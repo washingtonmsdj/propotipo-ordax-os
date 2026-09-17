@@ -27,6 +27,7 @@ on:
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_app_activation.mjs'
+      - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -59,6 +60,7 @@ on:
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_app_activation.mjs'
+      - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -112,6 +114,7 @@ jobs:
           node --test tests/test_surface_preferences.mjs
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_app_activation.mjs
+          node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
