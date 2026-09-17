@@ -287,6 +287,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("validateAccountRuntime", main)
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
+        self.assertIn("../../surface/ui/files.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
@@ -374,6 +375,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("system/composition/native", workflow)
         self.assertIn("node --test tests/test_power_actions.mjs", workflow)
         self.assertIn("node --test tests/test_app_activation.mjs", workflow)
+        self.assertIn("node --test tests/test_app_contract.mjs", workflow)
 
 
 if __name__ == "__main__":
