@@ -58,7 +58,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("alpine/v3.22/main", text)
         self.assertIn("alpine/v3.22/community", text)
         self.assertIn("barkery-browser", text)
-        self.assertNotIn("\n        cog \\", text)
+        self.assertNotIn("\n        cog ", text)
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
 
