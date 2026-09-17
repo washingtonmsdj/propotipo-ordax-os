@@ -2,8 +2,18 @@
 set -eu
 
 WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
-PREVIOUS_FILE=/state/ordax/previous-commit
-CURRENT_FILE=/state/ordax/current-commit
+STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
+PREVIOUS_FILE=$STATE_DIR/previous-commit
+CURRENT_FILE=$STATE_DIR/current-commit
+PINNED_FILE=$STATE_DIR/pinned-commit
+
+write_state() {
+    destination=$1
+    value=$2
+    temporary=$destination.tmp.$$
+    printf '%s\n' "$value" > "$temporary"
+    mv -f "$temporary" "$destination"
+}
 
 [ -d "$WORKTREE/.git" ] || { echo "ordax-rollback: repositorio ainda nao existe" >&2; exit 1; }
 [ -s "$PREVIOUS_FILE" ] || { echo "ordax-rollback: nao ha commit anterior registrado" >&2; exit 1; }
@@ -12,7 +22,19 @@ previous=$(cat "$PREVIOUS_FILE")
 case "$previous" in
     *[!0-9a-f]*|'') echo "ordax-rollback: commit anterior invalido" >&2; exit 1 ;;
 esac
+[ "${#previous}" -eq 40 ] || { echo "ordax-rollback: commit anterior invalido" >&2; exit 1; }
 
+git -C "$WORKTREE" cat-file -e "$previous^{commit}" 2>/dev/null || {
+    echo "ordax-rollback: commit anterior nao existe no repositorio local" >&2
+    exit 1
+}
+
+mkdir -p "$STATE_DIR"
+# Pin first. If power is lost before reset completes, boot detects the mismatch
+# and refuses an automatic pull/run instead of silently advancing.
+write_state "$PINNED_FILE" "$previous"
 git -C "$WORKTREE" reset --hard "$previous"
-printf '%s\n' "$previous" > "$CURRENT_FILE"
+write_state "$CURRENT_FILE" "$previous"
 printf 'ORDAX_ROLLBACK_SHA=%s\n' "$previous"
+printf 'ORDAX_PINNED_SHA=%s\n' "$previous"
+printf 'ordax-rollback: commit fixado ate o proximo ordax-pull explicito\n'

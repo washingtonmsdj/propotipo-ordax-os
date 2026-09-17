@@ -6,9 +6,33 @@ HOME=/root
 export PATH HOME
 
 WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
+WORKSPACE_DIR=${ORDAX_WORKSPACE_DIR:-$(dirname "$WORKTREE")}
+STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
+NETWORK_STATE_DIR=${ORDAX_NETWORK_STATE_DIR:-/state/network}
+BIN_DIR=${ORDAX_BIN_DIR:-/usr/local/bin}
+PINNED_FILE=$STATE_DIR/pinned-commit
 
-mkdir -p /workspace /state/ordax /state/network /home /run /tmp /root
-chmod 1777 /tmp
+is_commit_sha() {
+    value=$1
+    [ "${#value}" -eq 40 ] || return 1
+    case "$value" in
+        *[!0-9a-f]*|'') return 1 ;;
+    esac
+    return 0
+}
+
+maintenance_shell() {
+    printf '\nBase de desenvolvimento pronta para manutencao.\n'
+    printf 'Repositorio: %s\n' "$WORKTREE"
+    printf 'Atualizar:    ordax-pull\n'
+    printf 'Executar:     ordax-run\n'
+    printf 'Voltar:       ordax-rollback\n'
+    printf '\nMudancas normais do OrdaX nao exigem regravar o pendrive.\n\n'
+    exec /bin/sh
+}
+
+mkdir -p "$WORKSPACE_DIR" "$STATE_DIR" "$NETWORK_STATE_DIR" /home /run /tmp /root
+chmod 1777 /tmp 2>/dev/null || true
 
 printf '\033[2J\033[H'
 printf 'OrdaX Development Base\n'
@@ -18,8 +42,29 @@ for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
     modprobe "$module" >/dev/null 2>&1 || true
 done
 
+# A rollback is sticky across reboots. It must not be undone by the automatic
+# boot-time pull. An explicit ordax-pull is the action that releases the pin.
+if [ -s "$PINNED_FILE" ]; then
+    pinned=$(cat "$PINNED_FILE")
+    current=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    if is_commit_sha "$pinned" && [ "$current" = "$pinned" ] && [ -x "$WORKTREE/system/entrypoint" ]; then
+        printf 'Rollback fixado em %s; sincronizacao automatica ignorada.\n' "$pinned"
+        printf 'Use ordax-pull explicitamente para voltar a acompanhar %s.\n' "${ORDAX_REPO_BRANCH:-main}"
+        printf '\nIniciando OrdaX fixado...\n'
+        if "$BIN_DIR/ordax-run"; then
+            exit 0
+        fi
+        printf '\nOrdaX fixado encerrou ou falhou ao iniciar.\n'
+        maintenance_shell
+    fi
+
+    printf 'Estado de rollback fixado inconsistente; pull e execucao automaticos bloqueados.\n' >&2
+    printf 'PIN=%s HEAD=%s\n' "$pinned" "${current:-indisponivel}" >&2
+    maintenance_shell
+fi
+
 network_ok=0
-if /usr/local/bin/ordax-network; then
+if "$BIN_DIR/ordax-network"; then
     network_ok=1
 else
     printf '\nRede ainda nao esta pronta.\n'
@@ -27,7 +72,7 @@ fi
 
 pull_ok=0
 if [ "$network_ok" -eq 1 ]; then
-    if /usr/local/bin/ordax-pull; then
+    if "$BIN_DIR/ordax-pull"; then
         pull_ok=1
     else
         printf '\nNao foi possivel sincronizar a main.\n'
@@ -40,7 +85,7 @@ fi
 
 if [ -x "$WORKTREE/system/entrypoint" ]; then
     printf '\nIniciando OrdaX...\n'
-    if /usr/local/bin/ordax-run; then
+    if "$BIN_DIR/ordax-run"; then
         exit 0
     fi
     printf '\nOrdaX encerrou ou falhou ao iniciar.\n'
@@ -48,10 +93,4 @@ else
     printf '\nAinda nao existe um checkout executavel em %s.\n' "$WORKTREE"
 fi
 
-printf '\nBase de desenvolvimento pronta para manutencao.\n'
-printf 'Repositorio: /workspace/ordax\n'
-printf 'Atualizar:    ordax-pull\n'
-printf 'Executar:     ordax-run\n'
-printf 'Voltar:       ordax-rollback\n'
-printf '\nMudancas normais do OrdaX nao exigem regravar o pendrive.\n\n'
-exec /bin/sh
+maintenance_shell

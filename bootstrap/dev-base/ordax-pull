@@ -4,22 +4,65 @@ set -eu
 REPO_URL=${ORDAX_REPO_URL:-https://github.com/washingtonmsdj/prototipo-ordax-os.git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
 WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
-STATE_DIR=/state/ordax
+STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PREVIOUS_FILE=$STATE_DIR/previous-commit
 CURRENT_FILE=$STATE_DIR/current-commit
+PINNED_FILE=$STATE_DIR/pinned-commit
 
-mkdir -p /workspace "$STATE_DIR"
+write_state() {
+    destination=$1
+    value=$2
+    temporary=$destination.tmp.$$
+    printf '%s\n' "$value" > "$temporary"
+    mv -f "$temporary" "$destination"
+}
+
+configure_runtime_checkout() {
+    git -C "$WORKTREE" sparse-checkout set --no-cone /system/
+}
+
+mkdir -p "$(dirname "$WORKTREE")" "$STATE_DIR"
 
 if [ ! -d "$WORKTREE/.git" ]; then
-    echo "ordax-git: clonando $REPO_URL ($BRANCH)"
-    git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$WORKTREE"
+    echo "ordax-git: clonando runtime de $REPO_URL ($BRANCH)"
+    git clone \
+        --branch "$BRANCH" \
+        --single-branch \
+        --filter=blob:none \
+        --sparse \
+        "$REPO_URL" \
+        "$WORKTREE"
+    configure_runtime_checkout
 else
+    origin_url=$(git -C "$WORKTREE" remote get-url origin)
+    [ "$origin_url" = "$REPO_URL" ] || {
+        echo "ordax-git: origin inesperado: $origin_url" >&2
+        exit 1
+    }
+
+    current_branch=$(git -C "$WORKTREE" symbolic-ref --quiet --short HEAD || true)
+    [ "$current_branch" = "$BRANCH" ] || {
+        echo "ordax-git: branch local inesperada: ${current_branch:-detached}" >&2
+        exit 1
+    }
+
+    if [ -n "$(git -C "$WORKTREE" status --porcelain)" ]; then
+        echo "ordax-git: checkout possui alteracoes locais; pull bloqueado" >&2
+        exit 1
+    fi
+
     previous=$(git -C "$WORKTREE" rev-parse HEAD)
-    printf '%s\n' "$previous" > "$PREVIOUS_FILE"
     echo "ordax-git: git pull --ff-only origin $BRANCH"
     git -C "$WORKTREE" pull --ff-only origin "$BRANCH"
+    configure_runtime_checkout
+
+    current=$(git -C "$WORKTREE" rev-parse HEAD)
+    if [ "$current" != "$previous" ]; then
+        write_state "$PREVIOUS_FILE" "$previous"
+    fi
 fi
 
 current=$(git -C "$WORKTREE" rev-parse HEAD)
-printf '%s\n' "$current" > "$CURRENT_FILE"
+write_state "$CURRENT_FILE" "$current"
+rm -f "$PINNED_FILE"
 printf 'ORDAX_SOURCE_SHA=%s\n' "$current"
