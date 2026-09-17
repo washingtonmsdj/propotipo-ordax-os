@@ -42,9 +42,11 @@ A later physical attempt proved the full Cage/Barkery runtime could be installed
 
 The next physical attempt reached Cage/seatd and exposed three host prerequisites rather than a new bootstrap requirement: the development base had not configured IPv4 loopback, Alpine's Cage build expected an Xwayland binary, and wlroots rejected a seat with no discovered libinput devices. The Git-controlled launcher now brings `lo` up as `127.0.0.1/8`, prepares `/dev/shm`, extends an existing runtime in place with the small `xwayland` package instead of rebuilding the 642 MiB runtime, and accepts a no-input seat during graphical bring-up. These remain replaceable runtime/host concerns and therefore still do not justify a USB reflash.
 
+On 2026-09-17 the next physical boot successfully rendered the shared OrdaX Surface fullscreen on the target notebook through the complete Git-first native path: `ordax-pull -> system/entrypoint -> Cage/Wayland -> Barkery/WebKitGTK -> shared Surface composition`. That closes the native graphical-host bring-up gate for rendering on this hardware. Input-device behavior, long-run stability, suspend/resume, audio and acceleration quality remain separate physical validation gates. The detailed evidence is recorded in `docs/evidence/physical-native-surface-2026-09-17.md`.
+
 A reflash/base update is reserved for the real bootstrap boundary: kernel, initramfs, hardware/driver/firmware support, or the minimal network/Git/acquisition substrate itself.
 
-If DRM/KMS, network during first runtime acquisition, or another graphical host requirement is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. The fallback surfaces both native-host and loopback-HTTP diagnostics. Once provisioned under `/state`, the graphical runtime is reusable without downloading it on every boot. Native graphical boot remains a physical-hardware validation gate until the host is observed successfully on the target notebook.
+If DRM/KMS, network during first runtime acquisition, or another graphical host requirement is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. The fallback surfaces both native-host and loopback-HTTP diagnostics. Once provisioned under `/state`, the graphical runtime is reusable without downloading it on every boot.
 
 Do not add a plugin/launcher framework merely to prepare for runtime replacement; the stable entrypoint already supplies the required indirection.
 
