@@ -22,6 +22,22 @@ def _load_module(name: str, path: Path):
 CORE = _load_module("ordax_dev_base_core", THIS_DIR / "_build_core.py")
 POLICY = _load_module("ordax_dev_base_firmware_policy", THIS_DIR / "firmware_policy.py")
 
+# The native USB Surface uses the same standards-first HTML/CSS/JS source as
+# the Web composition. Cage provides a minimal DRM/Wayland kiosk compositor and
+# Cog/WPE WebKit is the thin browser host. Keep these capabilities in the
+# development substrate rather than vendoring a second target-specific UI.
+GRAPHICAL_RUNTIME_PACKAGES = (
+    "cage",
+    "cog",
+    "seatd-launch",
+    "mesa-dri-gallium",
+    "mesa-egl",
+    "mesa-gbm",
+    "font-dejavu",
+)
+CORE.PACKAGES.extend(GRAPHICAL_RUNTIME_PACKAGES)
+CORE.MAX_ROOTFS_BYTES = 512 * 1024 * 1024
+
 BuildError = CORE.BuildError
 PACKAGES = CORE.PACKAGES
 MAX_ROOTFS_BYTES = CORE.MAX_ROOTFS_BYTES
