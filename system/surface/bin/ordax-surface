@@ -60,11 +60,24 @@ console_fallback() {
     printf 'Mode: %s\n' "${ORDAX_SURFACE_MODE:-unknown}"
     printf '\nThe graphical host could not be started.\n'
     printf 'Host log: %s\n' "$HOST_LOG"
-    printf 'The checked-out system remains available for maintenance.\n'
+    if [ -s "$HOST_LOG" ]; then
+        printf '\nDiagnostic:\n'
+        if [ -x /bin/busybox ]; then
+            /bin/busybox tail -n 20 "$HOST_LOG" 2>/dev/null || cat "$HOST_LOG" 2>/dev/null || true
+        else
+            cat "$HOST_LOG" 2>/dev/null || true
+        fi
+    fi
+    printf '\nThe checked-out system remains available for maintenance.\n'
     trap 'exit 0' HUP INT TERM
     while :; do
         sleep 3600
     done
+}
+
+fallback_with_reason() {
+    printf 'ordax-surface: %s\n' "$*" >>"$HOST_LOG"
+    console_fallback
 }
 
 runtime_is_ready() {
@@ -163,12 +176,12 @@ bind_runtime_mounts() {
     return 0
 }
 
-[ -n "$SYSTEM_ROOT" ] || console_fallback
-[ -f "$SYSTEM_ROOT/composition/web/index.html" ] || console_fallback
-[ -x /bin/busybox ] || console_fallback
-[ -e /dev/dri/card0 ] || console_fallback
-ensure_runtime || console_fallback
-bind_runtime_mounts || console_fallback
+[ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
+[ -f "$SYSTEM_ROOT/composition/web/index.html" ] || fallback_with_reason "shared Surface composition is missing: $SYSTEM_ROOT/composition/web/index.html"
+[ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
+[ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
+ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
+bind_runtime_mounts || fallback_with_reason "failed to bind host devices into graphical runtime"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
@@ -180,7 +193,7 @@ export ORDAX_SURFACE_MODE=native-graphical
 /bin/busybox httpd -f -p 127.0.0.1:8765 -h "$SYSTEM_ROOT" >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
-kill -0 "$HTTP_PID" >/dev/null 2>&1 || console_fallback
+kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "loopback Surface HTTP server failed to start"
 
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
@@ -195,6 +208,8 @@ if /bin/busybox chroot "$RUNTIME_ROOT" \
     http://127.0.0.1:8765/composition/web/index.html \
     >"$HOST_LOG" 2>&1; then
     exit 0
+else
+    host_rc=$?
 fi
 
-console_fallback
+fallback_with_reason "native Cage/Cog host exited with status $host_rc"
