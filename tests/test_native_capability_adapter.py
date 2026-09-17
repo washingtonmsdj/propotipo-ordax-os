@@ -15,8 +15,10 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertIn('"network.https"', text)
         self.assertIn('"system.boot-control"', text)
         self.assertIn('"filesystem.user-space"', text)
+        self.assertIn('"system.metrics"', text)
         self.assertIn("bootControlAvailable", text)
         self.assertIn("userFileSpaceAvailable", text)
+        self.assertIn("systemMetricsAvailable", text)
         self.assertIn("validateSurfaceSnapshot", text)
         self.assertIn("navigator.onLine", text)
 
@@ -31,8 +33,10 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         text = NATIVE_COMPOSITION.read_text(encoding="utf-8")
         self.assertIn("powerActions?.getSnapshot().supportedActions.length", text)
         self.assertIn("userFileSpaceAvailable = fileSpace !== null", text)
+        self.assertIn("systemMetricsAvailable = systemMetrics !== null", text)
         self.assertIn("bootControlAvailable,", text)
         self.assertIn("userFileSpaceAvailable,", text)
+        self.assertIn("systemMetricsAvailable,", text)
         self.assertIn("createNativeSurfaceHost(window, {", text)
 
     def test_native_adapter_does_not_claim_unimplemented_account_or_sync(self):
@@ -47,6 +51,7 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertIn("createWebSurfaceHost", text)
         self.assertNotIn("system.boot-control", text)
         self.assertNotIn("filesystem.user-space", text)
+        self.assertNotIn("system.metrics", text)
 
 
 if __name__ == "__main__":
