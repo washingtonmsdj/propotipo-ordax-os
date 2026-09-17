@@ -6,6 +6,7 @@ export PATH
 
 DEV_ROOT=/ordax/dev-base
 DEV_INIT=/sbin/ordax-dev-init
+DEV_INIT_SOURCE=$DEV_ROOT$DEV_INIT
 
 fail() {
     echo "ordax-dev-bootstrap: $*" >&2
@@ -13,16 +14,12 @@ fail() {
     exec sh
 }
 
-# This script still runs under the fixed initramfs BusyBox. That BusyBox does
-# not build the `test`/`[` applet, so bootstrap validation must use shell
-# builtins and applets that are part of the fixed capsule.
+# This script still runs under the fixed initramfs BusyBox. Keep validation
+# limited to applets explicitly built into that capsule; do not depend on
+# `test`, `[`, or the optional ash `command` builtin.
 cd "$DEV_ROOT" 2>/dev/null || fail "development base is missing"
 cd /
-DEV_INIT_SOURCE="$(PATH="$DEV_ROOT/sbin:$PATH" command -v ordax-dev-init 2>/dev/null || true)"
-case "$DEV_INIT_SOURCE" in
-    "$DEV_ROOT/sbin/ordax-dev-init") ;;
-    *) fail "development init is missing or not executable: $DEV_ROOT/sbin/ordax-dev-init" ;;
-esac
+cat "$DEV_INIT_SOURCE" >/dev/null 2>&1 || fail "development init is missing or unreadable: $DEV_INIT_SOURCE"
 
 for directory in proc sys dev run; do
     mkdir -p "$DEV_ROOT/$directory"
