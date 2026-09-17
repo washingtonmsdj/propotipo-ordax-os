@@ -22,22 +22,6 @@ def _load_module(name: str, path: Path):
 CORE = _load_module("ordax_dev_base_core", THIS_DIR / "_build_core.py")
 POLICY = _load_module("ordax_dev_base_firmware_policy", THIS_DIR / "firmware_policy.py")
 
-# The native USB Surface uses the same standards-first HTML/CSS/JS source as
-# the Web composition. Cage provides a minimal DRM/Wayland kiosk compositor and
-# Cog/WPE WebKit is the thin browser host. Keep these capabilities in the
-# development substrate rather than vendoring a second target-specific UI.
-GRAPHICAL_RUNTIME_PACKAGES = (
-    "cage",
-    "cog",
-    "seatd-launch",
-    "mesa-dri-gallium",
-    "mesa-egl",
-    "mesa-gbm",
-    "font-dejavu",
-)
-CORE.PACKAGES.extend(GRAPHICAL_RUNTIME_PACKAGES)
-CORE.MAX_ROOTFS_BYTES = 512 * 1024 * 1024
-
 BuildError = CORE.BuildError
 PACKAGES = CORE.PACKAGES
 MAX_ROOTFS_BYTES = CORE.MAX_ROOTFS_BYTES
@@ -60,6 +44,16 @@ def required_firmware_names(rootfs: Path) -> set[str]:
         raise BuildError(str(exc)) from exc
 
 
+def verify_runtime_acquisition_client(rootfs: Path) -> None:
+    """Keep only the tiny trusted client needed by Git-controlled runtime setup."""
+    apk = rootfs / "sbin/apk"
+    keys = rootfs / "etc/apk/keys"
+    if not apk.is_file() or apk.is_symlink():
+        raise BuildError("runtime acquisition client is missing: /sbin/apk")
+    if not keys.is_dir() or not any(path.is_file() for path in keys.glob("*.pub")):
+        raise BuildError("runtime acquisition trust keys are missing: /etc/apk/keys/*.pub")
+
+
 def prune_build_only_runtime(rootfs: Path) -> None:
     """Remove tooling/metadata needed to assemble the image, not to run it."""
     command = "apk del --no-cache " + " ".join(BUILD_ONLY_PACKAGES)
@@ -76,6 +70,12 @@ def prune_build_only_runtime(rootfs: Path) -> None:
         path = rootfs / executable
         if path.exists() or path.is_symlink():
             raise BuildError(f"build-only executable remained in runtime: /{executable}")
+
+    # Do not seed Cage/Cog/Mesa into the fixed base. /sbin/apk plus the Alpine
+    # public keys are retained only as the minimal signed-package acquisition
+    # client. Pulled system code can use them to materialize replaceable
+    # runtimes under /state without rewriting the USB image.
+    verify_runtime_acquisition_client(rootfs)
 
     print(
         "ORDAX_DEV_BASE_BUILD_ONLY_PRUNED=" + ",".join(BUILD_ONLY_PACKAGES),
