@@ -7,6 +7,7 @@ const PANEL_KINDS = new Set([
   "identity-session",
   "identity-actions",
   "preference-choice",
+  "extension",
 ]);
 
 function freezeChoiceOptions(appId, panel) {
@@ -40,6 +41,12 @@ function freezePanel(appId, panel) {
   }
   if (panel.kind === "capability" && !panel.capabilityId) {
     throw new TypeError(`First-party app ${appId} capability panel is missing capabilityId`);
+  }
+  if (
+    panel.kind === "extension" &&
+    (typeof panel.extensionId !== "string" || !APP_ID_RE.test(panel.extensionId))
+  ) {
+    throw new TypeError(`First-party app ${appId} extension panel is missing a valid extensionId`);
   }
   const frozen = { ...panel };
   if (panel.kind === "preference-choice") {

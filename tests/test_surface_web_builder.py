@@ -35,6 +35,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/contracts/app-activation.mjs",
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
+            "system/surface/ui/files.css",
         ):
             self.assertIn(expected, graph)
 
@@ -115,6 +116,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         rendered = MODULE.render_root_index(ROOT).decode("utf-8")
         self.assertNotIn("../", rendered)
         self.assertIn("./system/surface/ui/tokens.css", rendered)
+        self.assertIn("./system/surface/ui/files.css", rendered)
         self.assertIn("./system/composition/web/main.mjs", rendered)
         self.assertNotIn("https://", rendered)
 
