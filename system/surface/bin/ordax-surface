@@ -215,7 +215,7 @@ configure_browser() {
     mkdir -p "$RUNTIME_ROOT/etc/barkery" || return 1
     cat >"$RUNTIME_ROOT/etc/barkery/barkery.conf" <<'BARKERY'
 [browser]
-start_uri = http://127.0.0.1:8765/composition/web/index.html
+start_uri = http://127.0.0.1:8765/composition/native/index.html
 preferred_languages = pt-BR,en-US
 
 [mqtt]
@@ -256,7 +256,8 @@ prepare_input_stack() {
 }
 
 [ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
-[ -f "$SYSTEM_ROOT/composition/web/index.html" ] || fallback_with_reason "shared Surface composition is missing: $SYSTEM_ROOT/composition/web/index.html"
+[ -f "$SYSTEM_ROOT/composition/native/index.html" ] || fallback_with_reason "native Surface composition is missing: $SYSTEM_ROOT/composition/native/index.html"
+[ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
 [ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
 ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
@@ -273,11 +274,12 @@ export GDK_BACKEND=wayland
 export ORDAX_SURFACE_MODE=native-graphical
 
 /bin/busybox chroot "$RUNTIME_ROOT" \
-    /usr/bin/python3 -m http.server 8765 --bind 127.0.0.1 --directory /srv/ordax-system \
+    /usr/bin/python3 /srv/ordax-system/surface/runtime/native_host_server.py \
+    --bind 127.0.0.1 --port 8765 --directory /srv/ordax-system \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
-kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "loopback Surface HTTP server failed to start"
+kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "native Surface HTTP/control server failed to start"
 
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
