@@ -9,6 +9,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountSystemStatusControls } from "../../surface/ui/system-status-controls.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
 async function start() {
@@ -58,6 +59,7 @@ async function start() {
     identityActions,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
+  const systemStatusControls = mountSystemStatusControls(root, updateWatcher);
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
 
@@ -71,6 +73,7 @@ async function start() {
     () => {
       powerControls.destroy();
       updateControls.destroy();
+      systemStatusControls.destroy();
       fileSpaceControls.destroy();
       updateWatcher.dispose();
       surface.destroy();

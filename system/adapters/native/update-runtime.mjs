@@ -1,3 +1,8 @@
+import {
+  UPDATE_STATUS_SCHEMA,
+  validateUpdateStatusSnapshot,
+} from "../../contracts/update-status.mjs";
+
 const UPDATE_STATE_PATH = "/__ordax/native/update";
 const UPDATE_HEALTH_PATH = "/__ordax/native/health";
 const HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token";
@@ -38,7 +43,7 @@ export function createNativeUpdateWatcher(
   const listeners = new Set();
 
   const notify = (state) => {
-    snapshot = Object.freeze({ ...state });
+    snapshot = validateUpdateStatusSnapshot(state);
     onState(snapshot);
     for (const listener of listeners) listener(snapshot);
   };
@@ -48,9 +53,6 @@ export function createNativeUpdateWatcher(
       stopped ||
       !healthRequested ||
       !snapshot ||
-      typeof snapshot.sourceSha !== "string" ||
-      typeof snapshot.healthToken !== "string" ||
-      snapshot.sourceSha.length === 0 ||
       snapshot.healthToken.length === 0 ||
       healthSubmittedSha === snapshot.sourceSha
     ) {
@@ -76,9 +78,7 @@ export function createNativeUpdateWatcher(
   };
 
   const schedule = () => {
-    if (stopped) {
-      return;
-    }
+    if (stopped) return;
     timer = windowRef.setTimeout(() => {
       void poll();
     }, intervalMs);
@@ -90,25 +90,21 @@ export function createNativeUpdateWatcher(
         cache: "no-store",
         credentials: "same-origin",
       });
-      if (!response.ok) {
-        return;
-      }
+      if (!response.ok) return;
 
       const state = await response.json();
-      if (!state || typeof state.sourceSha !== "string" || state.sourceSha.length === 0) {
-        return;
-      }
+      if (!state || typeof state.sourceSha !== "string" || state.sourceSha.length === 0) return;
 
       notify(state);
       void submitHealthIfNeeded();
       if (observedSha === null) {
-        observedSha = state.sourceSha;
+        observedSha = snapshot.sourceSha;
         return;
       }
 
       const previousSha = observedSha;
-      observedSha = state.sourceSha;
-      if (shouldReloadForUpdate(previousSha, state)) {
+      observedSha = snapshot.sourceSha;
+      if (shouldReloadForUpdate(previousSha, snapshot)) {
         stopped = true;
         windowRef.location.reload();
       }
@@ -122,6 +118,7 @@ export function createNativeUpdateWatcher(
   void poll();
 
   return Object.freeze({
+    schema: UPDATE_STATUS_SCHEMA,
     dispose() {
       stopped = true;
       if (timer !== null) {
