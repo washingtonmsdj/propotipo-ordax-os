@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -258,11 +259,21 @@ func runBackendHidden(directory string, args ...string) ([]byte, error) {
 	command := exec.Command(exe, args...)
 	command.Dir = directory
 	command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow}
-	output, err := command.Output()
-	if err != nil {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
+	if err := command.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = strings.TrimSpace(stdout.String())
+		}
+		if detail != "" {
+			return nil, fmt.Errorf("%s: %w: %s", strings.Join(args, " "), err, detail)
+		}
 		return nil, fmt.Errorf("%s: %w", strings.Join(args, " "), err)
 	}
-	return output, nil
+	return stdout.Bytes(), nil
 }
 
 func loadTargets(directory string) ([]physicalTarget, bool, error) {
