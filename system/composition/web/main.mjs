@@ -29,8 +29,6 @@ const surface = mountSurface(
   root,
   host,
   preferenceStore,
-  identitySession,
-  identityActions,
   workspaceStore,
   appActivation,
 );
