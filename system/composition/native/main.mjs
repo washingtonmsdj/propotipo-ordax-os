@@ -4,6 +4,7 @@ import { createNativePreferenceStore } from "../../adapters/native/preferences.m
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
+import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
@@ -21,6 +22,7 @@ async function start() {
   }
 
   const preferenceStore = await createNativePreferenceStore(window);
+  const workspaceStore = createNativeWorkspaceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const updateWatcher = createNativeUpdateWatcher(window);
@@ -68,6 +70,7 @@ async function start() {
     preferenceStore,
     identitySession,
     identityActions,
+    workspaceStore,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
   const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics);
