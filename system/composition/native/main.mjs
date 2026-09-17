@@ -1,9 +1,9 @@
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
+import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
-import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -15,7 +15,6 @@ async function start() {
     throw new Error("OrdaX composition root is missing #ordax-root");
   }
 
-  const host = createWebSurfaceHost(window);
   const preferenceStore = createWebPreferenceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
@@ -26,6 +25,11 @@ async function start() {
   } catch (error) {
     console.warn("OrdaX native power actions unavailable", error);
   }
+
+  const bootControlAvailable = Boolean(
+    powerActions?.getSnapshot().supportedActions.length,
+  );
+  const host = createNativeSurfaceHost(window, { bootControlAvailable });
 
   validateAccountRuntime(
     host.getSnapshot(),
