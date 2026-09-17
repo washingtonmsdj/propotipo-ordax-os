@@ -132,7 +132,7 @@ jobs:
           echo 'KERNEL_REBUILD_REQUIRED=NO'
 
       - name: Upload Web client candidate
-        uses: actions/upload-artifact@b7c566a772e6b6fbc4ead8c61c1c05a9e8bcf3465 # v6
+        uses: actions/upload-artifact@b7c566a772e6b6fbc58ed0dc250532a479d7789f # v6
         with:
           name: ordax-web-client-${{ github.sha }}
           path: out/web-client/
