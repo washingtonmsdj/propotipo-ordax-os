@@ -12,6 +12,27 @@ have_ipv4() {
     ip -4 -o addr show scope global 2>/dev/null | grep -q ' inet '
 }
 
+sync_clock() {
+    # GitHub HTTPS fails closed when the notebook RTC is behind the certificate
+    # validity window. NTP does not depend on TLS, so synchronize immediately
+    # after IP connectivity and before returning success to the Git bootstrap.
+    for server in time.cloudflare.com time.google.com pool.ntp.org; do
+        if /bin/busybox ntpd -q -n -p "$server" >/dev/null 2>&1; then
+            echo "ordax-network: relogio sincronizado"
+            return 0
+        fi
+    done
+
+    echo "ordax-network: nao foi possivel sincronizar data/hora; HTTPS pode falhar" >&2
+    return 1
+}
+
+finish_network() {
+    iface=$1
+    echo "ordax-network: conectado em $iface"
+    sync_clock
+}
+
 try_dhcp() {
     iface=$1
     ip link set "$iface" up >/dev/null 2>&1 || return 1
@@ -21,6 +42,7 @@ try_dhcp() {
 
 if have_ipv4; then
     echo "ordax-network: rede ja disponivel"
+    sync_clock
     exit 0
 fi
 
@@ -37,7 +59,7 @@ for netpath in /sys/class/net/*; do
     [ "$net_type" = 1 ] || continue
     echo "ordax-network: tentando DHCP em $iface"
     if try_dhcp "$iface"; then
-        echo "ordax-network: conectado em $iface"
+        finish_network "$iface"
         exit 0
     fi
 done
@@ -80,29 +102,110 @@ connect_saved_wifi() {
 }
 
 if connect_saved_wifi; then
-    echo "ordax-network: Wi-Fi conectado em $wifi"
+    finish_network "$wifi"
     exit 0
 fi
 
-echo "ordax-network: redes Wi-Fi detectadas:"
-iw dev "$wifi" scan 2>/dev/null \
-    | awk -F': ' '/^[[:space:]]*SSID: / {print $2}' \
-    | sed '/^$/d' | sort -u | head -30 || true
+select_best_secure_ssid() {
+    iw dev "$wifi" scan 2>/dev/null | awk '
+        function flush_candidate() {
+            if (ssid != "" && secure && signal > best_signal) {
+                best_signal = signal
+                best_ssid = ssid
+            }
+        }
+        BEGIN {
+            best_signal = -1000
+            signal = -1000
+            ssid = ""
+            secure = 0
+        }
+        /^BSS / {
+            flush_candidate()
+            signal = -1000
+            ssid = ""
+            secure = 0
+            next
+        }
+        /^[[:space:]]*signal:/ {
+            signal = $2 + 0
+            next
+        }
+        /^[[:space:]]*SSID:/ {
+            sub(/^[[:space:]]*SSID:[[:space:]]*/, "")
+            ssid = $0
+            next
+        }
+        /^[[:space:]]*(RSN:|WPA:)/ {
+            secure = 1
+            next
+        }
+        END {
+            flush_candidate()
+            if (best_ssid != "") print best_ssid
+        }
+    '
+}
 
-printf 'SSID (nome exato da rede acima, nao a senha): '
-IFS= read -r ssid
+read_password_with_feedback() {
+    password=""
+    old_stty=$(stty -g 2>/dev/null || true)
+
+    if [ -z "$old_stty" ]; then
+        IFS= read -r password
+        return 0
+    fi
+
+    stty -echo -icanon min 1 time 0 2>/dev/null || {
+        IFS= read -r password
+        return 0
+    }
+
+    trap 'stty "$old_stty" 2>/dev/null || true; printf "\n"; exit 130' INT TERM HUP
+    backspace=$(printf '\010')
+    delete=$(printf '\177')
+
+    while :; do
+        ch=""
+        if ! IFS= read -r -n 1 ch; then
+            break
+        fi
+        [ -z "$ch" ] && break
+
+        case "$ch" in
+            "$backspace"|"$delete")
+                if [ -n "$password" ]; then
+                    password=${password%?}
+                    printf '\b \b'
+                fi
+                ;;
+            *)
+                password=$password$ch
+                # Briefly reveal the newest character, then replace it with a
+                # mask. Nothing is written to persistent logs or state here.
+                printf '%s' "$ch"
+                sleep 0.15
+                printf '\b*'
+                ;;
+        esac
+    done
+
+    stty "$old_stty" 2>/dev/null || true
+    trap - INT TERM HUP
+    printf '\n'
+}
+
+ssid=$(select_best_secure_ssid || true)
 [ -n "$ssid" ] || {
-    echo "ordax-network: SSID vazio" >&2
+    echo "ordax-network: nenhuma rede WPA/WPA2 utilizavel foi encontrada" >&2
     exit 1
 }
 
+echo "ordax-network: rede selecionada automaticamente: $ssid"
 printf 'Senha WPA/WPA2: '
-stty -echo 2>/dev/null || true
-IFS= read -r password
-stty echo 2>/dev/null || true
-printf '\n'
+read_password_with_feedback
 [ -n "$password" ] || {
-    echo "ordax-network: este bootstrap de desenvolvimento espera uma senha WPA/WPA2" >&2
+    echo "ordax-network: senha vazia" >&2
     exit 1
 }
 
@@ -111,10 +214,11 @@ wpa_passphrase "$ssid" "$password" | sed '/^[[:space:]]*#psk=/d' > "$WPA_CONF"
 unset password
 
 if connect_saved_wifi; then
-    echo "ordax-network: Wi-Fi conectado em $wifi"
+    finish_network "$wifi"
     exit 0
 fi
 
-echo "ordax-network: a associacao Wi-Fi ou o DHCP nao concluiu em $wifi" >&2
-echo "ordax-network: execute ordax-network novamente e confirme o SSID exato listado acima" >&2
+rm -f "$WPA_CONF"
+echo "ordax-network: nao foi possivel autenticar/conectar na rede selecionada" >&2
+echo "ordax-network: a proxima tentativa fara um novo scan automaticamente" >&2
 exit 1
