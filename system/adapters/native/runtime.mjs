@@ -10,7 +10,10 @@ const BASE_CAPABILITIES = Object.freeze([
 
 export function createNativeSurfaceHost(
   windowRef = globalThis.window,
-  { bootControlAvailable = false } = {},
+  {
+    bootControlAvailable = false,
+    userFileSpaceAvailable = false,
+  } = {},
 ) {
   if (!windowRef?.navigator) {
     throw new TypeError("Native Surface host requires a browser-like window");
@@ -19,6 +22,9 @@ export function createNativeSurfaceHost(
   const listeners = new Set();
   const readSnapshot = () => {
     const capabilityIds = [...BASE_CAPABILITIES];
+    if (userFileSpaceAvailable) {
+      capabilityIds.push("filesystem.user-space");
+    }
     if (bootControlAvailable) {
       capabilityIds.push("system.boot-control");
     }

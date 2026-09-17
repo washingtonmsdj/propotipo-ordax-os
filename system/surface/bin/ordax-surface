@@ -4,6 +4,7 @@ set -eu
 SYSTEM_ROOT=${ORDAX_SYSTEM_ROOT:-}
 STATE_ROOT=${ORDAX_STATE_DIR:-/state/ordax}
 PERSISTENT_NATIVE_STATE=$STATE_ROOT/native-state
+PERSISTENT_USER_HOME=$STATE_ROOT/home
 SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
@@ -21,10 +22,11 @@ SYS_BOUND=0
 RUN_BOUND=0
 SYSTEM_BOUND=0
 STATE_BOUND=0
+USER_HOME_BOUND=0
 UDEV_ACTIVE=0
 
-mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE"
-chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE"
+mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME"
+chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME"
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
 
@@ -74,6 +76,10 @@ cleanup() {
     if [ "$SYSTEM_BOUND" -eq 1 ]; then
         /bin/busybox umount "$RUNTIME_ROOT/srv/ordax-system" >/dev/null 2>&1 || true
         SYSTEM_BOUND=0
+    fi
+    if [ "$USER_HOME_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/var/lib/ordax-user" >/dev/null 2>&1 || true
+        USER_HOME_BOUND=0
     fi
     if [ "$STATE_BOUND" -eq 1 ]; then
         /bin/busybox umount "$RUNTIME_ROOT/var/lib/ordax" >/dev/null 2>&1 || true
@@ -184,7 +190,7 @@ REPOSITORIES
         return 1
     fi
 
-    for directory in dev proc sys run tmp root srv/ordax-system var/lib/ordax; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
+    for directory in dev proc sys run tmp root srv/ordax-system var/lib/ordax var/lib/ordax-user; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
@@ -244,12 +250,19 @@ BARKERY
 }
 
 bind_runtime_mounts() {
-    mkdir -p "$RUNTIME_ROOT/srv/ordax-system" "$RUNTIME_ROOT/var/lib/ordax" "$PERSISTENT_NATIVE_STATE" || return 1
-    chmod 700 "$PERSISTENT_NATIVE_STATE" || return 1
+    mkdir -p \
+        "$RUNTIME_ROOT/srv/ordax-system" \
+        "$RUNTIME_ROOT/var/lib/ordax" \
+        "$RUNTIME_ROOT/var/lib/ordax-user" \
+        "$PERSISTENT_NATIVE_STATE" \
+        "$PERSISTENT_USER_HOME" || return 1
+    chmod 700 "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" || return 1
     /bin/busybox mount -o bind "$SYSTEM_ROOT" "$RUNTIME_ROOT/srv/ordax-system" >>"$HOST_LOG" 2>&1 || return 1
     SYSTEM_BOUND=1
     /bin/busybox mount -o bind "$PERSISTENT_NATIVE_STATE" "$RUNTIME_ROOT/var/lib/ordax" >>"$HOST_LOG" 2>&1 || return 1
     STATE_BOUND=1
+    /bin/busybox mount -o bind "$PERSISTENT_USER_HOME" "$RUNTIME_ROOT/var/lib/ordax-user" >>"$HOST_LOG" 2>&1 || return 1
+    USER_HOME_BOUND=1
     /bin/busybox mount -o bind /dev "$RUNTIME_ROOT/dev" >>"$HOST_LOG" 2>&1 || return 1
     DEV_BOUND=1
     /bin/busybox mount -o bind /proc "$RUNTIME_ROOT/proc" >>"$HOST_LOG" 2>&1 || return 1
@@ -299,6 +312,7 @@ export ORDAX_SURFACE_MODE=native-graphical
 /bin/busybox chroot "$RUNTIME_ROOT" \
     /usr/bin/python3 /srv/ordax-system/surface/runtime/native_host_server.py \
     --bind 127.0.0.1 --port 8765 --directory /srv/ordax-system \
+    --user-root /var/lib/ordax-user \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
