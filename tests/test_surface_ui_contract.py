@@ -303,6 +303,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertIn("../../surface/ui/files.css", html)
+        self.assertIn("../../surface/ui/system.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
