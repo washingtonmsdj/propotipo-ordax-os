@@ -27,10 +27,12 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/apps/system/app.mjs",
             "system/services/preferences/appearance.mjs",
             "system/services/preferences/catalog.mjs",
+            "system/services/apps/activation.mjs",
             "system/adapters/web/runtime.mjs",
             "system/adapters/web/preferences.mjs",
             "system/contracts/surface-host.mjs",
             "system/contracts/preference-store.mjs",
+            "system/contracts/app-activation.mjs",
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
         ):
