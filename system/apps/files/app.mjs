@@ -3,17 +3,23 @@ import { defineFirstPartyApp } from "../app-contract.mjs";
 export const filesApp = defineFirstPartyApp({
   id: "files",
   title: "Arquivos",
-  description: "Organize documentos, imagens, downloads e conteúdo persistente do usuário.",
+  description: "Acesso ao espaço do usuário e a fontes de arquivos expostas por capacidades.",
   monogram: "AR",
   singleton: true,
   requiredCapabilities: [],
   panels: [
     {
-      kind: "extension",
-      extensionId: "file-space",
-      label: "Espaço do usuário",
-      title: "Arquivos",
-      body: "Este host não expõe um espaço local de arquivos para esta Surface.",
+      kind: "static",
+      label: "Dados do usuário",
+      title: "Seu espaço no OrdaX",
+      body: "Arquivos e conteúdo pessoal pertencem ao usuário e permanecem separados do estado descartável do sistema.",
+    },
+    {
+      kind: "capability",
+      label: "Armazenamento",
+      title: "Espaço local do usuário",
+      body: "Quando disponível, o host expõe somente a raiz persistente do usuário do OrdaX, sem entregar acesso irrestrito ao sistema de arquivos.",
+      capabilityId: "filesystem.user-space",
     },
   ],
 });
