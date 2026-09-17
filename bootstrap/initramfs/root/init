@@ -6,7 +6,6 @@ export PATH
 
 BOOTSTRAP_PATH=/ordax/bootstrap/entrypoint
 RECOVERY_BOOTSTRAP_PATH=/ordax/bootstrap/recovery/entrypoint
-GROW_HELPER=/sbin/ordax-grow-ext4
 
 rescue() {
     echo "ordax-initramfs: entering local recovery shell: $*" >&2
@@ -37,7 +36,7 @@ case "$RECOVERY_MODE" in
 esac
 
 mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
-if ! "$GROW_HELPER" "$ORDAX_DEVICE" /ordax; then
+if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
     echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
 fi
 
