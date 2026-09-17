@@ -17,11 +17,12 @@ Observed on physical hardware:
 - the physical mouse/touchpad also worked inside the Surface;
 - a stale `/run/seatd.sock` discovered during the input-validation reboot was recovered safely by the Git-controlled launcher before the successful input boot;
 - the native `Energia -> Reiniciar` action, delivered through the loopback-only authenticated power contract, rebooted the physical notebook successfully and returned control to the OrdaX boot flow;
+- the native `Energia -> Desligar` action powered the notebook off completely, and a subsequent physical power-on returned the machine to the normal OrdaX boot flow;
 - after the Git hot-update supervisor was activated, a live-safe UI change merged into `main` was detected automatically while the notebook remained running;
 - the Surface visibly changed from `Surface compartilhada` to `Surface compartilhada • atualização ao vivo` without reboot, proving automatic Git pull plus browser reload on the physical notebook;
 - after the cleanup change merged into `main`, the same running session automatically reloaded again and returned from `Surface compartilhada • atualização ao vivo` to `Surface compartilhada` without reboot, proving the live-safe update path round trip.
 
-This closes the native graphical-host, primary-input, native-restart and live-safe rebootless-update bring-up blockers on this target notebook. The proven path is now:
+This closes the native graphical-host, primary-input, native-restart, native-shutdown and live-safe rebootless-update bring-up blockers on this target notebook. The proven path is now:
 
 ```text
 physical notebook
@@ -39,6 +40,8 @@ physical notebook
  -> shared Surface composition
  -> physical keyboard + mouse/touchpad interaction
  -> authenticated native restart action
+ -> authenticated native shutdown action
+ -> physical power-on back into the normal OrdaX boot flow
  -> automatic Git update detection
  -> live-safe Surface reload without notebook reboot
  -> second live-safe reload returning to the original UI state
@@ -49,13 +52,13 @@ Relevant successful host fixes and physical proofs landed in `main` as:
 - `55d11f8cef21ed3c1d0c160cbafa914957fb8a05` — repair wlroots prerequisites on the physical Surface host (#30);
 - `760c1aa83abb6275c62cf67dbe017c82e1c077e5` — enable physical keyboard and touchpad input discovery (#32);
 - `19a8dc933941779289cf77815ec050927f6620c6` — recover safely from a stale seatd socket (#33);
-- `f31aa0e039fda9239a52006cb02387469ded6c01` — expose authenticated native restart/shutdown controls (#34), with restart now physically proven on the notebook;
+- `f31aa0e039fda9239a52006cb02387469ded6c01` — expose authenticated native restart/shutdown controls (#34), with both restart and shutdown now physically proven on the notebook;
 - `25496117f267d8d15c7f62de0961e0d55f731449` — add the Git-controlled hot-update supervisor (#35);
 - `bb6fea315f60ebcdae7d63155c71973d61ae4251` — add the temporary physical live-update marker (#36), which appeared automatically on the running notebook without reboot;
 - `d2f5715b152a1a8daf27f8c49a8b21d69082b4af` — remove the temporary marker and close the physical live-update proof (#37), with the cleanup also applied automatically without reboot.
 
 ## Architectural conclusion
 
-The successful boots and round-trip live update validate the intended Git-first boundary for this prototype: ordinary Surface/native-host/runtime fixes are delivered through Git and persisted runtime state without rebuilding the kernel, initramfs, or Development Base and without rewriting the USB.
+The successful boots, native power actions and round-trip live update validate the intended Git-first boundary for this prototype: ordinary Surface/native-host/runtime fixes are delivered through Git and persisted runtime state without rebuilding the kernel, initramfs, or Development Base and without rewriting the USB.
 
-Native rendering, primary input, native restart and live-safe automatic update application are now physically proven on this notebook. Long-run stability, suspend/resume, audio, acceleration quality, shutdown behavior, Surface-only restart for native-host changes and broader hardware coverage remain separate physical validation gates.
+Native rendering, primary input, native restart, native shutdown and live-safe automatic update application are now physically proven on this notebook. Long-run stability, suspend/resume, audio, acceleration quality, Surface-only restart for native-host changes and broader hardware coverage remain separate physical validation gates.
