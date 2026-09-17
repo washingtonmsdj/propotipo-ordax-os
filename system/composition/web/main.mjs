@@ -6,6 +6,7 @@ import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 
 const root = document.querySelector("#ordax-root");
 if (!root) {
@@ -32,10 +33,18 @@ const surface = mountSurface(
   workspaceStore,
   appActivation,
 );
+const systemOverviewControls = mountSystemOverviewControls(
+  root,
+  host,
+  null,
+  null,
+  surface,
+);
 
 window.addEventListener(
   "pagehide",
   () => {
+    systemOverviewControls.destroy();
     surface.destroy();
     identityActions.dispose();
     identitySession.dispose();
