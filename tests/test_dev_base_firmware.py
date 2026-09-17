@@ -74,6 +74,37 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             self.assertFalse((firmware / "brcm/unrelated.bin").exists())
             self.assertFalse(target.exists())
 
+    def test_zstd_is_build_only_and_removed_after_firmware_materialization(self):
+        self.assertNotIn("zstd", BUILD.RUNTIME_PACKAGES)
+        self.assertNotIn("zstd", BUILD.PACKAGES)
+        self.assertEqual(BUILD.BUILD_ONLY_PACKAGES, ["zstd"])
+
+        with tempfile.TemporaryDirectory() as temp:
+            rootfs = Path(temp)
+            firmware = rootfs / "lib/firmware"
+            firmware.mkdir(parents=True)
+            (firmware / "wifi.bin").write_bytes(b"required")
+            commands = []
+            original_proot = BUILD.CORE.proot_rootfs
+            BUILD.CORE.proot_rootfs = lambda _rootfs, command: commands.append(command)
+            try:
+                BUILD.prune_firmware(rootfs, {"wifi.bin"})
+            finally:
+                BUILD.CORE.proot_rootfs = original_proot
+
+            self.assertTrue(commands[0].startswith("apk add --no-cache --virtual .ordax-build zstd"))
+            self.assertIn("find /lib/firmware", commands[1])
+            self.assertEqual(commands[-1], "apk del .ordax-build")
+
+    def test_build_only_zstd_leftover_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            rootfs = Path(temp)
+            binary = rootfs / "usr/bin/zstd"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"unexpected")
+            with self.assertRaises(BUILD.BuildError):
+                BUILD._assert_build_only_tools_removed(rootfs)
+
     def test_unrelated_firmware_packages_are_not_seeded(self):
         for package in (
             "linux-firmware-brcm",
