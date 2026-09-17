@@ -7,11 +7,21 @@ import {
 import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
+import { assertWorkspaceStore, validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
-import { createSurfaceState, reduceSurfaceState } from "./surface-state.mjs";
+import { createSurfaceState, createWorkspaceSnapshot, reduceSurfaceState } from "./surface-state.mjs";
 
 const MOVABLE_WORKSPACE_MIN_WIDTH = 761;
 const KEYBOARD_MOVE_STEP = 24;
+const WORKSPACE_PERSIST_ACTIONS = new Set([
+  "app.launch",
+  "window.focus",
+  "window.move",
+  "window.minimize",
+  "window.maximize",
+  "window.close",
+  "workspace.show-desktop",
+]);
 
 const SHELL_MARKUP = `
   <div class="ordax-shell" data-ordax-shell>
@@ -297,6 +307,7 @@ export function mountSurface(
   preferenceStore = null,
   identitySession = null,
   identityActions = null,
+  workspaceStore = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Surface root must be a DOM Element");
@@ -305,7 +316,9 @@ export function mountSurface(
   const store = preferenceStore === null ? null : assertPreferenceStore(preferenceStore);
   const identityPort = identitySession === null ? null : assertIdentitySessionPort(identitySession);
   const identityActionsPort = identityActions === null ? null : assertIdentityActionsPort(identityActions);
+  const workspacePort = workspaceStore === null ? null : assertWorkspaceStore(workspaceStore);
   const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
+  const workspaceSeed = workspacePort ? validateWorkspaceRecord(workspacePort.load()) : null;
   let identitySnapshot = validateIdentitySessionSnapshot(
     identityPort ? identityPort.getSnapshot() : { state: "unavailable" },
   );
@@ -317,7 +330,7 @@ export function mountSurface(
   let dragSession = null;
 
   root.innerHTML = SHELL_MARKUP;
-  let state = createSurfaceState(host.getSnapshot(), preferenceSeed);
+  let state = createSurfaceState(host.getSnapshot(), preferenceSeed, workspaceSeed);
 
   const workspace = root.querySelector("[data-workspace]");
   const launcher = root.querySelector("[data-launcher]");
@@ -431,6 +444,9 @@ export function mountSurface(
     state = next;
     if (action?.type === "preference.set" && store) {
       store.save(state.preferences);
+    }
+    if (workspacePort && WORKSPACE_PERSIST_ACTIONS.has(action?.type)) {
+      workspacePort.save(createWorkspaceSnapshot(state));
     }
     render();
   };
@@ -651,6 +667,7 @@ export function mountSurface(
 
   return Object.freeze({
     destroy() {
+      if (workspacePort) workspacePort.save(createWorkspaceSnapshot(state));
       if (dragSession) {
         dragSession.titlebar.releasePointerCapture?.(dragSession.pointerId);
         dragSession = null;
