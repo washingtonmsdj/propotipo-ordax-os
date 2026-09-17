@@ -1,9 +1,9 @@
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
+import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
-import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -15,7 +15,7 @@ async function start() {
     throw new Error("OrdaX composition root is missing #ordax-root");
   }
 
-  const preferenceStore = createWebPreferenceStore(window);
+  const preferenceStore = await createNativePreferenceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const updateWatcher = createNativeUpdateWatcher(window);
