@@ -1,0 +1,116 @@
+{
+  "$schema": "prototype-ordax.full-bootstrap-media-proof-evidence/2",
+  "status": "pass",
+  "source_commit": "bf2e1b9ab6d193f840735108f66b23d28e1133e4",
+  "workflow": {
+    "name": "Full Bootstrap Media Proof",
+    "run_id": 35232697905,
+    "run_number": 143,
+    "conclusion": "success",
+    "completed_at": "2026-09-17T14:30:30Z"
+  },
+  "artifact": {
+    "id": 10502366280,
+    "name": "ordax-full-bootstrap-media-proof-bf2e1b9ab6d193f840735108f66b23d28e1133e4",
+    "archive_sha256": "f90b53cd5fbf71f969800878cd9753421e88ee3263fd215de8a8665f0b03055b",
+    "metadata_only": true,
+    "files": {
+      "proof-summary.json": "934fde3beeaa0d28c715603306954667b3e987902b668af70cb4cb9996a2a02d",
+      "ext4-growth-runtime-proof.json": "729a534d796e07306fdd32234728634c59e3e81c4b5313a9774a844dad3af3b2",
+      "creator-prepared-ext4-growth-proof.json": "deb8e9cbf664bcd37c18f7cd012759e15010d9e09e25d2fb4d5ff58c837591cb",
+      "disposable-media-proof.json": "8fae74edb8b55df7062462674cbf07c1ff110e12d4656b354aa15219783b76d8"
+    }
+  },
+  "trust": {
+    "canonical_trust": false,
+    "ephemeral_ci_trust": true,
+    "canonical_key_material_committed": false
+  },
+  "payload": {
+    "artifact_count": 14,
+    "unresolved_groups_in_ephemeral_proof_manifest": []
+  },
+  "seed_media": {
+    "partition_table": "gpt",
+    "image_bytes": 536870912,
+    "image_sha256": "68e49c4b4782463ce499d09d57472a1098d8f9f8d625d32e1562a2bdf3f89cbf",
+    "logical_sector_bytes": 512,
+    "partition_count": 2,
+    "partitions": [
+      {
+        "index": 1,
+        "name": "ORDAX-ESP",
+        "filesystem": "vfat",
+        "first_lba": 2048,
+        "last_lba": 526335,
+        "verified_file_count": 6
+      },
+      {
+        "index": 2,
+        "name": "ORDAX",
+        "filesystem": "ext4",
+        "first_lba": 526336,
+        "last_lba": 1048542,
+        "verified_file_count": 8,
+        "verified_directory_count": 10
+      }
+    ]
+  },
+  "initramfs_ext4_growth": {
+    "helper_sha256": "61d39d25f4df0ae3660945cb6f68b84d1d24c6684672aa692f35d3c5afbec912",
+    "initial_blocks": 16384,
+    "raw_target_blocks": 33792,
+    "final_blocks": 32768,
+    "resize2fs_final_blocks": 32768,
+    "unused_tail_blocks": 1024,
+    "mismatched_device_rejected": true,
+    "read_only_mount_rejected": true,
+    "read_only_size_unchanged": true,
+    "canonical_superblock_count_used": true
+  },
+  "creator_prepared_media": {
+    "prepare_regular_file_only": true,
+    "target_image_bytes": 805306368,
+    "prepared_image_sha256_before_growth": "14a7665b607b2658bb4c253d5e92e6360248701d9ada9d3c3942e4757edcd61e",
+    "ordax_first_lba": 526336,
+    "ordax_last_lba": 1572830,
+    "last_usable_lba": 1572830,
+    "ordax_partition_bytes": 535805440,
+    "ext4_initial_blocks": 65275,
+    "ext4_raw_target_blocks": 130811,
+    "ext4_final_blocks": 130811,
+    "resize2fs_final_blocks": 130811,
+    "unused_tail_blocks": 0,
+    "tree_digest_before": "e34df1cb997af55a5bc3b12ccbe9faf03d45553561b8d6e5d5fa6def2111c454",
+    "tree_digest_after": "e34df1cb997af55a5bc3b12ccbe9faf03d45553561b8d6e5d5fa6def2111c454",
+    "bootstrap_entrypoint_path": "/bootstrap/entrypoint",
+    "bootstrap_entrypoint_mode_before": "755",
+    "bootstrap_entrypoint_mode_after": "755",
+    "bootstrap_entrypoint_sha256_before": "9151b706e4444a06475968fe54db460344a85efad5af0ab0979d26082a31b9c7",
+    "bootstrap_entrypoint_sha256_after": "9151b706e4444a06475968fe54db460344a85efad5af0ab0979d26082a31b9c7",
+    "files_preserved": true,
+    "read_only_e2fsck_passed": true
+  },
+  "checks": {
+    "filesystem_types_and_labels_match_contract": true,
+    "gpt_valid": true,
+    "partition_count_exactly_two": true,
+    "partition_geometry_matches_contract": true,
+    "raw_partition_bytes_match_filesystem_images": true,
+    "staged_file_hashes_reverified_from_filesystems": true,
+    "creator_prepare_image_proven": true,
+    "creator_ext4_growth_matches_resize2fs": true,
+    "creator_files_preserved_across_growth": true,
+    "physical_write_remains_blocked": true
+  },
+  "cleanup": {
+    "ephemeral_private_key_destroyed": true,
+    "ephemeral_public_trust_removed_from_checkout": true,
+    "raw_image_published": false,
+    "proof_metadata_only_uploaded": true
+  },
+  "real_hardware_touched": false,
+  "physical_hardware_proven": false,
+  "physical_write_authorized": false,
+  "promotion_effect": "evidence-only; closes byte-complete ephemeral-trust composition and disposable Creator ext4-growth proof but does not resolve canonical trust, prove notebook boot, or authorize physical-media mutation"
+}
