@@ -16,6 +16,11 @@ Nao trate este repositorio como sucessor oficial enquanto `docs/PROMOTION-GATES.
 - Nao criar caminhos paralelos para a mesma responsabilidade.
 - Codex nao e source authority, build authority ou release authority.
 
+Para geometria fisica, os contratos vencem texto descritivo:
+
+- `docs/contracts/physical-media.json` = seed bootstrap independente de capacidade;
+- `docs/contracts/physical-prepared-media.json` = USB fisico final depois do Creator.
+
 ## 3. Ordem obrigatoria de leitura
 
 Antes de alterar codigo, contratos ou midia:
@@ -34,18 +39,26 @@ Antes de alterar codigo, contratos ou midia:
 12. `docs/PROMOTION-GATES.md`
 13. `docs/DECISIONS.md`
 
-Quando um snapshot de estado conflitar com texto historico, `docs/CURRENT-STATE.md` e os contratos arquiteturais canonicos vencem.
+Quando um snapshot historico conflitar com `docs/ARCHITECTURE.md` e os contratos fisicos atuais, os contratos arquiteturais atuais vencem para geometria e comportamento materializado.
 
 ## 4. Arquitetura fisica alvo
 
+Ha dois artefatos distintos:
+
 ```text
-PHYSICAL_PARTITIONS=2
-ESP=ORDAX-ESP
-MAIN=ORDAX
+BOOTSTRAP_SEED_PARTITIONS=2
+SEED_PARTITION_1=ORDAX-ESP
+SEED_PARTITION_2=ORDAX
+
+PREPARED_USB_PARTITIONS=3
+PREPARED_PARTITION_1=ORDAX-ESP
+PREPARED_PARTITION_2=ORDAX
+PREPARED_PARTITION_3=ORDAX-DATA
+
 SEPARATE_HOME_PARTITION=NO
 ```
 
-Nao reintroduzir uma terceira particao HOME sem uma decisao arquitetural registrada.
+`ORDAX-DATA` e criado pelo Creator porque depende da capacidade real do alvo. Ele nao faz parte do seed assinado/capacity-independent. Nao reintroduzir `ORDAX-HOME` nem `ORDAX-PLATFORM`.
 
 ## 5. Um produto, cinco modos
 
@@ -61,36 +74,58 @@ Sao modos de capacidade do mesmo produto, nao forks.
 
 Surface, apps e logica compartilhada possuem uma unica fonte em `system/`. Diferencas de ambiente vivem apenas em adapters de capacidade.
 
-## 6. Pendrive inicial minimo
+## 6. Dois perfis de aquisicao, uma source authority
 
-O primeiro USB deve conter apenas o necessario para chegar a uma release confiavel pela rede:
+### Owner/development Git-first
 
 ```text
 UEFI
- -> bootloader
+ -> kernel/initramfs
+ -> development base
+ -> drivers/firmware
+ -> rede
+ -> Git
+ -> partial+sparse checkout da main em /workspace/ordax
+ -> system/entrypoint
+```
+
+Regras:
+
+- Git fica fisicamente no development base;
+- checkout completo nao e preseeded;
+- clone inicial usa filtro parcial e sparse checkout de `system/`;
+- atualizacao usa `git pull --ff-only`;
+- alteracao local, origin inesperado ou branch inesperada bloqueiam pull;
+- rollback permanece fixado entre reboots ate `ordax-pull` explicito;
+- mudanca normal em `system/` nao exige regravar USB nem recompilar kernel.
+
+### Canonical signed-release
+
+```text
+UEFI
  -> kernel/initramfs
  -> bootstrap minimo
  -> rede minima
  -> aquisicao de release assinada
  -> verificacao
- -> recovery
+ -> /ordax/releases/<commit>
+ -> /ordax/current
 ```
 
-Nao sao obrigatorios antes da primeira release:
+Confianca efemera de CI/desenvolvimento nunca substitui a trust canonica.
+
+Nao sao obrigatorios no bootstrap comum:
 
 - SSH;
 - OrdaX Remote Core;
 - Control Plane;
 - servico de identidade persistente;
-- Surface/desktop;
+- Surface/desktop preinstalado;
 - apps normais;
-- servicos de alto nivel;
 - checkout completo do source;
 - toolchain de build;
 - WSL/QEMU;
 - dump do repositorio antigo.
-
-Depois do primeiro boot, a release completa deve ser adquirida, verificada e materializada em `/ordax/releases/<commit>`. Uma release conhecida deve permanecer local para boot offline e rollback.
 
 ## 7. Build autonomo e independente de Codex
 
@@ -118,27 +153,31 @@ Regras:
 - Codex pode ser parceiro opcional para revisao, investigacao fisica ou segunda opiniao;
 - um build que depende de estado local nao documentado e defeito arquitetural.
 
-O ambiente do kernel 6.6.52 ja possui imagem OCI por digest, snapshot APT, 17 versoes exatas de pacotes e prova repetida de hashes identicos. Isso fecha apenas o gate de ambiente reproduzivel; `physical_artifact_authorized` continua separado e fail-closed.
-
-Ver `docs/BUILD-AUTONOMY.md` e `docs/contracts/build-autonomy.json`.
-
 ## 8. Desenvolvimento diario
 
-Fluxo normal:
+Fluxo owner/development:
 
 ```text
 editar source
- -> preview Web/HMR quando aplicavel
  -> testar
  -> commit/push main
- -> CI gera/verifica apenas artefatos afetados
- -> Web/Mobile/Desktop recebem o commit aplicavel
- -> OrdaX USB/Native detecta release ou delta
- -> verifica
+ -> ordax-pull
+ -> ordax-run
+```
+
+Fluxo canonical release:
+
+```text
+editar source
+ -> testar
+ -> commit/push main
+ -> CI gera/verifica artefatos afetados
+ -> publica release assinada
+ -> dispositivo verifica
  -> ativa
 ```
 
-Nao exigir SSH, shell remoto, Remote Core, Control Plane ou Codex para esse fluxo.
+Nao exigir SSH, shell remoto, Remote Core, Control Plane ou Codex para esses fluxos.
 
 Uma mudanca de Surface nao deve reconstruir kernel. Uma mudanca de kernel nao deve reconstruir Surface sem motivo real de dependencia.
 
@@ -155,8 +194,6 @@ A arquitetura nao pode exigir como dependencia obrigatoria:
 - executavel SSH externo.
 
 Quando Windows/Linux/macOS exigirem APIs diferentes para disco/elevacao, usar adapters finos sob um core compartilhado. Politica, formato, hashes, layout e comportamento nao podem divergir por host.
-
-Um runner Linux/container pode compilar o kernel Linux no CI. Isso nao torna Linux/WSL uma dependencia da maquina do desenvolvedor.
 
 ## 10. Remote/Control opcional
 
@@ -188,6 +225,7 @@ Nao copiar pastas inteiras, history, tmp, backups, scripts antigos, stack SSH/QE
 - Integridade, autorizacao e selecao de alvo falham fechado.
 - Operacao destrutiva de disco exige identificacao inequivoca do alvo, dry-run e evidencia.
 - Criptografia customizada e proibida.
+- Confianca efemera de prototipo deve permanecer explicitamente separada da trust canonica.
 
 ## 13. Trabalho fisico
 
@@ -202,7 +240,7 @@ Antes de formatar ou escrever em pendrive/notebook:
 7. somente depois aplicar;
 8. verificar leitura/hashes/layout depois da escrita.
 
-O token de confirmacao do Creator deve estar ligado a identidade atual do USB, incluindo capacidade fisica medida. Uma autorizacao de escrita RAW deve ainda estar ligada ao SHA-256 e tamanho exato da imagem, e uma imagem de disco completa deve ter exatamente o mesmo tamanho do `PhysicalDrive` confirmado.
+O token de confirmacao do Creator deve estar ligado a identidade atual do USB, incluindo capacidade fisica medida. Uma autorizacao de escrita RAW deve ainda estar ligada ao SHA-256 e tamanho exato da imagem/plano de escrita correspondente.
 
 OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario final nao compila kernel para instalar o sistema.
 
@@ -214,33 +252,15 @@ OrdaX Creator deve consumir artefatos preconstruidos e verificados; o usuario fi
 - Documentacao canonica muda junto com arquitetura.
 - Platform adapters nao podem duplicar regras de produto.
 - Build reproduzivel e provenance sao parte da qualidade, nao tarefas opcionais de release.
+- Nao confundir seed de 2 particoes com USB final preparado de 3 particoes.
+- Nao confundir owner Git-first com canonical signed-release.
 
 ## 15. Estado atual
 
-O clean-room ja possui receitas e provas para kernel, initramfs, rede minima, release acquisition, release bundle, Creator Core, descoberta segura de alvo Windows e composicao descartavel de midia. O `system/` real tambem possui um entrypoint compartilhado e bundling deterministico.
+O owner/development Git-first base ja foi provado em CI com boot ESP, kernel, initramfs, modulos/firmware selecionados, rede e Git nativo. O checkout de runtime e partial+sparse (`system/`) e o rollback e persistente entre reboots ate um `ordax-pull` explicito.
 
-O ambiente do kernel esta fechado por prova repetida: imagem OCI por digest, snapshot APT, pacotes fixados e os tres artefatos do kernel reproduziram hashes identicos em execucoes independentes. Esse fato nao autoriza por si so uso fisico.
+O Creator owner/development ja materializa e verifica o RAW e publica um executavel de desenvolvimento com trust efemera explicitamente separada da trust canonica.
 
-O Creator Windows ja mede a capacidade real do `PhysicalDrive`, inclui essa capacidade no token de confirmacao, verifica imagem RAW por tamanho/hash e possui uma autorizacao destrutiva calculada sobre alvo + imagem. O backend nativo Win32 de escrita RAW ja existe e e testado internamente, mas fica isolado pelo build tag `ordax_raw_backend`, fora do binario publico e sem rota `apply` exposta.
-
-A prova byte-completa com confianca efemera tambem passou: os 14 artefatos do bootstrap foram materializados em uma imagem GPT real de duas particoes (`ORDAX-ESP` FAT32 + `ORDAX` ext4), reabertos e verificados por hash. A chave privada efemera e a imagem RAW foram destruidas antes do upload; somente metadados de prova foram preservados em `docs/evidence/full-bootstrap-media-proof-95de305c.json`. Isso nao substitui confianca canonica e nao autoriza escrita fisica.
-
-Ainda permanecem abertos antes da escrita fisica e promocao:
-
-```text
-canonical Ed25519 release trust ceremony/public anchor
-byte-complete proof with canonical public trust
-public apply boundary bound to executable destructive authorization
-real notebook boot/network/release/recovery evidence
-graphical shared Surface and remaining product-mode continuity
-```
-
-`PHYSICAL_USB_WRITE=NO` ate os gates correspondentes estarem fechados.
-
-O menor caminho fisico continua:
-
-```text
-boot -> rede -> adquirir release assinada -> verificar -> ativar -> boot offline posterior
-```
+Ainda permanecem gates distintos antes de promocao publica/canonica, incluindo trust Ed25519 controlada pelo usuario e evidencia real de boot/rede/runtime/recovery no notebook.
 
 Todo componente extra deve justificar sua existencia antes de entrar no bootstrap.
