@@ -25,6 +25,9 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         self.assertIn('[data-window-id=\"system\"]', controls)
         self.assertIn("Commit em execução", controls)
         self.assertIn("Reinício físico pendente", controls)
+        self.assertIn("./surface-lifecycle.mjs", controls)
+        self.assertIn("assertSurfaceRenderLifecycle", controls)
+        self.assertNotIn("MutationObserver", controls)
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertNotIn("fetch(", controls)
@@ -32,7 +35,7 @@ class SystemRuntimeStatusTests(unittest.TestCase):
     def test_native_composition_reuses_one_update_watcher(self):
         composition = COMPOSITION.read_text(encoding="utf-8")
         self.assertEqual(composition.count("createNativeUpdateWatcher(window)"), 1)
-        self.assertIn("mountSystemStatusControls(root, updateWatcher)", composition)
+        self.assertIn("mountSystemStatusControls(root, updateWatcher, surface)", composition)
         self.assertIn("mountUpdateControls(root, updateWatcher)", composition)
         self.assertIn("systemStatusControls.destroy()", composition)
 
