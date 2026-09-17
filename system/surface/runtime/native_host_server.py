@@ -15,12 +15,14 @@ import sys
 import threading
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
 PREFERENCES_PATH = "/__ordax/native/preferences"
+FILES_PATH = "/__ordax/native/files"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
@@ -28,6 +30,8 @@ TOKEN_HEADER = "X-OrdaX-Power-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
 MAX_PREFERENCE_BODY = 8192
+MAX_FILE_ACTION_BODY = 2048
+MAX_FILE_ENTRIES = 1000
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_COMMANDS = {
     "restart": ("/bin/busybox", "reboot", "-f"),
@@ -143,6 +147,105 @@ def write_preferences(preferences: dict) -> None:
         os.close(directory_fd)
 
 
+def valid_logical_file_path(value: object) -> bool:
+    if not isinstance(value, str) or not value.startswith("/") or len(value) > 4096:
+        return False
+    if value != "/" and value.endswith("/"):
+        return False
+    if value == "/":
+        return True
+    parts = value.split("/")[1:]
+    return bool(parts) and all(valid_file_name(part) for part in parts)
+
+
+def valid_file_name(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 255
+        and value not in {".", ".."}
+        and "/" not in value
+        and "\0" not in value
+        and not any(ord(character) < 32 for character in value)
+    )
+
+
+def _directory_open_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+
+
+def open_user_directory(user_root: str, logical_path: str) -> int:
+    if not valid_logical_file_path(logical_path):
+        raise ValueError("invalid logical file-space path")
+    os.makedirs(user_root, mode=0o700, exist_ok=True)
+    descriptor = os.open(user_root, _directory_open_flags())
+    try:
+        for segment in logical_path.split("/")[1:]:
+            if not segment:
+                continue
+            next_descriptor = os.open(segment, _directory_open_flags(), dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def list_user_directory(user_root: str, logical_path: str) -> dict:
+    descriptor = open_user_directory(user_root, logical_path)
+    try:
+        entries = []
+        with os.scandir(descriptor) as iterator:
+            for entry in iterator:
+                if not valid_file_name(entry.name) or entry.is_symlink():
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        kind = "directory"
+                        size = 0
+                    elif entry.is_file(follow_symlinks=False):
+                        kind = "file"
+                        size = entry.stat(follow_symlinks=False).st_size
+                    else:
+                        continue
+                except OSError:
+                    continue
+                entries.append({"name": entry.name, "kind": kind, "size": max(0, int(size))})
+        entries.sort(key=lambda item: (item["kind"] != "directory", item["name"].casefold(), item["name"]))
+        return {"path": logical_path, "entries": entries[:MAX_FILE_ENTRIES]}
+    finally:
+        os.close(descriptor)
+
+
+def create_user_directory(user_root: str, logical_path: str, name: str) -> dict:
+    if not valid_file_name(name):
+        raise ValueError("invalid directory name")
+    descriptor = open_user_directory(user_root, logical_path)
+    try:
+        os.mkdir(name, mode=0o700, dir_fd=descriptor)
+    finally:
+        os.close(descriptor)
+    return list_user_directory(user_root, logical_path)
+
+
+def requested_file_path(request_target: str) -> str:
+    parsed = urlsplit(request_target)
+    if parsed.path != FILES_PATH:
+        raise ValueError("not a file-space request")
+    query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+    if set(query) != {"path"} or len(query["path"]) != 1:
+        raise ValueError("file-space request requires exactly one path")
+    logical_path = query["path"][0]
+    if not valid_logical_file_path(logical_path):
+        raise ValueError("invalid file-space path")
+    return logical_path
+
+
 def record_surface_health(source_sha: str) -> None:
     directory = os.path.dirname(HEALTH_STATE_FILE)
     os.makedirs(directory, exist_ok=True)
@@ -159,11 +262,12 @@ class NativeHostServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler_class):
+    def __init__(self, server_address, handler_class, *, user_root: str):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
         self.health_token = secrets.token_urlsafe(32)
         self.supported_actions = supported_power_actions()
+        self.user_root = user_root
 
 
 class NativeHostHandler(SimpleHTTPRequestHandler):
@@ -210,6 +314,29 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self._empty(405)
 
     def do_GET(self) -> None:  # noqa: N802
+        parsed_path = urlsplit(self.path).path
+        if parsed_path == FILES_PATH:
+            if self.client_address[0] != "127.0.0.1":
+                self._empty(403)
+                return
+            try:
+                logical_path = requested_file_path(self.path)
+                listing = list_user_directory(self.server.user_root, logical_path)
+            except ValueError:
+                self._empty(400)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(f"ordax-native-host: could not list user files: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._write_json(200, listing)
+            return
         if self.path == SESSION_PATH:
             self._write_json(
                 200,
@@ -282,6 +409,36 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             self._empty(204)
             return
 
+        if self.path == FILES_PATH:
+            payload = self._read_json_body(MAX_FILE_ACTION_BODY)
+            if payload is None or payload.get("action") != "create-directory":
+                self._empty(400)
+                return
+            try:
+                listing = create_user_directory(
+                    self.server.user_root,
+                    payload.get("path"),
+                    payload.get("name"),
+                )
+            except ValueError:
+                self._empty(400)
+                return
+            except FileExistsError:
+                self._empty(409)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(f"ordax-native-host: could not create user directory: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._write_json(201, listing)
+            return
+
         if self.path != POWER_PATH:
             self._empty(404)
             return
@@ -314,16 +471,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", default=8765, type=int)
     parser.add_argument("--directory", default="/srv/ordax-system")
+    parser.add_argument("--user-root", default="/var/lib/ordax-user")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     handler = partial(NativeHostHandler, directory=args.directory)
-    server = NativeHostServer((args.bind, args.port), handler)
+    server = NativeHostServer((args.bind, args.port), handler, user_root=args.user_root)
     print(
-        "ordax-native-host: serving %s on %s:%d; power actions=%s"
-        % (args.directory, args.bind, args.port, ",".join(server.supported_actions) or "none"),
+        "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s"
+        % (
+            args.directory,
+            args.bind,
+            args.port,
+            args.user_root,
+            ",".join(server.supported_actions) or "none",
+        ),
         file=sys.stderr,
         flush=True,
     )
