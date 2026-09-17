@@ -6,7 +6,31 @@ export PATH
 
 STATE_DIR=/state/network
 WPA_CONF=$STATE_DIR/wpa.conf
+CANDIDATE_CONF=/run/ordax-wpa-candidate.conf
+SCAN_FILE=/run/ordax-wifi-scan.tsv
+SSID_FILE=/run/ordax-wifi-ssids
 mkdir -p "$STATE_DIR" /run
+
+force_choose=0
+case "${1:-}" in
+    "") ;;
+    --choose) force_choose=1 ;;
+    -h|--help)
+        echo "uso: ordax-network [--choose]"
+        echo "  sem opcao: conecta automaticamente usando rede salva ou melhor sinal"
+        echo "  --choose: mostra as redes e permite trocar a rede salva"
+        exit 0
+        ;;
+    *)
+        echo "ordax-network: opcao desconhecida: $1" >&2
+        exit 2
+        ;;
+esac
+
+cleanup_runtime_files() {
+    rm -f "$CANDIDATE_CONF" "$SCAN_FILE" "$SSID_FILE"
+}
+trap cleanup_runtime_files EXIT
 
 have_ipv4() {
     ip -4 -o addr show scope global 2>/dev/null | grep -q ' inet '
@@ -40,7 +64,7 @@ try_dhcp() {
     have_ipv4
 }
 
-if have_ipv4; then
+if [ "$force_choose" -eq 0 ] && have_ipv4; then
     echo "ordax-network: rede ja disponivel"
     sync_clock
     exit 0
@@ -50,19 +74,21 @@ fi
 # wired/USB-tether DHCP pass. Kernel-created tunnels such as sit0 also appear
 # in /sys/class/net, but are not physical/tether interfaces and must not delay
 # boot with pointless DHCP attempts.
-for netpath in /sys/class/net/*; do
-    [ -e "$netpath" ] || continue
-    iface=${netpath##*/}
-    [ "$iface" = lo ] && continue
-    [ -d "$netpath/wireless" ] && continue
-    net_type=$(cat "$netpath/type" 2>/dev/null || true)
-    [ "$net_type" = 1 ] || continue
-    echo "ordax-network: tentando DHCP em $iface"
-    if try_dhcp "$iface"; then
-        finish_network "$iface"
-        exit 0
-    fi
-done
+if [ "$force_choose" -eq 0 ]; then
+    for netpath in /sys/class/net/*; do
+        [ -e "$netpath" ] || continue
+        iface=${netpath##*/}
+        [ "$iface" = lo ] && continue
+        [ -d "$netpath/wireless" ] && continue
+        net_type=$(cat "$netpath/type" 2>/dev/null || true)
+        [ "$net_type" = 1 ] || continue
+        echo "ordax-network: tentando DHCP em $iface"
+        if try_dhcp "$iface"; then
+            finish_network "$iface"
+            exit 0
+        fi
+    done
+fi
 
 wifi=""
 for netpath in /sys/class/net/*; do
@@ -90,10 +116,12 @@ wait_for_wifi_link() {
     return 1
 }
 
-connect_saved_wifi() {
-    [ -s "$WPA_CONF" ] || return 1
+connect_wifi_conf() {
+    conf=$1
+    [ -s "$conf" ] || return 1
     killall wpa_supplicant >/dev/null 2>&1 || true
-    wpa_supplicant -B -i "$wifi" -c "$WPA_CONF" >/dev/null 2>&1 || return 1
+    ip addr flush dev "$wifi" >/dev/null 2>&1 || true
+    wpa_supplicant -B -i "$wifi" -c "$conf" >/dev/null 2>&1 || return 1
     if ! wait_for_wifi_link; then
         killall wpa_supplicant >/dev/null 2>&1 || true
         return 1
@@ -101,27 +129,32 @@ connect_saved_wifi() {
     try_dhcp "$wifi"
 }
 
-if connect_saved_wifi; then
+connect_saved_wifi() {
+    connect_wifi_conf "$WPA_CONF"
+}
+
+if [ "$force_choose" -eq 0 ] && connect_saved_wifi; then
     finish_network "$wifi"
     exit 0
 fi
 
-select_best_secure_ssid() {
+scan_secure_networks() {
     iw dev "$wifi" scan 2>/dev/null | awk '
-        function flush_candidate() {
-            if (ssid != "" && secure && signal > best_signal) {
-                best_signal = signal
-                best_ssid = ssid
+        function remember() {
+            if (ssid != "" && secure) {
+                gsub(/\t/, " ", ssid)
+                if (!(ssid in best) || signal > best[ssid]) {
+                    best[ssid] = signal
+                }
             }
         }
         BEGIN {
-            best_signal = -1000
             signal = -1000
             ssid = ""
             secure = 0
         }
         /^BSS / {
-            flush_candidate()
+            remember()
             signal = -1000
             ssid = ""
             secure = 0
@@ -141,10 +174,82 @@ select_best_secure_ssid() {
             next
         }
         END {
-            flush_candidate()
-            if (best_ssid != "") print best_ssid
+            remember()
+            n = 0
+            for (name in best) {
+                n++
+                names[n] = name
+                signals[n] = best[name]
+            }
+            limit = n < 9 ? n : 9
+            for (i = 1; i <= limit; i++) {
+                max = i
+                for (j = i + 1; j <= n; j++) {
+                    if (signals[j] > signals[max]) max = j
+                }
+                tmp_signal = signals[i]
+                signals[i] = signals[max]
+                signals[max] = tmp_signal
+                tmp_name = names[i]
+                names[i] = names[max]
+                names[max] = tmp_name
+                printf "%d\t%s\n", signals[i], names[i]
+            }
         }
-    '
+    ' > "$SCAN_FILE"
+
+    : > "$SSID_FILE"
+    while IFS="$(printf '\t')" read -r signal name; do
+        [ -n "$name" ] || continue
+        printf '%s\n' "$name" >> "$SSID_FILE"
+    done < "$SCAN_FILE"
+}
+
+choose_scanned_ssid() {
+    selected_ssid=""
+    scan_secure_networks
+    count=$(wc -l < "$SSID_FILE" | tr -d ' ')
+    [ "$count" -gt 0 ] || return 1
+
+    echo "ordax-network: redes Wi-Fi WPA/WPA2 detectadas:"
+    index=1
+    while IFS="$(printf '\t')" read -r signal name; do
+        if [ "$index" -eq 1 ]; then
+            printf '  %d) %s (%s dBm) [melhor sinal]\n' "$index" "$name" "$signal"
+        else
+            printf '  %d) %s (%s dBm)\n' "$index" "$name" "$signal"
+        fi
+        index=$((index + 1))
+    done < "$SCAN_FILE"
+
+    choice=""
+    if [ "$force_choose" -eq 1 ]; then
+        printf 'Escolha a rede [1-%s] (1 = melhor sinal): ' "$count"
+        IFS= read -r -n 1 choice || true
+        printf '\n'
+    else
+        printf 'Melhor rede sera usada em 5s. Pressione 1-%s para escolher outra: ' "$count"
+        if ! IFS= read -r -n 1 -t 5 choice 2>/dev/null; then
+            choice=""
+        fi
+        printf '\n'
+    fi
+
+    [ -n "$choice" ] || choice=1
+    case "$choice" in
+        [1-9]) ;;
+        *)
+            echo "ordax-network: opcao invalida; usando a rede de melhor sinal"
+            choice=1
+            ;;
+    esac
+    if [ "$choice" -gt "$count" ]; then
+        echo "ordax-network: opcao fora da lista; usando a rede de melhor sinal"
+        choice=1
+    fi
+
+    selected_ssid=$(sed -n "${choice}p" "$SSID_FILE")
+    [ -n "$selected_ssid" ]
 }
 
 read_password_with_feedback() {
@@ -195,13 +300,16 @@ read_password_with_feedback() {
     printf '\n'
 }
 
-ssid=$(select_best_secure_ssid || true)
+if ! choose_scanned_ssid; then
+    selected_ssid=""
+fi
+ssid=$selected_ssid
 [ -n "$ssid" ] || {
     echo "ordax-network: nenhuma rede WPA/WPA2 utilizavel foi encontrada" >&2
     exit 1
 }
 
-echo "ordax-network: rede selecionada automaticamente: $ssid"
+echo "ordax-network: rede selecionada: $ssid"
 printf 'Senha WPA/WPA2: '
 read_password_with_feedback
 [ -n "$password" ] || {
@@ -210,15 +318,18 @@ read_password_with_feedback
 }
 
 umask 077
-wpa_passphrase "$ssid" "$password" | sed '/^[[:space:]]*#psk=/d' > "$WPA_CONF"
+wpa_passphrase "$ssid" "$password" | sed '/^[[:space:]]*#psk=/d' > "$CANDIDATE_CONF"
 unset password
 
-if connect_saved_wifi; then
+if connect_wifi_conf "$CANDIDATE_CONF"; then
+    mv "$CANDIDATE_CONF" "$WPA_CONF"
     finish_network "$wifi"
     exit 0
 fi
 
-rm -f "$WPA_CONF"
 echo "ordax-network: nao foi possivel autenticar/conectar na rede selecionada" >&2
-echo "ordax-network: a proxima tentativa fara um novo scan automaticamente" >&2
+if [ -s "$WPA_CONF" ]; then
+    echo "ordax-network: a rede salva anteriormente foi preservada" >&2
+fi
+echo "ordax-network: use ordax-network --choose para escolher outra rede" >&2
 exit 1
