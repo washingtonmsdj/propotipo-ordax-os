@@ -64,6 +64,15 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("-p 127.0.0.1:8765", text)
         self.assertNotIn("-p 0.0.0.0", text)
 
+    def test_native_surface_fallback_exposes_physical_diagnostics(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("fallback_with_reason", text)
+        self.assertIn("Diagnostic:", text)
+        self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
+        self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
+        self.assertIn("failed to bind host devices into graphical runtime", text)
+        self.assertIn("native Cage/Cog host exited with status", text)
+
 
 if __name__ == "__main__":
     unittest.main()
