@@ -1,4 +1,5 @@
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
+import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
@@ -17,6 +18,7 @@ async function start() {
   const preferenceStore = createWebPreferenceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
+  const updateWatcher = createNativeUpdateWatcher(window);
   let powerActions = null;
   try {
     powerActions = await createNativePowerActions(window);
@@ -41,6 +43,7 @@ async function start() {
   window.addEventListener(
     "pagehide",
     () => {
+      updateWatcher.dispose();
       powerControls.destroy();
       surface.destroy();
       identityActions.dispose();
