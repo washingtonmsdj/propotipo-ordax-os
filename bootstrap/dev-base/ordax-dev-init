@@ -27,7 +27,15 @@ maintenance_shell() {
     printf 'Atualizar:    ordax-pull\n'
     printf 'Executar:     ordax-run\n'
     printf 'Voltar:       ordax-rollback\n'
+    printf 'Rede:         ordax-network\n'
     printf '\nMudancas normais do OrdaX nao exigem regravar o pendrive.\n\n'
+
+    # switch_root leaves the development init attached to the console file
+    # descriptors but without a controlling TTY. Re-establish one before
+    # entering maintenance so job control and password echo handling work.
+    if [ -x /bin/setsid ]; then
+        exec /bin/setsid -c /bin/sh
+    fi
     exec /bin/sh
 }
 
