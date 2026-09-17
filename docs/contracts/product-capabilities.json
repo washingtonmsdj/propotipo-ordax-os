@@ -72,6 +72,11 @@
       "security_boundary": "user-mediated-filesystem"
     },
     {
+      "id": "filesystem.user-space",
+      "owner": "system/adapters",
+      "security_boundary": "bounded-user-root"
+    },
+    {
       "id": "creator.usb-media",
       "owner": "system/adapters/desktop",
       "security_boundary": "explicit-privileged-capability"
@@ -164,6 +169,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "filesystem.user-space",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
@@ -179,6 +185,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "filesystem.user-space",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
