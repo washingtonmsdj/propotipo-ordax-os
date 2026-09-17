@@ -8,13 +8,16 @@ on:
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
+      - 'system/contracts/power-actions.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/adapters/web/**'
+      - 'system/adapters/native/**'
       - 'system/composition/web/**'
+      - 'system/composition/native/**'
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
@@ -22,6 +25,7 @@ on:
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
+      - 'tests/test_power_actions.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -31,13 +35,16 @@ on:
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
+      - 'system/contracts/power-actions.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/adapters/web/**'
+      - 'system/adapters/native/**'
       - 'system/composition/web/**'
+      - 'system/composition/native/**'
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
@@ -45,6 +52,7 @@ on:
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
+      - 'tests/test_power_actions.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -84,7 +92,9 @@ jobs:
             system/apps \
             system/surface/ui \
             system/adapters/web \
+            system/adapters/native \
             system/composition/web \
+            system/composition/native \
             -type f -name '*.mjs' -print0 \
             | sort -z \
             | xargs -0 -n1 node --check
@@ -92,6 +102,7 @@ jobs:
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
+          node --test tests/test_power_actions.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_sync_*.mjs
 

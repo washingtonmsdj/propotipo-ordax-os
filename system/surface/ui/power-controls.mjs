@@ -1,0 +1,217 @@
+import {
+  assertPowerActionsPort,
+  isPowerActionSupported,
+  validatePowerActionsSnapshot,
+} from "../../contracts/power-actions.mjs";
+
+const ACTIONS = [
+  {
+    id: "restart",
+    label: "Reiniciar",
+    confirmingLabel: "Confirmar reinício",
+    pendingLabel: "Reiniciando…",
+    description: "Encerra esta execução e inicia o OrdaX novamente.",
+    confirmation: "Clique novamente em Reiniciar para confirmar.",
+    mark: "↻",
+  },
+  {
+    id: "shutdown",
+    label: "Desligar",
+    confirmingLabel: "Confirmar desligamento",
+    pendingLabel: "Desligando…",
+    description: "Encerra esta execução e desliga o equipamento.",
+    confirmation: "Clique novamente em Desligar para confirmar.",
+    mark: "⏻",
+  },
+];
+
+function node(documentObject, tag, className, text) {
+  const element = documentObject.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
+export function mountPowerControls(root, powerActions = null) {
+  if (!(root instanceof Element)) {
+    throw new TypeError("Power controls root must be a DOM Element");
+  }
+  if (powerActions === null) {
+    return Object.freeze({ destroy() {} });
+  }
+
+  const port = assertPowerActionsPort(powerActions);
+  let snapshot = validatePowerActionsSnapshot(port.getSnapshot());
+  const documentObject = root.ownerDocument;
+  const shell = root.querySelector("[data-ordax-shell]");
+  const dock = root.querySelector(".ordax-dock");
+  const runningApps = root.querySelector("[data-running-apps]");
+  if (!shell || !dock || !runningApps) {
+    throw new Error("Surface power controls require the shared shell and dock");
+  }
+
+  const availableActions = () => ACTIONS.filter((item) => isPowerActionSupported(snapshot, item.id));
+  if (availableActions().length === 0) {
+    return Object.freeze({ destroy() {} });
+  }
+
+  const toggle = node(documentObject, "button", "ordax-dock-button", "Energia");
+  toggle.type = "button";
+  toggle.dataset.powerToggle = "";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-label", "Abrir controles de energia");
+  dock.insertBefore(toggle, runningApps);
+
+  const overlay = node(documentObject, "div", "ordax-launcher ordax-power-menu");
+  overlay.dataset.powerMenu = "";
+  overlay.hidden = true;
+  const panel = node(documentObject, "div", "ordax-launcher-panel");
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-label", "Controles de energia do OrdaX");
+  const heading = node(documentObject, "div", "ordax-launcher-heading");
+  heading.append(
+    node(documentObject, "span", "", "Energia"),
+    node(documentObject, "small", "", "Ação local do host"),
+  );
+  const grid = node(documentObject, "div", "ordax-launcher-grid");
+  const status = node(documentObject, "p", "ordax-empty", "");
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  panel.append(heading, grid, status);
+  overlay.append(panel);
+  shell.append(overlay);
+
+  let open = false;
+  let confirming = null;
+  let pending = null;
+  let message = "";
+  let resetTimer = null;
+
+  const render = () => {
+    overlay.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    grid.replaceChildren();
+    for (const item of availableActions()) {
+      const button = node(documentObject, "button", "ordax-launcher-app");
+      button.type = "button";
+      button.dataset.powerAction = item.id;
+      button.disabled = pending !== null;
+      const copy = node(documentObject, "span", "ordax-launcher-app-copy");
+      const label = pending === item.id
+        ? item.pendingLabel
+        : confirming === item.id
+          ? item.confirmingLabel
+          : item.label;
+      copy.append(
+        node(documentObject, "strong", "", label),
+        node(documentObject, "small", "", item.description),
+      );
+      button.append(node(documentObject, "span", "ordax-app-mark", item.mark), copy);
+      grid.append(button);
+    }
+    status.textContent = message;
+    status.hidden = message.length === 0;
+  };
+
+  const clearResetTimer = () => {
+    if (resetTimer !== null) {
+      globalThis.clearTimeout(resetTimer);
+      resetTimer = null;
+    }
+  };
+
+  const invoke = (action) => {
+    if (pending !== null || !isPowerActionSupported(snapshot, action)) return;
+    const descriptor = ACTIONS.find((item) => item.id === action);
+    if (!descriptor) return;
+
+    if (confirming !== action) {
+      confirming = action;
+      message = descriptor.confirmation;
+      render();
+      return;
+    }
+
+    confirming = null;
+    pending = action;
+    message = action === "restart" ? "Solicitando reinício ao host…" : "Solicitando desligamento ao host…";
+    render();
+    Promise.resolve()
+      .then(() => port.execute(action))
+      .then(() => {
+        message = "Solicitação aceita pelo host.";
+        render();
+        clearResetTimer();
+        resetTimer = globalThis.setTimeout(() => {
+          pending = null;
+          message = "O host permaneceu ativo; a ação pode ser tentada novamente.";
+          render();
+        }, 5000);
+      })
+      .catch(() => {
+        pending = null;
+        message = "A ação de energia não pôde ser concluída.";
+        render();
+      });
+  };
+
+  const onToggle = () => {
+    if (pending !== null) return;
+    open = !open;
+    if (!open) {
+      confirming = null;
+      message = "";
+    }
+    render();
+  };
+
+  const onRootClick = (event) => {
+    if (event.target.closest("[data-power-toggle]")) {
+      onToggle();
+      return;
+    }
+    const actionButton = event.target.closest("[data-power-action]");
+    if (actionButton) {
+      invoke(actionButton.dataset.powerAction);
+      return;
+    }
+    if (open && !event.target.closest("[data-power-menu]")) {
+      open = false;
+      confirming = null;
+      message = "";
+      render();
+    }
+  };
+
+  const onRootKeyDown = (event) => {
+    if (event.key === "Escape" && open && pending === null) {
+      open = false;
+      confirming = null;
+      message = "";
+      render();
+      toggle.focus();
+    }
+  };
+
+  root.addEventListener("click", onRootClick);
+  root.addEventListener("keydown", onRootKeyDown);
+  const unsubscribe = port.subscribe((nextSnapshot) => {
+    snapshot = validatePowerActionsSnapshot(nextSnapshot);
+    if (availableActions().length === 0) {
+      open = false;
+    }
+    render();
+  });
+  render();
+
+  return Object.freeze({
+    destroy() {
+      clearResetTimer();
+      unsubscribe?.();
+      root.removeEventListener("click", onRootClick);
+      root.removeEventListener("keydown", onRootKeyDown);
+      overlay.remove();
+      toggle.remove();
+    },
+  });
+}
