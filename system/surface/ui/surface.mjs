@@ -39,7 +39,7 @@ const SHELL_MARKUP = `
     <main class="ordax-workspace" tabindex="-1" data-workspace>
       <section class="ordax-desktop" aria-labelledby="surface-home-title">
         <div class="ordax-desktop-intro">
-          <p class="ordax-eyebrow">Surface compartilhada</p>
+          <p class="ordax-eyebrow">Surface compartilhada • recuperação ao vivo</p>
           <h1 id="surface-home-title">Seu espaço OrdaX.</h1>
           <p class="ordax-lead">
             Uma única Surface e um único modelo de aplicações para Web, Mobile, Desktop, USB e Native.
