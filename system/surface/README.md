@@ -32,15 +32,17 @@ system/entrypoint
  -> system/surface/bin/ordax-surface
 ```
 
-`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Barkery/WebKitGTK provides the browser runtime, and a loopback-only BusyBox HTTP server gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
+`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Barkery/WebKitGTK provides the browser runtime, and a loopback-only HTTP server inside the replaceable graphical runtime gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
 
 The graphical stack is **not** part of the fixed Git-first development base. The base stops at kernel/hardware support, network, CA trust, Git and a minimal signed-package acquisition client. `bin/ordax-surface`, which arrives through `ordax-pull`, materializes the replaceable Cage/Barkery/Mesa runtime under `/state/ordax/runtime/native-surface/` from signed Alpine packages and launches it in a chroot. Therefore ordinary Surface/host/runtime changes remain pullable and do not require rewriting the USB image.
 
 The first physical provisioning attempt proved the Git-first path and exposed that Alpine v3.22 no longer ships the earlier Cog package on x86_64. The native host therefore uses `barkery-browser`, which is available in Alpine v3.22 community and still renders the same checked-out Surface through WebKit. Runtime identity is versioned so a failed or obsolete host candidate under `/state` cannot be mistaken for the current one.
 
+A later physical attempt proved the full Cage/Barkery runtime could be installed, but also exposed an incorrect dependency on an HTTP applet in the fixed bootstrap BusyBox. The bootstrap intentionally excludes that server applet. The Surface launcher now bind-mounts the checked-out `system/` tree into the graphical chroot and starts Python's loopback-only `http.server` from the already provisioned Barkery runtime. This keeps HTTP hosting inside replaceable Git-controlled runtime state rather than widening the immutable bootstrap.
+
 A reflash/base update is reserved for the real bootstrap boundary: kernel, initramfs, hardware/driver/firmware support, or the minimal network/Git/acquisition substrate itself.
 
-If DRM/KMS, network during first runtime acquisition, or another graphical host requirement is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. Once provisioned under `/state`, the graphical runtime is reusable without downloading it on every boot. Native graphical boot remains a physical-hardware validation gate until the host is observed successfully on the target notebook.
+If DRM/KMS, network during first runtime acquisition, or another graphical host requirement is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. The fallback surfaces both native-host and loopback-HTTP diagnostics. Once provisioned under `/state`, the graphical runtime is reusable without downloading it on every boot. Native graphical boot remains a physical-hardware validation gate until the host is observed successfully on the target notebook.
 
 Do not add a plugin/launcher framework merely to prepare for runtime replacement; the stable entrypoint already supplies the required indirection.
 
