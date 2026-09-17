@@ -365,6 +365,9 @@ func preparePhysicalImage(seedPath, outputPath string, targetBytes uint64, compu
 			_ = os.Remove(tempPath)
 		}
 	}()
+	if err := configurePhysicalImageStaging(temp); err != nil {
+		return PreparedPhysicalImage{}, fmt.Errorf("configure physical image staging file: %w", err)
+	}
 	if _, err := seed.Seek(0, io.SeekStart); err != nil {
 		return PreparedPhysicalImage{}, err
 	}
