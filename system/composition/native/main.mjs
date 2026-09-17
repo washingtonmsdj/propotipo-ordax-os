@@ -7,6 +7,7 @@ import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
 async function start() {
   const root = document.querySelector("#ordax-root");
@@ -38,13 +39,20 @@ async function start() {
     identitySession,
     identityActions,
   );
+  const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
+
+  // Reaching this point proves that the shared Surface composition mounted.
+  // The native supervisor uses this acknowledgement to keep or roll back
+  // a live update without rebooting the notebook.
+  void updateWatcher.markHealthy();
 
   window.addEventListener(
     "pagehide",
     () => {
-      updateWatcher.dispose();
       powerControls.destroy();
+      updateControls.destroy();
+      updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
       identitySession.dispose();
