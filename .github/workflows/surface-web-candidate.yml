@@ -9,6 +9,7 @@ on:
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
+      - 'system/contracts/update-status.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -26,6 +27,7 @@ on:
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
+      - 'tests/test_update_status.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -36,6 +38,7 @@ on:
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
+      - 'system/contracts/update-status.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -53,6 +56,7 @@ on:
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
+      - 'tests/test_update_status.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -103,6 +107,7 @@ jobs:
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
+          node --test tests/test_update_status.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_sync_*.mjs
 
@@ -127,7 +132,7 @@ jobs:
           echo 'KERNEL_REBUILD_REQUIRED=NO'
 
       - name: Upload Web client candidate
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@b7c566a772e6b6fbc4ead8c61c1c05a9e8bcf3465 # v6
         with:
           name: ordax-web-client-${{ github.sha }}
           path: out/web-client/
