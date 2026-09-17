@@ -59,18 +59,22 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("alpine/v3.22/community", text)
         self.assertIn("barkery-browser", text)
         self.assertIn("xwayland", text)
+        self.assertIn("eudev", text)
+        self.assertIn("libinput-udev", text)
         self.assertNotIn("\n        cog ", text)
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
         self.assertIn("$RUNTIME_ROOT/usr/bin/python3", text)
         self.assertIn("$RUNTIME_ROOT/usr/bin/Xwayland", text)
+        self.assertIn("$RUNTIME_ROOT/sbin/udevd", text)
+        self.assertIn("$RUNTIME_ROOT/bin/udevadm", text)
 
     def test_existing_runtime_is_extended_without_full_reprovision(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("runtime_base_is_ready", text)
         self.assertIn("upgrade_existing_runtime", text)
-        self.assertIn('add xwayland \\', text)
-        self.assertIn("extending existing graphical runtime with Xwayland", text)
+        self.assertIn("xwayland eudev libinput-udev", text)
+        self.assertIn("extending existing graphical runtime with input discovery support", text)
         self.assertIn("RUNTIME_ID=alpine-v3.22-cage-barkery-v1", text)
 
     def test_native_browser_is_configured_for_local_shared_surface(self):
@@ -97,9 +101,20 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("ensure_shared_memory", text)
         self.assertIn("mkdir -p /dev/shm", text)
         self.assertIn("chmod 1777 /dev/shm", text)
-        self.assertIn("WLR_LIBINPUT_NO_DEVICES=1", text)
         self.assertIn("failed to prepare /dev/shm for wlroots/Xwayland", text)
         self.assertIn("failed to configure IPv4 loopback for local Surface HTTP", text)
+
+    def test_physical_input_is_classified_with_runtime_owned_eudev(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("prepare_input_stack", text)
+        self.assertIn("/dev/input/event*", text)
+        self.assertIn("/sbin/udevd --daemon", text)
+        self.assertIn("/bin/udevadm control --reload-rules", text)
+        self.assertIn("/bin/udevadm trigger --subsystem-match=input --action=add", text)
+        self.assertIn("/bin/udevadm settle --timeout=5", text)
+        self.assertIn("eudev input classification complete", text)
+        self.assertNotIn("WLR_LIBINPUT_NO_DEVICES=1", text)
+        self.assertIn("failed to prepare physical keyboard/touchpad input devices", text)
 
     def test_native_surface_fallback_exposes_physical_diagnostics(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
