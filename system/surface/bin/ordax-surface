@@ -12,6 +12,7 @@ RUNTIME_ID=alpine-v3.22-cage-barkery-v1
 RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
 RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
+GRAPHICS_PID=""
 STAGING_DIR=""
 DEV_BOUND=0
 PROC_BOUND=0
@@ -51,6 +52,11 @@ remove_stale_seatd_socket() {
 }
 
 cleanup() {
+    if [ -n "$GRAPHICS_PID" ]; then
+        kill "$GRAPHICS_PID" >/dev/null 2>&1 || true
+        wait "$GRAPHICS_PID" 2>/dev/null || true
+        GRAPHICS_PID=""
+    fi
     if [ -n "$HTTP_PID" ]; then
         kill "$HTTP_PID" >/dev/null 2>&1 || true
         wait "$HTTP_PID" 2>/dev/null || true
@@ -88,7 +94,15 @@ cleanup() {
         STAGING_DIR=""
     fi
 }
-trap cleanup EXIT HUP INT TERM
+
+terminate() {
+    trap - EXIT HUP INT TERM
+    cleanup
+    exit 0
+}
+
+trap cleanup EXIT
+trap terminate HUP INT TERM
 
 console_fallback() {
     cleanup
@@ -284,12 +298,14 @@ kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "native Surface HTTP
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
-if /bin/busybox chroot "$RUNTIME_ROOT" \
+/bin/busybox chroot "$RUNTIME_ROOT" \
     /usr/bin/seatd-launch -- /usr/bin/cage -s -- /usr/bin/barkery \
-    >"$HOST_LOG" 2>&1; then
-    exit 0
-else
-    host_rc=$?
-fi
+    >"$HOST_LOG" 2>&1 &
+GRAPHICS_PID=$!
+host_rc=0
+wait "$GRAPHICS_PID" 2>/dev/null || host_rc=$?
+GRAPHICS_PID=""
+
+[ "$host_rc" -eq 0 ] && exit 0
 
 fallback_with_reason "native Cage/Barkery host exited with status $host_rc"
