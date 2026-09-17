@@ -56,25 +56,23 @@ class InitramfsSourceContractTests(unittest.TestCase):
         for forbidden in ("ORDAX-HOME", "ORDAX-PLATFORM", "sshd", "remote-core", "control-plane", "codex"):
             self.assertNotIn(forbidden.lower(), INIT.lower())
 
-    def test_pid1_resolves_absolute_handoffs_through_path_search(self):
+    def test_pid1_handoffs_use_only_fixed_capsule_primitives(self):
         self.assertNotIn("if [", INIT)
         self.assertNotIn("[ -", INIT)
+        self.assertNotIn("command -v", INIT)
         self.assertIn('case "$ORDAX_DEVICE" in', INIT)
-        self.assertNotIn("command -v /ordax/bootstrap/entrypoint", INIT)
-        self.assertNotIn("command -v /ordax/bootstrap/recovery/entrypoint", INIT)
-        self.assertNotIn("command -v /sbin/ordax-grow-ext4", INIT)
-        self.assertIn("PATH=/ordax/bootstrap:$PATH command -v entrypoint", INIT)
-        self.assertIn("PATH=/ordax/bootstrap/recovery:$PATH command -v entrypoint", INIT)
-        self.assertIn("command -v ordax-grow-ext4", INIT)
-        self.assertIn('exec "$BOOTSTRAP_ENTRYPOINT"', INIT)
-        self.assertIn('exec "$RECOVERY_ENTRYPOINT"', INIT)
+        self.assertIn('cat "$BOOTSTRAP_PATH" >/dev/null 2>&1', INIT)
+        self.assertIn('cat "$RECOVERY_BOOTSTRAP_PATH" >/dev/null 2>&1', INIT)
+        self.assertIn('exec "$BOOTSTRAP_PATH"', INIT)
+        self.assertIn('exec "$RECOVERY_BOOTSTRAP_PATH"', INIT)
+        self.assertIn('if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then', INIT)
 
-    def test_owner_dev_bootstrap_does_not_require_unbuilt_test_applet(self):
+    def test_owner_dev_bootstrap_does_not_require_unbuilt_shell_features(self):
         self.assertNotIn("[ -", DEV_BOOTSTRAP)
         self.assertNotIn("test -", DEV_BOOTSTRAP)
+        self.assertNotIn("command -v", DEV_BOOTSTRAP)
         self.assertIn('cd "$DEV_ROOT" 2>/dev/null || fail "development base is missing"', DEV_BOOTSTRAP)
-        self.assertIn('PATH="$DEV_ROOT/sbin:$PATH" command -v ordax-dev-init', DEV_BOOTSTRAP)
-        self.assertIn('case "$DEV_INIT_SOURCE" in', DEV_BOOTSTRAP)
+        self.assertIn('cat "$DEV_INIT_SOURCE" >/dev/null 2>&1', DEV_BOOTSTRAP)
         self.assertIn('exec switch_root "$DEV_ROOT" "$DEV_INIT"', DEV_BOOTSTRAP)
 
     def test_builder_uses_minimal_busybox_and_explicit_musl_target_compiler(self):

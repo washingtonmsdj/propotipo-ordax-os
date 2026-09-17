@@ -1,6 +1,6 @@
 # Current State
 
-Status date: 2026-09-15
+Status date: 2026-09-17
 
 This is the canonical handoff snapshot. Architecture/contracts win if another document conflicts with it.
 
@@ -174,9 +174,11 @@ INITRAMFS=CLEAN_ROOM_REIMPLEMENTED
 CANONICAL_HANDOFF=/ordax/bootstrap/entrypoint
 NETWORK_INSIDE_FIXED_INITRAMFS=NO
 SSH_INSIDE_FIXED_INITRAMFS=NO
-INITRAMFS_ARTIFACT_SHA256=d8e5155de1e0ff3b1a7faaefde67fcbf3e1114fc208a4b37ab1ba7e562efce67
+INITRAMFS_ARTIFACT_SHA256=451741c9af00c5bab1cd41828fb69fa12d94eb6d7e80d8a3a2564ac7ddecc01c
 PHYSICAL_INITRAMFS_AUTHORIZED=NO
 ```
+
+The 2026-09-17 owner/development USB boot reached PID 1 and mounted `ORDAX`, but the fixed BusyBox ash lacked the optional `command` builtin used by the old handoff script. That made `command -v` report both the ext4 helper and `/ordax/bootstrap/entrypoint` as unavailable. PR #21 removes that dependency by using explicit paths. The corrected initramfs and Creator payload candidates pass CI; a new notebook boot is still required to verify the fix on hardware.
 
 ## First-acquisition network
 
@@ -349,24 +351,26 @@ Disposable media proof already demonstrates two partitions, FAT32+EXT4 labels, e
 
 ## Full bootstrap media proof
 
-The heavy proof workflow rebuilds the real bootstrap owners, injects an ephemeral CI-only public trust into a temporary manifest, assembles the byte-complete payload and materializes the actual two-partition image without touching a physical disk. Run 70 for source commit `95de305cc05701025ca7c93d574769da6a7fcf95` completed successfully. It then destroyed the ephemeral private key and unpublished RAW image and uploaded metadata only.
+The heavy proof workflow rebuilds the real bootstrap owners, injects an ephemeral CI-only public trust into a temporary manifest, assembles the byte-complete payload and materializes the actual two-partition image without touching a physical disk. Run 143 for source commit `bf2e1b9ab6d193f840735108f66b23d28e1133e4` completed successfully with the corrected initramfs. It also verified Creator capacity expansion and that `/bootstrap/entrypoint` remained present, executable and byte-identical before and after ext4 growth. The ephemeral private key and unpublished RAW image were destroyed; only proof metadata was uploaded.
 
 ```text
 FULL_BOOTSTRAP_MEDIA_PROOF=PASS_EPHEMERAL_TRUST
-FULL_BOOTSTRAP_MEDIA_SOURCE_COMMIT=95de305cc05701025ca7c93d574769da6a7fcf95
-FULL_BOOTSTRAP_MEDIA_RUN_ID=34998897295
+FULL_BOOTSTRAP_MEDIA_SOURCE_COMMIT=bf2e1b9ab6d193f840735108f66b23d28e1133e4
+FULL_BOOTSTRAP_MEDIA_RUN_ID=35232697905
 FULL_BOOTSTRAP_MEDIA_PAYLOAD_ARTIFACTS=14
 FULL_BOOTSTRAP_MEDIA_UNRESOLVED_GROUPS=0
 FULL_BOOTSTRAP_MEDIA_IMAGE_BYTES=536870912
-FULL_BOOTSTRAP_MEDIA_IMAGE_SHA256=95bd9943b3fe65402d9bda06eb7e0d45959f2a18b1671855e5752033659c7bb8
+FULL_BOOTSTRAP_MEDIA_IMAGE_SHA256=68e49c4b4782463ce499d09d57472a1098d8f9f8d625d32e1562a2bdf3f89cbf
 FULL_BOOTSTRAP_MEDIA_PARTITIONS=2
 FULL_BOOTSTRAP_MEDIA_CANONICAL_TRUST=NO
 FULL_BOOTSTRAP_MEDIA_EPHEMERAL_PRIVATE_KEY_DESTROYED=YES
 FULL_BOOTSTRAP_MEDIA_RAW_IMAGE_PUBLISHED=NO
+FULL_BOOTSTRAP_MEDIA_REAL_HARDWARE_TOUCHED=NO
+FULL_BOOTSTRAP_MEDIA_CREATOR_EXT4_GROWTH_PROOF=PASS
 FULL_BOOTSTRAP_MEDIA_PHYSICAL_WRITE_AUTHORIZED=NO
 ```
 
-The durable non-secret evidence is `docs/evidence/full-bootstrap-media-proof-95de305c.json`. This closes the byte-complete composition proof with ephemeral trust only; it does not resolve canonical release trust and does not authorize physical mutation.
+The durable non-secret evidence is `docs/evidence/full-bootstrap-media-proof-bf2e1b9a.json`. This closes the byte-complete composition and disposable Creator-growth proofs with ephemeral trust only; it does not resolve canonical release trust, prove the notebook boot, or authorize physical mutation.
 
 ## Remote access
 
