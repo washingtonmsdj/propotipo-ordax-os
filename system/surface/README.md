@@ -32,9 +32,11 @@ system/entrypoint
  -> system/surface/bin/ordax-surface
 ```
 
-`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Cog/WPE WebKit provides the browser runtime, and a loopback-only BusyBox HTTP server gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
+`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Barkery/WebKitGTK provides the browser runtime, and a loopback-only BusyBox HTTP server gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
 
-The graphical stack is **not** part of the fixed Git-first development base. The base stops at kernel/hardware support, network, CA trust, Git and a minimal signed-package acquisition client. `bin/ordax-surface`, which arrives through `ordax-pull`, materializes the replaceable Cage/Cog/Mesa runtime under `/state/ordax/runtime/native-surface/` from signed Alpine packages and launches it in a chroot. Therefore ordinary Surface/host/runtime changes remain pullable and do not require rewriting the USB image.
+The graphical stack is **not** part of the fixed Git-first development base. The base stops at kernel/hardware support, network, CA trust, Git and a minimal signed-package acquisition client. `bin/ordax-surface`, which arrives through `ordax-pull`, materializes the replaceable Cage/Barkery/Mesa runtime under `/state/ordax/runtime/native-surface/` from signed Alpine packages and launches it in a chroot. Therefore ordinary Surface/host/runtime changes remain pullable and do not require rewriting the USB image.
+
+The first physical provisioning attempt proved the Git-first path and exposed that Alpine v3.22 no longer ships the earlier Cog package on x86_64. The native host therefore uses `barkery-browser`, which is available in Alpine v3.22 community and still renders the same checked-out Surface through WebKit. Runtime identity is versioned so a failed or obsolete host candidate under `/state` cannot be mistaken for the current one.
 
 A reflash/base update is reserved for the real bootstrap boundary: kernel, initramfs, hardware/driver/firmware support, or the minimal network/Git/acquisition substrate itself.
 
@@ -56,7 +58,7 @@ The machine-readable boundaries are:
 
 ## Rendering/runtime technology
 
-The owner/development USB currently uses Cage + Cog/WPE WebKit as the first native host candidate because that keeps the graphical host thin and reuses the same Surface source. That host choice is not architectural authority: it may be replaced if physical evidence shows a better runtime.
+The owner/development USB currently uses Cage + Barkery/WebKitGTK as the native host candidate because that keeps the graphical host replaceable while reusing the same Surface source. That host choice is not architectural authority: it may be replaced if physical evidence shows a better runtime.
 
 Framework/runtime selection must satisfy the shared capability/module contracts and remain replaceable. Product/domain semantics belong to shared OrdaX source, not to a UI framework or host shell.
 

@@ -7,7 +7,7 @@ SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
-RUNTIME_ID=alpine-v3.22-cage-cog-v1
+RUNTIME_ID=alpine-v3.22-cage-barkery-v1
 RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
 RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
@@ -83,7 +83,7 @@ fallback_with_reason() {
 runtime_is_ready() {
     [ -f "$RUNTIME_READY" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/cage" ] &&
-        [ -x "$RUNTIME_ROOT/usr/bin/cog" ] &&
+        [ -x "$RUNTIME_ROOT/usr/bin/barkery" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
         [ -x "$RUNTIME_ROOT/bin/busybox" ]
 }
@@ -131,7 +131,7 @@ REPOSITORIES
         busybox \
         ca-certificates \
         cage \
-        cog \
+        barkery-browser \
         seatd-launch \
         mesa-dri-gallium \
         mesa-egl \
@@ -148,7 +148,7 @@ REPOSITORIES
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
 
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
-    [ -x "$STAGING_DIR/rootfs/usr/bin/cog" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/seatd-launch" ] || return 1
 
     printf '%s\n' "$RUNTIME_ID" >"$STAGING_DIR/ready"
@@ -162,6 +162,18 @@ ensure_runtime() {
     runtime_is_ready && return 0
     install_runtime || return 1
     runtime_is_ready
+}
+
+configure_browser() {
+    mkdir -p "$RUNTIME_ROOT/etc/barkery" || return 1
+    cat >"$RUNTIME_ROOT/etc/barkery/barkery.conf" <<'BARKERY'
+[browser]
+start_uri = http://127.0.0.1:8765/composition/web/index.html
+preferred_languages = pt-BR,en-US
+
+[mqtt]
+enabled = 0
+BARKERY
 }
 
 bind_runtime_mounts() {
@@ -181,10 +193,12 @@ bind_runtime_mounts() {
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
 [ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
 ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
+configure_browser || fallback_with_reason "failed to configure Barkery browser runtime"
 bind_runtime_mounts || fallback_with_reason "failed to bind host devices into graphical runtime"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
+export GDK_BACKEND=wayland
 export ORDAX_SURFACE_MODE=native-graphical
 
 # Serve the checked-out shared system tree locally. The visual source and this
@@ -198,18 +212,16 @@ kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "loopback Surface HT
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
-# Cage/Cog live in a replaceable runtime root under /state. No graphical stack
-# is baked into the Git-first bootstrap, so ordinary host/runtime changes can be
-# shipped by ordax-pull without rewriting the USB image.
+# Cage and Barkery/WebKitGTK live in a replaceable runtime root under /state.
+# No graphical stack is baked into the Git-first bootstrap, so ordinary
+# host/runtime changes can be shipped by ordax-pull without rewriting the USB.
 if /bin/busybox chroot "$RUNTIME_ROOT" \
     /usr/bin/seatd-launch -- /usr/bin/cage -s -- \
-    /usr/bin/cog --platform=wl \
-    --enable-write-console-messages-to-stdout=true \
-    http://127.0.0.1:8765/composition/web/index.html \
+    /usr/bin/barkery \
     >"$HOST_LOG" 2>&1; then
     exit 0
 else
     host_rc=$?
 fi
 
-fallback_with_reason "native Cage/Cog host exited with status $host_rc"
+fallback_with_reason "native Cage/Barkery host exited with status $host_rc"
