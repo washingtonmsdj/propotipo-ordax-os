@@ -7,6 +7,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 
 const root = document.querySelector("#ordax-root");
@@ -39,6 +40,12 @@ const accountOverviewControls = mountAccountOverviewControls(
   identityActions,
   surface,
 );
+const settingsOverviewControls = mountSettingsOverviewControls(
+  root,
+  host,
+  surface.preferences,
+  surface,
+);
 const systemOverviewControls = mountSystemOverviewControls(
   root,
   host,
@@ -51,6 +58,7 @@ window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
+    settingsOverviewControls.destroy();
     accountOverviewControls.destroy();
     surface.destroy();
     identityActions.dispose();
