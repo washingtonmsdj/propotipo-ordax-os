@@ -4,6 +4,9 @@ set -eu
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export PATH
 
+BOOTSTRAP_PATH=/ordax/bootstrap/entrypoint
+RECOVERY_BOOTSTRAP_PATH=/ordax/bootstrap/recovery/entrypoint
+
 rescue() {
     echo "ordax-initramfs: entering local recovery shell: $*" >&2
     exec sh
@@ -29,7 +32,7 @@ case "$RECOVERY_MODE" in
         mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
         RECOVERY_ENTRYPOINT="$(PATH=/ordax/bootstrap/recovery:$PATH command -v entrypoint 2>/dev/null || true)"
         case "$RECOVERY_ENTRYPOINT" in
-            "") rescue "recovery entrypoint is missing or not executable" ;;
+            "") rescue "recovery entrypoint is missing or not executable: $RECOVERY_BOOTSTRAP_PATH" ;;
         esac
         exec "$RECOVERY_ENTRYPOINT"
         ;;
@@ -50,6 +53,6 @@ esac
 
 BOOTSTRAP_ENTRYPOINT="$(PATH=/ordax/bootstrap:$PATH command -v entrypoint 2>/dev/null || true)"
 case "$BOOTSTRAP_ENTRYPOINT" in
-    "") rescue "bootstrap entrypoint is missing or not executable" ;;
+    "") rescue "bootstrap entrypoint is missing or not executable: $BOOTSTRAP_PATH" ;;
 esac
 exec "$BOOTSTRAP_ENTRYPOINT"
