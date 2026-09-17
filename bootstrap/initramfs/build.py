@@ -39,6 +39,7 @@ REQUESTED_CONFIG = {
     "CONFIG_STATIC": "y",
     "CONFIG_ASH": "y",
     "CONFIG_SH_IS_ASH": "y",
+    "CONFIG_ASH_CMDCMD": "y",
     "CONFIG_BLKID": "y",
     "CONFIG_CAT": "y",
     "CONFIG_ECHO": "y",
