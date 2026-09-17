@@ -153,11 +153,26 @@ RAW_TARGET_BLOCKS="$((PARTITION_BYTES / BLOCK_SIZE))"
 
 sudo mount -t ext4 -o rw "$LOOP" "$MOUNT"
 TREE_BEFORE="$(tree_digest "$MOUNT")"
+BOOTSTRAP_ENTRYPOINT="$MOUNT/bootstrap/entrypoint"
+sudo test -f "$BOOTSTRAP_ENTRYPOINT" || fail "prepared ORDAX is missing /bootstrap/entrypoint"
+sudo test ! -L "$BOOTSTRAP_ENTRYPOINT" || fail "prepared /bootstrap/entrypoint may not be a symlink"
+sudo test -x "$BOOTSTRAP_ENTRYPOINT" || fail "prepared /bootstrap/entrypoint is not executable"
+BOOTSTRAP_MODE_BEFORE="$(sudo stat -c '%a' "$BOOTSTRAP_ENTRYPOINT")"
+BOOTSTRAP_SHA256_BEFORE="$(sudo sha256sum "$BOOTSTRAP_ENTRYPOINT" | awk '{print $1}')"
+[[ "$BOOTSTRAP_MODE_BEFORE" =~ ^[0-7]{3,4}$ ]] || fail "cannot read prepared /bootstrap/entrypoint mode"
+[[ "$BOOTSTRAP_SHA256_BEFORE" =~ ^[0-9a-f]{64}$ ]] || fail "cannot hash prepared /bootstrap/entrypoint"
 GROW_OUTPUT="$(sudo "$HELPER_ABS" "$LOOP" "$MOUNT")"
 printf '%s\n' "$GROW_OUTPUT"
 grep -q '^ORDAX_EXT4_GROWTH=PASS ' <<<"$GROW_OUTPUT" || fail "initramfs helper did not grow Creator-prepared ORDAX filesystem"
 TREE_AFTER="$(tree_digest "$MOUNT")"
 [[ "$TREE_AFTER" == "$TREE_BEFORE" ]] || fail "file contents changed during online ext4 growth"
+sudo test -f "$BOOTSTRAP_ENTRYPOINT" || fail "grown ORDAX lost /bootstrap/entrypoint"
+sudo test ! -L "$BOOTSTRAP_ENTRYPOINT" || fail "grown /bootstrap/entrypoint became a symlink"
+sudo test -x "$BOOTSTRAP_ENTRYPOINT" || fail "grown /bootstrap/entrypoint is not executable"
+BOOTSTRAP_MODE_AFTER="$(sudo stat -c '%a' "$BOOTSTRAP_ENTRYPOINT")"
+BOOTSTRAP_SHA256_AFTER="$(sudo sha256sum "$BOOTSTRAP_ENTRYPOINT" | awk '{print $1}')"
+[[ "$BOOTSTRAP_MODE_AFTER" == "$BOOTSTRAP_MODE_BEFORE" ]] || fail "/bootstrap/entrypoint mode changed during online ext4 growth"
+[[ "$BOOTSTRAP_SHA256_AFTER" == "$BOOTSTRAP_SHA256_BEFORE" ]] || fail "/bootstrap/entrypoint bytes changed during online ext4 growth"
 sudo umount "$MOUNT"
 AFTER_BLOCKS="$(ext4_value "$LOOP" 'Block count')"
 
@@ -199,7 +214,12 @@ cat >"$PROOF_ABS" <<EOF
     "resize2fs_final_blocks": $BASELINE_BLOCKS,
     "unused_tail_blocks": $UNUSED_TAIL_BLOCKS,
     "tree_digest_before": "$TREE_BEFORE",
-    "tree_digest_after": "$TREE_AFTER"
+    "tree_digest_after": "$TREE_AFTER",
+    "bootstrap_entrypoint_path": "/bootstrap/entrypoint",
+    "bootstrap_entrypoint_mode_before": "$BOOTSTRAP_MODE_BEFORE",
+    "bootstrap_entrypoint_mode_after": "$BOOTSTRAP_MODE_AFTER",
+    "bootstrap_entrypoint_sha256_before": "$BOOTSTRAP_SHA256_BEFORE",
+    "bootstrap_entrypoint_sha256_after": "$BOOTSTRAP_SHA256_AFTER"
   },
   "checks": {
     "creator_prepare_regular_file_only": true,
@@ -207,6 +227,10 @@ cat >"$PROOF_ABS" <<EOF
     "ordax_partition_start_preserved": true,
     "ordax_partition_extended_to_last_usable_lba": true,
     "seed_ext4_remained_smaller_before_boot_growth": true,
+    "bootstrap_entrypoint_present_and_executable_before_growth": true,
+    "bootstrap_entrypoint_present_and_executable_after_growth": true,
+    "bootstrap_entrypoint_mode_preserved_across_growth": true,
+    "bootstrap_entrypoint_bytes_preserved_across_growth": true,
     "online_growth_matches_resize2fs_maximum": true,
     "file_contents_preserved_across_growth": true,
     "unused_tail_less_than_one_block_group": true,

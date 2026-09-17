@@ -194,6 +194,33 @@ jobs:
           assert proof['physical_write_authorized'] is False
           assert all(proof['checks'].values())
           PY
+
+          prepared_proof="$RUNNER_TEMP/owner-prototype-prepared-ext4-proof.json"
+          bash tools/creator/proof/prove_prepared_ext4_growth.sh \
+            "$proof/ordax-disposable.raw" \
+            out/initramfs-work/ordax-grow-ext4 \
+            "$prepared_proof" \
+            805306368
+          python - "$prepared_proof" <<'PY'
+          import json, os, pathlib, sys
+          prepared = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert prepared['$schema'] == 'prototype-ordax.creator-prepared-ext4-growth-proof/1'
+          assert prepared['status'] == 'pass'
+          assert prepared['source_commit'] == os.environ['GITHUB_SHA']
+          assert prepared['ext4']['bootstrap_entrypoint_path'] == '/bootstrap/entrypoint'
+          assert prepared['ext4']['bootstrap_entrypoint_mode_before'] == prepared['ext4']['bootstrap_entrypoint_mode_after']
+          assert prepared['ext4']['bootstrap_entrypoint_sha256_before'] == prepared['ext4']['bootstrap_entrypoint_sha256_after']
+          assert prepared['checks']['bootstrap_entrypoint_present_and_executable_before_growth'] is True
+          assert prepared['checks']['bootstrap_entrypoint_present_and_executable_after_growth'] is True
+          assert prepared['checks']['bootstrap_entrypoint_mode_preserved_across_growth'] is True
+          assert prepared['checks']['bootstrap_entrypoint_bytes_preserved_across_growth'] is True
+          assert all(prepared['checks'].values())
+          assert prepared['physical_write_authorized'] is False
+          assert prepared['physical_hardware_proven'] is False
+          assert prepared['real_hardware_touched'] is False
+          print('OWNER_PREPARED_BOOTSTRAP_ENTRYPOINT=PASS')
+          PY
+
           echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/owner-prototype-seed-path"
 
       - name: Build split Windows Creator bundle
