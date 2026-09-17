@@ -4,6 +4,7 @@ import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
+import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 
 async function start() {
@@ -34,12 +35,13 @@ async function start() {
     preferenceStore,
     identitySession,
     identityActions,
-    powerActions,
   );
+  const powerControls = mountPowerControls(root, powerActions);
 
   window.addEventListener(
     "pagehide",
     () => {
+      powerControls.destroy();
       surface.destroy();
       identityActions.dispose();
       identitySession.dispose();
