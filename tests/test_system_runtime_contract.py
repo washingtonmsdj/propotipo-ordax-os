@@ -40,7 +40,8 @@ class SystemRuntimeContractTests(unittest.TestCase):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("composition/web/index.html", text)
         self.assertIn("/usr/bin/cage", text)
-        self.assertIn("/usr/bin/cog", text)
+        self.assertIn("/usr/bin/barkery", text)
+        self.assertNotIn("/usr/bin/cog", text)
         self.assertIn("/usr/bin/seatd-launch", text)
         self.assertIn("/dev/dri/card0", text)
         self.assertIn("ORDAX_SURFACE_MODE=native-graphical", text)
@@ -56,8 +57,17 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("--keys-dir /etc/apk/keys", text)
         self.assertIn("alpine/v3.22/main", text)
         self.assertIn("alpine/v3.22/community", text)
+        self.assertIn("barkery-browser", text)
+        self.assertNotIn("\n        cog \\", text)
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
+
+    def test_native_browser_is_configured_for_local_shared_surface(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("/etc/barkery/barkery.conf", text)
+        self.assertIn("start_uri = http://127.0.0.1:8765/composition/web/index.html", text)
+        self.assertIn("GDK_BACKEND=wayland", text)
+        self.assertIn("enabled = 0", text)
 
     def test_native_surface_http_server_is_loopback_only(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -71,7 +81,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
         self.assertIn("failed to bind host devices into graphical runtime", text)
-        self.assertIn("native Cage/Cog host exited with status", text)
+        self.assertIn("native Cage/Barkery host exited with status", text)
 
 
 if __name__ == "__main__":
