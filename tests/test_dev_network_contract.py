@@ -39,10 +39,38 @@ class DevelopmentNetworkContractTest(unittest.TestCase):
         )
         self.assertNotIn('sleep 2\n    try_dhcp "$wifi"', text)
 
-    def test_wifi_prompt_distinguishes_ssid_from_password(self) -> None:
+    def test_wifi_selects_strongest_secure_network_without_ssid_typing(self) -> None:
         text = NETWORK.read_text(encoding="utf-8")
-        self.assertIn("SSID (nome exato da rede acima, nao a senha)", text)
-        self.assertIn("Senha WPA/WPA2", text)
+        self.assertIn('select_best_secure_ssid()', text)
+        self.assertIn('best_signal = -1000', text)
+        self.assertIn('ssid != "" && secure && signal > best_signal', text)
+        self.assertIn('/^[[:space:]]*(RSN:|WPA:)/', text)
+        self.assertIn('ssid=$(select_best_secure_ssid || true)', text)
+        self.assertIn('rede selecionada automaticamente', text)
+        self.assertNotIn("printf 'SSID", text)
+        self.assertNotIn('read -r ssid', text)
+
+    def test_password_has_brief_character_feedback_then_mask(self) -> None:
+        text = NETWORK.read_text(encoding="utf-8")
+        self.assertIn('read_password_with_feedback()', text)
+        self.assertIn('stty -echo -icanon min 1 time 0', text)
+        self.assertIn('IFS= read -r -n 1 ch', text)
+        reveal = text.index("printf '%s' \"$ch\"")
+        mask = text.index("printf '\\b*'", reveal)
+        self.assertLess(reveal, mask)
+        self.assertIn("printf 'Senha WPA/WPA2: '", text)
+        self.assertNotIn('read -r password\nstty echo', text)
+
+    def test_network_synchronizes_clock_before_returning_success(self) -> None:
+        text = NETWORK.read_text(encoding="utf-8")
+        self.assertIn('sync_clock()', text)
+        self.assertIn('/bin/busybox ntpd -q -n -p "$server"', text)
+        self.assertIn('time.cloudflare.com time.google.com pool.ntp.org', text)
+        finish = text.index('finish_network()')
+        sync = text.index('sync_clock', finish)
+        self.assertLess(finish, sync)
+        self.assertIn('finish_network "$wifi"', text)
+        self.assertIn('finish_network "$iface"', text)
 
     def test_maintenance_shell_reestablishes_controlling_tty(self) -> None:
         text = DEV_INIT.read_text(encoding="utf-8")
