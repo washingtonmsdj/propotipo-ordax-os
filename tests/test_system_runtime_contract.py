@@ -49,6 +49,16 @@ class SystemRuntimeContractTests(unittest.TestCase):
         for forbidden in ("curl ", "wget ", "udhcpc", "ssh ", "exec sh"):
             self.assertNotIn(forbidden, text)
 
+    def test_native_graphical_runtime_is_provisioned_from_pulled_system(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("runtime/native-surface", text)
+        self.assertIn("/sbin/apk --root", text)
+        self.assertIn("--keys-dir /etc/apk/keys", text)
+        self.assertIn("alpine/v3.22/main", text)
+        self.assertIn("alpine/v3.22/community", text)
+        self.assertIn("/bin/busybox chroot", text)
+        self.assertIn("mesa-dri-gallium", text)
+
     def test_native_surface_http_server_is_loopback_only(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("-p 127.0.0.1:8765", text)

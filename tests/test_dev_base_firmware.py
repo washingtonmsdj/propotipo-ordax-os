@@ -90,6 +90,13 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             zstd.parent.mkdir(parents=True, exist_ok=True)
             zstd.write_text("binary", encoding="utf-8")
 
+            apk = rootfs / "sbin/apk"
+            apk.parent.mkdir(parents=True, exist_ok=True)
+            apk.write_text("binary", encoding="utf-8")
+            keys = rootfs / "etc/apk/keys"
+            keys.mkdir(parents=True, exist_ok=True)
+            (keys / "alpine-test.pub").write_text("key", encoding="utf-8")
+
             commands = []
             original_proot = BUILD.CORE.proot_rootfs
 
@@ -107,12 +114,26 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             self.assertFalse(zstd.exists())
             for relative in BUILD.RUNTIME_PRUNE_PATHS:
                 self.assertFalse((rootfs / relative).exists())
+            self.assertTrue(apk.is_file())
+            self.assertTrue((keys / "alpine-test.pub").is_file())
+
+    def test_runtime_acquisition_client_fails_closed_without_apk_or_keys(self):
+        with tempfile.TemporaryDirectory() as temp:
+            rootfs = Path(temp)
+            with self.assertRaises(BUILD.BuildError):
+                BUILD.verify_runtime_acquisition_client(rootfs)
+
+            apk = rootfs / "sbin/apk"
+            apk.parent.mkdir(parents=True)
+            apk.write_text("binary", encoding="utf-8")
+            with self.assertRaises(BUILD.BuildError):
+                BUILD.verify_runtime_acquisition_client(rootfs)
 
     def test_zstd_is_build_only_not_runtime_capability(self):
         self.assertIn("zstd", BUILD.PACKAGES)
         self.assertEqual(BUILD.BUILD_ONLY_PACKAGES, ("zstd",))
 
-    def test_graphical_surface_runtime_is_seeded(self):
+    def test_graphical_surface_runtime_is_not_seeded(self):
         for package in (
             "cage",
             "cog",
@@ -122,8 +143,12 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             "mesa-gbm",
             "font-dejavu",
         ):
-            self.assertIn(package, BUILD.PACKAGES)
-        self.assertEqual(BUILD.MAX_ROOTFS_BYTES, 512 * 1024 * 1024)
+            self.assertNotIn(package, BUILD.PACKAGES)
+        self.assertEqual(BUILD.MAX_ROOTFS_BYTES, 220 * 1024 * 1024)
+
+    def test_signed_runtime_acquisition_material_is_retained(self):
+        self.assertNotIn("etc/apk/keys", BUILD.RUNTIME_PRUNE_PATHS)
+        self.assertNotIn("sbin/apk", BUILD.RUNTIME_PRUNE_PATHS)
 
     def test_unrelated_firmware_packages_are_not_seeded(self):
         for package in (

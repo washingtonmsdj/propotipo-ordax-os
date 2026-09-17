@@ -2,20 +2,57 @@
 set -eu
 
 SYSTEM_ROOT=${ORDAX_SYSTEM_ROOT:-}
-RUNTIME_DIR=/run/ordax-surface
-HTTP_LOG=$RUNTIME_DIR/http.log
-HOST_LOG=$RUNTIME_DIR/host.log
+STATE_ROOT=${ORDAX_STATE_DIR:-/state/ordax}
+SESSION_DIR=/run/ordax-surface
+HTTP_LOG=$SESSION_DIR/http.log
+HOST_LOG=$SESSION_DIR/host.log
+RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
+RUNTIME_ID=alpine-v3.22-cage-cog-v1
+RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
+RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
+STAGING_DIR=""
+DEV_BOUND=0
+PROC_BOUND=0
+SYS_BOUND=0
+RUN_BOUND=0
+
+mkdir -p "$SESSION_DIR"
+chmod 700 "$SESSION_DIR"
+: > "$HTTP_LOG"
+: > "$HOST_LOG"
 
 cleanup() {
     if [ -n "$HTTP_PID" ]; then
         kill "$HTTP_PID" >/dev/null 2>&1 || true
         wait "$HTTP_PID" 2>/dev/null || true
+        HTTP_PID=""
+    fi
+    if [ "$RUN_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/run" >/dev/null 2>&1 || true
+        RUN_BOUND=0
+    fi
+    if [ "$SYS_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/sys" >/dev/null 2>&1 || true
+        SYS_BOUND=0
+    fi
+    if [ "$PROC_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/proc" >/dev/null 2>&1 || true
+        PROC_BOUND=0
+    fi
+    if [ "$DEV_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/dev" >/dev/null 2>&1 || true
+        DEV_BOUND=0
+    fi
+    if [ -n "$STAGING_DIR" ] && [ -d "$STAGING_DIR" ]; then
+        rm -rf "$STAGING_DIR"
+        STAGING_DIR=""
     fi
 }
 trap cleanup EXIT HUP INT TERM
 
 console_fallback() {
+    cleanup
     printf '\033[2J\033[H'
     printf 'OrdaX\n'
     printf 'Surface native host fallback\n'
@@ -23,32 +60,123 @@ console_fallback() {
     printf 'Mode: %s\n' "${ORDAX_SURFACE_MODE:-unknown}"
     printf '\nThe graphical host could not be started.\n'
     printf 'Host log: %s\n' "$HOST_LOG"
-    printf 'The verified system checkout remains available for maintenance.\n'
+    printf 'The checked-out system remains available for maintenance.\n'
     trap 'exit 0' HUP INT TERM
     while :; do
         sleep 3600
     done
 }
 
+runtime_is_ready() {
+    [ -f "$RUNTIME_READY" ] &&
+        [ -x "$RUNTIME_ROOT/usr/bin/cage" ] &&
+        [ -x "$RUNTIME_ROOT/usr/bin/cog" ] &&
+        [ -x "$RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
+        [ -x "$RUNTIME_ROOT/bin/busybox" ]
+}
+
+install_runtime() {
+    [ -x /sbin/apk ] || {
+        echo "ordax-surface: /sbin/apk is unavailable in the Git bootstrap base" >>"$HOST_LOG"
+        return 1
+    }
+    [ -d /etc/apk/keys ] || {
+        echo "ordax-surface: Alpine trusted keys are unavailable" >>"$HOST_LOG"
+        return 1
+    }
+
+    set -- /etc/apk/keys/*.pub
+    [ -f "$1" ] || {
+        echo "ordax-surface: Alpine trusted public keys are unavailable" >>"$HOST_LOG"
+        return 1
+    }
+
+    mkdir -p "$RUNTIME_STATE"
+    STAGING_DIR=$RUNTIME_STATE/.staging-$$
+    rm -rf "$STAGING_DIR"
+    mkdir -p "$STAGING_DIR/rootfs/etc/apk/keys"
+
+    for key in /etc/apk/keys/*.pub; do
+        cp "$key" "$STAGING_DIR/rootfs/etc/apk/keys/"
+    done
+    if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        mkdir -p "$STAGING_DIR/rootfs/etc/ssl/certs"
+        cp /etc/ssl/certs/ca-certificates.crt "$STAGING_DIR/rootfs/etc/ssl/certs/"
+    fi
+    cat >"$STAGING_DIR/rootfs/etc/apk/repositories" <<'REPOSITORIES'
+https://dl-cdn.alpinelinux.org/alpine/v3.22/main
+https://dl-cdn.alpinelinux.org/alpine/v3.22/community
+REPOSITORIES
+
+    echo "ordax-surface: provisioning replaceable graphical runtime in $RUNTIME_STATE" >>"$HOST_LOG"
+    if ! /sbin/apk --root "$STAGING_DIR/rootfs" \
+        --keys-dir /etc/apk/keys \
+        --no-cache \
+        --initdb \
+        add \
+        alpine-baselayout \
+        busybox \
+        ca-certificates \
+        cage \
+        cog \
+        seatd-launch \
+        mesa-dri-gallium \
+        mesa-egl \
+        mesa-gbm \
+        font-dejavu \
+        >>"$HOST_LOG" 2>&1; then
+        echo "ordax-surface: graphical runtime provisioning failed" >>"$HOST_LOG"
+        return 1
+    fi
+
+    for directory in dev proc sys run tmp root; do
+        mkdir -p "$STAGING_DIR/rootfs/$directory"
+    done
+    chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
+
+    [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/usr/bin/cog" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/usr/bin/seatd-launch" ] || return 1
+
+    printf '%s\n' "$RUNTIME_ID" >"$STAGING_DIR/ready"
+    rm -rf "$RUNTIME_STATE/$RUNTIME_ID"
+    mv "$STAGING_DIR" "$RUNTIME_STATE/$RUNTIME_ID"
+    STAGING_DIR=""
+    return 0
+}
+
+ensure_runtime() {
+    runtime_is_ready && return 0
+    install_runtime || return 1
+    runtime_is_ready
+}
+
+bind_runtime_mounts() {
+    /bin/busybox mount -o bind /dev "$RUNTIME_ROOT/dev" >>"$HOST_LOG" 2>&1 || return 1
+    DEV_BOUND=1
+    /bin/busybox mount -o bind /proc "$RUNTIME_ROOT/proc" >>"$HOST_LOG" 2>&1 || return 1
+    PROC_BOUND=1
+    /bin/busybox mount -o bind /sys "$RUNTIME_ROOT/sys" >>"$HOST_LOG" 2>&1 || return 1
+    SYS_BOUND=1
+    /bin/busybox mount -o bind /run "$RUNTIME_ROOT/run" >>"$HOST_LOG" 2>&1 || return 1
+    RUN_BOUND=1
+    return 0
+}
+
 [ -n "$SYSTEM_ROOT" ] || console_fallback
 [ -f "$SYSTEM_ROOT/composition/web/index.html" ] || console_fallback
-[ -x /usr/bin/cage ] || console_fallback
-[ -x /usr/bin/cog ] || console_fallback
-[ -x /usr/bin/seatd-launch ] || console_fallback
 [ -x /bin/busybox ] || console_fallback
 [ -e /dev/dri/card0 ] || console_fallback
+ensure_runtime || console_fallback
+bind_runtime_mounts || console_fallback
 
-mkdir -p "$RUNTIME_DIR"
-chmod 700 "$RUNTIME_DIR"
-: > "$HTTP_LOG"
-: > "$HOST_LOG"
-
-export XDG_RUNTIME_DIR="$RUNTIME_DIR"
+export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
 export ORDAX_SURFACE_MODE=native-graphical
 
-# Serve the checked-out shared system tree locally so ES modules, CSS and the
-# platform-neutral Surface host load with normal browser origin semantics.
+# Serve the checked-out shared system tree locally. The visual source and this
+# runtime bootstrap both arrive through Git; only the minimal apk client and
+# trusted Alpine keys belong to the fixed development base.
 /bin/busybox httpd -f -p 127.0.0.1:8765 -h "$SYSTEM_ROOT" >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
@@ -57,10 +185,11 @@ kill -0 "$HTTP_PID" >/dev/null 2>&1 || console_fallback
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
-# seatd-launch owns the seat for this one kiosk session. Cage talks directly to
-# DRM/KMS and input devices; Cog/WPE WebKit renders the same shared Surface used
-# by the Web composition. No target-specific visual fork is introduced here.
-if /usr/bin/seatd-launch -- /usr/bin/cage -s -- \
+# Cage/Cog live in a replaceable runtime root under /state. No graphical stack
+# is baked into the Git-first bootstrap, so ordinary host/runtime changes can be
+# shipped by ordax-pull without rewriting the USB image.
+if /bin/busybox chroot "$RUNTIME_ROOT" \
+    /usr/bin/seatd-launch -- /usr/bin/cage -s -- \
     /usr/bin/cog --platform=wl \
     --enable-write-console-messages-to-stdout=true \
     http://127.0.0.1:8765/composition/web/index.html \
