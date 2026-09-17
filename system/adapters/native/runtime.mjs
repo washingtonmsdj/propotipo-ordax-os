@@ -13,6 +13,7 @@ export function createNativeSurfaceHost(
   {
     bootControlAvailable = false,
     userFileSpaceAvailable = false,
+    systemMetricsAvailable = false,
   } = {},
 ) {
   if (!windowRef?.navigator) {
@@ -24,6 +25,9 @@ export function createNativeSurfaceHost(
     const capabilityIds = [...BASE_CAPABILITIES];
     if (userFileSpaceAvailable) {
       capabilityIds.push("filesystem.user-space");
+    }
+    if (systemMetricsAvailable) {
+      capabilityIds.push("system.metrics");
     }
     if (bootControlAvailable) {
       capabilityIds.push("system.boot-control");
