@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""End-to-end regressions for the owner development Git-first workflow."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import stat
+import subprocess
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+PULL = ROOT / "bootstrap/dev-base/ordax-pull"
+ROLLBACK = ROOT / "bootstrap/dev-base/ordax-rollback"
+RUN = ROOT / "bootstrap/dev-base/ordax-run"
+DEV_INIT = ROOT / "bootstrap/dev-base/ordax-dev-init"
+
+
+class DevelopmentGitFlowTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.remote = self.root / "origin.git"
+        self.source = self.root / "source"
+        self.worktree = self.root / "workspace/ordax"
+        self.state = self.root / "state/ordax"
+
+        self._run(["git", "init", "--bare", "--initial-branch=main", str(self.remote)])
+        self._run(["git", "-C", str(self.remote), "config", "uploadpack.allowFilter", "true"])
+        self._run(["git", "init", "--initial-branch=main", str(self.source)])
+        self._run(["git", "-C", str(self.source), "config", "user.name", "OrdaX Test"])
+        self._run(["git", "-C", str(self.source), "config", "user.email", "ordax-test@example.invalid"])
+        self._run(["git", "-C", str(self.source), "remote", "add", "origin", self.remote.as_uri()])
+
+        self.commit_v1 = self._commit_runtime("runtime-v1")
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def _run(
+        self,
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            argv,
+            check=check,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+
+    def _commit_runtime(self, marker: str) -> str:
+        system = self.source / "system"
+        docs = self.source / "docs"
+        system.mkdir(parents=True, exist_ok=True)
+        docs.mkdir(parents=True, exist_ok=True)
+        entrypoint = system / "entrypoint"
+        entrypoint.write_text(f"#!/bin/sh\nprintf '%s\\n' '{marker}'\n", encoding="utf-8")
+        entrypoint.chmod(entrypoint.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        (docs / "not-runtime.txt").write_text(marker + "\n", encoding="utf-8")
+        self._run(["git", "-C", str(self.source), "add", "system", "docs"])
+        self._run(["git", "-C", str(self.source), "commit", "-m", marker])
+        self._run(["git", "-C", str(self.source), "push", "origin", "main"])
+        return self._run(
+            ["git", "-C", str(self.source), "rev-parse", "HEAD"]
+        ).stdout.strip()
+
+    def _env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "ORDAX_REPO_URL": self.remote.as_uri(),
+                "ORDAX_REPO_BRANCH": "main",
+                "ORDAX_WORKTREE": str(self.worktree),
+                "ORDAX_STATE_DIR": str(self.state),
+            }
+        )
+        return env
+
+    def _script(
+        self,
+        script: Path,
+        *,
+        env: dict[str, str] | None = None,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        return self._run(["/bin/sh", str(script)], env=env or self._env(), check=check)
+
+    def test_clone_pull_rollback_pin_and_explicit_unpin(self) -> None:
+        first = self._script(PULL)
+        self.assertIn(self.commit_v1, first.stdout)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v1,
+        )
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "sparse-checkout", "list"]).stdout.strip(),
+            "/system/",
+        )
+        self.assertTrue((self.worktree / "system/entrypoint").is_file())
+        self.assertFalse((self.worktree / "docs").exists())
+        self.assertEqual((self.state / "current-commit").read_text().strip(), self.commit_v1)
+        self.assertFalse((self.state / "previous-commit").exists())
+        self.assertFalse((self.state / "pinned-commit").exists())
+
+        self.commit_v2 = self._commit_runtime("runtime-v2")
+        self._script(PULL)
+        self.assertEqual((self.state / "previous-commit").read_text().strip(), self.commit_v1)
+        self.assertEqual((self.state / "current-commit").read_text().strip(), self.commit_v2)
+
+        rollback = self._script(ROLLBACK)
+        self.assertIn(f"ORDAX_ROLLBACK_SHA={self.commit_v1}", rollback.stdout)
+        self.assertIn(f"ORDAX_PINNED_SHA={self.commit_v1}", rollback.stdout)
+        self.assertEqual((self.state / "pinned-commit").read_text().strip(), self.commit_v1)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v1,
+        )
+        self.assertIn("runtime-v1", self._script(RUN).stdout)
+
+        # A boot while pinned must not touch network/pull and must run the pinned checkout.
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "ordax-run").symlink_to(RUN)
+        network_marker = self.root / "network-called"
+        pull_marker = self.root / "pull-called"
+        (bin_dir / "ordax-network").write_text(
+            f"#!/bin/sh\ntouch '{network_marker}'\nexit 99\n", encoding="utf-8"
+        )
+        (bin_dir / "ordax-pull").write_text(
+            f"#!/bin/sh\ntouch '{pull_marker}'\nexit 99\n", encoding="utf-8"
+        )
+        for path in (bin_dir / "ordax-network", bin_dir / "ordax-pull"):
+            path.chmod(0o755)
+
+        boot_env = self._env()
+        boot_env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+            }
+        )
+        boot = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Rollback fixado", boot.stdout)
+        self.assertIn("runtime-v1", boot.stdout)
+        self.assertFalse(network_marker.exists())
+        self.assertFalse(pull_marker.exists())
+
+        # The explicit pull is the only normal action that releases the sticky rollback.
+        self._script(PULL)
+        self.assertFalse((self.state / "pinned-commit").exists())
+        self.assertEqual((self.state / "current-commit").read_text().strip(), self.commit_v2)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v2,
+        )
+
+    def test_pull_rejects_dirty_checkout_and_unexpected_origin(self) -> None:
+        self._script(PULL)
+        dirty = self.worktree / "system/local-change.txt"
+        dirty.write_text("local\n", encoding="utf-8")
+        result = self._script(PULL, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("alteracoes locais", result.stderr)
+
+        dirty.unlink()
+        self._run(
+            [
+                "git",
+                "-C",
+                str(self.worktree),
+                "remote",
+                "set-url",
+                "origin",
+                (self.root / "unexpected.git").as_uri(),
+            ]
+        )
+        result = self._script(PULL, check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("origin inesperado", result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()
