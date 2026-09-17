@@ -18,11 +18,15 @@ PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
 PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
 IDENTITY_SESSION_CONTRACT = ROOT / "system" / "contracts" / "identity-session.mjs"
 IDENTITY_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "identity-actions.mjs"
+POWER_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "power-actions.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "web"
+NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
 WEB_PREFERENCE_ADAPTER = ROOT / "system" / "adapters" / "web" / "preferences.mjs"
 WEB_IDENTITY_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity.mjs"
 WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-actions.mjs"
+NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
+POWER_CONTROLS = SURFACE / "power-controls.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -34,6 +38,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface-state.mjs",
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
+            POWER_CONTROLS,
             APP_CATALOG,
             APP_CONTRACT,
             *APP_OWNERS.values(),
@@ -42,12 +47,16 @@ class SurfaceUiContractTests(unittest.TestCase):
             PREFERENCE_STORE_CONTRACT,
             IDENTITY_SESSION_CONTRACT,
             IDENTITY_ACTIONS_CONTRACT,
+            POWER_ACTIONS_CONTRACT,
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
+            NATIVE_COMPOSITION / "index.html",
+            NATIVE_COMPOSITION / "main.mjs",
             WEB_ADAPTER,
             WEB_PREFERENCE_ADAPTER,
             WEB_IDENTITY_ADAPTER,
             WEB_IDENTITY_ACTIONS_ADAPTER,
+            NATIVE_POWER_ADAPTER,
             HOST_CONTRACT,
         ):
             self.assertTrue(path.is_file(), path)
@@ -59,12 +68,14 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertNotIn("adapters/", text, path)
             self.assertNotIn("navigator.", text, path)
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        power = POWER_CONTROLS.read_text(encoding="utf-8")
         self.assertIn("contracts/surface-host.mjs", surface)
         self.assertIn("contracts/preference-store.mjs", surface)
         self.assertIn("contracts/identity-session.mjs", surface)
         self.assertIn("contracts/identity-actions.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
+        self.assertIn("../../contracts/power-actions.mjs", power)
 
     def test_first_party_apps_have_independent_owners_and_thin_catalog(self):
         catalog = APP_CATALOG.read_text(encoding="utf-8")
@@ -116,6 +127,35 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("supportedActions: []", actions_adapter)
         self.assertNotIn("surface/ui", session_adapter)
         self.assertNotIn("surface/ui", actions_adapter)
+
+    def test_native_power_controls_are_shared_and_capability_driven(self):
+        contract = POWER_ACTIONS_CONTRACT.read_text(encoding="utf-8")
+        controls = POWER_CONTROLS.read_text(encoding="utf-8")
+        adapter = NATIVE_POWER_ADAPTER.read_text(encoding="utf-8")
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
+        web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+
+        self.assertIn("ordax.power-actions/1", contract)
+        self.assertIn('"restart"', contract)
+        self.assertIn('"shutdown"', contract)
+        self.assertIn("assertPowerActionsPort", controls)
+        self.assertIn('"Confirmar reinício"', controls)
+        self.assertIn('"Confirmar desligamento"', controls)
+        self.assertIn("dataset.powerAction", controls)
+        self.assertIn("createNativePowerActions", native_main)
+        self.assertIn("../../surface/ui/surface.mjs", native_main)
+        self.assertIn("../../surface/ui/power-controls.mjs", native_main)
+        self.assertIn("../../surface/ui/tokens.css", native_html)
+        self.assertIn("../../surface/ui/surface.css", native_html)
+        self.assertNotIn("<style", native_html.lower())
+        self.assertIn("contracts/power-actions.mjs", adapter)
+        self.assertIn("/__ordax/native/session", adapter)
+        self.assertIn("/__ordax/native/power", adapter)
+        self.assertNotIn("surface/ui", adapter)
+        self.assertNotIn("innerHTML", adapter)
+        self.assertNotIn("adapters/native", web_main)
+        self.assertNotIn("power-actions", web_main)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
@@ -200,7 +240,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
-        for path in list(SURFACE.rglob("*")) + list(APPS.rglob("*")) + list(COMPOSITION.rglob("*")) + list(PREFERENCES.rglob("*")):
+        roots = [SURFACE, APPS, COMPOSITION, NATIVE_COMPOSITION, PREFERENCES]
+        for path in [item for root in roots for item in root.rglob("*")]:
             if not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -217,6 +258,7 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_surface_baseline_is_accessible_responsive_windowed_themeable_and_account_aware(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        power = POWER_CONTROLS.read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
         self.assertIn('aria-live="polite"', surface)
@@ -229,6 +271,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("dataset.identityAction", surface)
         self.assertIn("IDENTITY_LABELS", surface)
         self.assertIn("IDENTITY_ACTION_LABELS", surface)
+        self.assertIn('role", "dialog"', power)
+        self.assertIn('aria-live", "polite"', power)
         self.assertIn('[data-ordax-theme="dark"]', tokens)
         self.assertIn('[data-ordax-theme="light"]', tokens)
         self.assertIn("color-scheme: light", tokens)
@@ -237,7 +281,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('.ordax-window[data-maximized="true"]', css)
         self.assertIn('.ordax-preference-choice[data-selected="true"]', css)
 
-    def test_web_candidate_rebuilds_when_shared_product_sources_change(self):
+    def test_web_candidate_rebuilds_when_shared_and_native_product_sources_change(self):
         workflow = WEB_WORKFLOW.read_text(encoding="utf-8")
         self.assertGreaterEqual(workflow.count("'system/apps/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/services/account/**'"), 2)
@@ -245,10 +289,17 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/adapters/native/**'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/composition/native/**'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_surface_preferences.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_identity_session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_identity_actions.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'tests/test_power_actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_account_runtime.mjs'"), 2)
+        self.assertIn("system/adapters/native", workflow)
+        self.assertIn("system/composition/native", workflow)
+        self.assertIn("node --test tests/test_power_actions.mjs", workflow)
 
 
 if __name__ == "__main__":
