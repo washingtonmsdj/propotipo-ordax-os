@@ -1,3 +1,4 @@
+import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
@@ -5,6 +6,7 @@ import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
+import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
@@ -19,6 +21,7 @@ async function start() {
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const updateWatcher = createNativeUpdateWatcher(window);
+
   let powerActions = null;
   try {
     powerActions = await createNativePowerActions(window);
@@ -26,10 +29,21 @@ async function start() {
     console.warn("OrdaX native power actions unavailable", error);
   }
 
+  let fileSpace = null;
+  try {
+    fileSpace = await createNativeFileSpace(window);
+  } catch (error) {
+    console.warn("OrdaX native user file-space unavailable", error);
+  }
+
   const bootControlAvailable = Boolean(
     powerActions?.getSnapshot().supportedActions.length,
   );
-  const host = createNativeSurfaceHost(window, { bootControlAvailable });
+  const userFileSpaceAvailable = fileSpace !== null;
+  const host = createNativeSurfaceHost(window, {
+    bootControlAvailable,
+    userFileSpaceAvailable,
+  });
 
   validateAccountRuntime(
     host.getSnapshot(),
@@ -43,6 +57,7 @@ async function start() {
     identitySession,
     identityActions,
   );
+  const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
 
@@ -56,6 +71,7 @@ async function start() {
     () => {
       powerControls.destroy();
       updateControls.destroy();
+      fileSpaceControls.destroy();
       updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
