@@ -68,10 +68,13 @@ Owner/development Git-first base:
   network tools
   CA certificates
   Git
+  apk client + Alpine trust keys   # signed runtime acquisition only
 
 /workspace/ordax/           # created at runtime, persistent, not preseeded
-/state/ordax/               # current/previous/pinned Git state after switch_root
+/state/ordax/               # Git state + replaceable runtimes after switch_root
 ```
+
+The apk client is not permission to turn the base into a normal package-managed desktop. Pulled `system/` code may use it to materialize versioned, replaceable runtime roots under `/state`; Cage/Cog/Mesa and other high-level product/runtime packages remain outside the fixed seed.
 
 Canonical signed-release base:
 
@@ -118,6 +121,7 @@ UEFI
  -> partial+sparse clone of main when checkout is absent
  -> otherwise git pull --ff-only
  -> /workspace/ordax/system/entrypoint
+ -> pulled system may materialize a replaceable runtime under /state
  -> OrdaX
 ```
 
@@ -134,7 +138,7 @@ ROLLBACK_PIN_SURVIVES_REBOOT=YES
 EXPLICIT_ORDAX_PULL_RELEASES_PIN=YES
 ```
 
-A valid local checkout may boot when the network is unavailable. A rollback is sticky across reboot and must not be silently advanced by boot-time synchronization.
+A valid local checkout may boot when the network is unavailable. A rollback is sticky across reboot and must not be silently advanced by boot-time synchronization. A runtime already materialized under `/state` is reusable offline; network is needed only for its first acquisition or a version change that requires new package bytes.
 
 ## Canonical signed-release first boot
 
@@ -179,10 +183,11 @@ Network/Git are required to acquire new development source or new release bytes,
 Owner/development USB:
 
 ```text
-system/Surface/app change
+system/Surface/app/native-host change
  -> Git push main
  -> ordax-pull
  -> ordax-run
+ -> pulled code may provision/update replaceable runtime state
  -> no USB reflash
 
 boot/kernel/initramfs/dev-base hardware support change
