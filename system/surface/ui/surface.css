@@ -323,11 +323,20 @@ kbd {
   cursor: pointer;
 }
 
-.ordax-space-link:hover,
-.ordax-space-link:focus-visible {
+.ordax-space-link:hover:not(:disabled),
+.ordax-space-link:focus-visible:not(:disabled) {
   padding-left: 8px;
   background: var(--ordax-hover-bg);
   outline: none;
+}
+
+.ordax-space-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.ordax-space-link:disabled .ordax-space-arrow {
+  opacity: 0.45;
 }
 
 .ordax-space-icon {
