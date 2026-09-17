@@ -9,6 +9,7 @@ import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import { assertWorkspaceStore, validateWorkspaceRecord } from "../../contracts/workspace-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
+import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
 import { createSurfaceState, createWorkspaceSnapshot, reduceSurfaceState } from "./surface-state.mjs";
 
 const MOVABLE_WORKSPACE_MIN_WIDTH = 761;
@@ -22,70 +23,6 @@ const WORKSPACE_PERSIST_ACTIONS = new Set([
   "window.close",
   "workspace.show-desktop",
 ]);
-
-const SHELL_MARKUP = `
-  <div class="ordax-shell" data-ordax-shell>
-    <header class="ordax-topbar">
-      <div class="ordax-brand" aria-label="OrdaX">
-        <span class="ordax-brand-mark" aria-hidden="true">O</span>
-        <span>OrdaX</span>
-      </div>
-      <div class="ordax-status" role="status" aria-live="polite">
-        <span class="ordax-status-dot" data-connectivity-dot aria-hidden="true"></span>
-        <span data-connectivity-label>Conectividade desconhecida</span>
-      </div>
-    </header>
-
-    <main class="ordax-workspace" tabindex="-1" data-workspace>
-      <section class="ordax-desktop" aria-labelledby="surface-home-title">
-        <div class="ordax-desktop-intro">
-          <p class="ordax-eyebrow">Surface compartilhada</p>
-          <h1 id="surface-home-title">Seu espaço OrdaX.</h1>
-          <p class="ordax-lead">
-            Uma única Surface e um único modelo de aplicações para Web, Mobile, Desktop, USB e Native.
-            O host expõe capacidades; os apps e o workspace continuam os mesmos.
-          </p>
-        </div>
-        <div class="ordax-card-grid">
-          <article class="ordax-card">
-            <span class="ordax-card-label">Workspace</span>
-            <strong data-window-count>0 apps abertos</strong>
-            <p>Janelas pertencem à Surface compartilhada e não ao adapter de uma plataforma.</p>
-          </article>
-          <article class="ordax-card">
-            <span class="ordax-card-label">Conectividade</span>
-            <strong data-connectivity-card>Desconhecida</strong>
-            <p>O estado vem do host por contrato e pode mudar sem recarregar a Surface.</p>
-          </article>
-          <article class="ordax-card">
-            <span class="ordax-card-label">Capacidades disponíveis</span>
-            <strong data-capability-count>0</strong>
-            <p>A Surface reage a capacidades disponíveis, nunca ao nome da plataforma.</p>
-          </article>
-        </div>
-      </section>
-      <div class="ordax-window-layer" data-window-layer aria-live="polite"></div>
-    </main>
-
-    <div class="ordax-launcher" data-launcher hidden>
-      <div class="ordax-launcher-panel" role="menu" aria-label="Aplicações OrdaX">
-        <div class="ordax-launcher-heading">
-          <span>Aplicações</span>
-          <small>Fonte compartilhada</small>
-        </div>
-        <div class="ordax-launcher-grid" data-app-launcher></div>
-      </div>
-    </div>
-
-    <nav class="ordax-dock" aria-label="Controles da Surface">
-      <button type="button" class="ordax-dock-button ordax-primary" data-launcher-toggle aria-expanded="false" aria-label="Abrir lançador">
-        <span aria-hidden="true">O</span>
-      </button>
-      <button type="button" class="ordax-dock-button" data-show-desktop aria-label="Mostrar área de trabalho">Mesa</button>
-      <div class="ordax-dock-running" data-running-apps aria-label="Aplicações abertas"></div>
-    </nav>
-  </div>
-`;
 
 const CONNECTIVITY_LABELS = {
   online: "Online",
@@ -329,12 +266,14 @@ export function mountSurface(
   let identityActionMessage = null;
   let dragSession = null;
 
-  root.innerHTML = SHELL_MARKUP;
+  root.innerHTML = createDesktopShellMarkup();
+  const desktopClock = mountDesktopClock(root);
   let state = createSurfaceState(host.getSnapshot(), preferenceSeed, workspaceSeed);
 
   const workspace = root.querySelector("[data-workspace]");
   const launcher = root.querySelector("[data-launcher]");
   const launcherToggle = root.querySelector("[data-launcher-toggle]");
+  const launcherQuery = root.querySelector("[data-launcher-query]");
   const appLauncher = root.querySelector("[data-app-launcher]");
   const windowLayer = root.querySelector("[data-window-layer]");
   const runningApps = root.querySelector("[data-running-apps]");
@@ -366,13 +305,16 @@ export function mountSurface(
 
   const renderLauncher = () => {
     appLauncher.replaceChildren();
+    const query = launcherQuery.value.trim().toLocaleLowerCase("pt-BR");
+    let visible = 0;
     for (const app of listFirstPartyApps()) {
       const available = isAppAvailable(app, state.capabilityIds);
+      const searchable = `${app.title} ${app.description} ${app.id}`.toLocaleLowerCase("pt-BR");
+      if (query && !searchable.includes(query)) continue;
       const button = element("button", "ordax-launcher-app");
       button.type = "button";
       button.dataset.launchApp = app.id;
       button.disabled = !available;
-      button.setAttribute("role", "menuitem");
       button.setAttribute("aria-label", available ? `Abrir ${app.title}` : `${app.title} indisponível`);
       button.append(element("span", "ordax-app-mark", app.monogram));
       const copy = element("span", "ordax-launcher-app-copy");
@@ -380,6 +322,10 @@ export function mountSurface(
       copy.append(element("small", "", available ? app.description : "Capacidades necessárias indisponíveis"));
       button.append(copy);
       appLauncher.append(button);
+      visible += 1;
+    }
+    if (visible === 0) {
+      appLauncher.append(element("p", "ordax-launcher-empty", "Nenhum aplicativo encontrado."));
     }
   };
 
@@ -411,13 +357,23 @@ export function mountSurface(
     for (const windowState of state.windows) {
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
-      const button = element("button", "ordax-dock-button ordax-running-app", app.monogram);
+      const button = element("button", "ordax-running-app", app.monogram);
       button.type = "button";
       button.dataset.openWindow = windowState.id;
       button.dataset.active = String(state.activeWindowId === windowState.id && !windowState.minimized);
       button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
       button.title = app.title;
       runningApps.append(button);
+    }
+  };
+
+  const renderSidebar = () => {
+    const activeWindow = state.windows.find((item) => item.id === state.activeWindowId) ?? null;
+    for (const button of root.querySelectorAll("[data-sidebar-app]")) {
+      const appId = button.dataset.sidebarApp;
+      const app = getFirstPartyApp(appId);
+      button.disabled = !isAppAvailable(app, state.capabilityIds);
+      button.dataset.active = String(activeWindow?.appId === appId);
     }
   };
 
@@ -428,14 +384,12 @@ export function mountSurface(
 
     const connectivityLabel = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
     root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
-    root.querySelector("[data-connectivity-card]").textContent = connectivityLabel;
     root.querySelector("[data-connectivity-dot]").dataset.state = state.connectivity;
-    root.querySelector("[data-capability-count]").textContent = String(state.capabilityIds.length);
-    root.querySelector("[data-window-count]").textContent = `${state.windows.length} ${state.windows.length === 1 ? "app aberto" : "apps abertos"}`;
 
     renderLauncher();
     renderWindows();
     renderDock();
+    renderSidebar();
   };
 
   const dispatch = (action) => {
@@ -476,16 +430,29 @@ export function mountSurface(
       });
   };
 
+  const openLauncher = () => {
+    if (!state.launcherOpen) dispatch({ type: "launcher.toggle" });
+    queueMicrotask(() => {
+      launcherQuery.focus();
+      launcherQuery.select();
+    });
+  };
+
   const onClick = (event) => {
     const launcherButton = event.target.closest("[data-launcher-toggle]");
     if (launcherButton) {
-      dispatch({ type: "launcher.toggle" });
+      if (state.launcherOpen) {
+        dispatch({ type: "launcher.close" });
+      } else {
+        openLauncher();
+      }
       return;
     }
 
     const appButton = event.target.closest("[data-launch-app]");
     if (appButton) {
       dispatch({ type: "app.launch", appId: appButton.dataset.launchApp });
+      launcherQuery.value = "";
       return;
     }
 
@@ -533,6 +500,10 @@ export function mountSurface(
     if (state.launcherOpen && !event.target.closest("[data-launcher]")) {
       dispatch({ type: "launcher.close" });
     }
+  };
+
+  const onInput = (event) => {
+    if (event.target === launcherQuery) renderLauncher();
   };
 
   const onPointerDown = (event) => {
@@ -613,10 +584,30 @@ export function mountSurface(
   };
 
   const onKeyDown = (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
+      event.preventDefault();
+      openLauncher();
+      return;
+    }
+
     if (event.key === "Escape" && state.launcherOpen) {
       dispatch({ type: "launcher.close" });
       launcherToggle.focus();
       return;
+    }
+
+    if (event.target === launcherQuery && state.launcherOpen) {
+      const firstApp = appLauncher.querySelector("button:not(:disabled)");
+      if (event.key === "ArrowDown" && firstApp) {
+        firstApp.focus();
+        event.preventDefault();
+        return;
+      }
+      if (event.key === "Enter" && firstApp) {
+        firstApp.click();
+        event.preventDefault();
+        return;
+      }
     }
 
     if (!event.altKey || !isMovableWorkspace()) return;
@@ -646,6 +637,7 @@ export function mountSurface(
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("input", onInput);
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
@@ -668,6 +660,7 @@ export function mountSurface(
   return Object.freeze({
     destroy() {
       if (workspacePort) workspacePort.save(createWorkspaceSnapshot(state));
+      desktopClock.destroy();
       if (dragSession) {
         dragSession.titlebar.releasePointerCapture?.(dragSession.pointerId);
         dragSession = null;
@@ -676,6 +669,7 @@ export function mountSurface(
       unsubscribeIdentity?.();
       unsubscribeIdentityActions?.();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("input", onInput);
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("pointermove", onPointerMove);
       root.removeEventListener("pointerup", onPointerUp);
