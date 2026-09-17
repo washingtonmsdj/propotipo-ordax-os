@@ -4,6 +4,9 @@ set -eu
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 export PATH
 
+BOOTSTRAP_PATH=/ordax/bootstrap/entrypoint
+RECOVERY_BOOTSTRAP_PATH=/ordax/bootstrap/recovery/entrypoint
+
 rescue() {
     echo "ordax-initramfs: entering local recovery shell: $*" >&2
     exec sh
@@ -27,16 +30,16 @@ esac
 case "$RECOVERY_MODE" in
     1)
         mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
-        RECOVERY_ENTRYPOINT="$(command -v /ordax/bootstrap/recovery/entrypoint 2>/dev/null || true)"
+        RECOVERY_ENTRYPOINT="$(PATH=/ordax/bootstrap/recovery:$PATH command -v entrypoint 2>/dev/null || true)"
         case "$RECOVERY_ENTRYPOINT" in
-            "") rescue "recovery entrypoint is missing" ;;
+            "") rescue "recovery entrypoint is missing or not executable: $RECOVERY_BOOTSTRAP_PATH" ;;
         esac
-        exec /ordax/bootstrap/recovery/entrypoint
+        exec "$RECOVERY_ENTRYPOINT"
         ;;
 esac
 
 mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
-GROW_HELPER="$(command -v /sbin/ordax-grow-ext4 2>/dev/null || true)"
+GROW_HELPER="$(command -v ordax-grow-ext4 2>/dev/null || true)"
 case "$GROW_HELPER" in
     "")
         echo "ordax-initramfs: warning: ext4 growth helper is missing; continuing with current verified filesystem" >&2
@@ -48,8 +51,8 @@ case "$GROW_HELPER" in
         ;;
 esac
 
-BOOTSTRAP_ENTRYPOINT="$(command -v /ordax/bootstrap/entrypoint 2>/dev/null || true)"
+BOOTSTRAP_ENTRYPOINT="$(PATH=/ordax/bootstrap:$PATH command -v entrypoint 2>/dev/null || true)"
 case "$BOOTSTRAP_ENTRYPOINT" in
-    "") rescue "bootstrap entrypoint is missing" ;;
+    "") rescue "bootstrap entrypoint is missing or not executable: $BOOTSTRAP_PATH" ;;
 esac
-exec /ordax/bootstrap/entrypoint
+exec "$BOOTSTRAP_ENTRYPOINT"
