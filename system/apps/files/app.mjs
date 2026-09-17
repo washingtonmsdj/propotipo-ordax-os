@@ -16,10 +16,10 @@ export const filesApp = defineFirstPartyApp({
     },
     {
       kind: "capability",
-      label: "Integração do host",
-      title: "Arquivos escolhidos pelo usuário",
-      body: "Quando disponível, o host pode oferecer seleção explícita de arquivos sem entregar acesso irrestrito ao sistema de arquivos.",
-      capabilityId: "filesystem.user-selected",
+      label: "Armazenamento",
+      title: "Espaço local do usuário",
+      body: "Quando disponível, o host expõe somente a raiz persistente do usuário do OrdaX, sem entregar acesso irrestrito ao sistema de arquivos.",
+      capabilityId: "filesystem.user-space",
     },
   ],
 });
