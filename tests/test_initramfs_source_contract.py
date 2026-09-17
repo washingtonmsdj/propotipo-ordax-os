@@ -5,6 +5,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = json.loads((ROOT / "bootstrap/initramfs/source.json").read_text(encoding="utf-8"))
 INIT = (ROOT / CONTRACT["root_init"]).read_text(encoding="utf-8")
+DEV_BOOTSTRAP = (ROOT / "bootstrap/dev/entrypoint").read_text(encoding="utf-8")
 BUILDER = (ROOT / "bootstrap/initramfs/build.py").read_text(encoding="utf-8")
 GROW_HELPER = (ROOT / "bootstrap/initramfs/grow_ext4.c").read_text(encoding="utf-8")
 GROWTH_PROOF = (ROOT / "bootstrap/initramfs/prove_ext4_growth.sh").read_text(encoding="utf-8")
@@ -68,8 +69,17 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn('exec "$BOOTSTRAP_ENTRYPOINT"', INIT)
         self.assertIn('exec "$RECOVERY_ENTRYPOINT"', INIT)
 
+    def test_owner_dev_bootstrap_does_not_require_unbuilt_test_applet(self):
+        self.assertNotIn("[ -", DEV_BOOTSTRAP)
+        self.assertNotIn("test -", DEV_BOOTSTRAP)
+        self.assertIn('cd "$DEV_ROOT" 2>/dev/null || fail "development base is missing"', DEV_BOOTSTRAP)
+        self.assertIn('PATH="$DEV_ROOT/sbin:$PATH" command -v ordax-dev-init', DEV_BOOTSTRAP)
+        self.assertIn('case "$DEV_INIT_SOURCE" in', DEV_BOOTSTRAP)
+        self.assertIn('exec switch_root "$DEV_ROOT" "$DEV_INIT"', DEV_BOOTSTRAP)
+
     def test_builder_uses_minimal_busybox_and_explicit_musl_target_compiler(self):
         self.assertIn('"CONFIG_BUSYBOX": "y"', BUILDER)
+        self.assertNotIn('"CONFIG_TEST": "y"', BUILDER)
         self.assertIn('make = ["make", f"CC={musl_cc}"]', BUILDER)
         self.assertIn('run(make + ["allnoconfig"]', BUILDER)
         self.assertIn('run(make + ["oldconfig"]', BUILDER)
