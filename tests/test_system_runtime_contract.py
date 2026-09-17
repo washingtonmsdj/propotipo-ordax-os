@@ -32,16 +32,27 @@ class SystemRuntimeContractTests(unittest.TestCase):
     def test_surface_entrypoint_owns_only_surface_handoff(self):
         text = SURFACE_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn("bin/ordax-surface", text)
-        self.assertIn("ORDAX_SURFACE_MODE=bootstrap-console", text)
+        self.assertIn("ORDAX_SURFACE_MODE=native-auto", text)
         for forbidden in ("curl ", "wget ", "udhcpc", "ssh ", "exec sh"):
             self.assertNotIn(forbidden, text)
 
-    def test_bootstrap_surface_is_noninteractive_and_non_networked(self):
+    def test_native_surface_reuses_shared_web_composition(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
-        self.assertIn("Surface bootstrap candidate", text)
-        self.assertIn("sleep 3600", text)
+        self.assertIn("composition/web/index.html", text)
+        self.assertIn("/usr/bin/cage", text)
+        self.assertIn("/usr/bin/cog", text)
+        self.assertIn("/usr/bin/seatd-launch", text)
+        self.assertIn("/dev/dri/card0", text)
+        self.assertIn("ORDAX_SURFACE_MODE=native-graphical", text)
+        self.assertIn("127.0.0.1:8765", text)
+        self.assertIn("console_fallback", text)
         for forbidden in ("curl ", "wget ", "udhcpc", "ssh ", "exec sh"):
             self.assertNotIn(forbidden, text)
+
+    def test_native_surface_http_server_is_loopback_only(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("-p 127.0.0.1:8765", text)
+        self.assertNotIn("-p 0.0.0.0", text)
 
 
 if __name__ == "__main__":

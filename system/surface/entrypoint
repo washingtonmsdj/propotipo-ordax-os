@@ -21,7 +21,7 @@ fail_closed() {
 [ -n "${ORDAX_SYSTEM_ROOT:-}" ] || fail_closed "system root contract is missing"
 [ -x "$SURFACE_RUNTIME" ] || fail_closed "surface runtime is missing"
 
-ORDAX_SURFACE_MODE=bootstrap-console
+ORDAX_SURFACE_MODE=native-auto
 export ORDAX_SURFACE_MODE
-log "starting bootstrap Surface runtime"
+log "starting native Surface runtime"
 exec "$SURFACE_RUNTIME"

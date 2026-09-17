@@ -112,6 +112,19 @@ class DevelopmentFirmwareTest(unittest.TestCase):
         self.assertIn("zstd", BUILD.PACKAGES)
         self.assertEqual(BUILD.BUILD_ONLY_PACKAGES, ("zstd",))
 
+    def test_graphical_surface_runtime_is_seeded(self):
+        for package in (
+            "cage",
+            "cog",
+            "seatd-launch",
+            "mesa-dri-gallium",
+            "mesa-egl",
+            "mesa-gbm",
+            "font-dejavu",
+        ):
+            self.assertIn(package, BUILD.PACKAGES)
+        self.assertEqual(BUILD.MAX_ROOTFS_BYTES, 512 * 1024 * 1024)
+
     def test_unrelated_firmware_packages_are_not_seeded(self):
         for package in (
             "linux-firmware-brcm",
@@ -119,7 +132,6 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             "linux-firmware-realtek",
         ):
             self.assertNotIn(package, BUILD.PACKAGES)
-        self.assertEqual(BUILD.MAX_ROOTFS_BYTES, 220 * 1024 * 1024)
 
 
 if __name__ == "__main__":

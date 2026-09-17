@@ -16,11 +16,11 @@ Those modes may host/render the Surface differently, but they do not own separat
 
 ## Visual source
 
-The first graphical source now lives under `system/surface/ui/` as standards-first HTML/CSS/JavaScript modules with no remote asset or framework dependency. This is an implementation baseline, not a permanent framework choice.
+The first graphical source lives under `system/surface/ui/` as standards-first HTML/CSS/JavaScript modules with no remote asset or framework dependency. This is an implementation baseline, not a permanent framework choice.
 
 `surface-state.mjs` keeps interaction state independent from DOM rendering. `surface.mjs` mounts the shared UI against the platform-neutral `ordax.surface-host/1` contract. Design tokens and responsive behavior remain shared CSS.
 
-Environment wiring is intentionally outside the Surface under `system/composition/`. The Web composition combines the shared Surface with `system/adapters/web/runtime.mjs`; future Desktop/Mobile/native composition roots may select different adapters without copying the UI.
+Environment wiring is intentionally outside the Surface under `system/composition/`. The Web composition combines the shared Surface with `system/adapters/web/runtime.mjs`; Desktop/Mobile/native composition roots may select different adapters without copying the UI.
 
 ## Stable native boundary
 
@@ -32,7 +32,9 @@ system/entrypoint
  -> system/surface/bin/ordax-surface
 ```
 
-`system/surface/entrypoint` is the stable native launch boundary. The current `bin/ordax-surface` is still the bootstrap-console implementation and remains the safe native fallback until the graphical host/runtime is proven on the booted OS. Adding the shared visual source does not falsely claim native graphical boot support.
+`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB now attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Cog/WPE WebKit provides the browser runtime, and a loopback-only BusyBox HTTP server gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
+
+If DRM/KMS or any graphical host dependency is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. Native graphical boot remains a physical-hardware validation gate until the host is observed successfully on the target notebook.
 
 Do not add a plugin/launcher framework merely to prepare for runtime replacement; the stable entrypoint already supplies the required indirection.
 
@@ -50,7 +52,7 @@ The machine-readable boundaries are:
 
 ## Rendering/runtime technology
 
-A thin webview/native-shell approach remains a strong candidate because it can reuse one Surface across product modes, but React, another UI framework, a standards-first DOM runtime, Tauri or another host technology is **not** an architectural authority.
+The owner/development USB currently uses Cage + Cog/WPE WebKit as the first native host candidate because that keeps the graphical host thin and reuses the same Surface source. That host choice is not architectural authority: it may be replaced if physical evidence shows a better runtime.
 
 Framework/runtime selection must satisfy the shared capability/module contracts and remain replaceable. Product/domain semantics belong to shared OrdaX source, not to a UI framework or host shell.
 
