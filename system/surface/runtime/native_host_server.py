@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hmac
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -16,8 +17,11 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
+HEALTH_PATH = "/__ordax/native/health"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
+HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
+HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
 POWER_COMMANDS = {
     "restart": ("/bin/busybox", "reboot", "-f"),
@@ -76,6 +80,26 @@ def read_update_state() -> dict | None:
     return payload
 
 
+def valid_commit_sha(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def record_surface_health(source_sha: str) -> None:
+    directory = os.path.dirname(HEALTH_STATE_FILE)
+    os.makedirs(directory, exist_ok=True)
+    temporary = f"{HEALTH_STATE_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(source_sha)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, HEALTH_STATE_FILE)
+
+
 class NativeHostServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -83,6 +107,7 @@ class NativeHostServer(ThreadingHTTPServer):
     def __init__(self, server_address, handler_class):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
+        self.health_token = secrets.token_urlsafe(32)
         self.supported_actions = supported_power_actions()
 
 
@@ -105,10 +130,26 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
+    def _read_json_body(self) -> dict | None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return None
+        if length <= 0 or length > MAX_CONTROL_BODY:
+            return None
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            return None
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         if self.path.startswith("/__ordax/native/"):
             # Deliberately no CORS headers. Cross-origin callers cannot obtain or
-            # submit the session token using the custom request header.
+            # submit either native session token using custom request headers.
             self._empty(403)
             return
         self._empty(405)
@@ -126,26 +167,51 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if self.path == UPDATE_PATH:
             update_state = read_update_state()
             if update_state is None:
-                self._write_json(
-                    503,
-                    {
-                        "sourceSha": "unavailable",
-                        "status": "unavailable",
-                        "applyMode": "none",
-                        "bootRefreshRequired": False,
-                    },
-                )
-                return
-            self._write_json(200, update_state)
+                update_state = {
+                    "sourceSha": "unavailable",
+                    "status": "unavailable",
+                    "applyMode": "none",
+                    "bootRefreshRequired": False,
+                    "checkedAt": "unknown",
+                    "lastAppliedSha": "",
+                    "lastAppliedAt": "unknown",
+                    "rejectedSha": "",
+                }
+                status = 503
+            else:
+                update_state = dict(update_state)
+                status = 200
+            update_state["healthToken"] = self.server.health_token
+            self._write_json(status, update_state)
             return
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != POWER_PATH:
-            self._empty(404)
-            return
         if self.client_address[0] != "127.0.0.1":
             self._empty(403)
+            return
+
+        if self.path == HEALTH_PATH:
+            supplied_token = self.headers.get(HEALTH_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.health_token):
+                self._empty(403)
+                return
+            payload = self._read_json_body()
+            source_sha = payload.get("sourceSha") if payload else None
+            if not valid_commit_sha(source_sha):
+                self._empty(400)
+                return
+            try:
+                record_surface_health(source_sha)
+            except OSError as exc:
+                print(f"ordax-native-host: could not record Surface health: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path != POWER_PATH:
+            self._empty(404)
             return
 
         supplied_token = self.headers.get(TOKEN_HEADER, "")
@@ -153,26 +219,11 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             self._empty(403)
             return
 
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
+        payload = self._read_json_body()
+        if payload is None:
             self._empty(400)
             return
-        if length <= 0 or length > MAX_CONTROL_BODY:
-            self._empty(400)
-            return
-
-        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
-        if content_type != "application/json":
-            self._empty(415)
-            return
-
-        try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            self._empty(400)
-            return
-        action = payload.get("action") if isinstance(payload, dict) else None
+        action = payload.get("action")
         if action not in self.server.supported_actions:
             self._empty(409)
             return

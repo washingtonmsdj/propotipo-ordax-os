@@ -9,9 +9,14 @@ WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
 STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PINNED_FILE=$STATE_DIR/pinned-commit
 BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
+LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
+LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
+REJECTED_FILE=$STATE_DIR/rejected-commit
+SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
 UPDATE_LOG=$UPDATE_RUN_DIR/update.log
+HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha
 PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
@@ -31,6 +36,19 @@ esac
 chmod 700 "$UPDATE_RUN_DIR"
 : >"$UPDATE_LOG"
 
+utc_now() {
+    /bin/busybox date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'unknown\n'
+}
+
+read_state_value() {
+    file=$1
+    value=""
+    if [ -s "$file" ]; then
+        IFS= read -r value <"$file" || true
+    fi
+    printf '%s' "$value"
+}
+
 current_sha() {
     "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
 }
@@ -41,10 +59,26 @@ write_update_state() {
     apply_mode=$3
     boot_refresh=false
     [ -f "$BOOT_REFRESH_FILE" ] && boot_refresh=true
+    checked_at=$(utc_now)
+    last_applied_sha=$(read_state_value "$LAST_APPLIED_SHA_FILE")
+    last_applied_at=$(read_state_value "$LAST_APPLIED_AT_FILE")
+    rejected_sha=$(read_state_value "$REJECTED_FILE")
+    [ -n "$last_applied_at" ] || last_applied_at=unknown
     temporary=$UPDATE_STATE.tmp.$$
-    printf '{"sourceSha":"%s","status":"%s","applyMode":"%s","bootRefreshRequired":%s}\n' \
-        "$source_sha" "$status" "$apply_mode" "$boot_refresh" >"$temporary"
+    printf '{"sourceSha":"%s","status":"%s","applyMode":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s"}\n' \
+        "$source_sha" "$status" "$apply_mode" "$boot_refresh" "$checked_at" \
+        "$last_applied_sha" "$last_applied_at" "$rejected_sha" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
+}
+
+record_applied() {
+    source_sha=$1
+    temporary=$LAST_APPLIED_SHA_FILE.tmp.$$
+    printf '%s\n' "$source_sha" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$LAST_APPLIED_SHA_FILE"
+    temporary=$LAST_APPLIED_AT_FILE.tmp.$$
+    utc_now >"$temporary"
+    /bin/busybox mv -f "$temporary" "$LAST_APPLIED_AT_FILE"
 }
 
 mark_boot_refresh_required() {
@@ -81,6 +115,28 @@ stop_surface() {
     SURFACE_PID=""
 }
 
+surface_stays_running() {
+    seconds=${1:-4}
+    while [ "$seconds" -gt 0 ]; do
+        [ -n "$SURFACE_PID" ] && kill -0 "$SURFACE_PID" >/dev/null 2>&1 || return 1
+        /bin/busybox sleep 1
+        seconds=$((seconds - 1))
+    done
+    return 0
+}
+
+wait_for_surface_health() {
+    expected_sha=$1
+    seconds=${2:-12}
+    while [ "$seconds" -gt 0 ]; do
+        healthy_sha=$(read_state_value "$HEALTH_FILE")
+        [ "$healthy_sha" = "$expected_sha" ] && return 0
+        /bin/busybox sleep 1
+        seconds=$((seconds - 1))
+    done
+    return 1
+}
+
 terminate() {
     trap - EXIT HUP INT TERM
     stop_surface
@@ -96,6 +152,37 @@ fail_closed() {
     fi
     log "recovery entrypoint unavailable"
     exit 1
+}
+
+validate_updated_tree() {
+    [ -x "$SYSTEM_ENTRYPOINT" ] || return 1
+    [ -x "$SURFACE_ENTRYPOINT" ] || return 1
+    [ -x "$SYSTEM_ROOT/surface/bin/ordax-surface" ] || return 1
+    [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
+    [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || return 1
+    /bin/sh -n "$SYSTEM_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+    /bin/sh -n "$SURFACE_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+    /bin/sh -n "$SYSTEM_ROOT/surface/bin/ordax-surface" >>"$UPDATE_LOG" 2>&1 || return 1
+    return 0
+}
+
+rollback_update() {
+    previous_sha=$1
+    failed_sha=$2
+    failed_mode=$3
+    reason=$4
+    log "rejecting update $failed_sha: $reason; rolling back to $previous_sha"
+    temporary=$REJECTED_FILE.tmp.$$
+    printf '%s\n' "$failed_sha" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$REJECTED_FILE"
+    rm -f "$HEALTH_FILE"
+    stop_surface
+    if ! "$GIT_BIN" -C "$WORKTREE" reset --hard "$previous_sha" >>"$UPDATE_LOG" 2>&1; then
+        fail_closed "automatic rollback to $previous_sha failed"
+    fi
+    start_surface || fail_closed "rolled-back Surface could not be started"
+    surface_stays_running 4 || fail_closed "rolled-back Surface did not stay running"
+    write_update_state "$previous_sha" rolled-back "$failed_mode"
 }
 
 classify_changes() {
@@ -169,7 +256,19 @@ check_for_update() {
             ;;
     esac
 
-    [ "$remote_sha" = "$current" ] && return 0
+    rejected_sha=$(read_state_value "$REJECTED_FILE")
+    if [ -n "$rejected_sha" ] && [ "$remote_sha" = "$rejected_sha" ]; then
+        write_update_state "$current" rejected none
+        return 0
+    fi
+    if [ -n "$rejected_sha" ] && [ "$remote_sha" != "$rejected_sha" ]; then
+        rm -f "$REJECTED_FILE"
+    fi
+
+    if [ "$remote_sha" = "$current" ]; then
+        write_update_state "$current" running none
+        return 0
+    fi
 
     old_sha=$current
     write_update_state "$old_sha" updating none
@@ -188,29 +287,54 @@ check_for_update() {
     fi
 
     classify_changes "$old_sha" "$new_sha"
+    if ! validate_updated_tree; then
+        rollback_update "$old_sha" "$new_sha" "$APPLY_MODE" "updated system tree failed preflight validation"
+        return 0
+    fi
+
     if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
         mark_boot_refresh_required "$new_sha"
         log "boot/bootstrap changes detected; current session remains running and boot refresh is marked pending"
     fi
 
-    write_update_state "$new_sha" applied "$APPLY_MODE"
     case "$APPLY_MODE" in
         reload)
-            log "live-safe system update applied; native Surface will reload itself"
+            rm -f "$HEALTH_FILE"
+            write_update_state "$new_sha" applied reload
+            log "live-safe system update applied; waiting for Surface health acknowledgement"
+            if wait_for_surface_health "$new_sha" 12; then
+                record_applied "$new_sha"
+                write_update_state "$new_sha" running reload
+                log "updated Surface acknowledged healthy state"
+            else
+                rollback_update "$old_sha" "$new_sha" reload "Surface did not acknowledge healthy state"
+            fi
             ;;
         surface-restart)
+            write_update_state "$new_sha" applied surface-restart
             log "native host update applied; restarting Surface only"
             stop_surface
-            start_surface || fail_closed "updated Surface entrypoint could not be started"
+            if ! start_surface || ! surface_stays_running 4; then
+                rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not stay running"
+                return 0
+            fi
+            record_applied "$new_sha"
             write_update_state "$new_sha" running surface-restart
             ;;
         supervisor-restart)
+            rm -f "$HEALTH_FILE"
+            temporary=$SUPERVISOR_GUARD_FILE.tmp.$$
+            printf '%s %s\n' "$old_sha" "$new_sha" >"$temporary"
+            /bin/busybox mv -f "$temporary" "$SUPERVISOR_GUARD_FILE"
+            write_update_state "$new_sha" applied supervisor-restart
             log "supervisor update applied; restarting system supervisor without reboot"
             stop_surface
             trap - EXIT HUP INT TERM
             exec "$SYSTEM_ENTRYPOINT"
             ;;
         none)
+            record_applied "$new_sha"
+            write_update_state "$new_sha" running none
             log "repository update has no running-system effect"
             ;;
     esac
@@ -225,6 +349,27 @@ initial_sha=$(current_sha)
 write_update_state "$initial_sha" running initial
 log "starting shared OrdaX Surface with Git hot-update supervisor"
 start_surface || fail_closed "surface entrypoint could not be started"
+
+if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
+    guard_line=$(read_state_value "$SUPERVISOR_GUARD_FILE")
+    set -- $guard_line
+    guard_previous=${1:-}
+    guard_current=${2:-}
+    if [ -n "$guard_previous" ] && [ "$guard_current" = "$initial_sha" ]; then
+        log "validating restarted supervisor and Surface for $guard_current"
+        if surface_stays_running 4 && wait_for_surface_health "$guard_current" 12; then
+            record_applied "$guard_current"
+            rm -f "$SUPERVISOR_GUARD_FILE"
+            write_update_state "$guard_current" running supervisor-restart
+            log "restarted supervisor and Surface acknowledged healthy state"
+        else
+            rm -f "$SUPERVISOR_GUARD_FILE"
+            rollback_update "$guard_previous" "$guard_current" supervisor-restart "restarted supervisor/Surface did not become healthy"
+        fi
+    else
+        rm -f "$SUPERVISOR_GUARD_FILE"
+    fi
+fi
 
 while :; do
     /bin/busybox sleep "$UPDATE_INTERVAL"
