@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'system/entrypoint'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
@@ -21,16 +22,19 @@ on:
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
+      - 'tests/test_hot_update_supervisor.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
+      - 'tests/test_native_update_runtime.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
     paths:
+      - 'system/entrypoint'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/identity-session.mjs'
@@ -48,11 +52,13 @@ on:
       - 'tools/surface-web/**'
       - 'tests/test_surface_ui_contract.py'
       - 'tests/test_surface_web_builder.py'
+      - 'tests/test_hot_update_supervisor.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
+      - 'tests/test_native_update_runtime.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
@@ -103,6 +109,7 @@ jobs:
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
+          node --test tests/test_native_update_runtime.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_sync_*.mjs
 
@@ -110,6 +117,7 @@ jobs:
         run: |
           python -m unittest tests.test_surface_ui_contract -v
           python -m unittest tests.test_surface_web_builder -v
+          python -m unittest tests.test_hot_update_supervisor -v
 
       - name: Build and verify deterministic Web client
         run: |
@@ -127,7 +135,7 @@ jobs:
           echo 'KERNEL_REBUILD_REQUIRED=NO'
 
       - name: Upload Web client candidate
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@b7c566a772e6b6fb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-web-client-${{ github.sha }}
           path: out/web-client/
