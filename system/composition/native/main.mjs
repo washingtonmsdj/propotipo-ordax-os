@@ -8,13 +8,11 @@ import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs"
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
-import { createAppActivationChannel } from "../../services/apps/activation.mjs";
-import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
-import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
-import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
+import { mountSystemMetricsControls } from "../../surface/ui/system-metrics-controls.mjs";
+import { mountSystemStatusControls } from "../../surface/ui/system-status-controls.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
 async function start() {
@@ -27,7 +25,6 @@ async function start() {
   const workspaceStore = createNativeWorkspaceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
-  const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
 
   let powerActions = null;
@@ -71,30 +68,13 @@ async function start() {
     root,
     host,
     preferenceStore,
-    workspaceStore,
-    appActivation,
-  );
-  const accountOverviewControls = mountAccountOverviewControls(
-    root,
-    host,
     identitySession,
     identityActions,
-    surface,
+    workspaceStore,
   );
-  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
-  const settingsOverviewControls = mountSettingsOverviewControls(
-    root,
-    host,
-    surface.preferences,
-    surface,
-  );
-  const systemOverviewControls = mountSystemOverviewControls(
-    root,
-    host,
-    updateWatcher,
-    systemMetrics,
-    surface,
-  );
+  const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
+  const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics);
+  const systemStatusControls = mountSystemStatusControls(root, updateWatcher);
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
 
@@ -108,10 +88,9 @@ async function start() {
     () => {
       powerControls.destroy();
       updateControls.destroy();
-      systemOverviewControls.destroy();
-      settingsOverviewControls.destroy();
+      systemStatusControls.destroy();
+      systemMetricsControls.destroy();
       fileSpaceControls.destroy();
-      accountOverviewControls.destroy();
       updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
