@@ -24,11 +24,17 @@ if have_ipv4; then
     exit 0
 fi
 
+# Only Ethernet-like non-wireless interfaces are valid candidates for the
+# wired/USB-tether DHCP pass. Kernel-created tunnels such as sit0 also appear
+# in /sys/class/net, but are not physical/tether interfaces and must not delay
+# boot with pointless DHCP attempts.
 for netpath in /sys/class/net/*; do
     [ -e "$netpath" ] || continue
     iface=${netpath##*/}
     [ "$iface" = lo ] && continue
     [ -d "$netpath/wireless" ] && continue
+    net_type=$(cat "$netpath/type" 2>/dev/null || true)
+    [ "$net_type" = 1 ] || continue
     echo "ordax-network: tentando DHCP em $iface"
     if try_dhcp "$iface"; then
         echo "ordax-network: conectado em $iface"
@@ -50,11 +56,26 @@ done
 
 ip link set "$wifi" up >/dev/null 2>&1 || true
 
+wait_for_wifi_link() {
+    attempts=0
+    while [ "$attempts" -lt 12 ]; do
+        if iw dev "$wifi" link 2>/dev/null | grep -q '^Connected to '; then
+            return 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 1
+    done
+    return 1
+}
+
 connect_saved_wifi() {
     [ -s "$WPA_CONF" ] || return 1
     killall wpa_supplicant >/dev/null 2>&1 || true
     wpa_supplicant -B -i "$wifi" -c "$WPA_CONF" >/dev/null 2>&1 || return 1
-    sleep 2
+    if ! wait_for_wifi_link; then
+        killall wpa_supplicant >/dev/null 2>&1 || true
+        return 1
+    fi
     try_dhcp "$wifi"
 }
 
@@ -68,7 +89,7 @@ iw dev "$wifi" scan 2>/dev/null \
     | awk -F': ' '/^[[:space:]]*SSID: / {print $2}' \
     | sed '/^$/d' | sort -u | head -30 || true
 
-printf 'SSID: '
+printf 'SSID (nome exato da rede acima, nao a senha): '
 IFS= read -r ssid
 [ -n "$ssid" ] || {
     echo "ordax-network: SSID vazio" >&2
@@ -94,5 +115,6 @@ if connect_saved_wifi; then
     exit 0
 fi
 
-echo "ordax-network: nao foi possivel obter rede" >&2
+echo "ordax-network: a associacao Wi-Fi ou o DHCP nao concluiu em $wifi" >&2
+echo "ordax-network: execute ordax-network novamente e confirme o SSID exato listado acima" >&2
 exit 1
