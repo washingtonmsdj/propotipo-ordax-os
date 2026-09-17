@@ -45,7 +45,7 @@ jobs:
           progress = pathlib.Path('tools/creator/cmd/ordax-creator-app/physical_progress_windows.go').read_text(encoding='utf-8')
           update = pathlib.Path('tools/creator/cmd/ordax-creator-app/update_check_windows.go').read_text(encoding='utf-8')
           backend = pathlib.Path('tools/creator/cmd/ordax-creator-app/backend_resolution_windows.go').read_text(encoding='utf-8')
-          standalone = pathlib.Path('tools/creator/cmd/ordax-creator-app/owner_single_exe_backend_windows.go').read_text(encoding='utf-8')
+          split_owner = pathlib.Path('tools/creator/cmd/ordax-creator-app/owner_prototype_backend_enabled_windows.go').read_text(encoding='utf-8')
           release_workflow = pathlib.Path('.github/workflows/creator-owner-dev-git.yml').read_text(encoding='utf-8')
 
           required_main = [
@@ -89,25 +89,26 @@ jobs:
               'ownerPrototypePhysicalBackend()',
               'return finishRefreshState(result, ownerDirectory)',
           ]
-          required_standalone = [
-              'ordax_owner_prototype && ordax_single_exe && ordax_raw_backend',
-              'owner_payload/ordax-bootstrap-seed.raw.gz',
-              'os.Executable()',
+          required_split_owner = [
+              'windows && ordax_owner_prototype && !ordax_single_exe',
               'ordax-creator-physical-test.exe',
-              'runOwnerBackendCommand',
-              'command != "status" && command != "targets" && command != "prepare" && command != "apply"',
+              'ordax-bootstrap-seed.raw',
+              'provenance.json',
           ]
           required_release_workflow = [
               'name: Creator Owner Development Git USB',
               "bootstrap/dev-base/**",
-              "-tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend'",
-              'OrdaX-Creator.exe',
-              'creator-owner-update.json',
-              'prototype-ordax.creator-owner-update/2',
-              "delete-asset creator-owner-prototype",
-              "'OrdaX-Creator-Owner-Prototype.zip'",
+              "-tags 'ordax_raw_backend'",
+              "-tags 'ordax_owner_prototype'",
+              'ordax-creator-physical-test.exe',
+              'ordax-bootstrap-seed.raw',
+              'OrdaX-Creator-Owner-Prototype.zip',
+              'prototype-ordax.creator-owner-bundle-update/1',
+              "delete-asset creator-owner-prototype 'OrdaX-Creator.exe'",
               'OrdaX Creator - Development Git USB',
-              'OWNER_RELEASE_PIPELINE=UNIFIED',
+              'OWNER_RELEASE_PIPELINE=SPLIT_BUNDLE',
+              'OWNER_STANDALONE_EXE_PUBLISHED=NO',
+              'OWNER_SPLIT_BUNDLE_PUBLISHED=YES',
               'Destroy ephemeral private key before publish',
           ]
 
@@ -118,16 +119,17 @@ jobs:
           for text in required_progress:
               assert text in progress, f'missing Creator progress anchor: {text}'
           for text in required_update:
-              assert text in update, f'missing Creator update anchor: {text}'
+              assert text in update, f'missing Creator legacy self-update anchor: {text}'
           for text in required_backend:
               assert text in backend, f'missing owner isolation anchor: {text}'
-          for text in required_standalone:
-              assert text in standalone, f'missing standalone Creator anchor: {text}'
+          for text in required_split_owner:
+              assert text in split_owner, f'missing split owner Creator anchor: {text}'
           for text in required_release_workflow:
               assert text in release_workflow, f'missing Git-first owner release anchor: {text}'
 
           assert 'workflow_run:' not in release_workflow, 'owner release must not depend on a workflow_run publication chain'
-          assert 'OrdaX-Creator-Owner-Prototype.zip"' not in release_workflow, 'owner public release must not build a ZIP artifact'
+          assert 'ordax_single_exe' not in release_workflow, 'owner development release must not link the GUI and RAW writer into one executable'
+          assert 'owner_payload/ordax-bootstrap-seed.raw.gz' not in release_workflow, 'owner development GUI must not embed the raw seed'
 
           owner_pos = backend.index('ownerPrototypePhysicalBackend()')
           dev_pos = backend.index('creatorupdate.Ensure')
@@ -139,11 +141,10 @@ jobs:
           print('CREATOR_POST_UAC_STATUS_TRANSITION=YES')
           print('CREATOR_PROGRESS_INDICATOR=YES')
           print('CREATOR_PROGRESS_BYTES=YES')
-          print('CREATOR_SINGLE_STANDALONE_EXE=YES')
-          print('CREATOR_OWNER_ZIP_REQUIRED=NO')
-          print('CREATOR_UPDATE_ARTIFACT=OrdaX-Creator.exe')
-          print('CREATOR_IN_APP_UPDATE=YES')
-          print('CREATOR_UPDATE_ANTI_DOWNGRADE=YES')
-          print('CREATOR_UPDATE_ROLLBACK=YES')
-          print('CREATOR_RELEASE_PIPELINE=GIT_FIRST_DEV')
+          print('CREATOR_SINGLE_STANDALONE_EXE=NO')
+          print('CREATOR_OWNER_ZIP_REQUIRED=YES')
+          print('CREATOR_GUI_RAW_BACKEND_LINKED=NO')
+          print('CREATOR_RAW_HELPER_SEPARATE=YES')
+          print('CREATOR_UPDATE_ARTIFACT=OrdaX-Creator-Owner-Prototype.zip')
+          print('CREATOR_RELEASE_PIPELINE=GIT_FIRST_DEV_SPLIT_BUNDLE')
           PY
