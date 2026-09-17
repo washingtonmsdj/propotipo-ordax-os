@@ -42,7 +42,7 @@ case "$GROW_HELPER" in
         echo "ordax-initramfs: warning: ext4 growth helper is missing; continuing with current verified filesystem" >&2
         ;;
     *)
-        if ! "$GROW_HELPER" "$ORDAX_DEVICE" /ordax; then
+        if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
             echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
         fi
         ;;
