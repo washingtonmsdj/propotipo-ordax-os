@@ -116,6 +116,16 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("WLR_LIBINPUT_NO_DEVICES=1", text)
         self.assertIn("failed to prepare physical keyboard/touchpad input devices", text)
 
+    def test_native_host_clears_only_stale_seatd_socket(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("SEATD_SOCKET=/run/seatd.sock", text)
+        self.assertIn("seatd_process_running", text)
+        self.assertIn("remove_stale_seatd_socket", text)
+        self.assertIn("seatd path exists but is not a UNIX socket", text)
+        self.assertIn("seatd socket is owned by a running seatd process; refusing to remove it", text)
+        self.assertIn("removing stale seatd socket", text)
+        self.assertIn("failed to clear stale seatd socket before native host startup", text)
+
     def test_native_surface_fallback_exposes_physical_diagnostics(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("fallback_with_reason", text)
