@@ -74,6 +74,44 @@ class DevelopmentFirmwareTest(unittest.TestCase):
             self.assertFalse((firmware / "brcm/unrelated.bin").exists())
             self.assertFalse(target.exists())
 
+    def test_build_only_runtime_pruning_removes_metadata_and_zstd(self):
+        with tempfile.TemporaryDirectory() as temp:
+            rootfs = Path(temp)
+            for relative in BUILD.RUNTIME_PRUNE_PATHS:
+                path = rootfs / relative
+                if Path(relative).suffix:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("metadata", encoding="utf-8")
+                else:
+                    path.mkdir(parents=True, exist_ok=True)
+                    (path / "placeholder").write_text("metadata", encoding="utf-8")
+
+            zstd = rootfs / "usr/bin/zstd"
+            zstd.parent.mkdir(parents=True, exist_ok=True)
+            zstd.write_text("binary", encoding="utf-8")
+
+            commands = []
+            original_proot = BUILD.CORE.proot_rootfs
+
+            def fake_proot(_rootfs, command):
+                commands.append(command)
+                zstd.unlink(missing_ok=True)
+
+            BUILD.CORE.proot_rootfs = fake_proot
+            try:
+                BUILD.prune_build_only_runtime(rootfs)
+            finally:
+                BUILD.CORE.proot_rootfs = original_proot
+
+            self.assertEqual(commands, ["apk del --no-cache zstd"])
+            self.assertFalse(zstd.exists())
+            for relative in BUILD.RUNTIME_PRUNE_PATHS:
+                self.assertFalse((rootfs / relative).exists())
+
+    def test_zstd_is_build_only_not_runtime_capability(self):
+        self.assertIn("zstd", BUILD.PACKAGES)
+        self.assertEqual(BUILD.BUILD_ONLY_PACKAGES, ("zstd",))
+
     def test_unrelated_firmware_packages_are_not_seeded(self):
         for package in (
             "linux-firmware-brcm",
