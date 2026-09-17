@@ -20,7 +20,7 @@ HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha
 PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
-UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
+UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-20}
 SURFACE_PID=""
 
 log() {
@@ -28,7 +28,7 @@ log() {
 }
 
 case "$UPDATE_INTERVAL" in
-    ''|*[!0-9]*) UPDATE_INTERVAL=5 ;;
+    ''|*[!0-9]*) UPDATE_INTERVAL=20 ;;
 esac
 [ "$UPDATE_INTERVAL" -ge 5 ] 2>/dev/null || UPDATE_INTERVAL=5
 
