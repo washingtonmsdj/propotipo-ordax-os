@@ -196,20 +196,22 @@ jobs:
           PY
           echo "$proof/ordax-disposable.raw" > "$RUNNER_TEMP/owner-prototype-seed-path"
 
-      - name: Build one-file Windows Creator
+      - name: Build split Windows Creator bundle
         run: |
           set -euo pipefail
           seed="$(cat "$RUNNER_TEMP/owner-prototype-seed-path")"
           manifest="$RUNNER_TEMP/minimal-bootstrap-owner-dev.json"
-          payload='tools/creator/cmd/ordax-creator-app/owner_payload'
           release="$GITHUB_WORKSPACE/out/owner-prototype/release"
-          mkdir -p "$payload" "$release"
+          bundle="$RUNNER_TEMP/OrdaX-Creator"
+          mkdir -p "$release" "$bundle"
+
           trust_sha="$(sha256sum bootstrap/trust/release-ed25519.json | cut -d' ' -f1)"
           manifest_sha="$(sha256sum "$manifest" | cut -d' ' -f1)"
           seed_sha="$(sha256sum "$seed" | cut -d' ' -f1)"
           seed_size="$(stat -c '%s' "$seed")"
-          gzip -9 -n -c "$seed" > "$payload/ordax-bootstrap-seed.raw.gz"
-          python - "$payload/provenance.json" "$trust_sha" "$manifest_sha" "$seed_sha" "$seed_size" <<'PY'
+          cp "$seed" "$bundle/ordax-bootstrap-seed.raw"
+
+          python - "$bundle/provenance.json" "$trust_sha" "$manifest_sha" "$seed_sha" "$seed_size" <<'PY'
           import json, os, pathlib, sys
           data = {
               '$schema': 'prototype-ordax.creator-owner-physical/1',
@@ -231,50 +233,94 @@ jobs:
           }
           pathlib.Path(sys.argv[1]).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           PY
+
           pushd tools/creator >/dev/null
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
             go build -trimpath -buildvcs=false \
-              -tags 'ordax_owner_prototype,ordax_single_exe,ordax_raw_backend' \
+              -tags 'ordax_raw_backend' \
+              -ldflags="-s -w -X main.buildSourceCommit=$GITHUB_SHA -X main.buildCanonicalTrustSHA256=$trust_sha -X main.buildManifestSHA256=$manifest_sha -X main.buildSeedImageSHA256=$seed_sha -X main.buildSeedImageSize=$seed_size -X main.buildPhysicalWriteAuthorized=YES" \
+              -o "$bundle/ordax-creator-physical-test.exe" \
+              ./cmd/ordax-creator-physical-test
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -trimpath -buildvcs=false \
+              -tags 'ordax_owner_prototype' \
               -ldflags='-s -w -H=windowsgui' \
-              -o "$release/OrdaX-Creator.exe" \
+              -o "$bundle/OrdaX-Creator.exe" \
               ./cmd/ordax-creator-app
           popd >/dev/null
-          test -s "$release/OrdaX-Creator.exe"
-          sha256sum "$release/OrdaX-Creator.exe" > "$release/SHA256SUMS.txt"
-          exe_sha="$(cut -d' ' -f1 "$release/SHA256SUMS.txt")"
-          exe_size="$(stat -c '%s' "$release/OrdaX-Creator.exe")"
-          version="owner-${GITHUB_SHA:0:12}"
-          cat > "$release/LEIA-ME.txt" <<'TXT'
+
+          test -s "$bundle/OrdaX-Creator.exe"
+          test -s "$bundle/ordax-creator-physical-test.exe"
+          test -s "$bundle/ordax-bootstrap-seed.raw"
+          test -s "$bundle/provenance.json"
+
+          cat > "$bundle/LEIA-ME.txt" <<'TXT'
           OrdaX Creator - Development Git USB
+
+          1. Extraia a pasta inteira do ZIP.
+          2. Execute somente OrdaX-Creator.exe.
+          3. O helper ordax-creator-physical-test.exe sera elevado apenas quando a gravacao do USB for autorizada.
+
+          Esta distribuicao separa a interface normal do componente privilegiado de escrita RAW.
+          O canal owner/development ainda nao possui assinatura Authenticode configurada.
 
           Grave esta base uma vez. Ela contem boot, kernel, drivers, rede e Git.
           No notebook, o OrdaX fica em /workspace/ordax e vem da main por git clone/pull.
 
-          Fluxo normal:
+          Fluxo normal no OrdaX:
           ordax-pull     atualiza da main
           ordax-run      executa o checkout atual
           ordax-rollback volta ao commit anterior registrado
 
           Mudancas normais do OrdaX nao exigem regravar o USB nem recompilar o kernel.
           TXT
-          python - "$release/creator-owner-update.json" "$GITHUB_SHA" "$version" "$exe_sha" "$exe_size" <<'PY'
+          cp "$bundle/LEIA-ME.txt" "$release/LEIA-ME.txt"
+
+          python - "$bundle" "$release/OrdaX-Creator-Owner-Prototype.zip" <<'PY'
+          import pathlib, sys, zipfile
+          source = pathlib.Path(sys.argv[1])
+          output = pathlib.Path(sys.argv[2])
+          expected = [
+              'OrdaX-Creator.exe',
+              'ordax-creator-physical-test.exe',
+              'ordax-bootstrap-seed.raw',
+              'provenance.json',
+              'LEIA-ME.txt',
+          ]
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+              for name in expected:
+                  path = source / name
+                  if not path.is_file():
+                      raise SystemExit(f'missing bundle file: {name}')
+                  archive.write(path, arcname=f'OrdaX-Creator/{name}')
+          PY
+
+          zip_sha="$(sha256sum "$release/OrdaX-Creator-Owner-Prototype.zip" | cut -d' ' -f1)"
+          zip_size="$(stat -c '%s' "$release/OrdaX-Creator-Owner-Prototype.zip")"
+          printf '%s  %s\n' "$zip_sha" 'OrdaX-Creator-Owner-Prototype.zip' > "$release/SHA256SUMS.txt"
+          version="owner-${GITHUB_SHA:0:12}"
+          python - "$release/creator-owner-update.json" "$GITHUB_SHA" "$version" "$zip_sha" "$zip_size" <<'PY'
           import json, pathlib, sys
           output, source, version, digest, size = sys.argv[1:]
           data = {
-              '$schema': 'prototype-ordax.creator-owner-update/2',
+              '$schema': 'prototype-ordax.creator-owner-bundle-update/1',
               'channel': 'owner-prototype',
               'version': version,
               'source_commit': source,
-              'download_url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator.exe',
+              'artifact': 'OrdaX-Creator-Owner-Prototype.zip',
+              'download_url': 'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/creator-owner-prototype/OrdaX-Creator-Owner-Prototype.zip',
               'sha256': digest,
-              'size': int(size)
+              'size': int(size),
+              'automatic_in_app_update': False
           }
           pathlib.Path(output).write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
           PY
-          rm -rf "$payload"
-          echo "OWNER_STANDALONE_SOURCE=$GITHUB_SHA"
-          echo "OWNER_STANDALONE_EXE_SHA256=$exe_sha"
-          echo "OWNER_STANDALONE_SEED_SHA256=$seed_sha"
+
+          echo "OWNER_BUNDLE_SOURCE=$GITHUB_SHA"
+          echo "OWNER_BUNDLE_SHA256=$zip_sha"
+          echo "OWNER_SEED_SHA256=$seed_sha"
+          echo 'OWNER_GUI_RAW_BACKEND_LINKED=NO'
+          echo 'OWNER_RAW_HELPER_SEPARATE=YES'
 
       - name: Destroy ephemeral private key before publish
         run: |
@@ -284,7 +330,7 @@ jobs:
           test ! -e "$private"
           rm -f out/owner-prototype/ordax-release-signing
 
-      - name: Publish development Creator
+      - name: Publish development Creator bundle
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -297,16 +343,17 @@ jobs:
               --notes 'Development-only Git USB.'
           fi
           gh release upload creator-owner-prototype \
-            "$release/OrdaX-Creator.exe" "$release/SHA256SUMS.txt" \
+            "$release/OrdaX-Creator-Owner-Prototype.zip" "$release/SHA256SUMS.txt" \
             "$release/LEIA-ME.txt" "$release/creator-owner-update.json" \
             --repo "$repo" --clobber
-          gh release delete-asset creator-owner-prototype 'OrdaX-Creator-Owner-Prototype.zip' \
+          gh release delete-asset creator-owner-prototype 'OrdaX-Creator.exe' \
             --repo "$repo" --yes || true
           gh release edit creator-owner-prototype --repo "$repo" --target "$GITHUB_SHA" \
             --title 'OrdaX Creator - Development Git USB' \
-            --notes 'One-time development base flash. Ordinary changes: remote main -> ordax-pull -> ordax-run.'
-          echo 'OWNER_RELEASE_PIPELINE=UNIFIED'
-          echo 'OWNER_STANDALONE_EXE_PUBLISHED=YES'
+            --notes 'Development bundle: extract the ZIP and run OrdaX-Creator.exe. GUI and privileged RAW writer are separate. Ordinary OrdaX changes remain remote main -> ordax-pull -> ordax-run.'
+          echo 'OWNER_RELEASE_PIPELINE=SPLIT_BUNDLE'
+          echo 'OWNER_STANDALONE_EXE_PUBLISHED=NO'
+          echo 'OWNER_SPLIT_BUNDLE_PUBLISHED=YES'
 
       - name: Cleanup ephemeral private material
         if: ${{ always() }}
@@ -316,5 +363,4 @@ jobs:
             private="$(cat "$RUNNER_TEMP/owner-prototype-private-path")"
             rm -f "$private"
           fi
-          rm -rf tools/creator/cmd/ordax-creator-app/owner_payload
           rm -f out/owner-prototype/ordax-release-signing
