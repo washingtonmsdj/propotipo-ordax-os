@@ -17,6 +17,7 @@ PROC_BOUND=0
 SYS_BOUND=0
 RUN_BOUND=0
 SYSTEM_BOUND=0
+UDEV_ACTIVE=0
 
 mkdir -p "$SESSION_DIR"
 chmod 700 "$SESSION_DIR"
@@ -28,6 +29,10 @@ cleanup() {
         kill "$HTTP_PID" >/dev/null 2>&1 || true
         wait "$HTTP_PID" 2>/dev/null || true
         HTTP_PID=""
+    fi
+    if [ "$UDEV_ACTIVE" -eq 1 ] && [ -x "$RUNTIME_ROOT/bin/udevadm" ]; then
+        /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm control --exit >/dev/null 2>&1 || true
+        UDEV_ACTIVE=0
     fi
     if [ "$SYSTEM_BOUND" -eq 1 ]; then
         /bin/busybox umount "$RUNTIME_ROOT/srv/ordax-system" >/dev/null 2>&1 || true
@@ -68,25 +73,15 @@ console_fallback() {
     printf 'HTTP log: %s\n' "$HTTP_LOG"
     if [ -s "$HOST_LOG" ]; then
         printf '\nDiagnostic:\n'
-        if [ -x /bin/busybox ]; then
-            /bin/busybox tail -n 20 "$HOST_LOG" 2>/dev/null || cat "$HOST_LOG" 2>/dev/null || true
-        else
-            cat "$HOST_LOG" 2>/dev/null || true
-        fi
+        /bin/busybox tail -n 28 "$HOST_LOG" 2>/dev/null || cat "$HOST_LOG" 2>/dev/null || true
     fi
     if [ -s "$HTTP_LOG" ]; then
         printf '\nHTTP diagnostic:\n'
-        if [ -x /bin/busybox ]; then
-            /bin/busybox tail -n 20 "$HTTP_LOG" 2>/dev/null || cat "$HTTP_LOG" 2>/dev/null || true
-        else
-            cat "$HTTP_LOG" 2>/dev/null || true
-        fi
+        /bin/busybox tail -n 20 "$HTTP_LOG" 2>/dev/null || cat "$HTTP_LOG" 2>/dev/null || true
     fi
     printf '\nThe checked-out system remains available for maintenance.\n'
     trap 'exit 0' HUP INT TERM
-    while :; do
-        sleep 3600
-    done
+    while :; do sleep 3600; done
 }
 
 fallback_with_reason() {
@@ -105,33 +100,23 @@ runtime_base_is_ready() {
 
 runtime_is_ready() {
     runtime_base_is_ready &&
-        [ -x "$RUNTIME_ROOT/usr/bin/Xwayland" ]
+        [ -x "$RUNTIME_ROOT/usr/bin/Xwayland" ] &&
+        [ -x "$RUNTIME_ROOT/sbin/udevd" ] &&
+        [ -x "$RUNTIME_ROOT/bin/udevadm" ] &&
+        [ -f "$RUNTIME_ROOT/usr/lib/udev/rules.d/60-input-id.rules" ]
 }
 
 install_runtime() {
-    [ -x /sbin/apk ] || {
-        echo "ordax-surface: /sbin/apk is unavailable in the Git bootstrap base" >>"$HOST_LOG"
-        return 1
-    }
-    [ -d /etc/apk/keys ] || {
-        echo "ordax-surface: Alpine trusted keys are unavailable" >>"$HOST_LOG"
-        return 1
-    }
-
+    [ -x /sbin/apk ] || { echo "ordax-surface: /sbin/apk is unavailable in the Git bootstrap base" >>"$HOST_LOG"; return 1; }
+    [ -d /etc/apk/keys ] || { echo "ordax-surface: Alpine trusted keys are unavailable" >>"$HOST_LOG"; return 1; }
     set -- /etc/apk/keys/*.pub
-    [ -f "$1" ] || {
-        echo "ordax-surface: Alpine trusted public keys are unavailable" >>"$HOST_LOG"
-        return 1
-    }
+    [ -f "$1" ] || { echo "ordax-surface: Alpine trusted public keys are unavailable" >>"$HOST_LOG"; return 1; }
 
     mkdir -p "$RUNTIME_STATE"
     STAGING_DIR=$RUNTIME_STATE/.staging-$$
     rm -rf "$STAGING_DIR"
     mkdir -p "$STAGING_DIR/rootfs/etc/apk/keys"
-
-    for key in /etc/apk/keys/*.pub; do
-        cp "$key" "$STAGING_DIR/rootfs/etc/apk/keys/"
-    done
+    for key in /etc/apk/keys/*.pub; do cp "$key" "$STAGING_DIR/rootfs/etc/apk/keys/"; done
     if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
         mkdir -p "$STAGING_DIR/rootfs/etc/ssl/certs"
         cp /etc/ssl/certs/ca-certificates.crt "$STAGING_DIR/rootfs/etc/ssl/certs/"
@@ -142,83 +127,59 @@ https://dl-cdn.alpinelinux.org/alpine/v3.22/community
 REPOSITORIES
 
     echo "ordax-surface: provisioning replaceable graphical runtime in $RUNTIME_STATE" >>"$HOST_LOG"
-    if ! /sbin/apk --root "$STAGING_DIR/rootfs" \
-        --keys-dir /etc/apk/keys \
-        --no-cache \
-        --initdb \
-        add \
-        alpine-baselayout \
-        busybox \
-        ca-certificates \
-        cage \
-        barkery-browser \
-        xwayland \
-        seatd-launch \
-        mesa-dri-gallium \
-        mesa-egl \
-        mesa-gbm \
-        font-dejavu \
-        >>"$HOST_LOG" 2>&1; then
+    if ! /sbin/apk --root "$STAGING_DIR/rootfs" --keys-dir /etc/apk/keys --no-cache --initdb add \
+        alpine-baselayout busybox ca-certificates cage barkery-browser xwayland \
+        seatd-launch mesa-dri-gallium mesa-egl mesa-gbm font-dejavu \
+        eudev libinput-udev >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: graphical runtime provisioning failed" >>"$HOST_LOG"
         return 1
     fi
 
-    for directory in dev proc sys run tmp root srv/ordax-system; do
-        mkdir -p "$STAGING_DIR/rootfs/$directory"
-    done
+    for directory in dev proc sys run tmp root srv/ordax-system; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
-
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/python3" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/Xwayland" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/sbin/udevd" ] || return 1
+    [ -x "$STAGING_DIR/rootfs/bin/udevadm" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/seatd-launch" ] || return 1
 
     printf '%s\n' "$RUNTIME_ID" >"$STAGING_DIR/ready"
     rm -rf "$RUNTIME_STATE/$RUNTIME_ID"
     mv "$STAGING_DIR" "$RUNTIME_STATE/$RUNTIME_ID"
     STAGING_DIR=""
-    return 0
 }
 
 upgrade_existing_runtime() {
-    echo "ordax-surface: extending existing graphical runtime with Xwayland" >>"$HOST_LOG"
-    if ! /sbin/apk --root "$RUNTIME_ROOT" \
-        --keys-dir /etc/apk/keys \
-        --no-cache \
-        add xwayland \
-        >>"$HOST_LOG" 2>&1; then
+    echo "ordax-surface: extending existing graphical runtime with input discovery support" >>"$HOST_LOG"
+    if ! /sbin/apk --root "$RUNTIME_ROOT" --keys-dir /etc/apk/keys --no-cache add \
+        xwayland eudev libinput-udev >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: failed to extend existing graphical runtime" >>"$HOST_LOG"
         return 1
     fi
-    [ -x "$RUNTIME_ROOT/usr/bin/Xwayland" ]
+    runtime_is_ready
 }
 
 ensure_runtime() {
     runtime_is_ready && return 0
     if runtime_base_is_ready; then
         upgrade_existing_runtime || return 1
-        runtime_is_ready
-        return
+        return 0
     fi
     install_runtime || return 1
     runtime_is_ready
 }
 
 ensure_loopback() {
-    [ -x /sbin/ip ] || {
-        echo "ordax-surface: /sbin/ip is unavailable; cannot configure loopback" >>"$HOST_LOG"
-        return 1
-    }
+    [ -x /sbin/ip ] || { echo "ordax-surface: /sbin/ip is unavailable; cannot configure loopback" >>"$HOST_LOG"; return 1; }
     /sbin/ip link set dev lo up >>"$HOST_LOG" 2>&1 || return 1
     /sbin/ip address replace 127.0.0.1/8 dev lo >>"$HOST_LOG" 2>&1 || return 1
-    return 0
 }
 
 ensure_shared_memory() {
     mkdir -p /dev/shm >>"$HOST_LOG" 2>&1 || return 1
     chmod 1777 /dev/shm >>"$HOST_LOG" 2>&1 || return 1
-    return 0
 }
 
 configure_browser() {
@@ -245,7 +206,24 @@ bind_runtime_mounts() {
     SYS_BOUND=1
     /bin/busybox mount -o bind /run "$RUNTIME_ROOT/run" >>"$HOST_LOG" 2>&1 || return 1
     RUN_BOUND=1
-    return 0
+}
+
+prepare_input_stack() {
+    set -- /dev/input/event*
+    if [ ! -e "$1" ]; then
+        echo "ordax-surface: no /dev/input/event* devices are visible on the host" >>"$HOST_LOG"
+        [ -d /dev/input ] && ls -la /dev/input >>"$HOST_LOG" 2>&1 || true
+        return 1
+    fi
+    echo "ordax-surface: input event devices are present; starting eudev classification" >>"$HOST_LOG"
+    mkdir -p "$RUNTIME_ROOT/run/udev" || return 1
+    /bin/busybox chroot "$RUNTIME_ROOT" /sbin/udevd --daemon >>"$HOST_LOG" 2>&1 || return 1
+    UDEV_ACTIVE=1
+    /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm control --reload-rules >>"$HOST_LOG" 2>&1 || return 1
+    /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm trigger --subsystem-match=input --action=add >>"$HOST_LOG" 2>&1 || return 1
+    /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm settle --timeout=5 >>"$HOST_LOG" 2>&1 || return 1
+    /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm info --query=property --name="$1" >>"$HOST_LOG" 2>&1 || true
+    echo "ordax-surface: eudev input classification complete" >>"$HOST_LOG"
 }
 
 [ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
@@ -257,20 +235,15 @@ ensure_loopback || fallback_with_reason "failed to configure IPv4 loopback for l
 ensure_shared_memory || fallback_with_reason "failed to prepare /dev/shm for wlroots/Xwayland"
 configure_browser || fallback_with_reason "failed to configure Barkery browser runtime"
 bind_runtime_mounts || fallback_with_reason "failed to bind host resources into graphical runtime"
+prepare_input_stack || fallback_with_reason "failed to prepare physical keyboard/touchpad input devices"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
 export GDK_BACKEND=wayland
-export WLR_LIBINPUT_NO_DEVICES=1
 export ORDAX_SURFACE_MODE=native-graphical
 
-# Serve the checked-out shared system tree from the replaceable graphical
-# runtime itself. The fixed bootstrap intentionally does not carry an HTTP
-# server applet; Barkery already brings Python into this runtime.
 /bin/busybox chroot "$RUNTIME_ROOT" \
-    /usr/bin/python3 -m http.server 8765 \
-    --bind 127.0.0.1 \
-    --directory /srv/ordax-system \
+    /usr/bin/python3 -m http.server 8765 --bind 127.0.0.1 --directory /srv/ordax-system \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
@@ -279,12 +252,8 @@ kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "loopback Surface HT
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
-# Cage and Barkery/WebKitGTK live in a replaceable runtime root under /state.
-# No graphical stack is baked into the Git-first bootstrap, so ordinary
-# host/runtime changes can be shipped by ordax-pull without rewriting the USB.
 if /bin/busybox chroot "$RUNTIME_ROOT" \
-    /usr/bin/seatd-launch -- /usr/bin/cage -s -- \
-    /usr/bin/barkery \
+    /usr/bin/seatd-launch -- /usr/bin/cage -s -- /usr/bin/barkery \
     >"$HOST_LOG" 2>&1; then
     exit 0
 else
