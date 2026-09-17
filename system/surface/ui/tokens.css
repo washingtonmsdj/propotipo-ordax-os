@@ -64,9 +64,3 @@
   --ordax-danger-bg: rgba(201, 71, 85, 0.12);
   --ordax-shadow: 0 22px 60px rgba(45, 56, 76, 0.18);
 }
-
-/* Temporary physical marker used to prove Git-first live update on the notebook. */
-.ordax-eyebrow::after {
-  content: " • atualização ao vivo";
-  font-weight: 700;
-}
