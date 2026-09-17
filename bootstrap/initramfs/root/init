@@ -6,6 +6,7 @@ export PATH
 
 BOOTSTRAP_PATH=/ordax/bootstrap/entrypoint
 RECOVERY_BOOTSTRAP_PATH=/ordax/bootstrap/recovery/entrypoint
+GROW_HELPER=/sbin/ordax-grow-ext4
 
 rescue() {
     echo "ordax-initramfs: entering local recovery shell: $*" >&2
@@ -30,29 +31,15 @@ esac
 case "$RECOVERY_MODE" in
     1)
         mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
-        RECOVERY_ENTRYPOINT="$(PATH=/ordax/bootstrap/recovery:$PATH command -v entrypoint 2>/dev/null || true)"
-        case "$RECOVERY_ENTRYPOINT" in
-            "") rescue "recovery entrypoint is missing or not executable: $RECOVERY_BOOTSTRAP_PATH" ;;
-        esac
-        exec "$RECOVERY_ENTRYPOINT"
+        cat "$RECOVERY_BOOTSTRAP_PATH" >/dev/null 2>&1 || rescue "recovery entrypoint is missing or unreadable: $RECOVERY_BOOTSTRAP_PATH"
+        exec "$RECOVERY_BOOTSTRAP_PATH"
         ;;
 esac
 
 mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
-GROW_HELPER="$(command -v ordax-grow-ext4 2>/dev/null || true)"
-case "$GROW_HELPER" in
-    "")
-        echo "ordax-initramfs: warning: ext4 growth helper is missing; continuing with current verified filesystem" >&2
-        ;;
-    *)
-        if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
-            echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
-        fi
-        ;;
-esac
+if ! "$GROW_HELPER" "$ORDAX_DEVICE" /ordax; then
+    echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
+fi
 
-BOOTSTRAP_ENTRYPOINT="$(PATH=/ordax/bootstrap:$PATH command -v entrypoint 2>/dev/null || true)"
-case "$BOOTSTRAP_ENTRYPOINT" in
-    "") rescue "bootstrap entrypoint is missing or not executable: $BOOTSTRAP_PATH" ;;
-esac
-exec "$BOOTSTRAP_ENTRYPOINT"
+cat "$BOOTSTRAP_PATH" >/dev/null 2>&1 || rescue "bootstrap entrypoint is missing or unreadable: $BOOTSTRAP_PATH"
+exec "$BOOTSTRAP_PATH"
