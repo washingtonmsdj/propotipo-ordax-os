@@ -23,6 +23,7 @@ UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 FILES_PATH = "/__ordax/native/files"
+METRICS_PATH = "/__ordax/native/metrics"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
@@ -145,6 +146,61 @@ def write_preferences(preferences: dict) -> None:
         os.fsync(directory_fd)
     finally:
         os.close(directory_fd)
+
+
+def parse_meminfo(text: str) -> tuple[int, int]:
+    fields: dict[str, int] = {}
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        name, raw_value = line.split(":", 1)
+        parts = raw_value.strip().split()
+        if not parts:
+            continue
+        try:
+            value = int(parts[0])
+        except ValueError:
+            continue
+        if value < 0:
+            continue
+        unit = parts[1] if len(parts) > 1 else ""
+        if unit not in {"", "kB"}:
+            continue
+        fields[name] = value * 1024 if unit == "kB" else value
+
+    total = fields.get("MemTotal")
+    available = fields.get("MemAvailable")
+    if total is None or available is None or available > total:
+        raise ValueError("required memory metrics are unavailable")
+    return total, available
+
+
+def read_system_metrics(user_root: str, proc_root: str = "/proc") -> dict:
+    with open(os.path.join(proc_root, "uptime"), "r", encoding="utf-8") as handle:
+        uptime_parts = handle.read().strip().split()
+    if not uptime_parts:
+        raise ValueError("uptime metric is unavailable")
+    uptime_value = float(uptime_parts[0])
+    if not math.isfinite(uptime_value) or uptime_value < 0:
+        raise ValueError("uptime metric is invalid")
+
+    with open(os.path.join(proc_root, "meminfo"), "r", encoding="utf-8") as handle:
+        memory_total, memory_available = parse_meminfo(handle.read())
+
+    os.makedirs(user_root, mode=0o700, exist_ok=True)
+    storage = os.statvfs(user_root)
+    block_size = storage.f_frsize or storage.f_bsize
+    storage_total = max(0, int(storage.f_blocks) * int(block_size))
+    storage_free = max(0, int(storage.f_bavail) * int(block_size))
+    storage_free = min(storage_free, storage_total)
+
+    return {
+        "uptimeSeconds": max(0, int(uptime_value)),
+        "memoryTotalBytes": memory_total,
+        "memoryAvailableBytes": memory_available,
+        "userStorageTotalBytes": storage_total,
+        "userStorageFreeBytes": storage_free,
+    }
 
 
 def valid_logical_file_path(value: object) -> bool:
@@ -315,10 +371,19 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path == FILES_PATH:
-            if self.client_address[0] != "127.0.0.1":
-                self._empty(403)
+        if parsed_path in {FILES_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
+            self._empty(403)
+            return
+        if parsed_path == METRICS_PATH:
+            try:
+                metrics = read_system_metrics(self.server.user_root)
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not read system metrics: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
                 return
+            self._write_json(200, metrics)
+            return
+        if parsed_path == FILES_PATH:
             try:
                 logical_path = requested_file_path(self.path)
                 listing = list_user_directory(self.server.user_root, logical_path)
