@@ -33,6 +33,13 @@ const surface = mountSurface(
   workspaceStore,
   appActivation,
 );
+const accountOverviewControls = mountAccountOverviewControls(
+  root,
+  host,
+  identitySession,
+  identityActions,
+  surface,
+);
 const systemOverviewControls = mountSystemOverviewControls(
   root,
   host,
@@ -45,6 +52,7 @@ window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
+    accountOverviewControls.destroy();
     surface.destroy();
     identityActions.dispose();
     identitySession.dispose();
