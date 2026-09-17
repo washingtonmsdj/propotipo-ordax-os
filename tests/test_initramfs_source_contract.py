@@ -79,6 +79,7 @@ class InitramfsSourceContractTests(unittest.TestCase):
 
     def test_builder_uses_minimal_busybox_and_explicit_musl_target_compiler(self):
         self.assertIn('"CONFIG_BUSYBOX": "y"', BUILDER)
+        self.assertIn('"CONFIG_ASH_CMDCMD": "y"', BUILDER)
         self.assertNotIn('"CONFIG_TEST": "y"', BUILDER)
         self.assertIn('make = ["make", f"CC={musl_cc}"]', BUILDER)
         self.assertIn('run(make + ["allnoconfig"]', BUILDER)
