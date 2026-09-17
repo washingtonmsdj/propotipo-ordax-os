@@ -4,7 +4,7 @@ Status: CANONICAL FOR PROTOTYPE
 
 ## Goal
 
-Prove a minimal, reproducible, Git-first OrdaX that boots independently, reaches the network, acquires the rest of the system as a verified release, and exposes one product across Web, Mobile, Desktop, USB and native disk from one shared source graph.
+Prove a minimal, reproducible, Git-first OrdaX that boots independently, reaches the network, acquires the rest of the system from Git or as a verified release according to the active profile, and exposes one product across Web, Mobile, Desktop, USB and native disk from one shared source graph.
 
 ## Core invariant
 
@@ -12,7 +12,8 @@ Prove a minimal, reproducible, Git-first OrdaX that boots independently, reaches
 GIT_SOURCE_AUTHORITY=YES
 USB_SOURCE_AUTHORITY=NO
 NOTEBOOK_SOURCE_AUTHORITY=NO
-PHYSICAL_PARTITIONS=2
+BOOTSTRAP_SEED_PARTITIONS=2
+PREPARED_USB_PARTITIONS=3
 SEPARATE_HOME_PARTITION=NO
 ONE_PRODUCT_FIVE_MODES=YES
 SINGLE_SURFACE_SOURCE=YES
@@ -26,12 +27,73 @@ REMOTE_CONTROL_REQUIRED=NO
 CUSTOM_CRYPTO_ALLOWED=NO
 ```
 
+`BOOTSTRAP_SEED_PARTITIONS=2` and `PREPARED_USB_PARTITIONS=3` describe different artifacts and are not contradictory:
+
+- the capacity-independent bootstrap seed contains only `ORDAX-ESP` + `ORDAX`;
+- the final physical USB prepared by the Creator contains `ORDAX-ESP` + `ORDAX` + `ORDAX-DATA`;
+- `ORDAX-DATA` is target-capacity-specific portable user data created by the Creator and is not part of the signed bootstrap seed;
+- `/ordax/home` remains a logical path inside `ORDAX`; there is no separate HOME partition.
+
+The machine-readable contracts are authoritative for exact geometry: `docs/contracts/physical-media.json` owns the two-partition bootstrap seed and `docs/contracts/physical-prepared-media.json` owns the three-partition prepared target.
+
+## Acquisition profiles
+
+OrdaX has two intentionally distinct acquisition profiles. They share the same source authority and boot substrate but must not be conflated.
+
+### Owner/development Git-first profile
+
+Purpose: rapid development on the owner's USB without reflashing for ordinary `system/` changes.
+
+```text
+UEFI
+ -> kernel/initramfs
+ -> development base
+ -> drivers/firmware
+ -> network
+ -> Git
+ -> partial+sparse checkout of main into /workspace/ordax
+ -> /workspace/ordax/system/entrypoint
+ -> OrdaX
+```
+
+Rules:
+
+- Git is physically present in the development base;
+- the source checkout is not preseeded into the USB image;
+- first acquisition uses a partial+sparse clone limited to runtime source (`system/`);
+- later updates use `git pull --ff-only`;
+- local modifications block automatic pull;
+- unexpected origin/branch state fails closed;
+- rollback pins the previous commit across reboot until an explicit `ordax-pull` releases the pin;
+- ordinary `system/` changes do not require USB reflash or kernel rebuild;
+- changes to the bootstrap substrate, kernel, initramfs or hardware support may require a new base image.
+
+This profile is a development mechanism and may use explicitly marked ephemeral prototype trust for Creator provenance. It does not replace canonical release trust.
+
+### Canonical signed-release profile
+
+Purpose: production-style acquisition and activation with an immutable verified release.
+
+```text
+UEFI
+ -> kernel/initramfs
+ -> minimal bootstrap
+ -> network when needed
+ -> acquire signed release
+ -> verify release
+ -> /ordax/releases/<commit>
+ -> atomic /ordax/current switch
+ -> OrdaX runtime
+```
+
+Canonical trust remains fail-closed. Ephemeral CI/development keys never satisfy the canonical release-trust gate.
+
 ## Source/product shape
 
 ```text
 prototipo-ordax-os/
   boot/                 # boot media definition
-  bootstrap/            # only what is needed to reach a verified release
+  bootstrap/            # only what is needed to reach Git/release acquisition
   system/               # shared product delivered/packaged across modes
     surface/            # one visual source
     apps/               # one first-party app source
@@ -94,18 +156,21 @@ Expected contents are bounded to bootloader/configuration plus the kernel/initra
 
 ### 2. Minimal bootstrap substrate
 
-Role: do only enough work to reach and activate the first verified release.
+Role: do only enough work to reach the selected acquisition mechanism and recover when it fails.
 
-Mandatory responsibilities:
+Mandatory common responsibilities:
 
 - kernel + initramfs;
 - minimal userspace needed for boot;
 - minimal network bring-up;
-- signed release acquisition over standard HTTPS;
-- release authenticity/integrity verification;
 - recovery/maintenance path.
 
-Not mandatory before the first release:
+Profile-specific responsibilities:
+
+- owner/development: Git client + HTTPS CA trust + partial/sparse checkout management;
+- canonical release: signed release acquisition over standard HTTPS + authenticity/integrity verification.
+
+Not mandatory in the common bootstrap:
 
 - SSH;
 - OrdaX Remote Core;
@@ -113,23 +178,32 @@ Not mandatory before the first release:
 - stable device identity service;
 - Surface/desktop;
 - normal applications;
-- complete source checkout;
+- complete repository checkout;
 - build toolchain.
 
 If future evidence shows Remote Core, Control Plane or a persistent device identity is actually necessary, add it through a new recorded architectural decision and capability contract. Do not preinstall it speculatively.
 
-### 3. Releases
+### 3. Runtime materialization
 
-Canonical materialization model:
+Owner/development materialization:
+
+```text
+/workspace/ordax/.git
+/workspace/ordax/system/
+```
+
+The checkout is persistent on the `ORDAX` filesystem and is intentionally sparse. It is not source authority; `main` remains source authority.
+
+Canonical release materialization:
 
 ```text
 /ordax/releases/<commit>/
 /ordax/current -> releases/<commit>
 ```
 
-A release is immutable after verification. Activation changes the pointer, not existing release contents. Rollback selects a previously verified release.
+A canonical release is immutable after verification. Activation changes the pointer, not existing release contents. Rollback selects a previously verified release.
 
-The first full release is acquired after boot. Once verified and activated, at least one known-good release remains local so ordinary boot does not require the network.
+The first full canonical release is acquired after boot. Once verified and activated, at least one known-good release remains local so ordinary boot does not require the network.
 
 Release protocol evolution is versioned. Current `release-manifest/1` intentionally contains one `system.tar`; future formats such as deltas or additional artifacts must enter through a new version/contract path rather than silently changing v1 semantics.
 
@@ -155,19 +229,36 @@ Persistent mutable device state lives under:
 /ordax/state/
 ```
 
+The owner/development base currently exposes the same persistent device storage through `/state/ordax` after `switch_root`; this stores current/previous/pinned Git commit state.
+
 Only state that cannot or should not be reconstructed belongs there. Private keys and secrets never belong in Git.
 
 ### 6. User data
 
-User/workspace data lives logically under:
+System-visible user/workspace data lives logically under:
 
 ```text
 /ordax/home/
 ```
 
-It is not a separate physical partition in the prototype.
+It is not a separate HOME physical partition. The prepared USB may additionally expose `ORDAX-DATA` as an exFAT portable-data partition for host interoperability; this does not change the logical `/ordax/home` rule.
 
 ## Boot and evolution chain
+
+Owner/development:
+
+```text
+UEFI
+  -> ESP
+  -> kernel/initramfs
+  -> development base
+  -> network when needed
+  -> partial+sparse Git clone/pull
+  -> /workspace/ordax/system/entrypoint
+  -> OrdaX runtime
+```
+
+Canonical release:
 
 ```text
 UEFI
@@ -194,21 +285,33 @@ Git
 
 ## Update semantics
 
-Normal development is Git-driven:
+Owner/development USB:
 
 ```text
 edit shared source
- -> local Web/HMR when applicable
+ -> test
+ -> commit/push main
+ -> boot or run ordax-pull
+ -> fast-forward sparse checkout
+ -> ordax-run
+```
+
+No reflash is required for ordinary runtime changes. `ordax-rollback` pins the previous commit; boot will not silently undo the rollback. An explicit `ordax-pull` returns the device to tracking `main`.
+
+Canonical release:
+
+```text
+edit shared source
  -> test
  -> commit/push main
  -> CI builds/verifies affected targets
- -> client modes receive their signed/deployed update
- -> OrdaX USB/native detects the matching verified release or future compatible delta
+ -> publish signed release
+ -> device acquires matching verified release
  -> verify
  -> activate
 ```
 
-No SSH session, remote shell or Control Plane is required for that normal path.
+No SSH session, remote shell or Control Plane is required for either normal path.
 
 Changes to boot/kernel/initramfs remain separately gated and may require a staged base update/reboot.
 
@@ -226,11 +329,21 @@ If a later product requirement appears for remote device management, diagnostics
 
 ## Failure model
 
-Integrity, release verification, unknown required capabilities and physical-target selection fail closed. Loss of network must not make the machine unbootable once a known-good release has been activated locally.
+Integrity, canonical release verification, unknown required capabilities, Git checkout invariants and physical-target selection fail closed. Loss of network must not make the machine unbootable once a known-good canonical release or a valid local development checkout exists.
 
 ## First milestone
 
-The first milestone remains deliberately small:
+For the owner/development profile:
+
+```text
+boot
+ -> network
+ -> clone/pull main
+ -> run system/entrypoint
+ -> later update without USB reflash
+```
+
+For the canonical release profile:
 
 ```text
 boot
