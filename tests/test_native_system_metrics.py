@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 CONTRACT = ROOT / "system" / "contracts" / "system-metrics.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "system-metrics.mjs"
-CONTROLS = ROOT / "system" / "surface" / "ui" / "system-metrics-controls.mjs"
+CONTROLS = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
 
@@ -76,11 +76,13 @@ class NativeSystemMetricsTests(unittest.TestCase):
         self.assertNotIn("MutationObserver", controls)
         self.assertIn("Tempo ligado", controls)
         self.assertIn("Espaço do usuário", controls)
+        self.assertIn("Uso do dispositivo", controls)
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertNotIn("/proc", controls)
         self.assertIn("createNativeSystemMetrics", composition)
-        self.assertIn("mountSystemMetricsControls(root, systemMetrics, surface)", composition)
+        self.assertIn("mountSystemOverviewControls(", composition)
+        self.assertIn("systemMetrics,", composition)
         self.assertIn("systemMetricsAvailable", composition)
 
     def test_capability_is_native_only_and_read_only(self):
