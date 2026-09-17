@@ -30,25 +30,41 @@ class DevelopmentNetworkContractTest(unittest.TestCase):
     def test_wifi_waits_for_real_association_before_dhcp(self) -> None:
         text = NETWORK.read_text(encoding="utf-8")
         self.assertIn('wait_for_wifi_link()', text)
+        self.assertIn('connect_wifi_conf()', text)
         self.assertIn('iw dev "$wifi" link', text)
         self.assertIn("grep -q '^Connected to '", text)
         self.assertIn('if ! wait_for_wifi_link; then', text)
         self.assertLess(
             text.index('if ! wait_for_wifi_link; then'),
-            text.index('try_dhcp "$wifi"', text.index('connect_saved_wifi()')),
+            text.index('try_dhcp "$wifi"', text.index('connect_wifi_conf()')),
         )
         self.assertNotIn('sleep 2\n    try_dhcp "$wifi"', text)
 
-    def test_wifi_selects_strongest_secure_network_without_ssid_typing(self) -> None:
+    def test_wifi_defaults_to_strongest_secure_network_but_allows_override(self) -> None:
         text = NETWORK.read_text(encoding="utf-8")
-        self.assertIn('select_best_secure_ssid()', text)
-        self.assertIn('best_signal = -1000', text)
-        self.assertIn('ssid != "" && secure && signal > best_signal', text)
+        self.assertIn('scan_secure_networks()', text)
+        self.assertIn('signals[j] > signals[max]', text)
         self.assertIn('/^[[:space:]]*(RSN:|WPA:)/', text)
-        self.assertIn('ssid=$(select_best_secure_ssid || true)', text)
-        self.assertIn('rede selecionada automaticamente', text)
+        self.assertIn('[melhor sinal]', text)
+        self.assertIn('Melhor rede sera usada em 5s.', text)
+        self.assertIn('read -r -n 1 -t 5 choice', text)
+        self.assertIn('selected_ssid=$(sed -n "${choice}p" "$SSID_FILE")', text)
         self.assertNotIn("printf 'SSID", text)
         self.assertNotIn('read -r ssid', text)
+
+    def test_wifi_can_force_network_change_without_destroying_saved_config_first(self) -> None:
+        text = NETWORK.read_text(encoding="utf-8")
+        self.assertIn('--choose) force_choose=1', text)
+        self.assertIn('uso: ordax-network [--choose]', text)
+        self.assertIn('if [ "$force_choose" -eq 0 ] && connect_saved_wifi; then', text)
+        self.assertIn('CANDIDATE_CONF=/run/ordax-wpa-candidate.conf', text)
+        candidate_write = text.index('> "$CANDIDATE_CONF"')
+        candidate_connect = text.index('connect_wifi_conf "$CANDIDATE_CONF"')
+        promote = text.index('mv "$CANDIDATE_CONF" "$WPA_CONF"')
+        self.assertLess(candidate_write, candidate_connect)
+        self.assertLess(candidate_connect, promote)
+        self.assertIn('a rede salva anteriormente foi preservada', text)
+        self.assertIn('use ordax-network --choose para escolher outra rede', text)
 
     def test_password_has_brief_character_feedback_then_mask(self) -> None:
         text = NETWORK.read_text(encoding="utf-8")
