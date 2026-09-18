@@ -1056,14 +1056,14 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
 - [x] Remover marcadores temporários/de implementação da mesa normal; a Home mostra apenas a área atual, sem “Surface compartilhada”, recuperação ao vivo ou número de entrega.
 - [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot. **Parcial:** Ajustes → Rede preserva scroll, foco e a senha digitada somente em memória durante repaint síncrono causado por polling/status, sem persistir ou sincronizar a credencial; aplicar o mesmo princípio aos demais formulários/owners antes de marcar concluído.
-- [ ] Estado ausente, indisponível, offline e antigo são distintos.
+- [ ] Estado ausente, indisponível, offline e antigo são distintos. **Parcial:** Ajustes → Rede e Sistema → métricas agora preservam a última leitura válida após uma falha e a identificam explicitamente como antiga, separando-a de carregamento inicial, capacidade indisponível e estado offline. O horário exibido é o momento em que a Surface recebeu a leitura, não um timestamp inventado do host; aplicar a mesma semântica aos demais owners observacionais antes de marcar concluído.
 - [x] Preservar lifecycle e descartar respostas assíncronas antigas: Arquivos/Sistema mantêm ordinais existentes e Conta, Ajustes, Wi-Fi rápido, bateria/rede da barra e energia agora invalidam conclusões após operação nova ou `destroy()`.
 
 ### 12.3 O que falta para uma etapa básica útil
 
 **Meta básica:** o usuário abre os quatro apps, entende limites reais, navega pelas seções entregues, personaliza o tema, realiza operações de arquivos suportadas, consulta versão/atualização/métricas, usa energia nativa confirmada e mantém estado entre recargas.
 
-Para essa meta, a navegação canônica cobre Sistema, Ajustes e Conta e a subseção escolhida já é persistida por janela/área; faltam principalmente preferências de acessibilidade e demais ajustes ainda não suportados, diagnóstico/exportação técnica mais completa, recursos P2 de Arquivos e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
+Para essa meta, a navegação canônica cobre Sistema, Ajustes e Conta e a subseção escolhida já é persistida por janela/área; faltam principalmente tamanho de texto e demais ajustes ainda não suportados, diagnóstico/exportação técnica mais completa, recursos P2 de Arquivos e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
 
 **Não chamar de concluído:** login real sem provedor; cloud sem transporte e autorização; gerenciador de arquivos completo sem leitura/mutações; recuperação canônica sem gates; áudio/suspensão sem prova; instalação nativa baseada apenas em imagem conceitual.
 
