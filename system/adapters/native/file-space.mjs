@@ -8,6 +8,22 @@ import {
 const FILES_ENDPOINT = "/__ordax/native/files";
 const FILE_CONTENT_ENDPOINT = "/__ordax/native/file-content";
 
+export class FileSpaceOperationError extends Error {
+  constructor(operation, status) {
+    super(`Native file-space ${operation} failed: ${status}`);
+    this.name = "FileSpaceOperationError";
+    this.operation = operation;
+    this.status = status;
+  }
+}
+
+function requireSuccess(response, operation) {
+  if (!response.ok) {
+    throw new FileSpaceOperationError(operation, response.status);
+  }
+  return response;
+}
+
 function endpointFor(path) {
   return `${FILES_ENDPOINT}?path=${encodeURIComponent(path)}`;
 }
@@ -27,9 +43,7 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
       cache: "no-store",
       credentials: "same-origin",
     });
-    if (!response.ok) {
-      throw new Error(`Native file-space listing failed: ${response.status}`);
-    }
+    requireSuccess(response, "listing");
     return validateFileListing(await response.json());
   };
 
@@ -47,9 +61,7 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
         cache: "no-store",
         credentials: "same-origin",
       });
-      if (!response.ok) {
-        throw new Error(`Native text-file read failed: ${response.status}`);
-      }
+      requireSuccess(response, "text-read");
       return validateTextFile(await response.json());
     },
     async copyFile(path, name, newName) {
@@ -60,9 +72,7 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "copy-file", path, name, newName }),
       });
-      if (!response.ok) {
-        throw new Error(`Native file copy failed: ${response.status}`);
-      }
+      requireSuccess(response, "copy");
       return validateFileListing(await response.json());
     },
     async renameEntry(path, name, newName) {
@@ -73,9 +83,23 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "rename-entry", path, name, newName }),
       });
-      if (!response.ok) {
-        throw new Error(`Native entry rename failed: ${response.status}`);
-      }
+      requireSuccess(response, "rename");
+      return validateFileListing(await response.json());
+    },
+    async moveEntry(sourcePath, name, destinationPath) {
+      const response = await windowRef.fetch(FILES_ENDPOINT, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "move-entry",
+          sourcePath,
+          name,
+          destinationPath,
+        }),
+      });
+      requireSuccess(response, "move");
       return validateFileListing(await response.json());
     },
     async createDirectory(path, name) {
@@ -86,9 +110,7 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "create-directory", path, name }),
       });
-      if (!response.ok) {
-        throw new Error(`Native directory creation failed: ${response.status}`);
-      }
+      requireSuccess(response, "create-directory");
       return validateFileListing(await response.json());
     },
   };
