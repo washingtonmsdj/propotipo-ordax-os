@@ -24,6 +24,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}', text)
         self.assertIn('REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}', text)
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
+        self.assertIn('STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
         self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
         self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
@@ -96,6 +97,35 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             text,
         )
         self.assertIn('validate_updated_tree "$APPLY_MODE"', text)
+
+    def test_candidate_release_is_staged_before_live_checkout_switch(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('RELEASES_DIR=${ORDAX_RELEASES_DIR:-$STATE_DIR/releases}', text)
+        self.assertIn('STAGED_RELEASE_FILE=$STATE_DIR/staged-release-sha', text)
+        self.assertIn('STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}', text)
+        self.assertIn("stage_candidate_release()", text)
+        self.assertIn("staged_release_tree_is_valid()", text)
+        self.assertIn(
+            'archive --format=tar "$candidate_sha" system >"$stage_archive"',
+            text,
+        )
+        self.assertIn(
+            '/bin/busybox timeout -k 2 "$STAGE_TIMEOUT" /bin/busybox tar -xf',
+            text,
+        )
+        self.assertIn('write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"', text)
+        self.assertIn('CHECKOUT_ERROR=candidate-stage-failed', text)
+        self.assertLess(
+            text.index('stage_candidate_release "$expected_sha" "$APPLY_MODE"'),
+            text.index('reset --hard "$expected_sha"'),
+        )
+
+    def test_runtime_neutral_update_does_not_materialize_a_release_slot(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn('[ "$candidate_mode" != none ] || return 0', staging)
+        self.assertNotIn("fetch --no-tags", staging)
+        self.assertNotIn("ls-remote", staging)
 
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
