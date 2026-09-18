@@ -1078,7 +1078,8 @@ button.ordax-tray-item {
 }
 
 .ordax-tray-battery[data-battery-state="not-detected"],
-.ordax-tray-battery[data-battery-state="unavailable"] {
+.ordax-tray-battery[data-battery-state="unavailable"],
+.ordax-tray-battery[data-battery-observation="stale"] {
   color: var(--ordax-muted);
 }
 
