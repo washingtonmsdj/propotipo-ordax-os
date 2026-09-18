@@ -1,6 +1,6 @@
 # OrdaX Public Identity Gateway
 
-Status: BACKEND BOUNDARY PREPARED / PROVIDER NOT CONFIGURED
+Status: GATEWAY CORE IMPLEMENTED / PROVIDER NOT CONFIGURED
 
 This directory defines the backend responsibility that will sit behind the public site's login and registration entry points.
 
@@ -24,7 +24,7 @@ The public page must not become the identity authority. The gateway owns provide
 
 ## Required routes
 
-The first server implementation is expected to expose:
+The gateway core in `gateway.py` now exposes this contract:
 
 ```text
 GET  /auth/login
@@ -34,7 +34,9 @@ POST /auth/logout
 GET  /auth/session
 ```
 
-The exact deployment host is deliberately not fixed here. The public site configuration keeps the login/register URLs disabled until these routes are actually deployed.
+The exact deployment host is deliberately not fixed here. `gateway.py` provides a dependency-free WSGI entrypoint and deliberately owns no public listener. Until a provider and same-origin deployment are configured, `/auth/login`, `/auth/register`, `/auth/callback` and `/auth/logout` fail closed with HTTP 503; `/auth/session` reports an anonymous, unauthenticated session.
+
+The public site configuration therefore keeps login/register disabled until these routes are deployed behind the same origin. The runtime shape is pinned in `docs/contracts/public-identity-gateway.json`.
 
 ## Session policy
 
