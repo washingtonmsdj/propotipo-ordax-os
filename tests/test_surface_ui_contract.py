@@ -27,6 +27,7 @@ WEB_IDENTITY_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity.mjs"
 WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-actions.mjs"
 NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
+DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -36,6 +37,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         for path in (
             SURFACE / "surface.mjs",
             SURFACE / "surface-state.mjs",
+            DESKTOP_SHELL,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             POWER_CONTROLS,
@@ -75,6 +77,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("contracts/identity-actions.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
+        self.assertIn("./desktop-shell.mjs", surface)
         self.assertIn("../../contracts/power-actions.mjs", power)
 
     def test_first_party_apps_have_independent_owners_and_thin_catalog(self):
@@ -107,8 +110,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../services/preferences/appearance.mjs", settings)
         self.assertIn('kind: "preference-choice"', settings)
         self.assertIn('"appearance.theme"', appearance)
-        self.assertIn('defaultValue: "dark"', appearance)
-        self.assertIn('value: "light"', appearance)
+        self.assertIn('defaultValue: "light"', appearance)
+        self.assertIn('value: "dark"', appearance)
         self.assertIn("createPreferenceSnapshot", preferences)
         self.assertIn("recoverPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
@@ -131,6 +134,7 @@ class SurfaceUiContractTests(unittest.TestCase):
     def test_native_power_controls_are_shared_and_capability_driven(self):
         contract = POWER_ACTIONS_CONTRACT.read_text(encoding="utf-8")
         controls = POWER_CONTROLS.read_text(encoding="utf-8")
+        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         adapter = NATIVE_POWER_ADAPTER.read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
@@ -143,6 +147,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('"Confirmar reinício"', controls)
         self.assertIn('"Confirmar desligamento"', controls)
         self.assertIn("dataset.powerAction", controls)
+        self.assertIn("[data-power-slot]", controls)
+        self.assertIn("data-power-slot", shell)
         self.assertIn("createNativePowerActions", native_main)
         self.assertIn("../../surface/ui/surface.mjs", native_main)
         self.assertIn("../../surface/ui/power-controls.mjs", native_main)
@@ -256,16 +262,37 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("surface/ui", text)
         self.assertNotIn("innerHTML", text)
 
+    def test_desktop_identity_shell_is_shared_semantic_and_non_remote(self):
+        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
+        css = (SURFACE / "surface.css").read_text(encoding="utf-8")
+        tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
+        for app_id in ("files", "settings", "account", "system"):
+            self.assertIn(f'railButton("{app_id}"', shell)
+        self.assertIn("data-power-slot", shell)
+        self.assertIn("data-update-slot", shell)
+        self.assertIn("data-ordax-clock", shell)
+        self.assertIn("data-launcher-query", shell)
+        self.assertIn("Ctrl + K", shell)
+        self.assertIn("ordax-brand-symbol", shell)
+        self.assertIn("ordax-identity-art", shell)
+        self.assertIn("--ordax-accent: #ed4b25", tokens)
+        self.assertIn("--ordax-font-display", tokens)
+        self.assertIn(".ordax-identity-art", css)
+        self.assertIn(".ordax-rail", css)
+        self.assertIn(".ordax-statusbar", css)
+
     def test_surface_baseline_is_accessible_responsive_windowed_themeable_and_account_aware(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         power = POWER_CONTROLS.read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
-        self.assertIn('aria-live="polite"', surface)
-        self.assertIn('aria-label="Controles da Surface"', surface)
-        self.assertIn('role="menu"', surface)
-        self.assertIn("data-window-layer", surface)
+        self.assertIn('aria-live="polite"', shell)
+        self.assertIn('aria-label="Estado e áreas da Surface"', shell)
+        self.assertIn('role="dialog"', shell)
+        self.assertIn("data-window-layer", shell)
         self.assertIn('event.key === "Escape"', surface)
+        self.assertIn('event.key.toLocaleLowerCase() === "k"', surface)
         self.assertIn("root.dataset.ordaxTheme", surface)
         self.assertIn("data-preference-id", surface)
         self.assertIn("dataset.identityAction", surface)
