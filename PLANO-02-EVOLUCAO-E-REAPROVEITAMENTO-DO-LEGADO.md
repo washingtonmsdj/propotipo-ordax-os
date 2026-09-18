@@ -130,7 +130,7 @@ Esta matriz dá a visão geral. A seção 5 detalha o que entregar; a seção 6 
 | C03 | Sessão local, login, lock/unlock | CÓDIGO de preview; preservação de sessão. [L08] | Modelo de conta não é login local nem bloqueio do OS. | REIMPLEMENTAR P1/P2 com autenticação apropriada. |
 | C04 | Workspace e projeto | CÓDIGO para abrir/fechar/inspecionar projetos e workspaces. [L09] | Áreas/janelas e metadados existem; contexto de projeto incompleto. | REIMPLEMENTAR P1 incremental. |
 | C05 | Checkpoint de sessão | CÓDIGO de criação/restauração de registros. [L10] | Geometria restaurada não garante retomada de conteúdo. | REIMPLEMENTAR P2. |
-| C06 | Home contextual / continuar trabalho | CÓDIGO isolado + VISÃO de produto. [L14] [L18] | Shell existe; faltam fontes de recentes/pendências/contexto. | REIMPLEMENTAR P1/P2 sem outro shell. |
+| C06 | Home contextual / continuar trabalho | CÓDIGO isolado + VISÃO de produto. [L14] [L18] | Shell existe e Arquivos já possui uma fonte local autorizada de Recentes; ainda faltam projeto, pendências agregadas e retomada contextual na Home. | REIMPLEMENTAR P1/P2 sem outro shell. |
 | C07 | Inventário e suporte de hardware | CÓDIGO GDEF e suporte Realtek; RELATO específico. [L11] [L03] | Métricas básicas; faltam inventário, compatibilidade e UI operacional. | REIMPLEMENTAR P1/P2 sob adapters. |
 | C08 | Conta e identidade entre modos | VISÃO; identidade local e serviços separados não são conta universal pronta. [L08] [L18] | Contratos e estados existem; adapters de conta examinados indisponíveis. | COMPLETAR P2 no modelo atual. |
 | C09 | Sync e continuidade cloud | VISÃO Cloud + fluxos específicos de backend; módulo Cloud planejado. [L05] | Core offline existe; falta transporte autenticado/serviço de produto. | PRESERVAR core; COMPLETAR P2. |
@@ -608,7 +608,7 @@ As entregas F abaixo complementam, sem substituir, E0–E10 da parte 1. Cada lin
 | F1 | Navegação e estados dos quatro apps, destinos únicos. | E1–E3/E5. | Atualizações só em Sistema; estado ausente/antigo/offline honesto. |
 | F2 | Arquivos: leitura/abertura, renomear e copiar em incrementos. | F1, C01, E4. | Conteúdo real, proteção da raiz, erros/colisões/cancelamento verificados. |
 | F3 | Rede cotidiana no ambiente nativo. | Porta/adapters C02. | Selecionar/conectar/esquecer/reconectar com prova no hardware-alvo. |
-| F4 | Contexto local: projeto pequeno, recentes e retomada. | F2, C04–C06. | Usuário retoma trabalho após reload sem duplicação ou promessa falsa. |
+| F4 | Contexto local: projeto pequeno, recentes e retomada. | F2, C04–C06. | **Parcial:** Recentes locais de Arquivos está implementado com histórico limitado/deduplicado, registro somente após abertura validada, persistência `device`/`session` explícita e remoção/limpeza não destrutivas. Projeto pequeno e retomada após reload ainda precisam ser entregues antes de encerrar F4. |
 | F5 | Sessão/bloqueio, notificações e permissões locais necessárias. | C03/C26, política de identidade local. | Proteção efetiva no host suportado e uso acessível. |
 | F6 | Conta real e sync de um conjunto pequeno de metadados. | C08/C09, E8, serviço/provedor decidido. | Dois clientes autorizados, offline/conflito/revogação provados. |
 | F7 | Mobile/Desktop compartilhados, em entregas separadas. | C10/C11; F6 para continuidade entre contas/dispositivos. | Pacotes reais, adapters e lifecycle de cada alvo verificados. |
@@ -625,6 +625,8 @@ F3, a observabilidade local de F9 e as provas de F8 podem avançar em trilhas in
 ### 8.2 O próximo lote recomendado
 
 F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. F3 agora possui observabilidade nativa, owner mutável de Wi-Fi no host, jornada compartilhada em Ajustes para scan/seleção/conexão/desconexão/esquecimento/reconexão via `ordax.network-management/1` e bandeja persistente que deriva Wi‑Fi/cabo/sinal exclusivamente da porta read-only `ordax.network-status/1`. Credenciais, SSID e identificadores de hardware continuam fora dessa bandeja e da telemetria. A próxima revalidação de F3 deve ampliar somente capacidades demonstradas no hardware-alvo (por exemplo redes abertas/WPA3/portal cativo), sem inflar a UI com opções fictícias.
+
+F4 começou pelo recorte de Recentes locais no app Arquivos: uma fonte única e local registra somente arquivos realmente abertos com sucesso, mantém retenção limitada e permite remover/limpar referências sem apagar conteúdo. Isso não encerra F4; projeto pequeno e retomada recuperável após reload continuam como próximos recortes.
 
 Não abrir simultaneamente Store, grafo de objetos, federação, IA e um package manager. A entrega de arquivos, rede e retomada já recupera valor concreto que o legado perseguia, mantendo a estrutura limpa.
 
