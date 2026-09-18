@@ -1,6 +1,7 @@
 import {
   assertDiagnosticExportPort,
   validateDiagnosticExportDocument,
+  validateDiagnosticExportSaveResult,
 } from "../../contracts/diagnostic-export.mjs";
 
 export const DIAGNOSTIC_EXPORT_RESULT_SCHEMA = "ordax.diagnostic-export-result/1";
@@ -18,11 +19,10 @@ export async function exportDiagnosticDocument(document, exportPort) {
   const port = assertDiagnosticExportPort(exportPort);
 
   try {
-    const result = await port.save(validatedDocument);
-    if (result === false || result?.status === "cancelled") {
-      return exportResult("cancelled");
-    }
-    return exportResult("saved");
+    const result = validateDiagnosticExportSaveResult(
+      await port.save(validatedDocument),
+    );
+    return exportResult(result.status);
   } catch {
     return exportResult("failed", "export-failed");
   }
