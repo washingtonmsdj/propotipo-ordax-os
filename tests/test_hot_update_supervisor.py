@@ -130,6 +130,15 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
 
+    def test_runtime_neutral_main_change_is_not_recorded_as_notebook_application(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        none_block = text.split('        none)\n', 1)[1].split('            ;;', 1)[0]
+        self.assertNotIn('record_applied "$new_sha"', none_block)
+        self.assertIn('rm -f "$ATTEMPT_STARTED_EPOCH_FILE"', none_block)
+        self.assertIn('refresh_release_history', none_block)
+        self.assertIn("repository update has no device delivery effect", none_block)
+        self.assertIn("low-level delivery observed; application remains pending boot refresh", none_block)
+
     def test_live_reload_uses_lightweight_git_object_staging(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
