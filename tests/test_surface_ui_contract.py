@@ -551,6 +551,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("data-quick-panel-toggle", controller)
         self.assertIn('event.key === "Escape"', controller)
         self.assertIn("ordax:quick-panel-open", controller)
+        self.assertIn("ordax:quick-panel-close", controller)
         self.assertIn("aria-expanded", controller)
         self.assertIn("assertNetworkManagementPort", network)
         self.assertIn("assertNetworkStatusPort", network)
@@ -564,6 +565,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('input.type = "password"', network)
         self.assertIn('input.autocomplete = "off"', network)
         self.assertIn('input.value = ""', network)
+        self.assertIn("passwordDraft", network)
+        self.assertIn("captureInteraction", network)
+        self.assertIn("restoreInteraction", network)
         for forbidden in ("localStorage", "sessionStorage", "/__ordax/native/", "telemetry"):
             self.assertNotIn(forbidden, network)
         self.assertIn("assertPowerStatusPort", battery)

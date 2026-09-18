@@ -27,6 +27,7 @@ export function mountSystemTrayQuickPanels(root) {
     const panel = panelFor(previousId);
     const trigger = triggerFor(previousId);
     if (panel) {
+      panel.dispatchEvent(new CustomEvent("ordax:quick-panel-close", { bubbles: false }));
       panel.hidden = true;
       panel.dataset.open = "false";
     }

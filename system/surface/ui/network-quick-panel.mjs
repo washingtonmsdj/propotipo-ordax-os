@@ -55,9 +55,98 @@ export function mountNetworkQuickPanel(
   let statusOrdinal = 0;
   let managementOrdinal = 0;
   let actionOrdinal = 0;
+  let passwordDraft = "";
+  let passwordDraftSsid = null;
+  let focusPasswordRequested = false;
   let destroyed = false;
 
+  const clearPasswordDraft = () => {
+    passwordDraft = "";
+    passwordDraftSsid = null;
+    focusPasswordRequested = false;
+  };
+
+  const focusIdentity = (element) => {
+    if (!element || !element.dataset) return null;
+    if (element.dataset.quickWifiPasswordFor) {
+      return Object.freeze({
+        kind: "password",
+        value: element.dataset.quickWifiPasswordFor,
+      });
+    }
+    if (element.dataset.quickWifiSsid && !element.dataset.quickNetworkAction) {
+      return Object.freeze({ kind: "network", value: element.dataset.quickWifiSsid });
+    }
+    if (element.dataset.quickNetworkAction) {
+      return Object.freeze({
+        kind: "action",
+        value: element.dataset.quickNetworkAction,
+        ssid: element.dataset.quickWifiSsid ?? null,
+      });
+    }
+    if (element.dataset.appTarget === "network") {
+      return Object.freeze({ kind: "settings", value: "network" });
+    }
+    return null;
+  };
+
+  const findFocusTarget = (identity) => {
+    if (!identity) return null;
+    return Array.from(content.querySelectorAll("button, input")).find((element) => {
+      const candidate = focusIdentity(element);
+      return candidate
+        && candidate.kind === identity.kind
+        && candidate.value === identity.value
+        && (candidate.ssid ?? null) === (identity.ssid ?? null);
+    }) ?? null;
+  };
+
+  const captureInteraction = () => {
+    const activeElement = documentObject.activeElement;
+    const activeInside = activeElement && content.contains(activeElement);
+    const passwordInput = content.querySelector("[data-quick-wifi-password]");
+    const list = content.querySelector(".ordax-quick-network-list");
+    return Object.freeze({
+      panelScrollTop: panel.scrollTop,
+      listScrollTop: list?.scrollTop ?? 0,
+      focus: activeInside ? focusIdentity(activeElement) : null,
+      passwordSelection:
+        passwordInput instanceof HTMLInputElement && activeElement === passwordInput
+          ? Object.freeze({
+              start: passwordInput.selectionStart,
+              end: passwordInput.selectionEnd,
+            })
+          : null,
+    });
+  };
+
+  const restoreInteraction = (snapshot) => {
+    if (!snapshot) return;
+    const list = content.querySelector(".ordax-quick-network-list");
+    if (list) list.scrollTop = snapshot.listScrollTop;
+
+    let focusTarget = findFocusTarget(snapshot.focus);
+    if (focusPasswordRequested) {
+      focusTarget = content.querySelector("[data-quick-wifi-password]") ?? focusTarget;
+      focusPasswordRequested = false;
+    }
+    focusTarget?.focus?.({ preventScroll: true });
+
+    if (
+      focusTarget instanceof HTMLInputElement
+      && snapshot.passwordSelection
+      && focusTarget.dataset.quickWifiPasswordFor === passwordDraftSsid
+    ) {
+      const length = focusTarget.value.length;
+      const start = Math.min(snapshot.passwordSelection.start ?? length, length);
+      const end = Math.min(snapshot.passwordSelection.end ?? start, length);
+      focusTarget.setSelectionRange(start, end);
+    }
+    panel.scrollTop = snapshot.panelScrollTop;
+  };
+
   const render = () => {
+    const interaction = captureInteraction();
     content.replaceChildren();
 
     const summary = node(documentObject, "div", "ordax-quick-network-summary");
@@ -89,6 +178,7 @@ export function mountNetworkQuickPanel(
           "O gerenciamento rápido de Wi-Fi não está disponível neste ambiente.",
         ),
       );
+      restoreInteraction(interaction);
       return;
     }
 
@@ -121,6 +211,7 @@ export function mountNetworkQuickPanel(
 
     if (managementSnapshot === null) {
       content.append(node(documentObject, "p", "ordax-quick-empty", "Lendo Wi-Fi…"));
+      restoreInteraction(interaction);
       return;
     }
 
@@ -186,6 +277,7 @@ export function mountNetworkQuickPanel(
       input.autocomplete = "off";
       input.dataset.quickWifiPassword = "";
       input.dataset.quickWifiPasswordFor = selected.ssid;
+      input.value = passwordDraftSsid === selected.ssid ? passwordDraft : "";
       input.disabled = pending;
       label.append(input);
       const connect = node(documentObject, "button", "ordax-quick-action ordax-quick-action-primary", "Conectar");
@@ -195,7 +287,6 @@ export function mountNetworkQuickPanel(
       connect.disabled = pending;
       form.append(label, connect);
       content.append(form);
-      queueMicrotask(() => input.focus());
     }
 
     const settings = node(documentObject, "button", "ordax-quick-settings-link", "Abrir Ajustes de rede");
@@ -204,6 +295,7 @@ export function mountNetworkQuickPanel(
     settings.dataset.appTarget = "network";
     settings.dataset.quickPanelClose = "";
     content.append(settings);
+    restoreInteraction(interaction);
   };
 
   const refreshStatus = async () => {
@@ -226,6 +318,13 @@ export function mountNetworkQuickPanel(
       const nextSnapshot = validateNetworkManagementSnapshot(await managementPort.status());
       if (destroyed || ordinal !== managementOrdinal) return;
       managementSnapshot = nextSnapshot;
+      if (
+        selectedSsid !== null
+        && !nextSnapshot.networks.some((entry) => entry.ssid === selectedSsid)
+      ) {
+        selectedSsid = null;
+        clearPasswordDraft();
+      }
     } catch {
       if (destroyed || ordinal !== managementOrdinal) return;
       managementSnapshot = null;
@@ -253,6 +352,7 @@ export function mountNetworkQuickPanel(
       if (destroyed || ordinal !== actionOrdinal) return;
       managementSnapshot = nextSnapshot;
       selectedSsid = null;
+      clearPasswordDraft();
       message = networkManagementActionMessage(action, 1);
       await refreshStatus();
     } catch (error) {
@@ -269,13 +369,25 @@ export function mountNetworkQuickPanel(
   const onOpen = () => {
     message = "";
     selectedSsid = null;
+    clearPasswordDraft();
+    panel.scrollTop = 0;
     void refresh();
+  };
+
+  const onClose = () => {
+    selectedSsid = null;
+    clearPasswordDraft();
+    message = "";
   };
 
   const onClick = (event) => {
     const network = event.target.closest("[data-quick-wifi-ssid]");
     if (network && panel.contains(network)) {
-      selectedSsid = network.dataset.quickWifiSsid ?? null;
+      const nextSsid = network.dataset.quickWifiSsid ?? null;
+      if (nextSsid !== selectedSsid) clearPasswordDraft();
+      selectedSsid = nextSsid;
+      passwordDraftSsid = selectedSsid;
+      focusPasswordRequested = selectedSsid !== null;
       message = "";
       render();
       return;
@@ -292,6 +404,7 @@ export function mountNetworkQuickPanel(
       }
       const password = input.value;
       input.value = "";
+      clearPasswordDraft();
       if (!password) {
         message = "Digite a senha da rede Wi-Fi.";
         render();
@@ -301,6 +414,14 @@ export function mountNetworkQuickPanel(
       return;
     }
     void runAction(kind);
+  };
+
+  const onInput = (event) => {
+    const input = event.target.closest("[data-quick-wifi-password]");
+    if (!(input instanceof HTMLInputElement) || !panel.contains(input)) return;
+    if (input.dataset.quickWifiPasswordFor !== selectedSsid) return;
+    passwordDraftSsid = selectedSsid;
+    passwordDraft = input.value;
   };
 
   const onKeyDown = (event) => {
@@ -313,7 +434,9 @@ export function mountNetworkQuickPanel(
   };
 
   panel.addEventListener("ordax:quick-panel-open", onOpen);
+  panel.addEventListener("ordax:quick-panel-close", onClose);
   panel.addEventListener("click", onClick);
+  panel.addEventListener("input", onInput);
   panel.addEventListener("keydown", onKeyDown);
 
   return Object.freeze({
@@ -323,8 +446,11 @@ export function mountNetworkQuickPanel(
       statusOrdinal += 1;
       managementOrdinal += 1;
       actionOrdinal += 1;
+      clearPasswordDraft();
       panel.removeEventListener("ordax:quick-panel-open", onOpen);
+      panel.removeEventListener("ordax:quick-panel-close", onClose);
       panel.removeEventListener("click", onClick);
+      panel.removeEventListener("input", onInput);
       panel.removeEventListener("keydown", onKeyDown);
     },
   });
