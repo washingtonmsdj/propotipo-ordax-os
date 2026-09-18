@@ -463,6 +463,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("data-update-slot", shell)
         self.assertIn("data-ordax-clock", shell)
         self.assertIn("data-ordax-tray-clock", shell)
+        self.assertIn("data-battery-tray", shell)
+        self.assertIn("data-battery-icon", shell)
+        self.assertIn("data-battery-label", shell)
         self.assertIn("data-connectivity-icon", shell)
         self.assertIn("ordax-network-symbol-wifi", shell)
         self.assertIn("ordax-network-symbol-ethernet", shell)
@@ -484,6 +487,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn(".ordax-rail", css)
         self.assertIn(".ordax-statusbar", css)
         self.assertIn(".ordax-wifi-arc-outer", css)
+        self.assertIn(".ordax-battery-segment", css)
+        self.assertIn(".ordax-battery-bolt", css)
         self.assertIn('[data-network-kind="ethernet"]', css)
 
     def test_windows_center_by_default_and_maximize_to_full_workspace(self):
