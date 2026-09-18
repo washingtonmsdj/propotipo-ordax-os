@@ -6,7 +6,13 @@
   const CATALOG_SCHEMA = "prototype-ordax.public-release-catalog/1";
 
   function sameOriginPath(value) {
-    return typeof value === "string" && value.startsWith("/") && !value.startsWith("//");
+    return (
+      typeof value === "string" &&
+      value.startsWith("/") &&
+      !value.startsWith("//") &&
+      !value.includes("?") &&
+      !value.includes("#")
+    );
   }
 
   async function loadJson(path) {
@@ -71,8 +77,25 @@
     return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
   }
 
+  function validIntegrityArtifact(value) {
+    return (
+      value &&
+      sameOriginPath(value.href) &&
+      validSha256(value.sha256) &&
+      Number.isInteger(value.size) &&
+      value.size > 0
+    );
+  }
+
   function releaseTargetNode(target) {
-    if (!target || !sameOriginPath(target.href) || typeof target.label !== "string" || !validSha256(target.sha256)) {
+    if (
+      !target ||
+      !sameOriginPath(target.href) ||
+      typeof target.label !== "string" ||
+      !validSha256(target.sha256) ||
+      !Number.isInteger(target.size) ||
+      target.size <= 0
+    ) {
       return null;
     }
 
@@ -95,8 +118,73 @@
     return row;
   }
 
+  function complianceArtifactNode(label, artifact, actionLabel = "Abrir") {
+    if (!validIntegrityArtifact(artifact)) return null;
+
+    const row = document.createElement("div");
+    row.className = "compliance-artifact";
+
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    const hash = document.createElement("code");
+    const size = document.createElement("span");
+    title.textContent = label;
+    hash.textContent = `SHA-256 ${artifact.sha256}`;
+    size.textContent = ` · ${artifact.size} bytes`;
+    copy.append(title, document.createElement("br"), hash, size);
+
+    const link = document.createElement("a");
+    link.className = "button button-quiet";
+    link.href = artifact.href;
+    link.textContent = actionLabel;
+
+    row.append(copy, link);
+    return row;
+  }
+
+  function releaseComplianceNode(compliance) {
+    if (!compliance || typeof compliance !== "object") return null;
+
+    const entries = [
+      ["SBOM", compliance.sbom, "SBOM"],
+      ["Avisos e licenças de terceiros", compliance.third_party_notices, "Avisos"],
+      ["Pacote de código-fonte aplicável", compliance.source_bundle, "Código-fonte"],
+    ];
+
+    const section = document.createElement("section");
+    section.className = "release-compliance";
+
+    const heading = document.createElement("div");
+    heading.className = "release-compliance-heading";
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "CONFORMIDADE DA RELEASE";
+    const intro = document.createElement("p");
+    intro.textContent = "Inventário, avisos e pacote de código-fonte vinculados aos mesmos bytes publicados.";
+    heading.append(eyebrow, intro);
+    section.append(heading);
+
+    let count = 0;
+    for (const [label, artifact, actionLabel] of entries) {
+      const row = complianceArtifactNode(label, artifact, actionLabel);
+      if (!row) continue;
+      section.append(row);
+      count += 1;
+    }
+    return count === entries.length ? section : null;
+  }
+
+  function validCatalog(catalog) {
+    return (
+      catalog &&
+      catalog.$schema === CATALOG_SCHEMA &&
+      Array.isArray(catalog.releases) &&
+      (catalog.status === "empty" || catalog.status === "ready")
+    );
+  }
+
   function renderCatalog(catalog) {
-    if (!catalog || catalog.$schema !== CATALOG_SCHEMA || !Array.isArray(catalog.releases)) {
+    if (!validCatalog(catalog)) {
       throw new Error("invalid-public-release-catalog");
     }
 
@@ -107,6 +195,9 @@
     let rendered = 0;
     for (const release of catalog.releases) {
       if (!release || typeof release.version !== "string" || !Array.isArray(release.targets)) continue;
+
+      const compliance = releaseComplianceNode(release.compliance);
+      if (!compliance) continue;
 
       const card = document.createElement("article");
       card.className = "release-card";
@@ -131,6 +222,7 @@
       }
 
       if (targetCount > 0) {
+        card.append(compliance);
         list.append(card);
         rendered += 1;
       }
@@ -138,8 +230,43 @@
     return rendered;
   }
 
-  function setDownloadStatus(title, detail) {
-    const status = document.querySelector("[data-download-status]");
+  function renderComplianceCatalog(catalog) {
+    if (!validCatalog(catalog)) {
+      throw new Error("invalid-public-release-catalog");
+    }
+
+    const list = document.querySelector("[data-compliance-list]");
+    if (!list) return 0;
+    list.replaceChildren();
+
+    let rendered = 0;
+    for (const release of catalog.releases) {
+      if (!release || typeof release.version !== "string") continue;
+      const compliance = releaseComplianceNode(release.compliance);
+      if (!compliance) continue;
+
+      const card = document.createElement("article");
+      card.className = "release-card";
+
+      const header = document.createElement("div");
+      header.className = "release-card-header";
+      const title = document.createElement("h2");
+      title.textContent = release.version;
+      const meta = document.createElement("p");
+      const source = typeof release.source_commit === "string"
+        ? `commit ${release.source_commit.slice(0, 12)}`
+        : "release pública";
+      meta.textContent = source;
+      header.append(title, meta);
+      card.append(header, compliance);
+      list.append(card);
+      rendered += 1;
+    }
+    return rendered;
+  }
+
+  function setStatus(selector, title, detail) {
+    const status = document.querySelector(selector);
     if (!status) return;
     const strong = status.querySelector("strong");
     const paragraph = status.querySelector("p");
@@ -147,34 +274,62 @@
     if (paragraph) paragraph.textContent = detail;
   }
 
-  async function initDownload(config) {
+  async function loadPublicCatalog(config) {
     const catalogPath = config?.downloads?.catalog_url;
     if (!sameOriginPath(catalogPath)) {
-      setDownloadStatus(
-        "Downloads públicos ainda não foram publicados",
-        "Nenhum catálogo de releases autorizadas está configurado para esta fase do protótipo."
-      );
-      return;
+      throw new Error("catalog-not-configured");
     }
+    return loadJson(catalogPath);
+  }
 
+  async function initDownload(config) {
     try {
-      const catalog = await loadJson(catalogPath);
+      const catalog = await loadPublicCatalog(config);
       const count = renderCatalog(catalog);
       if (count === 0) {
-        setDownloadStatus(
+        setStatus(
+          "[data-download-status]",
           "Nenhuma release pública disponível",
-          "O catálogo existe, mas ainda não contém uma release autorizada com artefatos verificáveis."
+          "O catálogo está ativo, mas nenhuma release passou ainda pelos gates de integridade, publicação e conformidade."
         );
         return;
       }
-      setDownloadStatus(
+      setStatus(
+        "[data-download-status]",
         "Releases públicas verificadas",
-        "Os links abaixo vieram do catálogo de releases autorizado pelo pipeline OrdaX."
+        "Os downloads abaixo incluem integridade e material de conformidade vinculados à mesma release."
       );
     } catch {
-      setDownloadStatus(
+      setStatus(
+        "[data-download-status]",
         "Catálogo temporariamente indisponível",
         "Nenhum download será oferecido até a fonte autorizada de releases responder corretamente."
+      );
+    }
+  }
+
+  async function initCompliance(config) {
+    try {
+      const catalog = await loadPublicCatalog(config);
+      const count = renderComplianceCatalog(catalog);
+      if (count === 0) {
+        setStatus(
+          "[data-compliance-status]",
+          "Nenhuma release pública ainda",
+          "Quando a primeira release for autorizada, SBOM, avisos de terceiros e código-fonte aplicável aparecerão aqui."
+        );
+        return;
+      }
+      setStatus(
+        "[data-compliance-status]",
+        "Conformidade publicada por release",
+        "Cada conjunto abaixo está vinculado por tamanho e SHA-256 à release pública correspondente."
+      );
+    } catch {
+      setStatus(
+        "[data-compliance-status]",
+        "Catálogo de conformidade indisponível",
+        "Nenhum material será anunciado até a fonte autorizada responder corretamente."
       );
     }
   }
@@ -190,6 +345,8 @@
     const page = document.body?.dataset?.page;
     if (page === "download") {
       await initDownload(config);
+    } else if (page === "licencas") {
+      await initCompliance(config);
     } else if (page === "login" || page === "cadastro") {
       renderIdentity(config);
     }
