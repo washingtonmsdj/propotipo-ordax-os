@@ -19,6 +19,9 @@ REJECTED_FILE=$STATE_DIR/rejected-commit
 SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update
 RELEASES_DIR=${ORDAX_RELEASES_DIR:-$STATE_DIR/releases}
 STAGED_RELEASE_FILE=$STATE_DIR/staged-release-sha
+LAST_PREPARE_SECONDS_FILE=$STATE_DIR/last-prepare-seconds
+LAST_ACTIVATION_SECONDS_FILE=$STATE_DIR/last-activation-seconds
+LAST_TOTAL_SECONDS_FILE=$STATE_DIR/last-update-seconds
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
 UPDATE_LOG=$UPDATE_RUN_DIR/update.log
@@ -27,6 +30,7 @@ SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
 UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
+UPDATE_TARGET_SECONDS=${ORDAX_UPDATE_TARGET_SECONDS:-5}
 REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}
@@ -51,6 +55,11 @@ case "$UPDATE_INTERVAL" in
     ''|*[!0-9]*) UPDATE_INTERVAL=5 ;;
 esac
 [ "$UPDATE_INTERVAL" -ge 5 ] 2>/dev/null || UPDATE_INTERVAL=5
+
+case "$UPDATE_TARGET_SECONDS" in
+    ''|*[!0-9]*) UPDATE_TARGET_SECONDS=5 ;;
+esac
+[ "$UPDATE_TARGET_SECONDS" -ge 1 ] 2>/dev/null || UPDATE_TARGET_SECONDS=5
 
 case "$REMOTE_TIMEOUT" in
     ''|*[!0-9]*) REMOTE_TIMEOUT=20 ;;
@@ -258,6 +267,12 @@ stage_candidate_release() {
 
     [ "$candidate_mode" != none ] || return 0
 
+    if [ "$candidate_mode" = reload ]; then
+        write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"
+        log "live-safe candidate staged in fetched Git objects: $candidate_sha"
+        return 0
+    fi
+
     release_slot=$RELEASES_DIR/$candidate_sha
     if [ -f "$release_slot/.ready" ] && [ -d "$release_slot/system" ]; then
         write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"
@@ -410,12 +425,19 @@ write_update_state() {
     last_applied_at=$(read_state_value "$LAST_APPLIED_AT_FILE")
     runtime_surface_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")
     rejected_sha=$(read_state_value "$REJECTED_FILE")
+    prepare_seconds=$(read_state_value "$LAST_PREPARE_SECONDS_FILE")
+    activation_seconds=$(read_state_value "$LAST_ACTIVATION_SECONDS_FILE")
+    total_seconds=$(read_state_value "$LAST_TOTAL_SECONDS_FILE")
+    case "$prepare_seconds" in ''|*[!0-9]*) prepare_seconds=0 ;; esac
+    case "$activation_seconds" in ''|*[!0-9]*) activation_seconds=0 ;; esac
+    case "$total_seconds" in ''|*[!0-9]*) total_seconds=0 ;; esac
     [ -n "$last_applied_at" ] || last_applied_at=unknown
     [ -n "$runtime_surface_sha" ] || runtime_surface_sha=$source_sha
     temporary=$UPDATE_STATE.tmp.$
-    printf '{"sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s"}\n' \
+    printf '{"sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s","prepareSeconds":%s,"activationSeconds":%s,"totalSeconds":%s,"targetSeconds":%s}\n' \
         "$source_sha" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
-        "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
+        "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$rejected_sha" "$UPDATE_ERROR" \
+        "$prepare_seconds" "$activation_seconds" "$total_seconds" "$UPDATE_TARGET_SECONDS" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
 }
 
@@ -427,6 +449,20 @@ record_applied() {
     temporary=$LAST_APPLIED_AT_FILE.tmp.$
     utc_now >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_APPLIED_AT_FILE"
+}
+
+record_update_timing() {
+    started_epoch=$1
+    activation_epoch=$2
+    finished_epoch=$(epoch_now)
+    case "$started_epoch:$activation_epoch:$finished_epoch" in
+        *[!0-9:]*|'0:'*|*:0:*|*:0) return 0 ;;
+    esac
+    [ "$activation_epoch" -ge "$started_epoch" ] 2>/dev/null || return 0
+    [ "$finished_epoch" -ge "$activation_epoch" ] 2>/dev/null || return 0
+    write_state_value "$LAST_PREPARE_SECONDS_FILE" "$((activation_epoch - started_epoch))"
+    write_state_value "$LAST_ACTIVATION_SECONDS_FILE" "$((finished_epoch - activation_epoch))"
+    write_state_value "$LAST_TOTAL_SECONDS_FILE" "$((finished_epoch - started_epoch))"
 }
 
 record_runtime_surface_sha() {
@@ -744,6 +780,7 @@ check_for_update() {
     fi
 
     old_sha=$current
+    attempt_started_epoch=$(epoch_now)
     attempt_id=$(utc_now)
     set_update_context fetching "$remote_sha" "$attempt_id" ""
     write_update_state "$old_sha" updating none
@@ -778,11 +815,13 @@ check_for_update() {
 
     case "$APPLY_MODE" in
         reload)
+            activation_started_epoch=$(epoch_now)
             clear_surface_health
             set_update_context health-wait "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
             if wait_for_surface_health "$new_sha" "$RELOAD_HEALTH_TIMEOUT"; then
+                record_update_timing "$attempt_started_epoch" "$activation_started_epoch"
                 record_applied "$new_sha"
                 record_runtime_surface_sha "$new_sha"
                 clear_update_context
@@ -793,6 +832,7 @@ check_for_update() {
             fi
             ;;
         surface-restart)
+            activation_started_epoch=$(epoch_now)
             clear_surface_health
             set_update_context activating "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied surface-restart
@@ -802,6 +842,7 @@ check_for_update() {
                 rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not render and acknowledge healthy state"
                 return 0
             fi
+            record_update_timing "$attempt_started_epoch" "$activation_started_epoch"
             record_applied "$new_sha"
             record_runtime_surface_sha "$new_sha"
             clear_update_context
@@ -820,6 +861,8 @@ check_for_update() {
             exit 75
             ;;
         none)
+            activation_started_epoch=$(epoch_now)
+            record_update_timing "$attempt_started_epoch" "$activation_started_epoch"
             record_applied "$new_sha"
             clear_update_context
             write_update_state "$new_sha" running none
