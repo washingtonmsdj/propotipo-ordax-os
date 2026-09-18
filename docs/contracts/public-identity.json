@@ -49,5 +49,10 @@
     "preflight": "infra/supabase/identity/preflight.sql",
     "migration_root": "infra/supabase/identity/migrations",
     "existing_shared_project_mutation_allowed": false
+  },
+  "legal_readiness": {
+    "contract": "docs/contracts/public-legal-readiness.json",
+    "required_before_provider_activation": true,
+    "runtime_identity_urls_must_remain_null_while_not_ready": true
   }
 }
