@@ -139,8 +139,11 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_shared_extensions_use_explicit_surface_render_lifecycle(self):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
-        self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
+        self.assertIn('ordax.surface-render-lifecycle/2', lifecycle)
         self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
+        self.assertIn("getAppTarget", lifecycle)
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        self.assertIn("getAppTarget(appId)", surface)
         for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
