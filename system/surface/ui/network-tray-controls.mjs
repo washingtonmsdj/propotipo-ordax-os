@@ -21,7 +21,13 @@ function choosePrimaryInterface(snapshot) {
   if (wifi) return wifi;
   const ethernet = connected.find((entry) => entry.kind === "ethernet");
   if (ethernet) return ethernet;
-  return connected[0] ?? snapshot.interfaces[0] ?? null;
+  if (connected[0]) return connected[0];
+  return (
+    snapshot.interfaces.find((entry) => entry.kind === "wifi")
+    ?? snapshot.interfaces.find((entry) => entry.kind === "ethernet")
+    ?? snapshot.interfaces[0]
+    ?? null
+  );
 }
 
 function stateCopy(entry) {
@@ -74,6 +80,11 @@ function stateCopy(entry) {
   };
 }
 
+export function summarizeNetworkStatus(value) {
+  const snapshot = validateNetworkStatusSnapshot(value);
+  return Object.freeze(stateCopy(choosePrimaryInterface(snapshot)));
+}
+
 export function mountNetworkTrayControls(
   root,
   networkStatus,
@@ -94,7 +105,7 @@ export function mountNetworkTrayControls(
   let polling = false;
 
   const render = (snapshot) => {
-    const next = stateCopy(choosePrimaryInterface(snapshot));
+    const next = summarizeNetworkStatus(snapshot);
     tray.dataset.networkKind = next.kind;
     tray.dataset.networkState = next.state;
     tray.title = next.title;
@@ -102,6 +113,7 @@ export function mountNetworkTrayControls(
     icon.dataset.state = next.state === "connected" ? "online" : "offline";
     icon.dataset.networkKind = next.kind;
     icon.dataset.signalLevel = String(next.signalLevel);
+    tray.dataset.networkDetailOwner = "true";
   };
 
   const refresh = async () => {
@@ -117,6 +129,7 @@ export function mountNetworkTrayControls(
       icon.dataset.state = "unknown";
       icon.dataset.networkKind = "unknown";
       icon.dataset.signalLevel = "0";
+      tray.dataset.networkDetailOwner = "true";
     } finally {
       polling = false;
     }
@@ -130,6 +143,7 @@ export function mountNetworkTrayControls(
     destroy() {
       destroyed = true;
       clearInterval(timer);
+      delete tray.dataset.networkDetailOwner;
     },
   });
 }
