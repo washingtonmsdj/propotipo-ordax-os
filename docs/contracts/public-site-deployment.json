@@ -3,7 +3,14 @@
   "status": "deployment-adapter-not-selected",
   "site_artifact": "public-site",
   "routing": {
-    "static_routes": ["/", "/download/", "/login/", "/cadastro/", "/releases/catalog.json"],
+    "static_routes": [
+      "/",
+      "/download/",
+      "/login/",
+      "/cadastro/",
+      "/releases/catalog.json",
+      "/licencas/"
+    ],
     "identity_prefix": "/auth/",
     "identity_gateway_entrypoint": "services/public-identity/gateway.py:application",
     "same_origin_identity_required": true,
