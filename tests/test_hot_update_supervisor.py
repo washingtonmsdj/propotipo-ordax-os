@@ -132,7 +132,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
 
     def test_runtime_neutral_main_change_is_not_recorded_as_notebook_application(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
-        none_block = text.split('        none)\n', 1)[1].split('            ;;', 1)[0]
+        apply_case = text.split('    case "$APPLY_MODE" in', 1)[1]
+        none_block = apply_case.split('        none)\n', 1)[1].split('            ;;', 1)[0]
         self.assertNotIn('record_applied "$new_sha"', none_block)
         self.assertIn('rm -f "$ATTEMPT_STARTED_EPOCH_FILE"', none_block)
         self.assertIn('refresh_release_history', none_block)
