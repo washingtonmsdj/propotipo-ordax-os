@@ -459,7 +459,10 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {FILES_PATH, METRICS_PATH, SYNC_STATE_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {FILES_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
+            self._empty(403)
+            return
+        if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == METRICS_PATH:
