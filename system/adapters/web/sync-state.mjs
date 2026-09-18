@@ -28,6 +28,7 @@ export function createWebSyncStateStore(windowRef = globalThis.window) {
 
   const store = {
     schema: SYNC_STATE_STORE_SCHEMA,
+    scope: storage ? "device" : "session",
     load() {
       if (!storage) return memory;
       try {
