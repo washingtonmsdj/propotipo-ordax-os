@@ -18,10 +18,11 @@ network ready
  -> verify exact size + SHA-256
  -> fsync staging release
  -> atomically materialize /ordax/releases/<commit>
- -> atomically switch /ordax/current
+ -> optional activation boundary
+ -> atomically switch /ordax/current only for install
 ```
 
-A failed download, signature, hash, size or activation check never replaces the current known-good release.
+A failed download, signature, hash, size or activation check never replaces the current known-good release. The `materialize` command deliberately stops before activation and cannot retarget the canonical `/ordax/current` pointer.
 
 ## Cryptographic envelope
 
@@ -115,6 +116,18 @@ ordax-release-agent verify-envelope \
   --envelope release-envelope.json \
   --trust /ordax/bootstrap/trust/release-ed25519.json
 ```
+
+Acquire and verify one exact commit without activating it:
+
+```text
+ordax-release-agent materialize \
+  --envelope-url https://releases.example/ordax/stable.json \
+  --trust /ordax/bootstrap/trust/release-ed25519.json \
+  --root /ordax \
+  --expected-commit <lowercase-40-hex>
+```
+
+This mode is used by the A/B base-update owner. It requires the signed `source_commit` to equal `--expected-commit`, writes only the immutable `/ordax/releases/<commit>` release, and leaves `/ordax/current` unchanged.
 
 Acquire and activate a release:
 
