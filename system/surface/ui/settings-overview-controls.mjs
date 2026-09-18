@@ -553,7 +553,7 @@ export function mountSettingsOverviewControls(
     const interaction = captureInteractionState(slot);
     slot.replaceChildren();
     slot.dataset.ordaxSettingsOverviewView = "";
-    slot.dataset.settingsSection = activeSection;
+    slot.dataset.settingsActiveSection = activeSection;
     const view = node(documentObject, "div", "ordax-settings-view");
     renderHeader(view);
     renderSectionNavigation(view);

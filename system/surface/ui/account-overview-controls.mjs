@@ -157,7 +157,7 @@ export function mountAccountOverviewControls(
     const activeElement = documentObject.activeElement;
     const activeInside = activeElement && slot.contains(activeElement);
     return Object.freeze({
-      section: slot.dataset.accountSection ?? "",
+      section: slot.dataset.accountActiveSection ?? "",
       windowScrollTop: windowBody?.scrollTop ?? 0,
       windowScrollLeft: windowBody?.scrollLeft ?? 0,
       focus: activeInside ? focusIdentity(activeElement) : null,
@@ -355,7 +355,7 @@ export function mountAccountOverviewControls(
   const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxAccountOverviewView = "";
-    slot.dataset.accountSection = activeSection;
+    slot.dataset.accountActiveSection = activeSection;
     const view = node(documentObject, "div", "ordax-account-view");
     renderHeader(view);
     renderSectionNavigation(view);

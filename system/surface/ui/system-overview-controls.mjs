@@ -219,7 +219,7 @@ export function mountSystemOverviewControls(
     const activeElement = documentObject.activeElement;
     const activeInside = activeElement && slot.contains(activeElement);
     return Object.freeze({
-      section: slot.dataset.systemSection ?? "",
+      section: slot.dataset.systemActiveSection ?? "",
       windowScrollTop: windowBody?.scrollTop ?? 0,
       windowScrollLeft: windowBody?.scrollLeft ?? 0,
       focus: activeInside ? focusIdentity(activeElement) : null,
@@ -697,7 +697,7 @@ export function mountSystemOverviewControls(
   const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxSystemOverviewView = "";
-    slot.dataset.systemSection = activeSection;
+    slot.dataset.systemActiveSection = activeSection;
 
     const view = node(documentObject, "div", "ordax-system-view");
     renderHeader(view);
