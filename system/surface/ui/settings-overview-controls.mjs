@@ -271,13 +271,19 @@ export function mountSettingsOverviewControls(
 
   const refreshNetwork = async () => {
     if (!networkPort || destroyed) return;
+    let changed = false;
     try {
-      networkSnapshot = validateNetworkStatusSnapshot(await networkPort.read());
+      const nextSnapshot = validateNetworkStatusSnapshot(await networkPort.read());
+      changed =
+        networkReadFailed ||
+        JSON.stringify(nextSnapshot) !== JSON.stringify(networkSnapshot);
+      networkSnapshot = nextSnapshot;
       networkReadFailed = false;
     } catch {
+      changed = !networkReadFailed;
       networkReadFailed = true;
     }
-    if (!destroyed) replaceView();
+    if (changed && !destroyed) replaceView();
   };
 
   const onClick = (event) => {
