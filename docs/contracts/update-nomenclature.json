@@ -1,0 +1,46 @@
+{
+  "$schema": "prototype-ordax.update-nomenclature/1",
+  "status": "canonical-prototype-contract",
+  "development": {
+    "pull_request": {
+      "user_facing_update_identity": false,
+      "product_version": false,
+      "purpose": "code-review-and-integration"
+    },
+    "source_commit": {
+      "exact_technical_identity": true,
+      "format": "lowercase-40-hex-git-sha"
+    }
+  },
+  "delivery": {
+    "user_label": "Entrega",
+    "independent_from_pull_request_number": true,
+    "human_sequence_only": true,
+    "exact_identity_remains_source_commit": true,
+    "prototype_sequence": {
+      "method": "first-parent-device-impact-count",
+      "included_paths": ["system/**", "boot/**", "bootstrap/**"],
+      "excluded_paths": ["system/*.md"]
+    }
+  },
+  "update": {
+    "meaning": "device-application-event-or-state",
+    "is_pull_request": false,
+    "local_application_history_required": true
+  },
+  "product_version": {
+    "currently_assigned": false,
+    "may_not_be_inferred_from_delivery": true,
+    "may_not_be_inferred_from_pull_request": true
+  },
+  "component_version": {
+    "currently_independent": false,
+    "invented_component_versions_allowed": false,
+    "independent_version_requires_independent_packaging": true
+  },
+  "compatibility": {
+    "legacy_field": "versionNumber",
+    "canonical_field": "deliveryNumber",
+    "legacy_field_is_delivery_alias_only": true
+  }
+}
