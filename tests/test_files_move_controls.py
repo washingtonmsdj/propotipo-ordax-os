@@ -12,7 +12,7 @@ class FilesMoveControlsTests(unittest.TestCase):
     def test_contract_and_adapter_expose_move_with_structured_errors(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/9', contract)
+        self.assertIn('ordax.file-space/10', contract)
         self.assertIn("moveEntry()", contract)
         self.assertIn("FileSpaceOperationError", adapter)
         self.assertIn("this.status = status", adapter)
@@ -43,8 +43,10 @@ class FilesMoveControlsTests(unittest.TestCase):
         controls = CONTROLS.read_text(encoding="utf-8")
         self.assertIn("operationStatus", controls)
         self.assertIn("status === 409", controls)
+        self.assertIn("status === 412", controls)
+        self.assertIn("status === 413", controls)
         self.assertIn("status === 422", controls)
-        self.assertIn("operação segura ainda não está disponível", controls)
+        self.assertIn("Pastas ainda não podem ser movidas entre volumes.", controls)
         self.assertIn("A origem foi preservada.", controls)
 
     def test_transfer_panel_is_responsive(self):

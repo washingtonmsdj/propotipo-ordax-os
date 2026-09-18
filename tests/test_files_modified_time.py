@@ -33,7 +33,7 @@ class FilesModifiedTimeTests(unittest.TestCase):
 
     def test_contract_requires_safe_non_negative_modified_at(self):
         contract = CONTRACT.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/9', contract)
+        self.assertIn('ordax.file-space/10', contract)
         self.assertIn("Number.isSafeInteger(value.modifiedAt)", contract)
         self.assertIn("value.modifiedAt < 0", contract)
         self.assertIn("modifiedAt: value.modifiedAt", contract)

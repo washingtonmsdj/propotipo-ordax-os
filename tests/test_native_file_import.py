@@ -93,7 +93,7 @@ class NativeFileImportTests(unittest.TestCase):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
         controls = CONTROLS.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/9', contract)
+        self.assertIn('ordax.file-space/10', contract)
         self.assertIn("MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024", contract)
         self.assertIn("importFile()", contract)
         self.assertIn('FILE_IMPORT_ENDPOINT = "/__ordax/native/file-import"', adapter)
