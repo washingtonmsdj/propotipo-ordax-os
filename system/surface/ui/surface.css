@@ -1187,7 +1187,8 @@ button.ordax-tray-item:focus-visible {
 }
 
 .ordax-quick-network-summary span,
-.ordax-quick-timezone span {
+.ordax-quick-timezone span,
+.ordax-quick-time-sync span {
   color: var(--ordax-muted);
   font-size: 0.72rem;
 }
@@ -1360,6 +1361,30 @@ button.ordax-tray-item:focus-visible {
 
 .ordax-quick-panel-datetime {
   width: min(340px, calc(100vw - 36px));
+}
+
+.ordax-quick-time-sync {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-md);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-quick-time-sync strong[data-state="running"] {
+  color: var(--ordax-accent-strong);
+}
+
+.ordax-quick-time-sync strong[data-state="unavailable"] {
+  color: var(--ordax-muted);
+}
+
+.ordax-quick-time-sync small {
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+  line-height: 1.4;
 }
 
 .ordax-quick-date {
