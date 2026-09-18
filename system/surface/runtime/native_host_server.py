@@ -731,6 +731,7 @@ def copy_user_file(
             raise FileSpaceCopyChangedError("source changed while being copied")
 
         os.fsync(destination_fd)
+        os.fsync(directory_fd)
     except Exception:
         if destination_fd is not None:
             os.close(destination_fd)
