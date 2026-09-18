@@ -1,3 +1,4 @@
+// Lightweight-staging latency probe v2: no behavior change; measures the live reload path.
 // Lightweight-staging latency probe: no behavior change; measures the live reload path.
 // Staged-slot latency probe: no behavior change; exercises the live reload path.
 // Fast-path probe: this UI file is intentionally safe for live Surface reloads.
