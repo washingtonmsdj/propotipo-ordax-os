@@ -1188,6 +1188,10 @@ class FileSpaceCopyChangedError(Exception):
     pass
 
 
+class FileSpaceCrossDeviceMoveError(Exception):
+    pass
+
+
 def read_user_text_file(
     user_root: str,
     logical_path: str,
@@ -1241,7 +1245,12 @@ def read_user_text_file(
         os.close(descriptor)
 
 
-def _renameat2_noreplace(directory_fd: int, old_name: str, new_name: str) -> None:
+def _renameat2_noreplace_between(
+    source_directory_fd: int,
+    old_name: str,
+    destination_directory_fd: int,
+    new_name: str,
+) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
     if renameat2 is None:
@@ -1255,9 +1264,9 @@ def _renameat2_noreplace(directory_fd: int, old_name: str, new_name: str) -> Non
     ]
     renameat2.restype = ctypes.c_int
     result = renameat2(
-        directory_fd,
+        source_directory_fd,
         os.fsencode(old_name),
-        directory_fd,
+        destination_directory_fd,
         os.fsencode(new_name),
         RENAME_NOREPLACE,
     )
@@ -1267,6 +1276,10 @@ def _renameat2_noreplace(directory_fd: int, old_name: str, new_name: str) -> Non
     if error_number == errno.EEXIST:
         raise FileExistsError(error_number, os.strerror(error_number), new_name)
     raise OSError(error_number, os.strerror(error_number), new_name)
+
+
+def _renameat2_noreplace(directory_fd: int, old_name: str, new_name: str) -> None:
+    _renameat2_noreplace_between(directory_fd, old_name, directory_fd, new_name)
 
 
 def rename_user_entry(
@@ -1293,6 +1306,64 @@ def rename_user_entry(
     finally:
         os.close(descriptor)
     return list_user_directory(user_root, logical_path)
+
+
+def move_user_entry(
+    user_root: str,
+    source_path: str,
+    name: str,
+    destination_path: str,
+) -> dict:
+    if not valid_logical_file_path(source_path):
+        raise ValueError("invalid move source path")
+    if not valid_logical_file_path(destination_path):
+        raise ValueError("invalid move destination path")
+    if not valid_file_name(name):
+        raise ValueError("invalid move name")
+    if source_path == destination_path:
+        return list_user_directory(user_root, source_path)
+
+    source_entry_path = (
+        f"/{name}" if source_path == "/" else f"{source_path}/{name}"
+    )
+    if (
+        destination_path == source_entry_path
+        or destination_path.startswith(f"{source_entry_path}/")
+    ):
+        raise ValueError("cannot move a directory into itself")
+
+    source_descriptor = open_user_directory(user_root, source_path)
+    destination_descriptor = None
+    try:
+        metadata = os.stat(name, dir_fd=source_descriptor, follow_symlinks=False)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError("symbolic links cannot be moved through file-space")
+        if not (stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)):
+            raise ValueError("unsupported file-space entry kind")
+
+        destination_descriptor = open_user_directory(user_root, destination_path)
+        try:
+            _renameat2_noreplace_between(
+                source_descriptor,
+                name,
+                destination_descriptor,
+                name,
+            )
+        except OSError as exc:
+            if exc.errno == errno.EXDEV:
+                raise FileSpaceCrossDeviceMoveError(
+                    "cross-device move requires copy-and-verify semantics"
+                ) from exc
+            raise
+
+        os.fsync(destination_descriptor)
+        os.fsync(source_descriptor)
+    finally:
+        if destination_descriptor is not None:
+            os.close(destination_descriptor)
+        os.close(source_descriptor)
+
+    return list_user_directory(user_root, destination_path)
 
 
 def copy_user_file(
@@ -1862,6 +1933,14 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                         payload.get("newName"),
                     )
                     status = 201
+                elif action == "move-entry":
+                    listing = move_user_entry(
+                        self.server.user_root,
+                        payload.get("sourcePath"),
+                        payload.get("name"),
+                        payload.get("destinationPath"),
+                    )
+                    status = 200
                 else:
                     self._empty(400)
                     return
@@ -1870,6 +1949,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 return
             except FileSpaceCopyChangedError:
                 self._empty(412)
+                return
+            except FileSpaceCrossDeviceMoveError:
+                self._empty(422)
                 return
             except ValueError:
                 self._empty(400)
