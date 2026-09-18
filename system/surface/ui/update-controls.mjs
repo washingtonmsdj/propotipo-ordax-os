@@ -35,9 +35,11 @@ export function mountUpdateControls(root, updatePort, appActivation) {
     const alerting = updateIsAlerting(snapshot);
     button.textContent = alerting ? "Atualizações •" : "Atualizações";
     button.dataset.alerting = String(alerting);
-    button.title = alerting
-      ? "Há uma atualização que requer atenção. Abrir Sistema > Atualizações."
-      : "Abrir Sistema > Atualizações";
+    button.title = snapshot?.bootRefreshRequired
+      ? "Há uma atualização de base pendente. Abrir Sistema > Atualizações."
+      : alerting
+        ? "Há uma atualização que requer atenção. Abrir Sistema > Atualizações."
+        : "Abrir Sistema > Atualizações";
   };
 
   const onClick = (event) => {
