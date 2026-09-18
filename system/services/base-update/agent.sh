@@ -6,7 +6,9 @@ HOST_REPO_ROOT=${ORDAX_BASE_HOST_REPO_ROOT:-}
 HOST_STATE_ROOT=${ORDAX_BASE_HOST_STATE_ROOT:-/state/ordax}
 INTERVAL=${ORDAX_BASE_INTERVAL_SECONDS:-30}
 MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}
+MOUNT_STAGE_HOST=${ORDAX_BASE_MOUNT_STAGE_ROOT:-/run/ordax-base-owner}
 PHYSICAL_MOUNT_HOST=
+PHYSICAL_BIND_HOST=
 PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device
 OWNER_STATE_CHROOT=
 PREPARE_BLOCKER=
@@ -24,7 +26,7 @@ log() {
 write_preflight_status() {
     blocker=${1:-physical-root-unavailable}
     case "$blocker" in
-        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|physical-mountpoint-conflict|physical-mount-failed|release-agent-missing|release-channel-missing|development-state-missing|development-state-unsafe)
+        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|mount-stage-conflict|mount-stage-failed|physical-mountpoint-conflict|physical-mount-failed|physical-bind-conflict|physical-bind-failed|release-agent-missing|release-channel-missing|development-state-missing|development-state-unsafe)
             ;;
         *) blocker=physical-root-unavailable ;;
     esac
@@ -103,6 +105,46 @@ safe_block_source() {
     return 0
 }
 
+ensure_mount_stage() {
+    /bin/busybox mkdir -p "$MOUNT_STAGE_HOST" || {
+        PREPARE_BLOCKER=mount-stage-failed
+        return 1
+    }
+    stage_record=$(mount_record_for "$MOUNT_STAGE_HOST")
+    if [ -n "$stage_record" ]; then
+        stage_root=""
+        stage_fstype=""
+        stage_source=""
+        old_ifs=$IFS
+        IFS='|'
+        read -r stage_root stage_fstype stage_source <<EOF
+$stage_record
+EOF
+        IFS=$old_ifs
+        if [ "$stage_root" != "/" ] ||
+           [ "$stage_fstype" != "tmpfs" ] ||
+           [ "$stage_source" != "tmpfs" ]; then
+            PREPARE_BLOCKER=mount-stage-conflict
+            log "base-update mount staging path is occupied unexpectedly"
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! /bin/busybox mount -t tmpfs -o mode=0700,size=1m tmpfs "$MOUNT_STAGE_HOST"; then
+        PREPARE_BLOCKER=mount-stage-failed
+        log "cannot create isolated base-update mount staging tmpfs"
+        return 1
+    fi
+    stage_record=$(mount_record_for "$MOUNT_STAGE_HOST")
+    [ -n "$stage_record" ] || {
+        PREPARE_BLOCKER=mount-stage-failed
+        log "base-update mount staging tmpfs was not observable"
+        return 1
+    }
+    return 0
+}
+
 prepare_physical_root() {
     PREPARE_BLOCKER=
     record=$(root_mount_record)
@@ -138,8 +180,13 @@ EOF
         return 1
     }
 
-    PHYSICAL_MOUNT_HOST=$RUNTIME_ROOT$PHYSICAL_MOUNT_CHROOT
-    /bin/busybox mkdir -p "$PHYSICAL_MOUNT_HOST" || return 1
+    ensure_mount_stage || return 1
+
+    PHYSICAL_MOUNT_HOST=$MOUNT_STAGE_HOST/physical
+    /bin/busybox mkdir -p "$PHYSICAL_MOUNT_HOST" || {
+        PREPARE_BLOCKER=physical-mount-failed
+        return 1
+    }
 
     mounted=$(mount_record_for "$PHYSICAL_MOUNT_HOST")
     if [ -n "$mounted" ]; then
@@ -169,6 +216,43 @@ EOF
         [ -n "$mounted" ] || {
             PREPARE_BLOCKER=physical-mount-failed
             log "physical root mount was not observable after mount"
+            return 1
+        }
+    fi
+
+    PHYSICAL_BIND_HOST=$RUNTIME_ROOT$PHYSICAL_MOUNT_CHROOT
+    /bin/busybox mkdir -p "$PHYSICAL_BIND_HOST" || {
+        PREPARE_BLOCKER=physical-bind-failed
+        return 1
+    }
+    bound=$(mount_record_for "$PHYSICAL_BIND_HOST")
+    if [ -n "$bound" ]; then
+        bound_root=""
+        bound_fstype=""
+        bound_source=""
+        old_ifs=$IFS
+        IFS='|'
+        read -r bound_root bound_fstype bound_source <<EOF
+$bound
+EOF
+        IFS=$old_ifs
+        if [ "$bound_root" != "/" ] ||
+           [ "$bound_fstype" != "ext4" ] ||
+           [ "$bound_source" != "$root_source" ]; then
+            PREPARE_BLOCKER=physical-bind-conflict
+            log "physical ORDAX chroot bind is occupied unexpectedly"
+            return 1
+        fi
+    else
+        if ! /bin/busybox mount -o bind "$PHYSICAL_MOUNT_HOST" "$PHYSICAL_BIND_HOST"; then
+            PREPARE_BLOCKER=physical-bind-failed
+            log "cannot bind physical ORDAX root into graphical runtime"
+            return 1
+        fi
+        bound=$(mount_record_for "$PHYSICAL_BIND_HOST")
+        [ -n "$bound" ] || {
+            PREPARE_BLOCKER=physical-bind-failed
+            log "physical ORDAX chroot bind was not observable"
             return 1
         }
     fi
