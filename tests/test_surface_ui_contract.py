@@ -511,6 +511,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         controller = SYSTEM_TRAY_QUICK_PANELS.read_text(encoding="utf-8")
         network = NETWORK_QUICK_PANEL.read_text(encoding="utf-8")
         battery = BATTERY_QUICK_PANEL.read_text(encoding="utf-8")
+        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
 
