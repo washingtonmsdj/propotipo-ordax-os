@@ -133,6 +133,14 @@ def read_rescue_status() -> tuple[int | None, str]:
     return generation, action
 
 
+def bounded_telemetry_duration(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    if value < 0 or value > 3600:
+        return 0
+    return value
+
+
 def build_telemetry_payload(device_id: str) -> dict:
     update = read_update_state() or {}
     rescue_generation, rescue_action = read_rescue_status()
@@ -157,12 +165,15 @@ def build_telemetry_payload(device_id: str) -> dict:
         "healthySha": healthy_sha,
         "lastAppliedSha": update.get("lastAppliedSha") if valid_commit_sha(update.get("lastAppliedSha")) else "",
         "lastAppliedAt": last_applied_at,
+        "stagedReleaseSha": update.get("stagedReleaseSha") if valid_commit_sha(update.get("stagedReleaseSha")) else "",
+        "lastApplyDurationSeconds": bounded_telemetry_duration(update.get("lastApplyDurationSeconds")),
+        "lastStageDurationSeconds": bounded_telemetry_duration(update.get("lastStageDurationSeconds")),
         "rescueGeneration": rescue_generation,
         "rescueAction": rescue_action,
         "surfaceState": "running",
         "bootId": read_small_text(BOOT_ID_FILE, 256),
         "lastError": update.get("lastError") if isinstance(update.get("lastError"), str) else "",
-        "relayVersion": 1,
+        "relayVersion": 2,
     }
 
 
