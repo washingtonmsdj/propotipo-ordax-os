@@ -33,13 +33,74 @@ import { mountSystemOverviewControls } from "../../surface/ui/system-overview-co
 import { mountSystemTrayQuickPanels } from "../../surface/ui/system-tray-quick-panels.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
+async function optionalNativeProbe(label, factory) {
+  try {
+    return await factory();
+  } catch (error) {
+    console.warn(label, error);
+    return null;
+  }
+}
+
 async function start() {
   const root = document.querySelector("#ordax-root");
   if (!root) {
     throw new Error("OrdaX composition root is missing #ordax-root");
   }
 
-  const preferenceStore = await createNativePreferenceStore(window);
+  const preferenceStorePromise = createNativePreferenceStore(window);
+  const optionalPortsPromise = Promise.all([
+    optionalNativeProbe(
+      "OrdaX native client diagnostics unavailable",
+      () => createNativeClientDiagnostics(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native update history unavailable",
+      () => createNativeUpdateHistory(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native sync state persistence unavailable",
+      () => createNativeSyncStateStore(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native power actions unavailable",
+      () => createNativePowerActions(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native user file-space unavailable",
+      () => createNativeFileSpace(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native network status unavailable",
+      () => createNativeNetworkStatus(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native network management unavailable",
+      () => createNativeNetworkManagement(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native system metrics unavailable",
+      () => createNativeSystemMetrics(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native power status unavailable",
+      () => createNativePowerStatus(window),
+    ),
+  ]);
+
+  const preferenceStore = await preferenceStorePromise;
+  const [
+    clientDiagnostics,
+    updateHistory,
+    syncStateStore,
+    powerActions,
+    fileSpace,
+    networkStatus,
+    networkManagement,
+    systemMetrics,
+    powerStatus,
+  ] = await optionalPortsPromise;
+
   const localWorkspaceStore = createNativeWorkspaceStore(window);
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
@@ -47,12 +108,6 @@ async function start() {
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
-  let clientDiagnostics = null;
-  try {
-    clientDiagnostics = await createNativeClientDiagnostics(window);
-  } catch (error) {
-    console.warn("OrdaX native client diagnostics unavailable", error);
-  }
   const reportClientDiagnostic = (stage, error) => {
     console.error(`OrdaX Surface diagnostic: ${stage}`, error);
     if (clientDiagnostics) {
@@ -68,63 +123,6 @@ async function start() {
   };
   window.addEventListener("error", onWindowError);
   window.addEventListener("unhandledrejection", onUnhandledRejection);
-  let updateHistory = null;
-  try {
-    updateHistory = await createNativeUpdateHistory(window);
-  } catch (error) {
-    console.warn("OrdaX native update history unavailable", error);
-  }
-
-  let syncStateStore = null;
-  try {
-    syncStateStore = await createNativeSyncStateStore(window);
-  } catch (error) {
-    console.warn("OrdaX native sync state persistence unavailable", error);
-  }
-
-
-  let powerActions = null;
-  try {
-    powerActions = await createNativePowerActions(window);
-  } catch (error) {
-    console.warn("OrdaX native power actions unavailable", error);
-  }
-
-  let fileSpace = null;
-  try {
-    fileSpace = await createNativeFileSpace(window);
-  } catch (error) {
-    console.warn("OrdaX native user file-space unavailable", error);
-  }
-
-  let networkStatus = null;
-  try {
-    networkStatus = await createNativeNetworkStatus(window);
-  } catch (error) {
-    console.warn("OrdaX native network status unavailable", error);
-  }
-
-  let networkManagement = null;
-  try {
-    networkManagement = await createNativeNetworkManagement(window);
-  } catch (error) {
-    console.warn("OrdaX native network management unavailable", error);
-  }
-
-  let systemMetrics = null;
-  try {
-    systemMetrics = await createNativeSystemMetrics(window);
-  } catch (error) {
-    console.warn("OrdaX native system metrics unavailable", error);
-  }
-
-  let powerStatus = null;
-  try {
-    powerStatus = await createNativePowerStatus(window);
-  } catch (error) {
-    console.warn("OrdaX native power status unavailable", error);
-  }
-
   const bootControlAvailable = Boolean(
     powerActions?.getSnapshot().supportedActions.length,
   );
