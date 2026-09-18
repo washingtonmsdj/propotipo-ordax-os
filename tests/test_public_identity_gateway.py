@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,7 @@ CONTRACT_PATH = ROOT / "docs" / "contracts" / "public-identity-gateway.json"
 spec = importlib.util.spec_from_file_location("ordax_public_identity_gateway", GATEWAY_PATH)
 gateway_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
+sys.modules[spec.name] = gateway_module
 spec.loader.exec_module(gateway_module)
 
 
