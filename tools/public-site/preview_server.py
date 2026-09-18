@@ -39,6 +39,8 @@ SECURITY_HEADERS = DEPLOYMENT["security_headers"]
 
 def _safe_static_path(root: Path, request_path: str) -> Path | None:
     decoded = unquote(request_path)
+    if any(segment == ".." for segment in decoded.split("/")):
+        return None
     normalized = posixpath.normpath(decoded)
     if not normalized.startswith("/"):
         return None
