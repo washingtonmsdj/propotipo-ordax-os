@@ -21,6 +21,8 @@ PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
 UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
+REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
+PULL_TIMEOUT=${ORDAX_PULL_TIMEOUT_SECONDS:-45}
 SURFACE_PID=""
 
 log() {
@@ -31,6 +33,25 @@ case "$UPDATE_INTERVAL" in
     ''|*[!0-9]*) UPDATE_INTERVAL=5 ;;
 esac
 [ "$UPDATE_INTERVAL" -ge 5 ] 2>/dev/null || UPDATE_INTERVAL=5
+
+case "$REMOTE_TIMEOUT" in
+    ''|*[!0-9]*) REMOTE_TIMEOUT=20 ;;
+esac
+[ "$REMOTE_TIMEOUT" -ge 5 ] 2>/dev/null || REMOTE_TIMEOUT=20
+
+case "$PULL_TIMEOUT" in
+    ''|*[!0-9]*) PULL_TIMEOUT=45 ;;
+esac
+[ "$PULL_TIMEOUT" -ge 10 ] 2>/dev/null || PULL_TIMEOUT=45
+
+GIT_TERMINAL_PROMPT=0
+export GIT_TERMINAL_PROMPT
+
+run_bounded() {
+    timeout_seconds=$1
+    shift
+    /bin/busybox timeout -k 5 "$timeout_seconds" "$@"
+}
 
 /bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR"
 chmod 700 "$UPDATE_RUN_DIR"
@@ -243,7 +264,8 @@ check_for_update() {
         return 0
     fi
 
-    if ! remote_output=$("$GIT_BIN" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
+    if ! remote_output=$(run_bounded "$REMOTE_TIMEOUT" "$GIT_BIN" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
+        log "remote check failed or timed out after ${REMOTE_TIMEOUT}s; keeping running Surface"
         write_update_state "$current" network-error none
         return 0
     fi
@@ -274,8 +296,8 @@ check_for_update() {
     write_update_state "$old_sha" updating none
     log "update available: $old_sha -> $remote_sha"
 
-    if ! "$PULL_BIN" >>"$UPDATE_LOG" 2>&1; then
-        log "automatic ordax-pull failed; keeping running Surface"
+    if ! run_bounded "$PULL_TIMEOUT" "$PULL_BIN" >>"$UPDATE_LOG" 2>&1; then
+        log "automatic ordax-pull failed or timed out after ${PULL_TIMEOUT}s; keeping running Surface"
         write_update_state "$old_sha" pull-error none
         return 0
     fi
