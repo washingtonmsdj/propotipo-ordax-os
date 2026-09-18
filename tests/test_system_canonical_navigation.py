@@ -36,6 +36,7 @@ class SystemCanonicalNavigationTests(unittest.TestCase):
 
     def test_surface_activation_channel_opens_target_app_before_owner_handles_target(self):
         surface = SURFACE.read_text(encoding="utf-8")
+        system = SYSTEM.read_text(encoding="utf-8")
         self.assertIn("activationPort?.subscribe", surface)
         self.assertIn('appId: activation.appId,', surface)
         self.assertIn('target: activation.target,', surface)
