@@ -182,15 +182,14 @@ class NativeUserFilesTests(unittest.TestCase):
             self.assertEqual((user_root / "occupied.txt").read_text(encoding="utf-8"), "keep")
             self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
 
-            (user_root / "large.bin").write_bytes(
-                b"x" * (native_host.MAX_FILE_COPY_BYTES + 1)
-            )
+            (user_root / "large.bin").write_bytes(b"12345")
             with self.assertRaises(native_host.FileSpaceCopyTooLargeError):
                 native_host.copy_user_file(
                     str(user_root),
                     "/",
                     "large.bin",
                     "large-copy.bin",
+                    max_bytes=4,
                 )
             self.assertFalse((user_root / "large-copy.bin").exists())
 
