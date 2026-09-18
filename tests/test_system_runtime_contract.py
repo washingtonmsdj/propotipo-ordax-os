@@ -185,6 +185,24 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertNotIn("WLR_LIBINPUT_NO_DEVICES=1", text)
         self.assertIn("failed to prepare physical keyboard/touchpad input devices", text)
 
+    def test_native_surface_restart_reaps_only_runtime_root_orphans(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("terminate_child()", text)
+        self.assertIn("runtime_root_processes()", text)
+        self.assertIn("reap_stale_runtime_processes()", text)
+        self.assertIn("clear_stale_runtime_mounts()", text)
+        self.assertIn('root_target=$(/bin/busybox readlink "$root_link"', text)
+        self.assertIn('[ "$root_target" = "$RUNTIME_ROOT" ] || continue', text)
+        self.assertIn('kill -KILL "$pid"', text)
+        self.assertIn('terminate_child "$GRAPHICS_PID" "graphics host"', text)
+        self.assertIn('terminate_child "$HTTP_PID" "native HTTP host"', text)
+        self.assertLess(
+            text.index("reap_stale_runtime_processes\nclear_stale_runtime_mounts"),
+            text.index('ensure_runtime || fallback_with_reason'),
+        )
+        self.assertNotIn("pkill ", text)
+        self.assertNotIn("killall ", text)
+
     def test_native_host_clears_only_stale_seatd_socket(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("SEATD_SOCKET=/run/seatd.sock", text)
