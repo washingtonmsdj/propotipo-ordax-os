@@ -497,6 +497,33 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("reboot", agent)
         self.assertNotIn("sysrq", agent)
 
+    def test_agent_maps_development_root_to_real_physical_ordax_root(self):
+        agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn("MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}", agent)
+        self.assertIn("PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device", agent)
+        self.assertIn('root_mount_record()', agent)
+        self.assertIn('$5 == "/"', agent)
+        self.assertIn('[ "$root_fstype" = "ext4" ]', agent)
+        self.assertIn('/dev/*)', agent)
+        self.assertIn('mount -t ext4 -o rw "$root_source" "$PHYSICAL_MOUNT_HOST"', agent)
+        self.assertIn(
+            'release_agent=$PHYSICAL_MOUNT_HOST/bootstrap/release-acquisition/ordax-release-agent',
+            agent,
+        )
+        self.assertIn(
+            'release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url',
+            agent,
+        )
+        self.assertIn('host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax', agent)
+        self.assertIn(
+            'OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$root_subpath/state/ordax',
+            agent,
+        )
+        self.assertIn('--state-root "$OWNER_STATE_CHROOT"', agent)
+        self.assertIn('--physical-root "$PHYSICAL_MOUNT_CHROOT"', agent)
+        self.assertNotIn("--state-root /var/lib/ordax", agent)
+        self.assertNotIn("--physical-root /ordax", agent)
+
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
         self.assertIn('BASE_UPDATE_SOURCE=$SYSTEM_ROOT/services/base-update/agent.sh', text)
