@@ -121,6 +121,8 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("secrets.token_urlsafe(32)", server)
         self.assertIn("POWER_REQUEST=$SESSION_DIR/power-request", launcher)
         self.assertIn("prepare_power_broker", launcher)
+        self.assertIn('exec 9<>"$POWER_REQUEST"', launcher)
+        self.assertIn('IFS= read -r action <&9', launcher)
         self.assertIn('/bin/busybox reboot -f', launcher)
         self.assertIn('/bin/busybox poweroff -f', launcher)
         self.assertIn("--power-request /run/ordax-surface/power-request", launcher)
