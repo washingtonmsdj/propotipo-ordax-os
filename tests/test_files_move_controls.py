@@ -12,7 +12,7 @@ class FilesMoveControlsTests(unittest.TestCase):
     def test_contract_and_adapter_expose_move_with_structured_errors(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/7', contract)
+        self.assertIn('ordax.file-space/8', contract)
         self.assertIn("moveEntry()", contract)
         self.assertIn("FileSpaceOperationError", adapter)
         self.assertIn("this.status = status", adapter)
