@@ -43,8 +43,10 @@ class FilesMoveControlsTests(unittest.TestCase):
         controls = CONTROLS.read_text(encoding="utf-8")
         self.assertIn("operationStatus", controls)
         self.assertIn("status === 409", controls)
+        self.assertIn("status === 412", controls)
+        self.assertIn("status === 413", controls)
         self.assertIn("status === 422", controls)
-        self.assertIn("operação segura ainda não está disponível", controls)
+        self.assertIn("Pastas ainda não podem ser movidas entre volumes.", controls)
         self.assertIn("A origem foi preservada.", controls)
 
     def test_transfer_panel_is_responsive(self):
