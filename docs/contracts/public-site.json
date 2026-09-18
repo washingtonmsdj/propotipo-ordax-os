@@ -22,14 +22,18 @@
     "client_stores_passwords": false,
     "client_stores_service_secrets": false,
     "unconfigured_behavior": "fail-closed-with-unavailable-state",
-    "configured_target_policy": "same-origin"
+    "configured_target_policy": "same-origin",
+    "contract": "docs/contracts/public-identity.json"
   },
   "downloads": {
     "hard_coded_latest_allowed": false,
     "catalog_required_for_download_links": true,
     "catalog_target_policy": "same-origin",
     "public_release_authorization_required": true,
-    "sha256_owned_by_release_pipeline": true
+    "sha256_owned_by_release_pipeline": true,
+    "catalog_path": "/releases/catalog.json",
+    "catalog_contract": "docs/contracts/public-release-catalog.json",
+    "publication_source": "platform/releases/publications.json"
   },
   "security": {
     "secrets_in_site_source_allowed": false,
