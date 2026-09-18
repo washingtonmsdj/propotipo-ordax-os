@@ -2,7 +2,6 @@ import importlib.util
 import os
 from pathlib import Path
 import tempfile
-import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,19 +28,14 @@ class NativePowerBrokerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             request_path = Path(temporary) / "power-request"
             os.mkfifo(request_path, 0o600)
-            received = []
+            reader = os.open(request_path, os.O_RDONLY | os.O_NONBLOCK)
+            try:
+                native_host.queue_power_action(str(request_path), "restart")
+                received = os.read(reader, 64).decode("ascii")
+            finally:
+                os.close(reader)
 
-            def read_request():
-                with open(request_path, "r", encoding="ascii") as handle:
-                    received.append(handle.readline().strip())
-
-            reader = threading.Thread(target=read_request, daemon=True)
-            reader.start()
-            native_host.queue_power_action(str(request_path), "restart")
-            reader.join(timeout=2)
-
-            self.assertFalse(reader.is_alive())
-            self.assertEqual(received, ["restart"])
+            self.assertEqual(received, "restart\n")
 
     def test_unknown_power_action_is_rejected_before_queue(self):
         with tempfile.TemporaryDirectory() as temporary:
