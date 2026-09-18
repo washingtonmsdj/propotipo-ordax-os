@@ -7,6 +7,7 @@ import { createWebSyncStateStore } from "../../adapters/web/sync-state.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
+import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -19,7 +20,9 @@ if (!root) {
 
 const host = createWebSurfaceHost(window);
 const preferenceStore = createWebPreferenceStore(window);
-const workspaceStore = createWebWorkspaceStore(window);
+const localWorkspaceStore = createWebWorkspaceStore(window);
+const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
+const workspaceStore = workspaceMetadata.store;
 const syncStateStore = createWebSyncStateStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
@@ -52,6 +55,7 @@ const accountOverviewControls = mountAccountOverviewControls(
   identityActions,
   surface,
   preferenceSync,
+  workspaceMetadata.source,
 );
 const settingsOverviewControls = mountSettingsOverviewControls(
   root,

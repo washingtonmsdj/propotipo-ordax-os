@@ -18,6 +18,8 @@ PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
 PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
 SYNC_RUNTIME_CONTRACT = ROOT / "system" / "contracts" / "sync-runtime.mjs"
 SYNC_STATE_STORE_CONTRACT = ROOT / "system" / "contracts" / "sync-state-store.mjs"
+WORKSPACE_METADATA_CONTRACT = ROOT / "system" / "contracts" / "workspace-metadata-source.mjs"
+WORKSPACE_METADATA_SERVICE = ROOT / "system" / "services" / "sync" / "workspace-metadata.mjs"
 WEB_SYNC_STATE_ADAPTER = ROOT / "system" / "adapters" / "web" / "sync-state.mjs"
 NATIVE_SYNC_STATE_ADAPTER = ROOT / "system" / "adapters" / "native" / "sync-state.mjs"
 PREFERENCE_SYNC_SERVICE = ROOT / "system" / "services" / "sync" / "preference-runtime.mjs"
@@ -70,7 +72,9 @@ class SurfaceUiContractTests(unittest.TestCase):
             PREFERENCE_STORE_CONTRACT,
             SYNC_RUNTIME_CONTRACT,
             SYNC_STATE_STORE_CONTRACT,
+            WORKSPACE_METADATA_CONTRACT,
             PREFERENCE_SYNC_SERVICE,
+            WORKSPACE_METADATA_SERVICE,
             WEB_SYNC_STATE_ADAPTER,
             NATIVE_SYNC_STATE_ADAPTER,
             IDENTITY_SESSION_CONTRACT,
@@ -212,6 +216,12 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("createNativeSyncStateStore", native_main)
         self.assertIn("syncStateStore", web_main)
         self.assertIn("syncStateStore", native_main)
+        self.assertIn("createWorkspaceMetadataBridge", web_main)
+        self.assertIn("createWorkspaceMetadataBridge", native_main)
+        self.assertIn("workspaceMetadata.store", web_main)
+        self.assertIn("workspaceMetadata.store", native_main)
+        self.assertIn("workspaceMetadata.source", web_main)
+        self.assertIn("workspaceMetadata.source", native_main)
         self.assertNotIn("localStorage", overview)
         self.assertNotIn("/__ordax/native/preferences", overview)
 
@@ -236,6 +246,10 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("assertSyncRuntimePort", overview)
         self.assertIn("pendingMutationCount", overview)
         self.assertIn("queuePersistence", overview)
+        self.assertIn("contracts/workspace-metadata-source.mjs", overview)
+        self.assertIn("assertWorkspaceMetadataSource", overview)
+        self.assertIn('"Áreas e apps"', overview)
+        self.assertIn("posição, tamanho, maximização e minimização continuam locais", overview)
         self.assertIn("sobrevive a reload/reinício", overview)
         self.assertIn("nada foi enviado para a nuvem", overview)
         self.assertIn("ordax.identity-session/1", session_contract)
@@ -454,6 +468,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-runtime.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/sync-runtime.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/sync-state-store.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/workspace-metadata-source.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)

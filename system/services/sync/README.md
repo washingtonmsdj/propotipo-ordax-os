@@ -21,6 +21,8 @@ The shared Surface now also has a local preference-sync bridge. It observes the 
 
 Offline preference sync state is persisted behind the neutral `ordax.sync-state-store/1` boundary. Web uses browser-local storage when available; Native stores an opaque bounded payload in persistent OrdaX device state under `/var/lib/ordax`. If persistence is unavailable, the runtime degrades to session-only state and reports that honestly. The persistence adapter never decides sync semantics or transport authority.
 
+Workspace continuity now has a separate portable metadata source. It projects only active area identity, area identities/order and open app IDs. Window coordinates, minimized/maximized flags and other display-specific geometry are deliberately excluded, and geometry-only local changes do not emit a metadata change. This prepares cross-device workspace continuity without treating one device's screen layout as portable state.
+
 Core rules remain:
 
 - one OrdaX identity spans Web, Mobile, Desktop, USB and native-disk modes;
