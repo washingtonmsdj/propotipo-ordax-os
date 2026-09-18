@@ -119,10 +119,10 @@ export function createDesktopShellMarkup() {
             <span class="ordax-tray-icon ordax-tray-network-icon" data-connectivity-icon data-state="unknown" data-network-kind="unknown" data-signal-level="0" aria-hidden="true">${ICONS.networkWifi}${ICONS.networkEthernet}${ICONS.networkOther}</span>
             <span class="ordax-tray-label" data-connectivity-label>Conectividade desconhecida</span>
           </button>
-          <div class="ordax-tray-item ordax-tray-battery" data-battery-tray role="status" aria-live="polite" hidden>
+          <button type="button" class="ordax-tray-item ordax-tray-battery" data-battery-tray data-quick-panel-toggle="battery" aria-expanded="false" aria-controls="ordax-quick-battery" aria-label="Abrir estado da bateria" hidden>
             <span class="ordax-tray-icon ordax-tray-battery-icon" data-battery-icon data-battery-level="0" data-charging="false" aria-hidden="true">${ICONS.battery}</span>
             <span class="ordax-tray-label" data-battery-label>--%</span>
-          </div>
+          </button>
           <button type="button" class="ordax-tray-item ordax-tray-clock" data-quick-panel-toggle="datetime" aria-expanded="false" aria-controls="ordax-quick-datetime" title="Horário de Salvador/Bahia" aria-label="Abrir data e hora">
             <span class="ordax-tray-icon" aria-hidden="true">${ICONS.clock}</span>
             <time data-ordax-tray-clock>--:--</time>
@@ -141,6 +141,19 @@ export function createDesktopShellMarkup() {
           </header>
           <div class="ordax-quick-panel-content" data-quick-network-content>
             <p class="ordax-quick-empty">Lendo estado do Wi-Fi…</p>
+          </div>
+        </section>
+
+        <section id="ordax-quick-battery" class="ordax-quick-panel ordax-quick-panel-battery" data-quick-panel="battery" role="dialog" aria-modal="false" aria-labelledby="ordax-quick-battery-title" hidden>
+          <header class="ordax-quick-panel-header">
+            <div>
+              <span class="ordax-quick-kicker">Energia</span>
+              <h2 id="ordax-quick-battery-title">Bateria</h2>
+            </div>
+            <button type="button" class="ordax-quick-close" data-quick-panel-close aria-label="Fechar estado da bateria">×</button>
+          </header>
+          <div class="ordax-quick-panel-content" data-quick-battery-content>
+            <p class="ordax-quick-empty">Lendo estado da bateria…</p>
           </div>
         </section>
 
