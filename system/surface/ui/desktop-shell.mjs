@@ -115,7 +115,7 @@ export function createDesktopShellMarkup() {
         <div class="ordax-running-apps" data-running-apps aria-label="Aplicações abertas"></div>
         <div class="ordax-status-actions" data-update-slot></div>
         <div class="ordax-system-tray" aria-label="Estado do sistema">
-          <button type="button" class="ordax-tray-item ordax-tray-network" data-connectivity-tray data-launch-app="settings" aria-label="Abrir Ajustes de rede">
+          <button type="button" class="ordax-tray-item ordax-tray-network" data-connectivity-tray data-quick-panel-toggle="network" aria-expanded="false" aria-controls="ordax-quick-network" aria-label="Abrir acesso rápido de Wi-Fi">
             <span class="ordax-tray-icon ordax-tray-network-icon" data-connectivity-icon data-state="unknown" data-network-kind="unknown" data-signal-level="0" aria-hidden="true">${ICONS.networkWifi}${ICONS.networkEthernet}${ICONS.networkOther}</span>
             <span class="ordax-tray-label" data-connectivity-label>Conectividade desconhecida</span>
           </button>
@@ -123,12 +123,42 @@ export function createDesktopShellMarkup() {
             <span class="ordax-tray-icon ordax-tray-battery-icon" data-battery-icon data-battery-level="0" data-charging="false" aria-hidden="true">${ICONS.battery}</span>
             <span class="ordax-tray-label" data-battery-label>--%</span>
           </div>
-          <div class="ordax-tray-item ordax-tray-clock" title="Horário de Salvador/Bahia">
+          <button type="button" class="ordax-tray-item ordax-tray-clock" data-quick-panel-toggle="datetime" aria-expanded="false" aria-controls="ordax-quick-datetime" title="Horário de Salvador/Bahia" aria-label="Abrir data e hora">
             <span class="ordax-tray-icon" aria-hidden="true">${ICONS.clock}</span>
             <time data-ordax-tray-clock>--:--</time>
-          </div>
+          </button>
         </div>
       </footer>
+
+      <div class="ordax-quick-panel-layer" data-quick-panel-layer>
+        <section id="ordax-quick-network" class="ordax-quick-panel" data-quick-panel="network" role="dialog" aria-modal="false" aria-labelledby="ordax-quick-network-title" hidden>
+          <header class="ordax-quick-panel-header">
+            <div>
+              <span class="ordax-quick-kicker">Acesso rápido</span>
+              <h2 id="ordax-quick-network-title">Wi-Fi</h2>
+            </div>
+            <button type="button" class="ordax-quick-close" data-quick-panel-close aria-label="Fechar acesso rápido de Wi-Fi">×</button>
+          </header>
+          <div class="ordax-quick-panel-content" data-quick-network-content>
+            <p class="ordax-quick-empty">Lendo estado do Wi-Fi…</p>
+          </div>
+        </section>
+
+        <section id="ordax-quick-datetime" class="ordax-quick-panel ordax-quick-panel-datetime" data-quick-panel="datetime" role="dialog" aria-modal="false" aria-labelledby="ordax-quick-datetime-title" hidden>
+          <header class="ordax-quick-panel-header">
+            <div>
+              <span class="ordax-quick-kicker">Data e hora</span>
+              <h2 id="ordax-quick-datetime-title"><time data-ordax-quick-clock>--:--</time></h2>
+            </div>
+            <button type="button" class="ordax-quick-close" data-quick-panel-close aria-label="Fechar data e hora">×</button>
+          </header>
+          <p class="ordax-quick-date" data-ordax-quick-date>Carregando data…</p>
+          <div class="ordax-quick-timezone">
+            <span>Fuso horário</span>
+            <strong>America/Bahia</strong>
+          </div>
+        </section>
+      </div>
     </div>
   `;
 }
@@ -147,8 +177,10 @@ function formatDate(date) {
 export function mountDesktopClock(root, clock = globalThis) {
   const timeNode = root.querySelector("[data-ordax-clock]");
   const trayTimeNode = root.querySelector("[data-ordax-tray-clock]");
+  const quickTimeNode = root.querySelector("[data-ordax-quick-clock]");
   const dateNode = root.querySelector("[data-ordax-date]");
-  if (!timeNode || !trayTimeNode || !dateNode) {
+  const quickDateNode = root.querySelector("[data-ordax-quick-date]");
+  if (!timeNode || !trayTimeNode || !quickTimeNode || !dateNode || !quickDateNode) {
     throw new Error("OrdaX desktop clock requires clock and date nodes");
   }
 
@@ -162,10 +194,19 @@ export function mountDesktopClock(root, clock = globalThis) {
     }).format(now);
     timeNode.textContent = formattedTime;
     trayTimeNode.textContent = formattedTime;
+    quickTimeNode.textContent = formattedTime;
     dateNode.textContent = formatDate(now);
+    quickDateNode.textContent = new Intl.DateTimeFormat(SURFACE_LOCALE, {
+      timeZone: SURFACE_TIME_ZONE,
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(now);
     const isoNow = now.toISOString();
     timeNode.setAttribute("datetime", isoNow);
     trayTimeNode.setAttribute("datetime", isoNow);
+    quickTimeNode.setAttribute("datetime", isoNow);
     timeNode.title = "Horário de Salvador/Bahia";
     trayTimeNode.title = "Horário de Salvador/Bahia";
   };
