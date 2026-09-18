@@ -13,6 +13,7 @@ SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
+KERNEL_FRAGMENT = ROOT / "bootstrap" / "kernel" / "config" / "ordax.fragment"
 
 spec = importlib.util.spec_from_file_location("ordax_native_power_status_test", SERVER)
 native_host = importlib.util.module_from_spec(spec)
@@ -108,6 +109,12 @@ class NativePowerStatusTests(unittest.TestCase):
         null_block = tray.split("if (value.battery === null)", 1)[1].split("return;", 1)[0]
         self.assertIn("item.hidden = false", null_block)
         self.assertNotIn("item.hidden = true", null_block)
+
+    def test_kernel_fragment_explicitly_owns_acpi_battery_support(self):
+        fragment = KERNEL_FRAGMENT.read_text(encoding="utf-8")
+        self.assertIn("CONFIG_POWER_SUPPLY=y", fragment)
+        self.assertIn("CONFIG_ACPI_AC=y", fragment)
+        self.assertIn("CONFIG_ACPI_BATTERY=y", fragment)
 
     def test_contract_adapter_tray_and_native_composition_are_separated(self):
         contract = CONTRACT.read_text(encoding="utf-8")
