@@ -932,11 +932,17 @@ export function mountFileSpaceControls(
       if (status === 409) {
         message = "Já existe um item com esse nome no destino. Nada foi substituído.";
       } else if (status === 412) {
-        message = "O arquivo mudou durante a cópia. Nenhuma cópia parcial foi mantida.";
+        message =
+          source.mode === "copy"
+            ? "O arquivo mudou durante a cópia. Nenhuma cópia parcial foi mantida."
+            : "O arquivo mudou antes da conclusão do movimento. A origem não foi removida.";
       } else if (status === 413) {
-        message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
+        message =
+          source.mode === "copy"
+            ? "Este arquivo ultrapassa o limite de cópia de 64 MiB."
+            : "Mover este arquivo entre volumes ultrapassa o limite seguro de 64 MiB.";
       } else if (status === 422) {
-        message = "Este destino exige mover entre volumes. Essa operação segura ainda não está disponível.";
+        message = "Pastas ainda não podem ser movidas entre volumes.";
       } else if (status === 507) {
         message = "Não há espaço suficiente no destino.";
       } else if (status === 404) {
