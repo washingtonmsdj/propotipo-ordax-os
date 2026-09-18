@@ -175,6 +175,70 @@
   text-align: right;
 }
 
+.ordax-settings-network-service,
+.ordax-settings-network-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.ordax-settings-network-service {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-network-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.ordax-settings-network-item {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+}
+
+.ordax-settings-network-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ordax-muted);
+}
+
+.ordax-settings-network-service[data-state="online"] .ordax-settings-network-dot,
+.ordax-settings-network-item[data-state="connected"] .ordax-settings-network-dot {
+  background: var(--ordax-accent);
+}
+
+.ordax-settings-network-copy {
+  min-width: 0;
+}
+
+.ordax-settings-network-copy strong,
+.ordax-settings-network-copy small {
+  display: block;
+}
+
+.ordax-settings-network-copy strong {
+  font-size: 0.78rem;
+}
+
+.ordax-settings-network-copy small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ordax-settings-capabilities {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -253,7 +317,8 @@
   }
 
   .ordax-settings-options,
-  .ordax-settings-capabilities {
+  .ordax-settings-capabilities,
+  .ordax-settings-network-list {
     grid-template-columns: 1fr;
   }
 
