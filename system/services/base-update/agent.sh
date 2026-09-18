@@ -31,9 +31,8 @@ write_preflight_status() {
 
     status_dir=$HOST_STATE_ROOT/base-update
     /bin/busybox mkdir -p "$status_dir" 2>/dev/null || return 0
-    temporary=$status_dir/.owner-status.json.preflight.$
-    printf '%s\n' \
-        "{\"\\$schema\":\"ordax.base-update-owner-status/1\",\"status\":\"blocked\",\"phase\":\"physical-root-preflight\",\"sourceSha\":null,\"pendingBootRefreshSha\":null,\"releaseAgentRefreshState\":\"blocked\",\"releaseAgentSha256\":null,\"canonicalTrustPinned\":false,\"physicalTrustEnrolled\":false,\"trustEnrollmentState\":\"blocked\",\"signedReleaseMaterialized\":false,\"materializedReleaseSha\":null,\"releaseMaterializationState\":\"blocked\",\"kernelStaged\":false,\"candidateArmed\":false,\"rebootRequested\":false,\"promotionAttempted\":false,\"blocker\":\"$blocker\"}" \
+    temporary=$status_dir/.owner-status.json.preflight.$$
+    printf '{"$schema":"ordax.base-update-owner-status/1","status":"blocked","phase":"physical-root-preflight","sourceSha":null,"pendingBootRefreshSha":null,"releaseAgentRefreshState":"blocked","releaseAgentSha256":null,"canonicalTrustPinned":false,"physicalTrustEnrolled":false,"trustEnrollmentState":"blocked","signedReleaseMaterialized":false,"materializedReleaseSha":null,"releaseMaterializationState":"blocked","kernelStaged":false,"candidateArmed":false,"rebootRequested":false,"promotionAttempted":false,"blocker":"%s"}\n' "$blocker" \
         >"$temporary" 2>/dev/null || {
             /bin/busybox rm -f "$temporary" >/dev/null 2>&1 || true
             return 0
