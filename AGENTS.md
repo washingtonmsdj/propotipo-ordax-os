@@ -46,6 +46,13 @@ O plano detalha telas, subsecoes, responsabilidades, lacunas, prioridades e crit
 
 Leia tambem a continuacao [PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md](PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md) antes de ampliar essas interfaces, planejar novas capacidades ou reaproveitar funcionalidades/ideias de `novo-ordax-os`. Ela compara os dois repositorios com SHAs registrados, distingue codigo de visao futura e detalha lacunas, dependencias, destinos de interface e criterios de aceite. Nenhuma recomendacao desse documento constitui migracao concluida: qualquer portabilidade continua exigindo registro em `docs/SOURCE-MIGRATION.md`.
 
+### Site publico
+
+Antes de alterar landing page, download, login/cadastro ou futura area publica da conta, leia `docs/PUBLIC-SITE.md` e `docs/contracts/public-site.json`.
+
+O portal em `sites/public/` e um artefato separado do modo **OrdaX Web**. Nao importar a Surface para montar o site, nao duplicar identidade/conta e nao hard-codear uma release como "latest". Login/cadastro e download so ficam disponiveis quando seus owners reais estiverem configurados; o estado padrao deve falhar fechado sem credenciais, contas ou artefatos ficticios.
+
+
 ## 4. Arquitetura fisica alvo
 
 O seed e o USB final preparado nao sao o mesmo artefato:
