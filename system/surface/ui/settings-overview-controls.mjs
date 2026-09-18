@@ -25,6 +25,7 @@ const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
 
 const SETTINGS_SECTIONS = Object.freeze([
   Object.freeze({ id: "appearance", label: "Aparência" }),
+  Object.freeze({ id: "accessibility", label: "Acessibilidade" }),
   Object.freeze({ id: "network", label: "Rede" }),
 ]);
 
@@ -32,6 +33,10 @@ const SECTION_COPY = Object.freeze({
   appearance: Object.freeze({
     title: "Aparência",
     subtitle: "Preferências visuais da Surface, persistidas pelo owner de preferências do host.",
+  }),
+  accessibility: Object.freeze({
+    title: "Acessibilidade",
+    subtitle: "Contraste e movimento da Surface, aplicados imediatamente e persistidos por perfil local.",
   }),
   network: Object.freeze({
     title: "Rede",
@@ -225,8 +230,9 @@ export function mountSettingsOverviewControls(
     view.append(navigation);
   };
 
-  const renderPreferences = (view) => {
+  const renderPreferences = (view, sectionId) => {
     for (const definition of listPreferenceDefinitions()) {
+      if (definition.sectionId !== sectionId) continue;
       const section = node(documentObject, "section", "ordax-settings-section");
       section.append(
         node(documentObject, "span", "ordax-settings-section-kicker", definition.label ?? "Preferência"),
@@ -498,8 +504,8 @@ export function mountSettingsOverviewControls(
     const view = node(documentObject, "div", "ordax-settings-view");
     renderHeader(view);
     renderSectionNavigation(view);
-    if (activeSection === "appearance") {
-      renderPreferences(view);
+    if (activeSection === "appearance" || activeSection === "accessibility") {
+      renderPreferences(view, activeSection);
     } else if (activeSection === "network") {
       renderNetwork(view);
     }
