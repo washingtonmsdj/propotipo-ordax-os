@@ -25,6 +25,7 @@ UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
 REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
+SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
 SURFACE_PID=""
 
 log() {
@@ -50,6 +51,11 @@ case "$GIT_LOW_SPEED_TIME" in
     ''|*[!0-9]*) GIT_LOW_SPEED_TIME=15 ;;
 esac
 [ "$GIT_LOW_SPEED_TIME" -ge 5 ] 2>/dev/null || GIT_LOW_SPEED_TIME=15
+
+case "$SURFACE_HEALTH_TIMEOUT" in
+    ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=30 ;;
+esac
+[ "$SURFACE_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30
 
 GIT_TERMINAL_PROMPT=0
 export GIT_TERMINAL_PROMPT
@@ -382,7 +388,7 @@ check_for_update() {
             rm -f "$HEALTH_FILE"
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
-            if wait_for_surface_health "$new_sha" 12; then
+            if wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
                 record_applied "$new_sha"
                 write_update_state "$new_sha" running reload
                 log "updated Surface acknowledged healthy state"
@@ -437,7 +443,7 @@ if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
     guard_current=${2:-}
     if [ -n "$guard_previous" ] && [ "$guard_current" = "$initial_sha" ]; then
         log "validating restarted supervisor and Surface for $guard_current"
-        if surface_stays_running 4 && wait_for_surface_health "$guard_current" 12; then
+        if surface_stays_running 4 && wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"; then
             record_applied "$guard_current"
             rm -f "$SUPERVISOR_GUARD_FILE"
             write_update_state "$guard_current" running supervisor-restart
