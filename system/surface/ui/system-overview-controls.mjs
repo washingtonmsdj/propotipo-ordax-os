@@ -55,8 +55,8 @@ function shortSha(value) {
   return value.slice(0, 8);
 }
 
-function versionLabel(value) {
-  return Number.isSafeInteger(value) && value > 0 ? `v${value}` : "Sem versão humana";
+function deliveryLabel(value) {
+  return Number.isSafeInteger(value) && value > 0 ? `Entrega ${value}` : "Entrega sem número";
 }
 
 function formatTimestamp(value) {
@@ -186,7 +186,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-subtitle",
-        "Versão, saúde da atualização e recursos expostos por contratos neutros.",
+        "Entrega, saúde da atualização e recursos expostos por contratos neutros.",
       ),
     );
 
@@ -213,8 +213,8 @@ export function mountSystemOverviewControls(
     grid.setAttribute("aria-label", "Resumo do sistema");
 
     appendMetricCard(documentObject, grid, {
-      label: "Versão em execução",
-      value: updateSnapshot ? versionLabel(updateSnapshot.versionNumber) : "—",
+      label: "Entrega observada",
+      value: updateSnapshot ? deliveryLabel(updateSnapshot.deliveryNumber) : "—",
       detail: updateSnapshot
         ? `SHA ${shortSha(updateSnapshot.sourceSha)} · ${readableMode(updateSnapshot.applyMode)}`
         : "Gerenciamento de versão não exposto neste host",
@@ -353,7 +353,7 @@ export function mountSystemOverviewControls(
       facts.append(item);
     };
 
-    addFact("Versão", versionLabel(updateSnapshot.versionNumber));
+    addFact("Entrega", deliveryLabel(updateSnapshot.deliveryNumber));
     addFact("Commit técnico", shortSha(updateSnapshot.sourceSha));
     addFact("Aplicação", readableMode(updateSnapshot.applyMode));
     if (updateSnapshot.lastAppliedAt !== "unknown") {
@@ -387,14 +387,13 @@ export function mountSystemOverviewControls(
   };
 
   const renderComponentVersions = (view) => {
-    if (!updateSnapshot?.versionNumber) return;
+    if (!updateSnapshot?.deliveryNumber) return;
     const section = node(documentObject, "section", "ordax-system-section");
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
-    const globalVersion = `OrdaX ${versionLabel(updateSnapshot.versionNumber)}`;
     headingCopy.append(
-      node(documentObject, "span", "ordax-system-section-kicker", "Versão global"),
-      node(documentObject, "h4", "ordax-system-section-title", globalVersion),
+      node(documentObject, "span", "ordax-system-section-kicker", "Identidade da entrega"),
+      node(documentObject, "h4", "ordax-system-section-title", deliveryLabel(updateSnapshot.deliveryNumber)),
     );
     heading.append(headingCopy);
     section.append(heading);
@@ -403,7 +402,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Esta é a versão da entrega instalada no dispositivo. Surface, apps e serviços abaixo fazem parte da mesma release; um componente só terá versão própria se passar a ser distribuído separadamente.",
+        "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. Componentes só exibem versão própria quando tiverem empacotamento e ciclo de release independentes.",
       ),
     );
 
@@ -412,7 +411,7 @@ export function mountSystemOverviewControls(
       const item = node(documentObject, "div", "ordax-system-version-item");
       item.append(
         node(documentObject, "strong", "", label),
-        node(documentObject, "span", "", "Incluído nesta entrega"),
+        node(documentObject, "span", "", "Distribuição conjunta · sem versão própria"),
       );
       list.append(item);
     }
@@ -464,7 +463,7 @@ export function mountSystemOverviewControls(
         const item = node(documentObject, "article", "ordax-system-history-item");
         const result = entry.result === "applied" ? "Aplicada" : "Revertida";
         item.append(
-          node(documentObject, "strong", "", `${versionLabel(entry.versionNumber)} · ${result}`),
+          node(documentObject, "strong", "", `${deliveryLabel(entry.deliveryNumber)} · ${result}`),
           node(documentObject, "span", "", formatTimestamp(entry.appliedAt)),
           node(
             documentObject,
@@ -482,7 +481,7 @@ export function mountSystemOverviewControls(
     for (const entry of historySnapshot.releases.slice(0, 12)) {
       const item = node(documentObject, "article", "ordax-system-history-item");
       item.append(
-        node(documentObject, "strong", "", `${versionLabel(entry.versionNumber)} · ${entry.title}`),
+        node(documentObject, "strong", "", `${deliveryLabel(entry.deliveryNumber)} · ${entry.title}`),
         node(documentObject, "span", "", formatTimestamp(entry.releasedAt)),
         node(documentObject, "small", "", `SHA ${shortSha(entry.sourceSha)}`),
       );
