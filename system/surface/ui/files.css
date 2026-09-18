@@ -299,6 +299,46 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ordax-focus) 32%, transparent);
 }
 
+.ordax-files-move {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 4px 0 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--ordax-border-soft);
+  border-left: 3px solid var(--ordax-accent);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-files-move-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ordax-files-move-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-files-move-meta,
+.ordax-files-move-guidance {
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.ordax-files-move-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .ordax-files-message {
   margin: 0 0 8px;
   padding: 8px 10px;
@@ -615,6 +655,15 @@ button.ordax-file-row:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .ordax-files-move {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ordax-files-move-actions {
+    justify-content: flex-end;
+  }
+
   .ordax-files-details {
     align-items: stretch;
     flex-direction: column;
