@@ -39,11 +39,12 @@ mkfifo "$CONTROL"
 chmod 600 "$CONTROL"
 
 respond() {
-    outcome=$1
-    interface_name=$2
-    detail=$3
-    temporary=$RESPONSE.tmp.$$
-    printf '%s\t%s\t%s\n' "$outcome" "$interface_name" "$detail" >"$temporary"
+    request_id=$1
+    outcome=$2
+    interface_name=$3
+    detail=$4
+    temporary=$RESPONSE.tmp.$
+    printf '%s\t%s\t%s\t%s\n' "$request_id" "$outcome" "$interface_name" "$detail" >"$temporary"
     chmod 600 "$temporary"
     mv -f "$temporary" "$RESPONSE"
 }
@@ -154,15 +155,20 @@ valid_hex() {
 }
 
 handle_request() {
+    request_id=""
     action=""
-    IFS= read -r action <"$REQUEST" 2>/dev/null || {
-        respond error "" invalid-request
+    IFS= read -r request_id <"$REQUEST" 2>/dev/null || {
+        respond unknown error "" invalid-request
         return 0
     }
+    action=$(/bin/busybox sed -n '2p' "$REQUEST" 2>/dev/null || true)
+    case "$request_id" in
+        ''|*[!A-Za-z0-9._:-]*) respond unknown error "" invalid-request; return 0 ;;
+    esac
 
     wifi=$(find_wifi_interface || true)
     [ -n "$wifi" ] || {
-        respond error "" no-wifi-interface
+        respond "$request_id" error "" no-wifi-interface
         return 0
     }
 
@@ -170,24 +176,24 @@ handle_request() {
         status)
             capture_link "$wifi"
             capture_saved_ssid
-            respond ok "$wifi" status
+            respond "$request_id" ok "$wifi" status
             ;;
         scan)
             if capture_scan "$wifi"; then
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond ok "$wifi" scanned
+                respond "$request_id" ok "$wifi" scanned
             else
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond error "$wifi" scan-failed
+                respond "$request_id" error "$wifi" scan-failed
             fi
             ;;
         connect)
-            ssid_hex=$(/bin/busybox sed -n '2p' "$REQUEST" 2>/dev/null || true)
-            psk_hex=$(/bin/busybox sed -n '3p' "$REQUEST" 2>/dev/null || true)
+            ssid_hex=$(/bin/busybox sed -n '3p' "$REQUEST" 2>/dev/null || true)
+            psk_hex=$(/bin/busybox sed -n '4p' "$REQUEST" 2>/dev/null || true)
             if ! valid_hex "$ssid_hex" 2 64 || ! valid_hex "$psk_hex" 64 64; then
-                respond error "$wifi" invalid-credentials
+                respond "$request_id" error "$wifi" invalid-credentials
                 return 0
             fi
             {
@@ -205,41 +211,41 @@ handle_request() {
                 chmod 600 "$WPA_CONF"
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond ok "$wifi" connected
+                respond "$request_id" ok "$wifi" connected
             else
                 rm -f "$CANDIDATE"
                 restore_saved_network "$wifi" >/dev/null 2>&1 || true
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond error "$wifi" connect-failed
+                respond "$request_id" error "$wifi" connect-failed
             fi
             ;;
         disconnect)
             stop_wifi "$wifi"
             capture_link "$wifi"
             capture_saved_ssid
-            respond ok "$wifi" disconnected
+            respond "$request_id" ok "$wifi" disconnected
             ;;
         forget)
             stop_wifi "$wifi"
             rm -f "$WPA_CONF"
             capture_link "$wifi"
             capture_saved_ssid
-            respond ok "$wifi" forgotten
+            respond "$request_id" ok "$wifi" forgotten
             ;;
         reconnect)
             if restore_saved_network "$wifi"; then
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond ok "$wifi" reconnected
+                respond "$request_id" ok "$wifi" reconnected
             else
                 capture_link "$wifi"
                 capture_saved_ssid
-                respond error "$wifi" reconnect-failed
+                respond "$request_id" error "$wifi" reconnect-failed
             fi
             ;;
         *)
-            respond error "$wifi" unsupported-action
+            respond "$request_id" error "$wifi" unsupported-action
             ;;
     esac
 }
