@@ -39,5 +39,12 @@
     "secrets_in_site_source_allowed": false,
     "telemetry_as_identity_api_allowed": false,
     "telemetry_as_release_control_allowed": false
+  },
+  "deployment": {
+    "contract": "docs/contracts/public-site-deployment.json",
+    "adapter_selected": false,
+    "preview_runtime": "tools/public-site/preview_server.py",
+    "production_https_required": true,
+    "same_origin_identity_required": true
   }
 }

@@ -106,3 +106,12 @@ python tools/public-site/build.py verify --out-dir out/public-site
 ```
 
 The candidate workflow builds the site twice and compares outputs to protect deterministic packaging.
+
+
+## Runtime preview and deployment boundary
+
+`tools/public-site/preview_server.py` is a loopback-only development/test adapter for the built artifact. It serves the static portal and mounts the fail-closed public identity gateway under the same `/auth/*` origin so CI can exercise the complete route boundary without deploying a provider.
+
+It refuses non-loopback binds and is **not** the production server.
+
+Production hosting remains adapter-neutral. The required route shape, cache policy and security headers are machine-readable in `docs/contracts/public-site-deployment.json`. A future host adapter must preserve the public site's status codes and apply the declared CSP, anti-framing, MIME-sniffing, referrer and permissions policies. HTTPS is mandatory before enabling live identity routes.

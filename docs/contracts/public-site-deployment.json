@@ -1,0 +1,32 @@
+{
+  "$schema": "prototype-ordax.public-site-deployment/1",
+  "status": "deployment-adapter-not-selected",
+  "site_artifact": "public-site",
+  "routing": {
+    "static_routes": ["/", "/download/", "/login/", "/cadastro/", "/releases/catalog.json"],
+    "identity_prefix": "/auth/",
+    "identity_gateway_entrypoint": "services/public-identity/gateway.py:application",
+    "same_origin_identity_required": true,
+    "unknown_static_route_behavior": 404
+  },
+  "security_headers": {
+    "Content-Security-Policy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()"
+  },
+  "cache_policy": {
+    "html": "no-cache",
+    "config": "no-store",
+    "release_catalog": "no-store",
+    "assets": "public, max-age=300",
+    "identity": "no-store"
+  },
+  "production_requirements": {
+    "https": true,
+    "host_adapter_must_apply_security_headers": true,
+    "host_adapter_must_preserve_auth_status_codes": true,
+    "public_identity_provider_must_be_configured_before_enabling_login_links": true
+  }
+}
