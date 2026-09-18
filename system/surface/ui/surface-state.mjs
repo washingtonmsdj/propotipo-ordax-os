@@ -243,6 +243,17 @@ export function reduceSurfaceState(state, action) {
         nextWindowOrdinal: ordinal + 1,
       }), { launcherOpen: false });
     }
+    case "app.target": {
+      const target = validateWorkspaceTarget(action.target);
+      return updateActiveArea(state, (area) => {
+        const index = area.windows.findIndex((item) => item.appId === action.appId);
+        if (index < 0 || area.windows[index].target === target) return area;
+        const windows = area.windows.map((item, itemIndex) =>
+          itemIndex === index ? { ...item, target } : item
+        );
+        return { ...area, windows };
+      });
+    }
     case "window.focus":
       return focusWindow(state, action.windowId);
     case "window.move": {

@@ -1173,6 +1173,7 @@ export function mountFileSpaceControls(
     try {
       const next = validateFileListing(await port.list(path));
       if (destroyed || ordinal !== requestOrdinal) return false;
+      lifecycle.setAppTarget("files", next.path);
       const changedPath = Boolean(listing && listing.path !== next.path);
       if (changedPath) {
         searchQuery = "";
@@ -2103,6 +2104,21 @@ export function mountFileSpaceControls(
     selectPath(rows[nextIndex].dataset.fileSelectPath, { focus: true });
   };
 
+  const loadWithFallback = async (target, fallback = "/") => {
+    const loaded = await load(target);
+    if (destroyed || loaded) return loaded;
+    if (listing) {
+      lifecycle.setAppTarget("files", listing.path);
+      return false;
+    }
+    if (target !== fallback) {
+      const fallbackLoaded = await load(fallback);
+      if (destroyed || fallbackLoaded) return fallbackLoaded;
+    }
+    lifecycle.setAppTarget("files", null);
+    return false;
+  };
+
   root.addEventListener("click", onClick);
   root.addEventListener("change", onChange);
   root.addEventListener("input", onInput);
@@ -2121,10 +2137,11 @@ export function mountFileSpaceControls(
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (activation.appId === "files" && activation.target) {
-      void load(activation.target);
+      void loadWithFallback(activation.target);
     }
   });
-  void load("/");
+  const initialTarget = lifecycle.getAppTarget("files") ?? "/";
+  void loadWithFallback(initialTarget);
 
   return Object.freeze({
     destroy() {

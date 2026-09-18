@@ -142,17 +142,28 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_shared_extensions_use_explicit_surface_render_lifecycle(self):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
-        self.assertIn('ordax.surface-render-lifecycle/2', lifecycle)
+        self.assertIn('ordax.surface-render-lifecycle/3', lifecycle)
         self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
         self.assertIn("getAppTarget", lifecycle)
+        self.assertIn("setAppTarget", lifecycle)
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         self.assertIn("getAppTarget(appId)", surface)
+        self.assertIn("setAppTarget(appId, target)", surface)
+        self.assertIn('type: "app.target"', surface)
         for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
             self.assertIn("subscribeRender", text, path)
             self.assertNotIn("MutationObserver", text, path)
+
+        files = FILE_SPACE_CONTROLS.read_text(encoding="utf-8")
+        self.assertIn('lifecycle.setAppTarget("files", next.path)', files)
+        self.assertIn('const initialTarget = lifecycle.getAppTarget("files") ?? "/"', files)
+        self.assertIn("loadWithFallback(activation.target)", files)
+        self.assertIn('lifecycle.setAppTarget("files", listing.path)', files)
+        self.assertIn('lifecycle.setAppTarget("files", null)', files)
+        self.assertNotIn("localStorage", files)
 
     def test_first_party_apps_have_independent_owners_and_thin_catalog(self):
         catalog = APP_CATALOG.read_text(encoding="utf-8")

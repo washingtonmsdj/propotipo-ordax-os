@@ -134,6 +134,38 @@ test("app navigation targets are isolated per area and survive snapshot recovery
   assert.equal(active(firstArea).windows[0].target, "updates");
 });
 
+test("app target updates preserve window lifecycle and survive snapshot recovery", () => {
+  let state = baseline();
+  state = reduceSurfaceState(state, {
+    type: "app.launch",
+    appId: "files",
+    target: "/Documentos",
+  });
+  const before = state;
+  const beforeWindow = active(state).windows[0];
+  state = reduceSurfaceState(state, {
+    type: "app.target",
+    appId: "files",
+    target: "/Downloads",
+  });
+
+  assert.equal(active(state).windows[0].target, "/Downloads");
+  assert.equal(active(state).activeWindowId, active(before).activeWindowId);
+  assert.equal(active(state).windows[0].minimized, beforeWindow.minimized);
+  assert.equal(active(state).windows[0].maximized, beforeWindow.maximized);
+  assert.equal(active(state).windows[0].placementOrdinal, beforeWindow.placementOrdinal);
+
+  const recovered = baseline(createWorkspaceSnapshot(state));
+  assert.equal(recovered.areas[0].windows[0].target, "/Downloads");
+
+  const unchanged = reduceSurfaceState(state, {
+    type: "app.target",
+    appId: "files",
+    target: "/Downloads",
+  });
+  assert.equal(unchanged, state);
+});
+
 test("launch without a target preserves an existing singleton target", () => {
   let state = baseline();
   state = reduceSurfaceState(state, {
@@ -154,6 +186,15 @@ test("launch without a target preserves an existing singleton target", () => {
 
 test("workspace target validation is bounded and rejects control characters", () => {
   let state = baseline();
+  state = reduceSurfaceState(state, { type: "app.launch", appId: "files" });
+  assert.throws(
+    () => reduceSurfaceState(state, {
+      type: "app.target",
+      appId: "files",
+      target: "bad\ntarget",
+    }),
+    TypeError,
+  );
   assert.throws(
     () => reduceSurfaceState(state, {
       type: "app.launch",
