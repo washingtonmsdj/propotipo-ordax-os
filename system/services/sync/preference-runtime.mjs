@@ -83,6 +83,7 @@ export function createPreferenceSyncRuntime(
   let serverRevision = recovered.serverRevision;
   let queue = createSyncMutationQueue(recovered.mutations);
   let destroyed = false;
+  let queuePersistence = store?.scope ?? "session";
   let lastTheme = preferences.getSnapshot()[APPEARANCE_PREFERENCE_ID];
   const listeners = new Set();
 
@@ -90,13 +91,15 @@ export function createPreferenceSyncRuntime(
     transport: SYNC_CORE_STATUS.transport,
     accountContinuity: SYNC_CORE_STATUS.accountContinuity,
     pendingMutationCount: queue.snapshot().length,
-    queuePersistence: store?.scope ?? "session",
+    queuePersistence,
     trackedDataClasses: ["appearance"],
   });
 
   const persist = () => {
     if (!store) return false;
-    return store.save(serializeState(serverRevision, queue));
+    const saved = store.save(serializeState(serverRevision, queue));
+    if (saved === false) queuePersistence = "session";
+    return saved;
   };
 
   const emit = () => {
