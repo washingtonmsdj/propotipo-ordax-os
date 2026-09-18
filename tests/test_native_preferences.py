@@ -84,9 +84,11 @@ class NativePreferenceTests(unittest.TestCase):
     def test_native_composition_no_longer_uses_web_preference_store(self):
         text = NATIVE_COMPOSITION.read_text(encoding="utf-8")
         self.assertIn('../../adapters/native/preferences.mjs', text)
-        self.assertIn("await createNativePreferenceStore(window)", text)
+        self.assertIn("const preferenceStorePromise = createNativePreferenceStore(window);", text)
+        self.assertIn("const preferenceStore = await preferenceStorePromise;", text)
         self.assertIn('../../adapters/native/sync-state.mjs', text)
-        self.assertIn("await createNativeSyncStateStore(window)", text)
+        self.assertIn("() => createNativeSyncStateStore(window)", text)
+        self.assertIn("const optionalPortsPromise = Promise.all([", text)
         self.assertIn("syncStateStore", text)
         self.assertNotIn('../../adapters/web/preferences.mjs', text)
         self.assertNotIn("createWebPreferenceStore", text)
