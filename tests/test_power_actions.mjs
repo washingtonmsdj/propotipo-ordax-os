@@ -135,6 +135,48 @@ test("native update watcher turns a live-safe Git update into one page reload", 
   watcher.dispose();
 });
 
+test("old Surface never acknowledges the new SHA before reload", async () => {
+  const updates = [
+    { sourceSha: "aaa", applyMode: "initial", status: "running", healthToken: "token-aaa" },
+    { sourceSha: "bbb", applyMode: "reload", status: "applied", healthToken: "token-bbb" },
+  ];
+  const healthPosts = [];
+  let scheduled = null;
+  let reloads = 0;
+
+  const fakeWindow = {
+    async fetch(url, options = {}) {
+      if (url === "/__ordax/native/update") {
+        return { ok: true, json: async () => updates.shift() };
+      }
+      if (url === "/__ordax/native/health") {
+        healthPosts.push(JSON.parse(options.body));
+        return { ok: true, status: 204 };
+      }
+      throw new Error(`unexpected URL ${url}`);
+    },
+    location: { reload: () => { reloads += 1; } },
+    setTimeout(callback) {
+      scheduled = callback;
+      return 1;
+    },
+    clearTimeout() {},
+  };
+
+  const watcher = createNativeUpdateWatcher(fakeWindow, { intervalMs: 1 });
+  await flushAsyncWork();
+  await watcher.markHealthy();
+  assert.deepEqual(healthPosts, [{ sourceSha: "aaa" }]);
+
+  scheduled();
+  await flushAsyncWork();
+  await flushAsyncWork();
+
+  assert.equal(reloads, 1);
+  assert.deepEqual(healthPosts, [{ sourceSha: "aaa" }]);
+  watcher.dispose();
+});
+
 test("native watcher leaves host-restart updates to the system supervisor", async () => {
   const responses = [
     { sourceSha: "aaa", applyMode: "initial", status: "running" },
