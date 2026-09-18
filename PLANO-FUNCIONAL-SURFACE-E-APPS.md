@@ -102,7 +102,7 @@ As prioridades são de implementação, não de exposição: uma tela P2 não de
 
 ### 2.2 Limitações importantes encontradas no código
 
-1. `system/contracts/file-space.mjs` evoluiu para `ordax.file-space/4`: além de `list()`, `createDirectory()`, `readTextFile()` e `renameEntry()`, o Native oferece `copyFile()` para arquivo regular na mesma pasta, com limite de 64 MiB, criação exclusiva do destino e limpeza de cópia parcial em falha. A visualização continua somente leitura, UTF-8 e limitada a 256 KB. Entradas continuam com `name`, `kind` e `size`; ainda não há data de modificação, cópia entre pastas/volumes, mover, excluir/lixeira ou abertura por associação de app.
+1. `system/contracts/file-space.mjs` evoluiu para `ordax.file-space/5`: além de `list()`, `createDirectory()`, `readTextFile()`, `renameEntry()` e `copyFile()`, o Native oferece `moveEntry()` para arquivo ou pasta entre diretórios da mesma raiz autorizada, com no-clobber atômico via `renameat2`, bloqueio de symlink, rejeição de mover pasta para dentro dela mesma e rejeição explícita de movimento entre volumes. `copyFile()` continua limitado a arquivo regular na mesma pasta, 64 MiB, criação exclusiva do destino e limpeza de cópia parcial em falha. A visualização continua somente leitura, UTF-8 e limitada a 256 KB. Entradas continuam com `name`, `kind` e `size`; ainda não há data de modificação, cópia entre pastas/volumes, excluir/lixeira ou abertura por associação de app.
 2. A composição Web inspecionada não monta um adapter real de arquivos. A existência do app Arquivos não significa acesso ao disco no navegador.
 3. `appearance.theme` é a única preferência no catálogo observado. Não implementar controles de preferências apenas com alterações de CSS sem registrá-las, validá-las e persistir seu estado.
 4. `createWebIdentitySession()` retorna `unavailable`, e `createWebIdentityActions()` anuncia zero ações. A composição Native também usa essas portas de identidade. Portanto, não há login real demonstrado nesses caminhos.
@@ -443,7 +443,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 | Nova pasta | Nome → validação → criação → seleção do item criado. | Nome inválido, já existe, leitura apenas e espaço insuficiente com mensagens distintas. |
 | Renomear | Editar nome atual, preservar seleção e atualizar referências locais. | Nunca sobrescrever colisão sem escolha; validar novamente no backend. |
 | Copiar | Selecionar → copiar → destino → colar → progresso real. | Manter origem; tratar resultado parcial por item; não publicar sucesso antes do término. |
-| Mover | Selecionar → recortar → destino → confirmar resultado. | Entre volumes: só remover origem depois de cópia e verificação suficientes; interrupção não pode apagar as duas cópias. |
+| Mover | Selecionar → Mover → navegar até outro diretório autorizado → Mover para esta pasta. | EXISTE/P1 dentro da mesma raiz/filesystem com no-clobber atômico; pasta não entra em si mesma; movimento entre volumes é rejeitado até existir cópia+verificação segura. |
 | Importar | Seleção do host → escolha do destino autorizado → conflito/progresso. | Limites, arquivo grande, disco cheio e revogação tratados. |
 | Exportar | Escolher item → destino mediado pelo host/download. | Não enviar à rede ou compartilhar publicamente por implicação. |
 | Abrir | Resolver tipo → visualizador/app autorizado. | Tipo desconhecido tem fallback; scripts não executam automaticamente. |
