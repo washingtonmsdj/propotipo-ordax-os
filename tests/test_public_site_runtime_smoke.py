@@ -9,8 +9,10 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
-BUILD_PATH = ROOT / "tools" / "public-site" / "build.py"
-PREVIEW_PATH = ROOT / "tools" / "public-site" / "preview_server.py"
+PUBLIC_SITE_TOOLS = ROOT / "tools" / "public-site"
+sys.path.insert(0, str(PUBLIC_SITE_TOOLS))
+BUILD_PATH = PUBLIC_SITE_TOOLS / "build.py"
+PREVIEW_PATH = PUBLIC_SITE_TOOLS / "preview_server.py"
 DEPLOYMENT_CONTRACT = ROOT / "docs" / "contracts" / "public-site-deployment.json"
 
 
