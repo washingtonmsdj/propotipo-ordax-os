@@ -659,6 +659,9 @@ Essas decisões não impedem criar navegação, melhorar acessibilidade ou entre
 
 ### 9.2 Critérios transversais de conclusão
 
+- manter uma única versão visível da release do OrdaX para componentes distribuídos juntos; não criar versões artificiais por app;
+- manter rede/conectividade e relógio visíveis no shell compartilhado, fora da dependência de uma janela específica;
+
 | Dimensão | Evidência exigida |
 |---|---|
 | Funcional | Jornada normal exercida com dados reais, no escopo implementado. |
