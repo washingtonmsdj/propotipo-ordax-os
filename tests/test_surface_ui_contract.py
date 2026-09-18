@@ -44,6 +44,8 @@ FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
+SYSTEM_TRAY_QUICK_PANELS = SURFACE / "system-tray-quick-panels.mjs"
+NETWORK_QUICK_PANEL = SURFACE / "network-quick-panel.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -59,6 +61,8 @@ class SurfaceUiContractTests(unittest.TestCase):
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
             SETTINGS_OVERVIEW_CONTROLS,
+            SYSTEM_TRAY_QUICK_PANELS,
+            NETWORK_QUICK_PANEL,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
@@ -470,11 +474,17 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("ordax-network-symbol-wifi", shell)
         self.assertIn("ordax-network-symbol-ethernet", shell)
         self.assertIn('data-signal-level="0"', shell)
-        self.assertIn('data-launch-app="settings"', shell)
+        self.assertIn('data-quick-panel-toggle="network"', shell)
+        self.assertIn('data-quick-panel-toggle="datetime"', shell)
+        self.assertIn('data-quick-panel="network"', shell)
+        self.assertIn('data-quick-panel="datetime"', shell)
+        self.assertNotIn('data-connectivity-tray data-launch-app="settings"', shell)
         self.assertIn("ordax-system-tray", shell)
         self.assertIn('SURFACE_TIME_ZONE = "America/Bahia"', shell)
         self.assertIn('timeZone: SURFACE_TIME_ZONE', shell)
         self.assertIn("trayTimeNode.textContent = formattedTime", shell)
+        self.assertIn("quickTimeNode.textContent = formattedTime", shell)
+        self.assertIn("quickDateNode.textContent", shell)
         self.assertIn('const connectivityIcon = root.querySelector("[data-connectivity-icon]")', surface)
         self.assertIn("connectivityIcon.dataset.state = state.connectivity", surface)
         self.assertIn("data-launcher-query", shell)
@@ -490,6 +500,36 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn(".ordax-battery-segment", css)
         self.assertIn(".ordax-battery-bolt", css)
         self.assertIn('[data-network-kind="ethernet"]', css)
+        self.assertIn(".ordax-quick-panel-layer", css)
+        self.assertIn(".ordax-quick-panel-datetime", css)
+
+    def test_system_tray_quick_panels_are_shared_accessible_and_platform_neutral(self):
+        controller = SYSTEM_TRAY_QUICK_PANELS.read_text(encoding="utf-8")
+        network = NETWORK_QUICK_PANEL.read_text(encoding="utf-8")
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+
+        self.assertIn("data-quick-panel-toggle", controller)
+        self.assertIn('event.key === "Escape"', controller)
+        self.assertIn("ordax:quick-panel-open", controller)
+        self.assertIn("aria-expanded", controller)
+        self.assertIn("assertNetworkManagementPort", network)
+        self.assertIn("assertNetworkStatusPort", network)
+        self.assertIn('"Procurar redes"', network)
+        self.assertIn('"Conectar"', network)
+        self.assertIn('"Desconectar"', network)
+        self.assertIn('"Reconectar"', network)
+        self.assertIn('"Abrir Ajustes de rede"', network)
+        self.assertNotIn('"Esquecer"', network)
+        self.assertIn('input.type = "password"', network)
+        self.assertIn('input.autocomplete = "off"', network)
+        self.assertIn('input.value = ""', network)
+        for forbidden in ("localStorage", "sessionStorage", "/__ordax/native/", "telemetry"):
+            self.assertNotIn(forbidden, network)
+        self.assertIn("mountSystemTrayQuickPanels", native_main)
+        self.assertIn("mountNetworkQuickPanel", native_main)
+        self.assertIn("mountSystemTrayQuickPanels", web_main)
+        self.assertIn("mountNetworkQuickPanel(root, null, null)", web_main)
 
     def test_windows_center_by_default_and_maximize_to_full_workspace(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")

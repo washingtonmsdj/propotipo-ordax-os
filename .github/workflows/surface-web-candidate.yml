@@ -22,6 +22,7 @@ on:
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
+      - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -45,6 +46,7 @@ on:
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
+      - 'tests/test_network_management_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
@@ -67,6 +69,7 @@ on:
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
+      - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -90,6 +93,7 @@ on:
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
+      - 'tests/test_network_management_runtime.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   workflow_dispatch:
@@ -148,6 +152,7 @@ jobs:
           node --test tests/test_account_runtime.mjs
           node --test tests/test_network_status.mjs
           node --test tests/test_network_management.mjs
+          node --test tests/test_network_management_runtime.mjs
           node --test tests/test_client_diagnostics.mjs
           node --test tests/test_sync_*.mjs
 

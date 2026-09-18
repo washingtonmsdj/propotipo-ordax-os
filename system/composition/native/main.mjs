@@ -23,12 +23,14 @@ import { createPreferenceSyncRuntime } from "../../services/sync/preference-runt
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
+import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
+import { mountSystemTrayQuickPanels } from "../../surface/ui/system-tray-quick-panels.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
 async function start() {
@@ -152,6 +154,18 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  let quickPanelControls = null;
+  try {
+    quickPanelControls = mountSystemTrayQuickPanels(root);
+  } catch (error) {
+    reportClientDiagnostic("system-tray-quick-panels", error);
+  }
+  let networkQuickPanel = null;
+  try {
+    networkQuickPanel = mountNetworkQuickPanel(root, networkStatus, networkManagement);
+  } catch (error) {
+    reportClientDiagnostic("network-quick-panel", error);
+  }
   let batteryTrayControls = null;
   if (powerStatus) {
     try {
@@ -236,6 +250,8 @@ async function start() {
       systemOverviewControls.destroy();
       settingsOverviewControls.destroy();
       networkTrayControls?.destroy();
+      networkQuickPanel?.destroy();
+      quickPanelControls?.destroy();
       batteryTrayControls?.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
