@@ -56,25 +56,31 @@ class NativeUpdateHistoryTests(unittest.TestCase):
                 "124\t2026-09-18T12:00:00Z\t" + "a" * 40 + "\treload\tapplied\t5\t0\n",
                 encoding="utf-8",
             )
-            native_host.RELEASE_HISTORY_FILE = str(releases)
-            native_host.UPDATE_HISTORY_FILE = str(applications)
-            snapshot = native_host.read_update_history()
-            self.assertEqual(
-                set(snapshot["releases"][0]),
-                {"versionNumber", "sourceSha", "releasedAt", "title"},
-            )
-            self.assertEqual(
-                set(snapshot["applications"][0]),
-                {
-                    "versionNumber",
-                    "sourceSha",
-                    "appliedAt",
-                    "applyMode",
-                    "result",
-                    "applyDurationSeconds",
-                    "stageDurationSeconds",
-                },
-            )
+            previous_release_history = native_host.RELEASE_HISTORY_FILE
+            previous_update_history = native_host.UPDATE_HISTORY_FILE
+            try:
+                native_host.RELEASE_HISTORY_FILE = str(releases)
+                native_host.UPDATE_HISTORY_FILE = str(applications)
+                snapshot = native_host.read_update_history()
+                self.assertEqual(
+                    set(snapshot["releases"][0]),
+                    {"versionNumber", "sourceSha", "releasedAt", "title"},
+                )
+                self.assertEqual(
+                    set(snapshot["applications"][0]),
+                    {
+                        "versionNumber",
+                        "sourceSha",
+                        "appliedAt",
+                        "applyMode",
+                        "result",
+                        "applyDurationSeconds",
+                        "stageDurationSeconds",
+                    },
+                )
+            finally:
+                native_host.RELEASE_HISTORY_FILE = previous_release_history
+                native_host.UPDATE_HISTORY_FILE = previous_update_history
 
     def test_contract_adapter_and_native_composition_use_read_only_port(self):
         contract = CONTRACT.read_text(encoding="utf-8")
