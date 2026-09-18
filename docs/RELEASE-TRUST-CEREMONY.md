@@ -116,6 +116,47 @@ PRIVATE_KEY_PRINTED=NO
 
 The repository tests must continue proving both sides: a valid signer envelope is accepted by the release-acquisition protocol, while private/trust mismatch fails closed.
 
+## Offline recovery verification
+
+After the encrypted offline backup exists, restore one copy to a **different temporary private path** outside the repository/toolkit. Do not point the recovery proof at the primary custodial PEM.
+
+The Windows toolkit provides:
+
+```text
+3-Verify-OrdaXTrustRecovery.cmd
+```
+
+It calls `Complete-OrdaXReleaseTrust.ps1`, which fails closed unless all of these are true:
+
+1. the primary private key and recovered private key are distinct local files outside the toolkit;
+2. the initializer's `ceremony-result.json` is still in the expected pre-promotion state;
+3. canonical trust, primary independent derivation and recovered derivation are byte-identical;
+4. the recovered key successfully signs the protocol-shaped proof manifest while using the canonical public trust file;
+5. the public trust document contains a 32-byte Ed25519 key and the fixed canonical key id;
+6. no private-key bytes or private-key hashes enter the public evidence.
+
+On success it emits:
+
+```text
+OFFLINE_RECOVERY_VERIFIED=YES
+PRIMARY_PUBLIC_DERIVATION_MATCH=YES
+RECOVERED_PUBLIC_DERIVATION_MATCH=YES
+RECOVERED_PRIVATE_PATH_DISTINCT=YES
+RECOVERED_SIGNING_PROOF=YES
+PRIVATE_KEY_PRINTED=NO
+PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO
+READY_TO_PIN_PUBLIC_ANCHOR=YES
+```
+
+The `trust-review/public-promotion/` directory contains only public material:
+
+```text
+release-ed25519.json
+ceremony-public-evidence.json
+```
+
+The restored private PEM should be removed from the temporary recovery location after verification according to the operator's backup procedure. The repository does not prescribe the backup encryption product or password handling; it proves that the recovered material is cryptographically the same release identity.
+
 ## Public-anchor promotion
 
 Only after custody, recovery, derivation and signing proof pass may the reviewed public JSON be copied to:
@@ -156,6 +197,10 @@ PUBLIC_KEY_SHA256=<64 lowercase hex>
 PUBLIC_TRUST_FILE_SHA256=<64 lowercase hex>
 PRIVATE_KEY_CUSTODY_OWNER=repository-owner-developer
 OFFLINE_ENCRYPTED_BACKUP=YES
+OFFLINE_BACKUP_RECOVERY_VERIFIED=YES
+RECOVERED_PRIVATE_PATH_DISTINCT=YES
+RECOVERED_PUBLIC_DERIVATION_MATCH=YES
+RECOVERED_SIGNING_PROOF=YES
 PUBLIC_KEY_DERIVED_FROM_CUSTODIED_PRIVATE_KEY=YES
 PUBLIC_KEY_FINGERPRINT_REVIEWED=YES
 SIGNER_PRIVATE_TRUST_MATCH=PASS
