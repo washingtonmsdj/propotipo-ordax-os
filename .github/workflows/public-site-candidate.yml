@@ -8,9 +8,13 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/contracts/public-site.json'
+      - 'docs/contracts/public-identity.json'
+      - 'docs/contracts/public-release-catalog.json'
+      - 'platform/releases/publications.json'
       - 'docs/contracts/build-autonomy.json'
       - 'docs/BUILD-AUTONOMY.md'
       - 'tests/test_public_site_contract.py'
+      - 'tests/test_public_release_catalog.py'
       - '.github/workflows/public-site-candidate.yml'
   pull_request:
     paths:
@@ -18,9 +22,13 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/contracts/public-site.json'
+      - 'docs/contracts/public-identity.json'
+      - 'docs/contracts/public-release-catalog.json'
+      - 'platform/releases/publications.json'
       - 'docs/contracts/build-autonomy.json'
       - 'docs/BUILD-AUTONOMY.md'
       - 'tests/test_public_site_contract.py'
+      - 'tests/test_public_release_catalog.py'
       - '.github/workflows/public-site-candidate.yml'
   workflow_dispatch:
 
@@ -48,6 +56,7 @@ jobs:
           set -euo pipefail
           python tools/public-site/build.py check
           python -m unittest tests.test_public_site_contract -v
+          python -m unittest tests.test_public_release_catalog -v
 
       - name: Build and verify deterministic public site
         run: |

@@ -25,11 +25,11 @@ class PublicSiteContractTests(unittest.TestCase):
         self.assertEqual(contract["source_root"], "sites/public")
         self.assertEqual(contract["build_recipe"], "tools/public-site/build.py")
 
-    def test_identity_and_downloads_fail_closed_by_default(self):
+    def test_identity_fails_closed_and_downloads_use_generated_catalog(self):
         config = json.loads((SITE / "config" / "public-site.json").read_text(encoding="utf-8"))
         self.assertIsNone(config["identity"]["login_url"])
         self.assertIsNone(config["identity"]["register_url"])
-        self.assertIsNone(config["downloads"]["catalog_url"])
+        self.assertEqual(config["downloads"]["catalog_url"], "/releases/catalog.json")
 
         login = (SITE / "login" / "index.html").read_text(encoding="utf-8")
         register = (SITE / "cadastro" / "index.html").read_text(encoding="utf-8")
@@ -37,6 +37,12 @@ class PublicSiteContractTests(unittest.TestCase):
         self.assertIn("Serviço de identidade ainda não configurado", login)
         self.assertIn("Cadastro ainda não configurado", register)
         self.assertIn("data-download-status", download)
+
+        publications = json.loads(
+            (ROOT / "platform" / "releases" / "publications.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(publications["$schema"], "prototype-ordax.public-release-publications/1")
+        self.assertEqual(publications["releases"], [])
 
     def test_site_baseline_has_no_remote_runtime_dependencies(self):
         for path in SITE.rglob("*"):
@@ -55,6 +61,18 @@ class PublicSiteContractTests(unittest.TestCase):
         self.assertIn('credentials: "same-origin"', script)
         self.assertIn("prototype-ordax.public-release-catalog/1", script)
         self.assertIn("SHA-256", script)
+
+    def test_public_identity_and_release_catalog_contracts_exist(self):
+        identity = json.loads(
+            (ROOT / "docs" / "contracts" / "public-identity.json").read_text(encoding="utf-8")
+        )
+        releases = json.loads(
+            (ROOT / "docs" / "contracts" / "public-release-catalog.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(identity["credentials"]["static_site_collects_passwords"])
+        self.assertTrue(identity["account_model"]["one_identity_across_product_modes"])
+        self.assertTrue(releases["rules"]["public_authorization_required_per_release"])
+        self.assertTrue(releases["rules"]["artifact_sha256_required"])
 
     def test_public_site_is_independent_build_artifact(self):
         contract = json.loads(BUILD_CONTRACT.read_text(encoding="utf-8"))

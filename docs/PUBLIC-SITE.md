@@ -49,11 +49,15 @@ Until an identity backend is configured, login and registration forms remain abs
 
 The future identity service may use an external infrastructure provider behind an OrdaX-owned service/adapter, but the browser contract must not couple product UI directly to one provider.
 
+The machine-readable entry boundary is `docs/contracts/public-identity.json`. It requires one account model across product modes, forbids browser/service secrets and keeps login/cadastro unavailable until a real same-origin identity route is configured.
+
 ## Download boundary
 
 The site never hard-codes a "latest" image or fabricates release availability.
 
-The download page consumes a same-origin public release catalog. That catalog is expected to be generated from release metadata owned by the canonical release pipeline and to expose only artifacts that are explicitly public.
+The download page consumes the same-origin catalog at `/releases/catalog.json`. The public-site build generates that file deterministically from `platform/releases/publications.json`; the page does not manufacture release metadata.
+
+The publication source is intentionally empty while `PRODUCTION_RELEASE_PUBLISHED=NO`. A release can enter it only with explicit per-release and per-target public authorization, exact source commit, artifact size and SHA-256. The generator rejects unknown fields, duplicate identities and non-same-origin download paths. See `docs/contracts/public-release-catalog.json`.
 
 Minimum intended flow:
 
@@ -66,7 +70,7 @@ source commit
  -> download page
 ```
 
-When there is no public catalog or no authorized release, the page says so and exposes no download button.
+When there is no authorized release, the generated catalog is valid but empty; the page says so and exposes no download button. A missing or malformed catalog still fails closed.
 
 ## Security invariants
 

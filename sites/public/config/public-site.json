@@ -5,6 +5,6 @@
     "register_url": null
   },
   "downloads": {
-    "catalog_url": null
+    "catalog_url": "/releases/catalog.json"
   }
 }
