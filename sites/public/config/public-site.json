@@ -6,5 +6,10 @@
   },
   "downloads": {
     "catalog_url": "/releases/catalog.json"
+  },
+  "legal": {
+    "privacy_url": "/privacidade/",
+    "terms_url": "/termos/",
+    "account_activation_ready": false
   }
 }
