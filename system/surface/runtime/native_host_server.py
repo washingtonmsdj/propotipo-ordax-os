@@ -33,10 +33,13 @@ FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
 NETWORK_STATUS_PATH = "/__ordax/native/network-status"
+UPDATE_HISTORY_PATH = "/__ordax/native/update-history"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
+UPDATE_HISTORY_FILE = "/var/lib/ordax/update-history.tsv"
+RELEASE_HISTORY_FILE = "/var/lib/ordax/release-history.tsv"
 SURFACE_HEARTBEAT_FILE = "/var/lib/ordax/surface-heartbeat.json"
 TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
 RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
@@ -52,6 +55,9 @@ MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
 MAX_TEXT_FILE_BYTES = 256 * 1024
 MAX_FILE_COPY_BYTES = 64 * 1024 * 1024
+MAX_UPDATE_HISTORY_BYTES = 256 * 1024
+MAX_RELEASE_HISTORY_ENTRIES = 80
+MAX_APPLICATION_HISTORY_ENTRIES = 200
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 NETWORK_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
@@ -531,6 +537,110 @@ def read_network_status(
     return {"interfaces": interfaces}
 
 
+def _bounded_history_lines(path: str, max_entries: int) -> list[str]:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = handle.read(MAX_UPDATE_HISTORY_BYTES + 1)
+    except (OSError, UnicodeError):
+        return []
+    if len(payload.encode("utf-8")) > MAX_UPDATE_HISTORY_BYTES:
+        return []
+    return payload.splitlines()[-max_entries:]
+
+
+def _history_text(value: str, max_length: int) -> str | None:
+    if not value or len(value) > max_length or any(ord(character) < 32 for character in value):
+        return None
+    return value
+
+
+def _history_version(value: str) -> int | None:
+    try:
+        number = int(value)
+    except ValueError:
+        return None
+    return number if 1 <= number <= 1_000_000 else None
+
+
+def _history_duration(value: str) -> int | None:
+    try:
+        seconds = int(value)
+    except ValueError:
+        return None
+    return seconds if 0 <= seconds <= 3600 else None
+
+
+def read_release_history(path: str = RELEASE_HISTORY_FILE) -> list[dict]:
+    releases = []
+    for line in _bounded_history_lines(path, MAX_RELEASE_HISTORY_ENTRIES):
+        fields = line.split("\t")
+        if len(fields) != 4:
+            continue
+        version = _history_version(fields[0])
+        released_at = _history_text(fields[1], 64)
+        source_sha = fields[2]
+        title = _history_text(fields[3], 200)
+        if version is None or released_at is None or not valid_commit_sha(source_sha) or title is None:
+            continue
+        releases.append(
+            {
+                "versionNumber": version,
+                "sourceSha": source_sha,
+                "releasedAt": released_at,
+                "title": title,
+            }
+        )
+    releases.reverse()
+    return releases
+
+
+def read_application_history(path: str = UPDATE_HISTORY_FILE) -> list[dict]:
+    applications = []
+    valid_modes = {"none", "reload", "surface-restart", "supervisor-restart", "initial"}
+    valid_results = {"applied", "rolled-back"}
+    for line in _bounded_history_lines(path, MAX_APPLICATION_HISTORY_ENTRIES):
+        fields = line.split("\t")
+        if len(fields) != 7:
+            continue
+        version = _history_version(fields[0])
+        applied_at = _history_text(fields[1], 64)
+        source_sha = fields[2]
+        apply_mode = fields[3]
+        result = fields[4]
+        apply_duration = _history_duration(fields[5])
+        stage_duration = _history_duration(fields[6])
+        if (
+            version is None
+            or applied_at is None
+            or not valid_commit_sha(source_sha)
+            or apply_mode not in valid_modes
+            or result not in valid_results
+            or apply_duration is None
+            or stage_duration is None
+        ):
+            continue
+        applications.append(
+            {
+                "versionNumber": version,
+                "sourceSha": source_sha,
+                "appliedAt": applied_at,
+                "applyMode": apply_mode,
+                "result": result,
+                "applyDurationSeconds": apply_duration,
+                "stageDurationSeconds": stage_duration,
+            }
+        )
+    applications.reverse()
+    return applications
+
+
+def read_update_history() -> dict:
+    return {
+        "releases": read_release_history(),
+        "applications": read_application_history(),
+    }
+
+
 def valid_logical_file_path(value: object) -> bool:
     if not isinstance(value, str) or not value.startswith("/") or len(value) > 4096:
         return False
@@ -982,7 +1092,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -1005,6 +1115,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, network_status)
+            return
+        if parsed_path == UPDATE_HISTORY_PATH:
+            self._write_json(200, read_update_history())
             return
         if parsed_path == FILE_CONTENT_PATH:
             try:
