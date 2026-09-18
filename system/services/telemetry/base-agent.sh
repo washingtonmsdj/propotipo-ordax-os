@@ -171,7 +171,18 @@ while :; do
         fi
 
         update_status=$(normalize_status "$(json_field status "$UPDATE_STATE")")
+        target_sha=$(json_field targetSha "$UPDATE_STATE")
+        is_sha "$target_sha" || target_sha=""
+        phase=$(json_field phase "$UPDATE_STATE")
+        case "$phase" in
+            idle|checking|fetching|validating|activating|health-wait|rollback|blocked|error) ;;
+            *) phase="" ;;
+        esac
         apply_mode=$(normalize_apply_mode "$(json_field applyMode "$UPDATE_STATE")")
+        attempt_id=$(json_field attemptId "$UPDATE_STATE")
+        [ "${#attempt_id}" -le 96 ] || attempt_id=""
+        last_error=$(json_field lastError "$UPDATE_STATE")
+        [ "${#last_error}" -le 1024 ] || last_error=""
         rejected_sha=$(read_first_line "$REJECTED_FILE")
         is_sha "$rejected_sha" || rejected_sha=""
         healthy_sha=$(read_first_line "$HEALTH_FILE")
@@ -187,7 +198,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","remoteSha":"","updateStatus":"%s","applyMode":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rescueGeneration":%s,"rescueAction":"%s","surfaceState":"unknown","bootId":"%s","lastError":"","relayVersion":1}' "$device_id" "$source_sha" "$update_status" "$apply_mode" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$rescue_generation_json" "$action" "$boot_id")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rescueGeneration":%s,"rescueAction":"%s","surfaceState":"unknown","bootId":"%s","lastError":"%s","relayVersion":1}' "$device_id" "$source_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$rescue_generation_json" "$action" "$boot_id" "$last_error")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \
