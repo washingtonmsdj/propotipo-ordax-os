@@ -197,6 +197,30 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("lastAppliedAt", controls)
         self.assertIn("rejectedSha", controls)
 
+    def test_stale_rendered_surface_heartbeat_recovers_once_without_restart_storm(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}', text)
+        self.assertIn('[ "$SURFACE_STALE_SECONDS" -ge 45 ]', text)
+        self.assertIn("surface_heartbeat_epoch()", text)
+        self.assertIn("surface_heartbeat_is_fresh()", text)
+        self.assertIn("surface_start_grace_active()", text)
+        self.assertIn("recover_stale_surface_if_needed()", text)
+        self.assertIn('expected_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")', text)
+        self.assertIn('[ "$rendered_sha" = "$expected_sha" ] || return 1', text)
+        self.assertIn('SURFACE_STARTED_AT=$(epoch_now)', text)
+        self.assertIn('SURFACE_STALE_RECOVERY_ARMED=0', text)
+        self.assertIn('SURFACE_STALE_RECOVERY_ARMED=1', text)
+        self.assertIn("Surface heartbeat stale or mismatched", text)
+        self.assertIn('clear_surface_health', text)
+        self.assertIn('stop_surface', text)
+        self.assertIn('start_surface || fail_closed "Surface heartbeat recovery restart failed"', text)
+        self.assertIn("recover_stale_surface_if_needed\n    check_for_update", text)
+
+        recovery = text.split("recover_stale_surface_if_needed() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertEqual(recovery.count('stop_surface'), 1)
+        self.assertEqual(recovery.count('start_surface'), 1)
+        self.assertIn('[ "$SURFACE_STALE_RECOVERY_ARMED" -eq 1 ] || return 0', recovery)
+
     def test_runtime_surface_sha_tracks_only_runtime_effective_updates(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("RUNTIME_SURFACE_SHA_FILE=$STATE_DIR/runtime-surface-sha", text)

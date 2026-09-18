@@ -29,12 +29,15 @@ REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
+SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}
 UPDATE_TARGET_SHA=""
 UPDATE_PHASE=idle
 UPDATE_ATTEMPT_ID=""
 UPDATE_ERROR=""
 CHECKOUT_ERROR=""
 SURFACE_PID=""
+SURFACE_STARTED_AT=0
+SURFACE_STALE_RECOVERY_ARMED=1
 
 log() {
     echo "ordax-system: $*" >&2
@@ -64,6 +67,11 @@ case "$SURFACE_HEALTH_TIMEOUT" in
     ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=30 ;;
 esac
 [ "$SURFACE_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30
+
+case "$SURFACE_STALE_SECONDS" in
+    ''|*[!0-9]*) SURFACE_STALE_SECONDS=90 ;;
+esac
+[ "$SURFACE_STALE_SECONDS" -ge 45 ] 2>/dev/null || SURFACE_STALE_SECONDS=90
 
 GIT_TERMINAL_PROMPT=0
 export GIT_TERMINAL_PROMPT
@@ -225,6 +233,10 @@ utc_now() {
     /bin/busybox date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'unknown\n'
 }
 
+epoch_now() {
+    /bin/busybox date +%s 2>/dev/null || printf '0\n'
+}
+
 read_state_value() {
     file=$1
     value=""
@@ -300,6 +312,7 @@ start_surface() {
     export ORDAX_SYSTEM_ROOT
     "$SURFACE_ENTRYPOINT" &
     SURFACE_PID=$!
+    SURFACE_STARTED_AT=$(epoch_now)
     log "Surface started as pid $SURFACE_PID"
 }
 
@@ -334,6 +347,60 @@ surface_stays_running() {
 surface_heartbeat_sha() {
     [ -s "$SURFACE_HEARTBEAT_FILE" ] || return 0
     /bin/busybox sed -n 's/.*"sourceSha":"\([0-9a-f]*\)".*/\1/p' "$SURFACE_HEARTBEAT_FILE" 2>/dev/null | /bin/busybox head -n 1
+}
+
+surface_heartbeat_epoch() {
+    [ -f "$SURFACE_HEARTBEAT_FILE" ] || {
+        printf '0\n'
+        return 0
+    }
+    /bin/busybox stat -c %Y "$SURFACE_HEARTBEAT_FILE" 2>/dev/null || printf '0\n'
+}
+
+surface_heartbeat_is_fresh() {
+    expected_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")
+    [ -n "$expected_sha" ] || expected_sha=$(current_sha)
+    rendered_sha=$(surface_heartbeat_sha)
+    [ "$rendered_sha" = "$expected_sha" ] || return 1
+
+    now=$(epoch_now)
+    heartbeat=$(surface_heartbeat_epoch)
+    case "$now:$heartbeat" in
+        *[!0-9:]*|'0:'*|*:0) return 1 ;;
+    esac
+    age=$((now - heartbeat))
+    [ "$age" -ge 0 ] 2>/dev/null || return 1
+    [ "$age" -le "$SURFACE_STALE_SECONDS" ] 2>/dev/null
+}
+
+surface_start_grace_active() {
+    now=$(epoch_now)
+    case "$now:$SURFACE_STARTED_AT" in
+        *[!0-9:]*|'0:'*|*:0) return 1 ;;
+    esac
+    age=$((now - SURFACE_STARTED_AT))
+    [ "$age" -ge 0 ] 2>/dev/null || return 1
+    [ "$age" -le "$SURFACE_STALE_SECONDS" ] 2>/dev/null
+}
+
+recover_stale_surface_if_needed() {
+    [ -n "$SURFACE_PID" ] && kill -0 "$SURFACE_PID" >/dev/null 2>&1 || return 0
+
+    if surface_heartbeat_is_fresh; then
+        SURFACE_STALE_RECOVERY_ARMED=1
+        return 0
+    fi
+
+    surface_start_grace_active && return 0
+    [ "$SURFACE_STALE_RECOVERY_ARMED" -eq 1 ] || return 0
+
+    SURFACE_STALE_RECOVERY_ARMED=0
+    expected_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")
+    [ -n "$expected_sha" ] || expected_sha=$(current_sha)
+    log "Surface heartbeat stale or mismatched for runtime $expected_sha; restarting Surface once"
+    clear_surface_health
+    stop_surface
+    start_surface || fail_closed "Surface heartbeat recovery restart failed"
 }
 
 clear_surface_health() {
@@ -652,5 +719,6 @@ while :; do
         record_runtime_surface_sha "$(current_sha)"
     fi
 
+    recover_stale_surface_if_needed
     check_for_update
  done
