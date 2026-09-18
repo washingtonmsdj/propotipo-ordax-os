@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/contracts/diagnostics.json'
       - 'system/contracts/diagnostic-journal-store.mjs'
+      - 'system/contracts/diagnostic-export.mjs'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
@@ -61,6 +62,7 @@ on:
     paths:
       - 'docs/contracts/diagnostics.json'
       - 'system/contracts/diagnostic-journal-store.mjs'
+      - 'system/contracts/diagnostic-export.mjs'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
