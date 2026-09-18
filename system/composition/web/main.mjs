@@ -20,8 +20,9 @@ if (!root) {
 
 const host = createWebSurfaceHost(window);
 const preferenceStore = createWebPreferenceStore(window);
-const workspaceStore = createWebWorkspaceStore(window);
-const workspaceMetadata = createWorkspaceMetadataBridge(workspaceStore);
+const localWorkspaceStore = createWebWorkspaceStore(window);
+const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
+const workspaceStore = workspaceMetadata.store;
 const syncStateStore = createWebSyncStateStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
@@ -35,7 +36,7 @@ const surface = mountSurface(
   root,
   host,
   preferenceStore,
-  workspaceMetadata.store,
+  workspaceStore,
   appActivation,
 );
 let syncMutationOrdinal = 0;
