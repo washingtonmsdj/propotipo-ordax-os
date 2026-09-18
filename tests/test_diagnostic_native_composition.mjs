@@ -23,7 +23,7 @@ test("Native composition wires the diagnostic journal through neutral layers", a
   );
   assert.match(
     source,
-    /createUpdateDiagnosticRecorder\(updateWatcher, diagnosticJournal\)/,
+    /createUpdateDiagnosticRecorder\(\s*updateWatcher,\s*diagnosticJournal,?\s*\)/,
   );
 });
 
