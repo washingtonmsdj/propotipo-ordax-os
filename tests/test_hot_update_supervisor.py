@@ -123,9 +123,24 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_runtime_neutral_update_does_not_materialize_a_release_slot(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn('[ "$candidate_mode" != none ] || return 0', staging)
+        self.assertIn('if [ "$candidate_mode" = none ]; then', staging)
+        self.assertIn('write_state_value "$LAST_STAGE_DURATION_FILE" "0"', staging)
+        self.assertIn("return 0", staging)
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
+
+    def test_update_latency_is_recorded_without_external_timing(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("LAST_APPLY_DURATION_FILE=$STATE_DIR/last-apply-duration-seconds", text)
+        self.assertIn("LAST_STAGE_DURATION_FILE=$STATE_DIR/last-stage-duration-seconds", text)
+        self.assertIn("ATTEMPT_STARTED_EPOCH_FILE=$UPDATE_RUN_DIR/attempt-started-epoch", text)
+        self.assertIn("record_elapsed_seconds()", text)
+        self.assertIn('write_state_value "$ATTEMPT_STARTED_EPOCH_FILE" "$(epoch_now)"', text)
+        self.assertIn('record_elapsed_seconds "$attempt_started" "$LAST_APPLY_DURATION_FILE"', text)
+        self.assertIn('record_elapsed_seconds "$stage_started" "$LAST_STAGE_DURATION_FILE"', text)
+        self.assertIn('"lastApplyDurationSeconds":%s', text)
+        self.assertIn('"lastStageDurationSeconds":%s', text)
+        self.assertIn('"stagedReleaseSha":"%s"', text)
 
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
