@@ -26,7 +26,7 @@ assert _ACTIVATE_SPEC.loader is not None
 _ACTIVATE_SPEC.loader.exec_module(_activate)
 
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
-BOOT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+BOOT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 SLOTS = ("a", "b")
 CURRENT_ENTRY = Path("loader/entries/ordax.conf")
 RECOVERY_ENTRY = Path("loader/entries/ordax-recovery.conf")
@@ -371,7 +371,7 @@ def main() -> int:
     parser.add_argument("--esp-root", type=Path, required=True)
     parser.add_argument("--state-root", type=Path, required=True)
     parser.add_argument("--cmdline", type=Path, default=Path("/proc/cmdline"))
-    parser.add_argument("--boot-id", type=Path, default=Path("/proc/sys/kernel/random/boot_id"))
+    parser.add_argument("--boot-id", type=Path, default=Path("/run/ordax-update/base-boot-id"))
     parser.add_argument("--base-heartbeat", type=Path, required=True)
     parser.add_argument("--surface-heartbeat", type=Path, required=True)
     parser.add_argument("--healthy-sha", type=Path, required=True)
