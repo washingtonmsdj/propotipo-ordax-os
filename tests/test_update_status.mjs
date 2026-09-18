@@ -124,3 +124,43 @@ test("native reload URL replaces prior retry marker instead of growing forever",
   assert.match(url, /ordax_reload=4/);
   assert.equal((url.match(/ordax_reload=/g) ?? []).length, 1);
 });
+
+test("native update watcher never acknowledges a SHA different from the rendered page", async () => {
+  const calls = [];
+  const renderedSha = "1111111111111111111111111111111111111111";
+  const checkoutSha = "2222222222222222222222222222222222222222";
+  const windowRef = {
+    async fetch(path, options = {}) {
+      calls.push({ path, options });
+      if (path === "/__ordax/native/update") {
+        return {
+          ok: true,
+          async json() {
+            return {
+              sourceSha: checkoutSha,
+              status: "running",
+              applyMode: "none",
+              healthToken: "token",
+            };
+          },
+        };
+      }
+      return { ok: true };
+    },
+    location: {
+      href: `http://127.0.0.1:8765/composition/native/index.html?source=${renderedSha}`,
+      reload() {},
+      replace() {},
+    },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+  };
+  const watcher = createNativeUpdateWatcher(windowRef, { intervalMs: 1 });
+  await watcher.markHealthy();
+  await Promise.resolve();
+  assert.equal(
+    calls.filter((call) => call.path === "/__ordax/native/health").length,
+    0,
+  );
+  watcher.dispose();
+});

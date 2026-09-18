@@ -21,6 +21,7 @@ UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
 UPDATE_LOG=$UPDATE_RUN_DIR/update.log
 HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha
+SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
 UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
@@ -330,12 +331,24 @@ surface_stays_running() {
     return 0
 }
 
+surface_heartbeat_sha() {
+    [ -s "$SURFACE_HEARTBEAT_FILE" ] || return 0
+    /bin/busybox sed -n 's/.*"sourceSha":"\([0-9a-f]*\)".*/\1/p' "$SURFACE_HEARTBEAT_FILE" 2>/dev/null | /bin/busybox head -n 1
+}
+
+clear_surface_health() {
+    rm -f "$HEALTH_FILE" "$SURFACE_HEARTBEAT_FILE"
+}
+
 wait_for_surface_health() {
     expected_sha=$1
     seconds=${2:-12}
     while [ "$seconds" -gt 0 ]; do
         healthy_sha=$(read_state_value "$HEALTH_FILE")
-        [ "$healthy_sha" = "$expected_sha" ] && return 0
+        rendered_sha=$(surface_heartbeat_sha)
+        if [ "$healthy_sha" = "$expected_sha" ] && [ "$rendered_sha" = "$expected_sha" ]; then
+            return 0
+        fi
         /bin/busybox sleep 1
         seconds=$((seconds - 1))
     done
@@ -384,7 +397,7 @@ rollback_update() {
     temporary=$REJECTED_FILE.tmp.$$
     printf '%s\n' "$failed_sha" >"$temporary"
     /bin/busybox mv -f "$temporary" "$REJECTED_FILE"
-    rm -f "$HEALTH_FILE"
+    clear_surface_health
     stop_surface
     if ! "$GIT_BIN" -C "$WORKTREE" reset --hard "$previous_sha" >>"$UPDATE_LOG" 2>&1; then
         fail_closed "automatic rollback to $previous_sha failed"
@@ -535,7 +548,7 @@ check_for_update() {
 
     case "$APPLY_MODE" in
         reload)
-            rm -f "$HEALTH_FILE"
+            clear_surface_health
             set_update_context health-wait "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
@@ -550,12 +563,13 @@ check_for_update() {
             fi
             ;;
         surface-restart)
+            clear_surface_health
             set_update_context activating "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied surface-restart
             log "native host update applied; restarting Surface only"
             stop_surface
-            if ! start_surface || ! surface_stays_running 4; then
-                rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not stay running"
+            if ! start_surface || ! surface_stays_running 4 || ! wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
+                rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not render and acknowledge healthy state"
                 return 0
             fi
             record_applied "$new_sha"
@@ -564,7 +578,7 @@ check_for_update() {
             write_update_state "$new_sha" running surface-restart
             ;;
         supervisor-restart)
-            rm -f "$HEALTH_FILE"
+            clear_surface_health
             set_update_context activating "$new_sha" "$attempt_id" ""
             temporary=$SUPERVISOR_GUARD_FILE.tmp.$
             printf '%s %s %s\n' "$old_sha" "$new_sha" "$attempt_id" >"$temporary"

@@ -767,6 +767,10 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             if not valid_commit_sha(source_sha):
                 self._empty(400)
                 return
+            update_state = read_update_state()
+            if update_state is None or update_state.get("sourceSha") != source_sha:
+                self._empty(409)
+                return
             try:
                 record_surface_health(source_sha)
             except OSError as exc:

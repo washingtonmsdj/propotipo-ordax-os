@@ -2,6 +2,7 @@ import {
   UPDATE_STATUS_SCHEMA,
   validateUpdateStatusSnapshot,
 } from "../../contracts/update-status.mjs";
+import { nativeSurfaceSourceSha } from "./surface-heartbeat.mjs";
 
 const UPDATE_STATE_PATH = "/__ordax/native/update";
 const UPDATE_HEALTH_PATH = "/__ordax/native/health";
@@ -55,6 +56,7 @@ export function createNativeUpdateWatcher(
     throw new Error("native update watcher requires timer APIs");
   }
 
+  const renderedSourceSha = nativeSurfaceSourceSha(windowRef);
   let observedSha = null;
   let snapshot = null;
   let stopped = false;
@@ -76,8 +78,10 @@ export function createNativeUpdateWatcher(
       stopped ||
       !healthRequested ||
       !snapshot ||
+      !renderedSourceSha ||
       snapshot.healthToken.length === 0 ||
-      healthSubmittedSha === snapshot.sourceSha ||
+      snapshot.sourceSha !== renderedSourceSha ||
+      healthSubmittedSha === renderedSourceSha ||
       pendingReloadSha === snapshot.sourceSha
     ) {
       return false;
@@ -91,10 +95,10 @@ export function createNativeUpdateWatcher(
           "Content-Type": "application/json",
           [HEALTH_TOKEN_HEADER]: snapshot.healthToken,
         },
-        body: JSON.stringify({ sourceSha: snapshot.sourceSha }),
+        body: JSON.stringify({ sourceSha: renderedSourceSha }),
       });
       if (!response.ok) return false;
-      healthSubmittedSha = snapshot.sourceSha;
+      healthSubmittedSha = renderedSourceSha;
       return true;
     } catch {
       return false;

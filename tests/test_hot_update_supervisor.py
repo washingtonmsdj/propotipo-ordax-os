@@ -123,6 +123,20 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("system/services/telemetry/relay.json", text)
         self.assertIn("surface_host_changed=1", text)
 
+    def test_surface_health_is_bound_to_rendered_ui_sha(self):
+        supervisor = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        host = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        adapter = NATIVE_UPDATE_ADAPTER.read_text(encoding="utf-8")
+        self.assertIn("SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json", supervisor)
+        self.assertIn("surface_heartbeat_sha()", supervisor)
+        self.assertIn('rendered_sha=$(surface_heartbeat_sha)', supervisor)
+        self.assertIn('[ "$healthy_sha" = "$expected_sha" ] && [ "$rendered_sha" = "$expected_sha" ]', supervisor)
+        self.assertIn("clear_surface_health()", supervisor)
+        self.assertIn('snapshot.sourceSha !== renderedSourceSha', adapter)
+        self.assertIn('JSON.stringify({ sourceSha: renderedSourceSha })', adapter)
+        self.assertIn('update_state.get("sourceSha") != source_sha', host)
+        self.assertIn("self._empty(409)", host)
+
     def test_live_reload_requires_surface_health_acknowledgement(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
@@ -130,6 +144,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
         self.assertIn('wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"', text)
         self.assertIn('rollback_update "$old_sha" "$new_sha" reload', text)
+        self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
+        self.assertIn("updated native Surface host did not render and acknowledge healthy state", text)
         self.assertIn("SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update", text)
 
     def test_native_server_exposes_loopback_update_state_and_health_endpoint(self):
