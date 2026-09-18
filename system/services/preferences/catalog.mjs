@@ -1,6 +1,14 @@
+import {
+  accessibilityContrastPreference,
+  accessibilityMotionPreference,
+} from "./accessibility.mjs";
 import { appearancePreference } from "./appearance.mjs";
 
-const DEFINITIONS = Object.freeze([appearancePreference]);
+const DEFINITIONS = Object.freeze([
+  appearancePreference,
+  accessibilityContrastPreference,
+  accessibilityMotionPreference,
+]);
 const BY_ID = new Map(DEFINITIONS.map((definition) => [definition.id, definition]));
 
 if (BY_ID.size !== DEFINITIONS.length) {
