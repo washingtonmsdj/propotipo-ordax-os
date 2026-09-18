@@ -102,7 +102,7 @@ As prioridades são de implementação, não de exposição: uma tela P2 não de
 
 ### 2.2 Limitações importantes encontradas no código
 
-1. `system/contracts/file-space.mjs` é `ordax.file-space/1` e oferece somente `list()` e `createDirectory()`. Entradas têm `name`, `kind` e `size`; não há data de modificação, leitura de conteúdo, exclusão ou operações de cópia nesse contrato.
+1. `system/contracts/file-space.mjs` evoluiu para `ordax.file-space/2`: além de `list()` e `createDirectory()`, o Native oferece `readTextFile()` para visualização somente leitura, UTF-8 e limitada a 256 KB dentro da raiz autorizada. Entradas continuam com `name`, `kind` e `size`; ainda não há data de modificação, renomear, copiar, mover, excluir/lixeira ou abertura por associação de app.
 2. A composição Web inspecionada não monta um adapter real de arquivos. A existência do app Arquivos não significa acesso ao disco no navegador.
 3. `appearance.theme` é a única preferência no catálogo observado. Não implementar controles de preferências apenas com alterações de CSS sem registrá-las, validá-las e persistir seu estado.
 4. `createWebIdentitySession()` retorna `unavailable`, e `createWebIdentityActions()` anuncia zero ações. A composição Native também usa essas portas de identidade. Portanto, não há login real demonstrado nesses caminhos.
