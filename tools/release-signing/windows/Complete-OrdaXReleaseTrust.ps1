@@ -222,6 +222,40 @@ Compress-Archive -LiteralPath @(
 Assert-RegularFile $PublicHandoffZipPath 'public trust handoff zip'
 $PublicHandoffZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PublicHandoffZipPath).Hash.ToLowerInvariant()
 
+$HandoffVerifyDirectory = Join-Path $ReviewDirectory ('.handoff-verify-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $HandoffVerifyDirectory | Out-Null
+try {
+    Expand-Archive -LiteralPath $PublicHandoffZipPath -DestinationPath $HandoffVerifyDirectory
+
+    $ExpandedNames = @(
+        Get-ChildItem -LiteralPath $HandoffVerifyDirectory -Force |
+            ForEach-Object { $_.Name } |
+            Sort-Object
+    )
+    if ($ExpandedNames.Count -ne $ExpectedSortedNames.Count) {
+        throw 'Public handoff ZIP contains an unexpected number of entries.'
+    }
+    for ($i = 0; $i -lt $ExpectedSortedNames.Count; $i++) {
+        if ($ExpandedNames[$i] -ne $ExpectedSortedNames[$i]) {
+            throw 'Public handoff ZIP contains unexpected entries.'
+        }
+    }
+
+    foreach ($name in $ExpectedPromotionNames) {
+        $source = Join-Path $PublicPromotionDirectory $name
+        $expanded = Join-Path $HandoffVerifyDirectory $name
+        Assert-RegularFile $expanded 'expanded public handoff file'
+        $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+        $expandedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $expanded).Hash.ToLowerInvariant()
+        if ($sourceHash -ne $expandedHash) {
+            throw "Public handoff ZIP changed bytes for $name."
+        }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $HandoffVerifyDirectory -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host ''
 Write-Host 'OFFLINE_RECOVERY_VERIFIED=YES'
 Write-Host 'PRIMARY_PUBLIC_DERIVATION_MATCH=YES'
@@ -233,6 +267,7 @@ Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
 Write-Host 'PRIVATE_KEY_PRINTED=NO'
 Write-Host 'PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO'
 Write-Host 'PUBLIC_HANDOFF_SECRET_MATERIAL=NO'
+Write-Host 'PUBLIC_HANDOFF_CONTENTS_VERIFIED=YES'
 Write-Host 'READY_TO_PIN_PUBLIC_ANCHOR=YES'
 Write-Host "PUBLIC_PROMOTION_DIRECTORY=$PublicPromotionDirectory"
 Write-Host "PUBLIC_TRUST_HANDOFF_ZIP=$PublicHandoffZipPath"
