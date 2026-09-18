@@ -1155,17 +1155,26 @@ def list_user_directory(user_root: str, logical_path: str) -> dict:
                 if not valid_file_name(entry.name) or entry.is_symlink():
                     continue
                 try:
+                    metadata = entry.stat(follow_symlinks=False)
                     if entry.is_dir(follow_symlinks=False):
                         kind = "directory"
                         size = 0
                     elif entry.is_file(follow_symlinks=False):
                         kind = "file"
-                        size = entry.stat(follow_symlinks=False).st_size
+                        size = metadata.st_size
                     else:
                         continue
+                    modified_at = max(0, int(metadata.st_mtime_ns // 1_000_000))
                 except OSError:
                     continue
-                entries.append({"name": entry.name, "kind": kind, "size": max(0, int(size))})
+                entries.append(
+                    {
+                        "name": entry.name,
+                        "kind": kind,
+                        "size": max(0, int(size)),
+                        "modifiedAt": modified_at,
+                    }
+                )
         entries.sort(key=lambda item: (item["kind"] != "directory", item["name"].casefold(), item["name"]))
         return {"path": logical_path, "entries": entries[:MAX_FILE_ENTRIES]}
     finally:
