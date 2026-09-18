@@ -155,8 +155,9 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_surface_launcher_is_gracefully_restartable(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn('GRAPHICS_PID=""', text)
-        self.assertIn('kill "$GRAPHICS_PID"', text)
-        self.assertIn('wait "$GRAPHICS_PID"', text)
+        self.assertIn('terminate_child "$GRAPHICS_PID" "graphics host"', text)
+        self.assertIn('kill -KILL "$pid"', text)
+        self.assertIn('wait "$pid"', text)
         self.assertIn("trap terminate HUP INT TERM", text)
         self.assertIn("GRAPHICS_PID=$!", text)
 
