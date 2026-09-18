@@ -163,7 +163,9 @@ export function mountSystemOverviewControls(
   let historySnapshot = null;
   let historyMessage = "";
   let historyOrdinal = 0;
-  let activeSection = "overview";
+  let activeSection = validSystemSection(lifecycle.getAppTarget("system"))
+    ? lifecycle.getAppTarget("system")
+    : "overview";
   let destroyed = false;
   let mountedSlot = null;
 
@@ -675,8 +677,13 @@ export function mountSystemOverviewControls(
   const onClick = (event) => {
     const section = event.target.closest("[data-system-section]");
     if (section && root.contains(section) && validSystemSection(section.dataset.systemSection)) {
-      activeSection = section.dataset.systemSection;
-      replaceView();
+      const nextSection = section.dataset.systemSection;
+      if (activationPort) {
+        activationPort.publish({ appId: "system", target: nextSection });
+      } else {
+        activeSection = nextSection;
+        replaceView();
+      }
       return;
     }
 
@@ -690,7 +697,12 @@ export function mountSystemOverviewControls(
   };
 
   root.addEventListener("click", onClick);
-  const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
+  const unsubscribeRender = lifecycle.subscribeRender(() => {
+    const persistedTarget = lifecycle.getAppTarget("system");
+    const nextSection = validSystemSection(persistedTarget) ? persistedTarget : "overview";
+    activeSection = nextSection;
+    renderView(false);
+  });
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
     replaceView();

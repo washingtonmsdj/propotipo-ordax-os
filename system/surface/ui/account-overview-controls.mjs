@@ -117,7 +117,9 @@ export function mountAccountOverviewControls(
     : null;
   let pendingAction = null;
   let actionMessage = "";
-  let activeSection = "overview";
+  let activeSection = validAccountSection(lifecycle.getAppTarget("account"))
+    ? lifecycle.getAppTarget("account")
+    : "overview";
   let destroyed = false;
   let mountedSlot = null;
 
@@ -353,9 +355,14 @@ export function mountAccountOverviewControls(
       && root.contains(sectionButton)
       && validAccountSection(sectionButton.dataset.accountSection)
     ) {
-      activeSection = sectionButton.dataset.accountSection;
+      const nextSection = sectionButton.dataset.accountSection;
       actionMessage = "";
-      replaceView();
+      if (activationPort) {
+        activationPort.publish({ appId: "account", target: nextSection });
+      } else {
+        activeSection = nextSection;
+        replaceView();
+      }
       return;
     }
 
@@ -366,7 +373,13 @@ export function mountAccountOverviewControls(
   };
 
   root.addEventListener("click", onClick);
-  const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
+  const unsubscribeRender = lifecycle.subscribeRender(() => {
+    const persistedTarget = lifecycle.getAppTarget("account");
+    const nextSection = validAccountSection(persistedTarget) ? persistedTarget : "overview";
+    if (nextSection !== activeSection) actionMessage = "";
+    activeSection = nextSection;
+    renderView(false);
+  });
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (
       activation.appId === "account"
