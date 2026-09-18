@@ -19,6 +19,8 @@ PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mj
 IDENTITY_SESSION_CONTRACT = ROOT / "system" / "contracts" / "identity-session.mjs"
 IDENTITY_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "identity-actions.mjs"
 POWER_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "power-actions.mjs"
+APP_ACTIVATION_CONTRACT = ROOT / "system" / "contracts" / "app-activation.mjs"
+APP_ACTIVATION_SERVICE = ROOT / "system" / "services" / "apps" / "activation.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "web"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
@@ -50,6 +52,8 @@ class SurfaceUiContractTests(unittest.TestCase):
             IDENTITY_SESSION_CONTRACT,
             IDENTITY_ACTIONS_CONTRACT,
             POWER_ACTIONS_CONTRACT,
+            APP_ACTIVATION_CONTRACT,
+            APP_ACTIVATION_SERVICE,
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
             NATIVE_COMPOSITION / "index.html",
@@ -75,6 +79,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("contracts/preference-store.mjs", surface)
         self.assertIn("contracts/identity-session.mjs", surface)
         self.assertIn("contracts/identity-actions.mjs", surface)
+        self.assertIn("contracts/app-activation.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
         self.assertIn("./desktop-shell.mjs", surface)
@@ -317,6 +322,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/app-activation.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/services/apps/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/adapters/native/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/composition/native/**'"), 2)
         self.assertGreaterEqual(workflow.count("'tests/test_surface_preferences.mjs'"), 2)
@@ -327,6 +334,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("system/adapters/native", workflow)
         self.assertIn("system/composition/native", workflow)
         self.assertIn("node --test tests/test_power_actions.mjs", workflow)
+        self.assertIn("node --test tests/test_app_activation.mjs", workflow)
 
 
 if __name__ == "__main__":
