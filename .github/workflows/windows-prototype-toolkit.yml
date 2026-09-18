@@ -224,6 +224,28 @@ jobs:
           check-latest: false
           cache: false
 
+      - name: Parse release trust ceremony PowerShell natively
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            '../release-signing/windows/Initialize-OrdaXReleaseTrust.ps1',
+            '../release-signing/windows/Complete-OrdaXReleaseTrust.ps1',
+            '../release-signing/windows/4-Sign-Initial-OrdaXRelease.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) {
+              throw "PowerShell parse failed for $path: $($errors | Out-String)"
+            }
+          }
+          Write-Host 'RELEASE_TRUST_POWERSHELL_PARSE=PASS'
+
       - name: Test public/default Creator Windows host adapter natively
         shell: pwsh
         run: go test -count=1 ./...
