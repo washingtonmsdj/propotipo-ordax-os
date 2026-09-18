@@ -549,6 +549,28 @@ start_time_sync_agent() {
     kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
 }
 
+restart_host() {
+    echo "ordax-surface: host restart requested; flushing filesystems" >>"$HOST_LOG"
+    /bin/busybox sync >>"$HOST_LOG" 2>&1 || true
+
+    echo "ordax-surface: attempting primary reboot syscall" >>"$HOST_LOG"
+    /bin/busybox reboot -f >>"$HOST_LOG" 2>&1 || true
+
+    echo "ordax-surface: primary reboot returned; attempting kernel sysrq restart fallback" >>"$HOST_LOG"
+    if [ -w /proc/sysrq-trigger ]; then
+        /bin/busybox sync >>"$HOST_LOG" 2>&1 || true
+        if printf 'b' >/proc/sysrq-trigger 2>>"$HOST_LOG"; then
+            # A successful emergency restart never returns.
+            /bin/busybox sleep 1
+        fi
+    else
+        echo "ordax-surface: /proc/sysrq-trigger is unavailable; no kernel restart fallback exists" >>"$HOST_LOG"
+    fi
+
+    echo "ordax-surface: all host restart methods returned without rebooting" >>"$HOST_LOG"
+    return 1
+}
+
 prepare_power_broker() {
     rm -f "$POWER_REQUEST" >/dev/null 2>&1 || true
     /bin/busybox mkfifo "$POWER_REQUEST" >>"$HOST_LOG" 2>&1 || return 1
@@ -563,9 +585,7 @@ prepare_power_broker() {
                     restart)
                         echo "ordax-surface: host power broker accepted restart" >>"$HOST_LOG"
                         /bin/busybox sleep 1
-                        if ! /bin/busybox reboot -f >>"$HOST_LOG" 2>&1; then
-                            echo "ordax-surface: host reboot command returned without rebooting" >>"$HOST_LOG"
-                        fi
+                        restart_host || true
                         ;;
                     shutdown)
                         echo "ordax-surface: host power broker accepted shutdown" >>"$HOST_LOG"
