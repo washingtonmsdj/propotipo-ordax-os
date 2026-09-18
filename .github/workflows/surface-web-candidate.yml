@@ -138,6 +138,7 @@ jobs:
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
+          node --test tests/test_power_status.mjs
           node --test tests/test_update_status.mjs
           node --test tests/test_update_history.mjs
           node --test tests/test_account_runtime.mjs
