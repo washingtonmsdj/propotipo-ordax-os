@@ -104,7 +104,7 @@ function findBrowser() {
   throw new Error('Chrome/Chromium not found; set ORDAX_CHROME_BIN to an executable browser');
 }
 
-const STARTUP_TIMEOUT_MS = 10_000;
+const STARTUP_TIMEOUT_MS = 30_000;
 const STDERR_LIMIT = 8_000;
 
 const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -154,7 +154,10 @@ async function waitForDevTools(
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
 
-  while (Date.now() < deadline) {
+  while (true) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+
     const spawnError = getSpawnError();
     if (spawnError) {
       throw new Error(`failed to spawn Chromium: ${spawnError.message}`);
@@ -167,7 +170,8 @@ async function waitForDevTools(
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 500);
+    const requestTimeoutMs = Math.min(1_000, remainingMs);
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
     try {
       const response = await fetch(endpoint, { signal: controller.signal });
       if (response.ok) return;
@@ -177,7 +181,9 @@ async function waitForDevTools(
     } finally {
       clearTimeout(timer);
     }
-    await sleep(50);
+
+    const pauseMs = Math.min(50, deadline - Date.now());
+    if (pauseMs > 0) await sleep(pauseMs);
   }
 
   throw new Error(
@@ -426,12 +432,15 @@ async function main() {
   child.once('error', (error) => { spawnError = error; });
   let client = null;
   try {
+    const startupStartedAt = Date.now();
     await waitForDevTools(
       cdpPort,
       () => exitState,
       () => spawnError,
       () => stderr,
     );
+    const startupMs = Date.now() - startupStartedAt;
+    console.log(`SURFACE_BROWSER_STARTUP_MS=${startupMs}`);
     const pagesResponse = await fetch(`http://127.0.0.1:${cdpPort}/json/list`);
     if (!pagesResponse.ok) {
       throw new Error(`Chromium CDP target list failed with HTTP ${pagesResponse.status}`);
