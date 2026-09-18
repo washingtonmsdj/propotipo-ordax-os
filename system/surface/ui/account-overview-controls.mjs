@@ -117,6 +117,7 @@ export function mountAccountOverviewControls(
     : null;
   let pendingAction = null;
   let actionMessage = "";
+  let actionOrdinal = 0;
   let activeSection = validAccountSection(lifecycle.getAppTarget("account"))
     ? lifecycle.getAppTarget("account")
     : "overview";
@@ -335,16 +336,21 @@ export function mountAccountOverviewControls(
     ) {
       return;
     }
+    const ordinal = ++actionOrdinal;
     pendingAction = action;
     actionMessage = "";
     replaceView();
     try {
       await actionsPort.execute(action);
+      if (destroyed || ordinal !== actionOrdinal) return;
     } catch {
+      if (destroyed || ordinal !== actionOrdinal) return;
       actionMessage = "A ação de conta não pôde ser concluída por este host.";
     } finally {
-      pendingAction = null;
-      replaceView();
+      if (!destroyed && ordinal === actionOrdinal) {
+        pendingAction = null;
+        replaceView();
+      }
     }
   };
 
@@ -413,6 +419,7 @@ export function mountAccountOverviewControls(
   return Object.freeze({
     destroy() {
       destroyed = true;
+      actionOrdinal += 1;
       unsubscribeWorkspaceMetadata?.();
       unsubscribeSync?.();
       unsubscribeActions?.();

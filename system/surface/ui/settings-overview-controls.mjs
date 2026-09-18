@@ -88,6 +88,9 @@ export function mountSettingsOverviewControls(
   let networkManagementReadFailed = false;
   let networkManagementPending = false;
   let networkManagementMessage = "";
+  let networkReadOrdinal = 0;
+  let networkManagementReadOrdinal = 0;
+  let networkActionOrdinal = 0;
   let selectedNetworkSsid = null;
   let activeSection = validSettingsSection(lifecycle.getAppTarget("settings"))
     ? lifecycle.getAppTarget("settings")
@@ -420,28 +423,33 @@ export function mountSettingsOverviewControls(
 
   const refreshNetwork = async () => {
     if (!networkPort || destroyed) return;
+    const ordinal = ++networkReadOrdinal;
     let changed = false;
     try {
       const nextSnapshot = validateNetworkStatusSnapshot(await networkPort.read());
+      if (destroyed || ordinal !== networkReadOrdinal) return;
       changed =
         networkReadFailed ||
         JSON.stringify(nextSnapshot) !== JSON.stringify(networkSnapshot);
       networkSnapshot = nextSnapshot;
       networkReadFailed = false;
     } catch {
+      if (destroyed || ordinal !== networkReadOrdinal) return;
       changed = !networkReadFailed;
       networkReadFailed = true;
     }
-    if (changed && !destroyed) replaceView();
+    if (changed && !destroyed && ordinal === networkReadOrdinal) replaceView();
   };
 
   const refreshNetworkManagement = async () => {
     if (!networkManagementPort || destroyed || networkManagementPending) return;
+    const ordinal = ++networkManagementReadOrdinal;
     let changed = false;
     try {
       const nextSnapshot = validateNetworkManagementSnapshot(
         await networkManagementPort.status(),
       );
+      if (destroyed || ordinal !== networkManagementReadOrdinal) return;
       changed =
         networkManagementReadFailed
         || JSON.stringify(nextSnapshot) !== JSON.stringify(networkManagementSnapshot);
@@ -455,35 +463,43 @@ export function mountSettingsOverviewControls(
         changed = true;
       }
     } catch {
+      if (destroyed || ordinal !== networkManagementReadOrdinal) return;
       changed = !networkManagementReadFailed;
       networkManagementReadFailed = true;
     }
-    if (changed && !destroyed) replaceView();
+    if (changed && !destroyed && ordinal === networkManagementReadOrdinal) replaceView();
   };
 
   const runNetworkAction = async (action, { ssid = null, password = null } = {}) => {
     if (!networkManagementPort || networkManagementPending || destroyed) return;
+    const ordinal = ++networkActionOrdinal;
+    networkManagementReadOrdinal += 1;
     networkManagementPending = true;
     networkManagementMessage = networkManagementActionMessage(action, 0);
     replaceView();
 
     try {
-      networkManagementSnapshot = validateNetworkManagementSnapshot(
+      const nextSnapshot = validateNetworkManagementSnapshot(
         await runNetworkManagementAction(
           networkManagementPort,
           action,
           action === "connect" ? { ssid, password } : null,
         ),
       );
+      if (destroyed || ordinal !== networkActionOrdinal) return;
+      networkManagementSnapshot = nextSnapshot;
       networkManagementReadFailed = false;
       networkManagementMessage = networkManagementActionMessage(action, 1);
       if (action === "connect" || action === "forget") selectedNetworkSsid = null;
       void refreshNetwork();
     } catch (error) {
+      if (destroyed || ordinal !== networkActionOrdinal) return;
       networkManagementMessage = networkManagementFailureMessage(action, error);
     } finally {
-      networkManagementPending = false;
-      if (!destroyed) replaceView();
+      if (!destroyed && ordinal === networkActionOrdinal) {
+        networkManagementPending = false;
+        replaceView();
+      }
     }
   };
 
@@ -619,6 +635,9 @@ export function mountSettingsOverviewControls(
   return Object.freeze({
     destroy() {
       destroyed = true;
+      networkReadOrdinal += 1;
+      networkManagementReadOrdinal += 1;
+      networkActionOrdinal += 1;
       if (networkPoll !== null) clearInterval(networkPoll);
       if (networkManagementPoll !== null) clearInterval(networkManagementPoll);
       unsubscribePreferences?.();

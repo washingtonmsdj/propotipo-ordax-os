@@ -1057,7 +1057,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Remover marcadores temporários/de implementação da mesa normal; a Home mostra apenas a área atual, sem “Surface compartilhada”, recuperação ao vivo ou número de entrega.
 - [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot.
 - [ ] Estado ausente, indisponível, offline e antigo são distintos.
-- [ ] Preservar lifecycle e descarte de operações/respostas antigas.
+- [x] Preservar lifecycle e descartar respostas assíncronas antigas: Arquivos/Sistema mantêm ordinais existentes e Conta, Ajustes, Wi-Fi rápido, bateria/rede da barra e energia agora invalidam conclusões após operação nova ou `destroy()`.
 
 ### 12.3 O que falta para uma etapa básica útil
 

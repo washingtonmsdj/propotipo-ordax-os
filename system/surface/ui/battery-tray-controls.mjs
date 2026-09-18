@@ -96,8 +96,11 @@ export function mountBatteryTrayControls(
     if (destroyed || polling) return;
     polling = true;
     try {
-      render(await port.read());
+      const snapshot = await port.read();
+      if (destroyed) return;
+      render(snapshot);
     } catch {
+      if (destroyed) return;
       item.hidden = false;
       item.dataset.batteryState = "unavailable";
       icon.dataset.batteryLevel = "unknown";
@@ -108,7 +111,7 @@ export function mountBatteryTrayControls(
       quickState.textContent = "Estado da bateria indisponível.";
       quickPower.textContent = "Não foi possível consultar a fonte de energia.";
     } finally {
-      polling = false;
+      if (!destroyed) polling = false;
     }
   };
 

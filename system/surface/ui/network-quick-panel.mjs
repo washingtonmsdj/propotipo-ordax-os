@@ -52,6 +52,9 @@ export function mountNetworkQuickPanel(
   let selectedSsid = null;
   let pending = false;
   let message = "";
+  let statusOrdinal = 0;
+  let managementOrdinal = 0;
+  let actionOrdinal = 0;
   let destroyed = false;
 
   const render = () => {
@@ -205,18 +208,26 @@ export function mountNetworkQuickPanel(
 
   const refreshStatus = async () => {
     if (!statusPort || destroyed) return;
+    const ordinal = ++statusOrdinal;
     try {
-      statusSnapshot = validateNetworkStatusSnapshot(await statusPort.read());
+      const nextSnapshot = validateNetworkStatusSnapshot(await statusPort.read());
+      if (destroyed || ordinal !== statusOrdinal) return;
+      statusSnapshot = nextSnapshot;
     } catch {
+      if (destroyed || ordinal !== statusOrdinal) return;
       statusSnapshot = null;
     }
   };
 
   const refreshManagement = async () => {
     if (!managementPort || destroyed) return;
+    const ordinal = ++managementOrdinal;
     try {
-      managementSnapshot = validateNetworkManagementSnapshot(await managementPort.status());
+      const nextSnapshot = validateNetworkManagementSnapshot(await managementPort.status());
+      if (destroyed || ordinal !== managementOrdinal) return;
+      managementSnapshot = nextSnapshot;
     } catch {
+      if (destroyed || ordinal !== managementOrdinal) return;
       managementSnapshot = null;
       message = "O gerenciamento de Wi-Fi está temporariamente indisponível.";
     }
@@ -229,22 +240,29 @@ export function mountNetworkQuickPanel(
 
   const runAction = async (action, credentials = null) => {
     if (!managementPort || pending || destroyed) return;
+    const ordinal = ++actionOrdinal;
+    managementOrdinal += 1;
     pending = true;
     message = networkManagementActionMessage(action, 0);
     render();
 
     try {
-      managementSnapshot = validateNetworkManagementSnapshot(
+      const nextSnapshot = validateNetworkManagementSnapshot(
         await runNetworkManagementAction(managementPort, action, credentials),
       );
+      if (destroyed || ordinal !== actionOrdinal) return;
+      managementSnapshot = nextSnapshot;
       selectedSsid = null;
       message = networkManagementActionMessage(action, 1);
       await refreshStatus();
     } catch (error) {
+      if (destroyed || ordinal !== actionOrdinal) return;
       message = networkManagementFailureMessage(action, error);
     } finally {
-      pending = false;
-      if (!destroyed) render();
+      if (!destroyed && ordinal === actionOrdinal) {
+        pending = false;
+        render();
+      }
     }
   };
 
@@ -302,6 +320,9 @@ export function mountNetworkQuickPanel(
     refresh,
     destroy() {
       destroyed = true;
+      statusOrdinal += 1;
+      managementOrdinal += 1;
+      actionOrdinal += 1;
       panel.removeEventListener("ordax:quick-panel-open", onOpen);
       panel.removeEventListener("click", onClick);
       panel.removeEventListener("keydown", onKeyDown);

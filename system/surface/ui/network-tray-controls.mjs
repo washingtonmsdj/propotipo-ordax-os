@@ -121,8 +121,11 @@ export function mountNetworkTrayControls(
     if (destroyed || polling) return;
     polling = true;
     try {
-      render(validateNetworkStatusSnapshot(await port.read()));
+      const snapshot = validateNetworkStatusSnapshot(await port.read());
+      if (destroyed) return;
+      render(snapshot);
     } catch {
+      if (destroyed) return;
       tray.dataset.networkKind = "unknown";
       tray.dataset.networkState = "unknown";
       tray.title = "Estado detalhado da rede indisponível";
@@ -132,7 +135,7 @@ export function mountNetworkTrayControls(
       icon.dataset.signalLevel = "0";
       tray.dataset.networkDetailOwner = "true";
     } finally {
-      polling = false;
+      if (!destroyed) polling = false;
     }
   };
 
