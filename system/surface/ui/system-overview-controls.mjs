@@ -41,6 +41,7 @@ const CAPABILITY_LABELS = Object.freeze({
   "filesystem.user-space": "Espaço local do usuário",
   "system.metrics": "Métricas do dispositivo",
   "power.status": "Estado da bateria",
+  "time.status": "Sincronização automática de horário",
 });
 
 function node(documentObject, tag, className, text) {
