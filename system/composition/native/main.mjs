@@ -10,6 +10,7 @@ import { createNativePowerStatus } from "../../adapters/native/power-status.mjs"
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
+import { createNativeTimeStatus } from "../../adapters/native/time-status.mjs";
 import { createNativeUpdateHistory } from "../../adapters/native/update-history.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs";
@@ -26,6 +27,7 @@ import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
+import { mountDateTimeQuickPanel } from "../../surface/ui/date-time-quick-panel.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -86,6 +88,10 @@ async function start() {
       "OrdaX native power status unavailable",
       () => createNativePowerStatus(window),
     ),
+    optionalNativeProbe(
+      "OrdaX native time status unavailable",
+      () => createNativeTimeStatus(window),
+    ),
   ]);
 
   const preferenceStore = await preferenceStorePromise;
@@ -99,6 +105,7 @@ async function start() {
     networkManagement,
     systemMetrics,
     powerStatus,
+    timeStatus,
   ] = await optionalPortsPromise;
 
   const localWorkspaceStore = createNativeWorkspaceStore(window);
@@ -129,6 +136,7 @@ async function start() {
   const userFileSpaceAvailable = fileSpace !== null;
   const systemMetricsAvailable = systemMetrics !== null;
   const powerStatusAvailable = powerStatus !== null;
+  const timeStatusAvailable = timeStatus !== null;
   const networkStatusAvailable = networkStatus !== null;
   const networkManagementAvailable = networkManagement !== null;
   const host = createNativeSurfaceHost(window, {
@@ -136,6 +144,7 @@ async function start() {
     userFileSpaceAvailable,
     systemMetricsAvailable,
     powerStatusAvailable,
+    timeStatusAvailable,
     networkStatusAvailable,
     networkManagementAvailable,
   });
@@ -157,6 +166,12 @@ async function start() {
     quickPanelControls = mountSystemTrayQuickPanels(root);
   } catch (error) {
     reportClientDiagnostic("system-tray-quick-panels", error);
+  }
+  let dateTimeQuickPanel = null;
+  try {
+    dateTimeQuickPanel = mountDateTimeQuickPanel(root, timeStatus);
+  } catch (error) {
+    reportClientDiagnostic("date-time-quick-panel", error);
   }
   let networkQuickPanel = null;
   try {
@@ -250,6 +265,7 @@ async function start() {
       networkTrayControls?.destroy();
       networkQuickPanel?.destroy();
       quickPanelControls?.destroy();
+      dateTimeQuickPanel?.destroy();
       batteryTrayControls?.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
