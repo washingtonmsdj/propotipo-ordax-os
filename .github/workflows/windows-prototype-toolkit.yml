@@ -116,6 +116,12 @@ jobs:
           )
           cp docs/RELEASE-TRUST-CEREMONY.md "$out/RELEASE-TRUST-CEREMONY.md"
           cp docs/contracts/release-trust-policy.json "$out/release-trust-policy.json"
+          cp tools/release-signing/windows/2-Initialize-OrdaXTrust.cmd "$out/2-Initialize-OrdaXTrust.cmd"
+          cp tools/release-signing/windows/Initialize-OrdaXReleaseTrust.ps1 "$out/Initialize-OrdaXReleaseTrust.ps1"
+          cp tools/release-signing/windows/3-Verify-OrdaXTrustRecovery.cmd "$out/3-Verify-OrdaXTrustRecovery.cmd"
+          cp tools/release-signing/windows/Complete-OrdaXReleaseTrust.ps1 "$out/Complete-OrdaXReleaseTrust.ps1"
+          cp tools/release-signing/windows/4-Sign-Initial-OrdaXRelease.cmd "$out/4-Sign-Initial-OrdaXRelease.cmd"
+          cp tools/release-signing/windows/4-Sign-Initial-OrdaXRelease.ps1 "$out/4-Sign-Initial-OrdaXRelease.ps1"
 
       - name: Emit hashes and provenance
         run: |
@@ -127,6 +133,12 @@ jobs:
               ordax-creator.exe \
               ordax-creator-targets.exe \
               ordax-release-signing.exe \
+              2-Initialize-OrdaXTrust.cmd \
+              Initialize-OrdaXReleaseTrust.ps1 \
+              3-Verify-OrdaXTrustRecovery.cmd \
+              Complete-OrdaXReleaseTrust.ps1 \
+              4-Sign-Initial-OrdaXRelease.cmd \
+              4-Sign-Initial-OrdaXRelease.ps1 \
               > SHA256SUMS
           )
           python3 - <<'PY'
@@ -153,6 +165,8 @@ jobs:
                   'creator': {'name': 'ordax-creator.exe', 'sha256': digest('ordax-creator.exe')},
                   'target_helper': {'name': 'ordax-creator-targets.exe', 'sha256': digest('ordax-creator-targets.exe')},
                   'release_signer': {'name': 'ordax-release-signing.exe', 'sha256': digest('ordax-release-signing.exe')},
+                  'trust_initializer': {'name': 'Initialize-OrdaXReleaseTrust.ps1', 'sha256': digest('Initialize-OrdaXReleaseTrust.ps1')},
+                  'trust_recovery_finalizer': {'name': 'Complete-OrdaXReleaseTrust.ps1', 'sha256': digest('Complete-OrdaXReleaseTrust.ps1')},
               },
           }
           (root / 'provenance.json').write_text(json.dumps(data, indent=2, sort_keys=True) + '\n', encoding='utf-8')
@@ -209,6 +223,28 @@ jobs:
           go-version: '1.27.1'
           check-latest: false
           cache: false
+
+      - name: Parse release trust ceremony PowerShell natively
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($path in @(
+            '../release-signing/windows/Initialize-OrdaXReleaseTrust.ps1',
+            '../release-signing/windows/Complete-OrdaXReleaseTrust.ps1',
+            '../release-signing/windows/4-Sign-Initial-OrdaXRelease.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) {
+              throw "PowerShell parse failed for ${path}: $($errors | Out-String)"
+            }
+          }
+          Write-Host 'RELEASE_TRUST_POWERSHELL_PARSE=PASS'
 
       - name: Test public/default Creator Windows host adapter natively
         shell: pwsh
