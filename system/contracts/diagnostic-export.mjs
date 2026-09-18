@@ -2,6 +2,7 @@ export const DIAGNOSTIC_EXPORT_SCHEMA = "ordax.diagnostic-export/1";
 export const MAX_DIAGNOSTIC_EXPORT_TEXT_CHARS = 2_000_000;
 
 const FILE_NAME_RE = /^[^/\\\u0000-\u001f\u007f]{1,160}\.json$/i;
+const SAVE_STATUSES = new Set(["saved", "cancelled"]);
 
 export function validateDiagnosticExportDocument(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -29,6 +30,16 @@ export function validateDiagnosticExportDocument(value) {
     mediaType: value.mediaType,
     text: value.text,
   });
+}
+
+export function validateDiagnosticExportSaveResult(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Diagnostic export save result must be an object");
+  }
+  if (!SAVE_STATUSES.has(value.status)) {
+    throw new TypeError(`Unsupported diagnostic export save status: ${String(value.status)}`);
+  }
+  return Object.freeze({ status: value.status });
 }
 
 export function assertDiagnosticExportPort(port) {
