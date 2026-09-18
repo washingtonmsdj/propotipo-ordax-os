@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MAX_BODY_BYTES = 12 * 1024;
 const SHA_RE = /^[0-9a-f]{40}$/;
+const SHA256_RE = /^[0-9a-f]{64}$/;
 const ID_RE = /^[a-z0-9][a-z0-9._:-]{7,127}$/;
 const STATUS_RE = /^[a-z0-9-]{1,48}$/;
 const DIAGNOSTIC_STAGE_RE = /^[a-z][a-z0-9.-]{0,63}$/;
@@ -28,6 +29,12 @@ function json(status: number, body: unknown) {
 function optionalSha(value: unknown) {
   if (value === undefined || value === null || value === "") return "";
   if (typeof value !== "string" || !SHA_RE.test(value)) throw new Error("invalid sha");
+  return value;
+}
+
+function optionalSha256(value: unknown) {
+  if (value === undefined || value === null || value === "") return "";
+  if (typeof value !== "string" || !SHA256_RE.test(value)) throw new Error("invalid sha256");
   return value;
 }
 
@@ -95,6 +102,25 @@ function validate(input: unknown) {
   const rescueAction = optionalString(value.rescueAction, 32) || "none";
   if (!RESCUE_ACTIONS.has(rescueAction)) throw new Error("invalid rescueAction");
 
+  const baseOwnerStatus = optionalString(value.baseOwnerStatus, 48);
+  if (baseOwnerStatus && !STATUS_RE.test(baseOwnerStatus)) throw new Error("invalid baseOwnerStatus");
+  const baseOwnerPhase = optionalString(value.baseOwnerPhase, 48);
+  if (baseOwnerPhase && !STATUS_RE.test(baseOwnerPhase)) throw new Error("invalid baseOwnerPhase");
+  const baseOwnerBlocker = optionalString(value.baseOwnerBlocker, 64);
+  if (baseOwnerBlocker && !STATUS_RE.test(baseOwnerBlocker)) throw new Error("invalid baseOwnerBlocker");
+  const releaseAgentRefreshState = optionalString(value.releaseAgentRefreshState, 48);
+  if (releaseAgentRefreshState && !STATUS_RE.test(releaseAgentRefreshState)) {
+    throw new Error("invalid releaseAgentRefreshState");
+  }
+  const trustEnrollmentState = optionalString(value.trustEnrollmentState, 48);
+  if (trustEnrollmentState && !STATUS_RE.test(trustEnrollmentState)) {
+    throw new Error("invalid trustEnrollmentState");
+  }
+  const releaseMaterializationState = optionalString(value.releaseMaterializationState, 48);
+  if (releaseMaterializationState && !STATUS_RE.test(releaseMaterializationState)) {
+    throw new Error("invalid releaseMaterializationState");
+  }
+
   const lastPowerAction = optionalString(value.lastPowerAction, 16);
   if (lastPowerAction && !POWER_ACTIONS.has(lastPowerAction)) throw new Error("invalid lastPowerAction");
   const lastPowerRequestStatus = optionalString(value.lastPowerRequestStatus, 16);
@@ -155,6 +181,21 @@ function validate(input: unknown) {
     surfaceState,
     bootId: optionalString(value.bootId, 128),
     lastError: optionalString(value.lastError, 1024),
+    baseOwnerStatus,
+    baseOwnerPhase,
+    baseOwnerBlocker,
+    releaseAgentRefreshState,
+    releaseAgentSha256: optionalSha256(value.releaseAgentSha256),
+    canonicalTrustPinned: optionalBoolean(value.canonicalTrustPinned),
+    physicalTrustEnrolled: optionalBoolean(value.physicalTrustEnrolled),
+    trustEnrollmentState,
+    signedReleaseMaterialized: optionalBoolean(value.signedReleaseMaterialized),
+    materializedReleaseSha: optionalSha(value.materializedReleaseSha),
+    releaseMaterializationState,
+    kernelStaged: optionalBoolean(value.kernelStaged),
+    candidateArmed: optionalBoolean(value.candidateArmed),
+    rebootRequested: optionalBoolean(value.rebootRequested),
+    promotionAttempted: optionalBoolean(value.promotionAttempted),
     lastPowerAction,
     lastPowerRequestBootId: optionalString(value.lastPowerRequestBootId, 128),
     lastPowerRequestEpoch: optionalNullableInteger(value.lastPowerRequestEpoch, 9999999999),

@@ -21,6 +21,7 @@ LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
 RESCUE_ACTION_FILE=$STATE_DIR/rescue/last-action
 POWER_LAST_REQUEST_FILE=$STATE_DIR/power/last-request
 BOOT_ID_FILE=/run/ordax-update/base-boot-id
+BASE_OWNER_STATUS_FILE=$STATE_DIR/base-update/owner-status.json
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 
 mkdir -p "$TELEMETRY_DIR" "$STATE_DIR/native-state"
@@ -37,6 +38,15 @@ is_pid() {
 is_sha() {
     value=${1:-}
     [ "${#value}" -eq 40 ] || return 1
+    case "$value" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+    return 0
+}
+
+is_sha256() {
+    value=${1:-}
+    [ "${#value}" -eq 64 ] || return 1
     case "$value" in
         ''|*[!0-9a-f]*) return 1 ;;
     esac
@@ -117,6 +127,13 @@ normalize_apply_mode() {
     case "${1:-}" in
         initial|none|reload|surface-restart|supervisor-restart) printf "%s" "$1" ;;
         *) printf '' ;;
+    esac
+}
+
+normalize_boolean() {
+    case "${1:-}" in
+        true|false) printf '%s' "$1" ;;
+        *) printf 'false' ;;
     esac
 }
 
@@ -255,6 +272,25 @@ while :; do
         [ "$last_stage_duration" -le 3600 ] 2>/dev/null || last_stage_duration=0
         boot_id=$(read_first_line "$BOOT_ID_FILE")
 
+        base_owner_status=$(normalize_status "$(json_field status "$BASE_OWNER_STATUS_FILE")")
+        base_owner_phase=$(normalize_status "$(json_field phase "$BASE_OWNER_STATUS_FILE")")
+        base_owner_blocker=$(normalize_status "$(json_field blocker "$BASE_OWNER_STATUS_FILE")")
+        release_agent_refresh_state=$(normalize_status "$(json_field releaseAgentRefreshState "$BASE_OWNER_STATUS_FILE")")
+        release_agent_sha256=$(json_field releaseAgentSha256 "$BASE_OWNER_STATUS_FILE")
+        is_sha256 "$release_agent_sha256" || release_agent_sha256=""
+        trust_enrollment_state=$(normalize_status "$(json_field trustEnrollmentState "$BASE_OWNER_STATUS_FILE")")
+        release_materialization_state=$(normalize_status "$(json_field releaseMaterializationState "$BASE_OWNER_STATUS_FILE")")
+        materialized_release_sha=$(json_field materializedReleaseSha "$BASE_OWNER_STATUS_FILE")
+        is_sha "$materialized_release_sha" || materialized_release_sha=""
+
+        canonical_trust_pinned=$(normalize_boolean "$(json_boolean_field canonicalTrustPinned "$BASE_OWNER_STATUS_FILE")")
+        physical_trust_enrolled=$(normalize_boolean "$(json_boolean_field physicalTrustEnrolled "$BASE_OWNER_STATUS_FILE")")
+        signed_release_materialized=$(normalize_boolean "$(json_boolean_field signedReleaseMaterialized "$BASE_OWNER_STATUS_FILE")")
+        kernel_staged=$(normalize_boolean "$(json_boolean_field kernelStaged "$BASE_OWNER_STATUS_FILE")")
+        candidate_armed=$(normalize_boolean "$(json_boolean_field candidateArmed "$BASE_OWNER_STATUS_FILE")")
+        reboot_requested=$(normalize_boolean "$(json_boolean_field rebootRequested "$BASE_OWNER_STATUS_FILE")")
+        promotion_attempted=$(normalize_boolean "$(json_boolean_field promotionAttempted "$BASE_OWNER_STATUS_FILE")")
+
         last_power_action=""
         last_power_request_boot_id=""
         last_power_request_epoch=null
@@ -330,7 +366,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","deliveryNumber":%s,"bootRefreshRequired":%s,"targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","lastPowerAction":"%s","lastPowerRequestBootId":"%s","lastPowerRequestEpoch":%s,"lastPowerRequestStatus":"%s","lastPowerRequestCrossedBoot":%s,"powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":3}' "$device_id" "$source_sha" "$runtime_surface_sha" "$delivery_number" "$boot_refresh_required" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$last_power_action" "$last_power_request_boot_id" "$last_power_request_epoch" "$last_power_request_status" "$last_power_request_crossed_boot" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","deliveryNumber":%s,"bootRefreshRequired":%s,"targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","baseOwnerStatus":"%s","baseOwnerPhase":"%s","baseOwnerBlocker":"%s","releaseAgentRefreshState":"%s","releaseAgentSha256":"%s","canonicalTrustPinned":%s,"physicalTrustEnrolled":%s,"trustEnrollmentState":"%s","signedReleaseMaterialized":%s,"materializedReleaseSha":"%s","releaseMaterializationState":"%s","kernelStaged":%s,"candidateArmed":%s,"rebootRequested":%s,"promotionAttempted":%s,"lastPowerAction":"%s","lastPowerRequestBootId":"%s","lastPowerRequestEpoch":%s,"lastPowerRequestStatus":"%s","lastPowerRequestCrossedBoot":%s,"powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":4}' "$device_id" "$source_sha" "$runtime_surface_sha" "$delivery_number" "$boot_refresh_required" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$base_owner_status" "$base_owner_phase" "$base_owner_blocker" "$release_agent_refresh_state" "$release_agent_sha256" "$canonical_trust_pinned" "$physical_trust_enrolled" "$trust_enrollment_state" "$signed_release_materialized" "$materialized_release_sha" "$release_materialization_state" "$kernel_staged" "$candidate_armed" "$reboot_requested" "$promotion_attempted" "$last_power_action" "$last_power_request_boot_id" "$last_power_request_epoch" "$last_power_request_status" "$last_power_request_crossed_boot" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \

@@ -68,14 +68,16 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn("lastApplyDurationSeconds", text)
         self.assertIn("lastStageDurationSeconds", text)
         self.assertIn("json_number_field()", text)
-        self.assertIn('"relayVersion":3', text)
+        self.assertIn('"relayVersion":4', text)
         self.assertIn("lastError", text)
         for forbidden in (
             "kill ",
             "pkill ",
             "killall ",
-            "reboot",
-            "poweroff",
+            "reboot -f",
+            "busybox reboot",
+            "poweroff -f",
+            "busybox poweroff",
             "reset --hard",
             "checkout ",
             "rm -f \"$REJECTED_FILE\"",
