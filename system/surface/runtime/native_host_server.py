@@ -639,8 +639,8 @@ def read_application_history(path: str = UPDATE_HISTORY_FILE) -> list[dict]:
 
 def read_update_history() -> dict:
     return {
-        "releases": read_release_history(),
-        "applications": read_application_history(),
+        "releases": read_release_history(RELEASE_HISTORY_FILE),
+        "applications": read_application_history(UPDATE_HISTORY_FILE),
     }
 
 
