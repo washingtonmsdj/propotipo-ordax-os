@@ -140,6 +140,7 @@ async function start() {
     surface.preferences,
     surface,
     networkStatus,
+    networkManagement,
   );
   const systemOverviewControls = mountSystemOverviewControls(
     root,
