@@ -89,6 +89,7 @@ export function mountSettingsOverviewControls(
   let networkManagementReadFailed = false;
   let networkManagementPending = false;
   let networkManagementMessage = "";
+  let snapshotRepaintDeferred = false;
   let networkReadOrdinal = 0;
   let networkManagementReadOrdinal = 0;
   let networkActionOrdinal = 0;
@@ -422,6 +423,30 @@ export function mountSettingsOverviewControls(
 
   const replaceView = () => renderView(true);
 
+  const sensitiveNetworkInputIsActive = () => {
+    const active = documentObject.activeElement;
+    return (
+      active instanceof HTMLInputElement
+      && root.contains(active)
+      && active.matches("[data-settings-wifi-password]")
+    );
+  };
+
+  const repaintForSnapshot = () => {
+    if (sensitiveNetworkInputIsActive()) {
+      snapshotRepaintDeferred = true;
+      return;
+    }
+    snapshotRepaintDeferred = false;
+    replaceView();
+  };
+
+  const flushDeferredSnapshotRepaint = () => {
+    if (destroyed || !snapshotRepaintDeferred || sensitiveNetworkInputIsActive()) return;
+    snapshotRepaintDeferred = false;
+    replaceView();
+  };
+
   const refreshNetwork = async () => {
     if (!networkPort || destroyed) return;
     const ordinal = ++networkReadOrdinal;
@@ -439,7 +464,7 @@ export function mountSettingsOverviewControls(
       changed = !networkReadFailed;
       networkReadFailed = true;
     }
-    if (changed && !destroyed && ordinal === networkReadOrdinal) replaceView();
+    if (changed && !destroyed && ordinal === networkReadOrdinal) repaintForSnapshot();
   };
 
   const refreshNetworkManagement = async () => {
@@ -468,7 +493,7 @@ export function mountSettingsOverviewControls(
       changed = !networkManagementReadFailed;
       networkManagementReadFailed = true;
     }
-    if (changed && !destroyed && ordinal === networkManagementReadOrdinal) replaceView();
+    if (changed && !destroyed && ordinal === networkManagementReadOrdinal) repaintForSnapshot();
   };
 
   const runNetworkAction = async (action, { ssid = null, password = null } = {}) => {
@@ -592,8 +617,15 @@ export function mountSettingsOverviewControls(
     }
   };
 
+  const onFocusOut = (event) => {
+    const input = event.target.closest?.("[data-settings-wifi-password]");
+    if (!input || !root.contains(input)) return;
+    queueMicrotask(flushDeferredSnapshotRepaint);
+  };
+
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
+  root.addEventListener("focusout", onFocusOut);
   const unsubscribeRender = lifecycle.subscribeRender(() => {
     const persistedTarget = lifecycle.getAppTarget("settings");
     const nextSection = validSettingsSection(persistedTarget) ? persistedTarget : "appearance";
@@ -618,11 +650,11 @@ export function mountSettingsOverviewControls(
   });
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
-    replaceView();
+    repaintForSnapshot();
   });
   const unsubscribePreferences = preferences.subscribe((snapshot) => {
     preferenceSnapshot = snapshot;
-    replaceView();
+    repaintForSnapshot();
   });
   const networkPoll = networkPort
     ? setInterval(() => void refreshNetwork(), 5000)
@@ -647,6 +679,7 @@ export function mountSettingsOverviewControls(
       unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
+      root.removeEventListener("focusout", onFocusOut);
       const slot = findSlot();
       if (slot?.dataset.ordaxSettingsOverviewView !== undefined) {
         slot.replaceChildren();
