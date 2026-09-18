@@ -81,6 +81,7 @@
     "disposable-fat32-esp-proof",
     "systemd-boot-entry-proof",
     "one-shot-selection-proof",
+    "one-shot-efivar-proof",
     "failed-candidate-fallback-proof",
     "successful-candidate-promotion-proof",
     "physical-notebook-proof"
