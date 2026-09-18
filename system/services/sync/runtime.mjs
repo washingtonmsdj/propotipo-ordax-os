@@ -8,6 +8,7 @@ export const APPEARANCE_SYNC_OBJECT_SCHEMA_VERSION = 1;
 export const SYNC_CORE_STATUS = Object.freeze({
   protocolCore: "implemented",
   offlineMutationQueue: "implemented",
+  preferenceBridge: "implemented",
   identity: "host-required",
   transport: "host-required",
   accountContinuity: "not-active",

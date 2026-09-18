@@ -11,6 +11,10 @@ import {
   assertSurfaceHost,
   validateSurfaceSnapshot,
 } from "../../contracts/surface-host.mjs";
+import {
+  assertSyncRuntimePort,
+  validateSyncRuntimeSnapshot,
+} from "../../contracts/sync-runtime.mjs";
 import { SYNC_CORE_STATUS } from "../../services/sync/runtime.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -67,6 +71,7 @@ export function mountAccountOverviewControls(
   identitySession,
   identityActions,
   surfaceLifecycle = null,
+  syncRuntime = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Account overview controls require a Surface root Element");
@@ -75,12 +80,14 @@ export function mountAccountOverviewControls(
   const hostPort = assertSurfaceHost(host);
   const sessionPort = assertIdentitySessionPort(identitySession);
   const actionsPort = assertIdentityActionsPort(identityActions);
+  const syncPort = syncRuntime === null ? null : assertSyncRuntimePort(syncRuntime);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
   let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
   let sessionSnapshot = validateIdentitySessionSnapshot(sessionPort.getSnapshot());
   let actionsSnapshot = validateIdentityActionsSnapshot(actionsPort.getSnapshot());
+  let syncSnapshot = syncPort ? validateSyncRuntimeSnapshot(syncPort.getSnapshot()) : null;
   let pendingAction = null;
   let actionMessage = "";
   let destroyed = false;
@@ -191,13 +198,39 @@ export function mountAccountOverviewControls(
       "O protocolo compartilhado é independente do provedor de identidade.",
       SYNC_CORE_STATUS.protocolCore === "implemented" ? "available" : "unavailable",
     );
+    const pendingMutationCount = syncSnapshot?.pendingMutationCount ?? 0;
+    const appearanceTracked = syncSnapshot?.trackedDataClasses.includes("appearance") ?? false;
+    appendStateCard(
+      documentObject,
+      grid,
+      "Preferências ao vivo",
+      appearanceTracked
+        ? pendingMutationCount > 0
+          ? "Aguardando transporte"
+          : "Conectadas ao núcleo local"
+        : "Preparadas",
+      appearanceTracked
+        ? pendingMutationCount > 0
+          ? `${pendingMutationCount} alteração local aguarda um transporte autenticado; nada foi enviado para a nuvem.`
+          : "A aparência já alimenta o núcleo local de sync, sem ativar transporte ou conta."
+        : "A integração local ainda não está conectada nesta composição.",
+      appearanceTracked ? "available" : "neutral",
+    );
     appendStateCard(
       documentObject,
       grid,
       "Fila offline",
-      SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "Preparada" : "Indisponível",
-      "Mutações locais podem aguardar conectividade sem inventar uma sessão.",
-      SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "available" : "unavailable",
+      syncSnapshot
+        ? pendingMutationCount > 0
+          ? `${pendingMutationCount} pendente`
+          : "Vazia"
+        : SYNC_CORE_STATUS.offlineMutationQueue === "implemented"
+          ? "Preparada"
+          : "Indisponível",
+      syncSnapshot
+        ? "A fila pertence à sessão local e só será consumida por um transporte autorizado."
+        : "Mutações locais podem aguardar conectividade sem inventar uma sessão.",
+      syncSnapshot ? "neutral" : SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "available" : "unavailable",
     );
     section.append(grid);
     view.append(section);
@@ -293,10 +326,15 @@ export function mountAccountOverviewControls(
     actionMessage = "";
     replaceView();
   });
+  const unsubscribeSync = syncPort?.subscribe((snapshot) => {
+    syncSnapshot = validateSyncRuntimeSnapshot(snapshot);
+    replaceView();
+  });
 
   return Object.freeze({
     destroy() {
       destroyed = true;
+      unsubscribeSync?.();
       unsubscribeActions?.();
       unsubscribeSession?.();
       unsubscribeHost?.();

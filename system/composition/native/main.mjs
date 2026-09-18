@@ -9,6 +9,7 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
@@ -74,12 +75,21 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  let syncMutationOrdinal = 0;
+  const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
+    createIdempotencyKey() {
+      syncMutationOrdinal += 1;
+      const uuid = window.crypto?.randomUUID?.();
+      return `pref:${uuid ? uuid.replaceAll("-", "") : `${Date.now().toString(36)}:${syncMutationOrdinal}`}`;
+    },
+  });
   const accountOverviewControls = mountAccountOverviewControls(
     root,
     host,
     identitySession,
     identityActions,
     surface,
+    preferenceSync,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
   const settingsOverviewControls = mountSettingsOverviewControls(
@@ -112,6 +122,7 @@ async function start() {
       settingsOverviewControls.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
+      preferenceSync.destroy();
       updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
