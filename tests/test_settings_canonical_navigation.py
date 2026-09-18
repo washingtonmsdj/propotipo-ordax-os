@@ -30,6 +30,8 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
         self.assertIn('activation.appId === "settings"', controls)
         self.assertIn("validSettingsSection(activation.target)", controls)
         self.assertIn("unsubscribeActivation?.()", controls)
+        self.assertIn('lifecycle.getAppTarget("settings")', controls)
+        self.assertIn('activationPort.publish({ appId: "settings", target: nextSection })', controls)
 
     def test_quick_wifi_opens_canonical_network_section(self):
         quick = QUICK_NETWORK.read_text(encoding="utf-8")
