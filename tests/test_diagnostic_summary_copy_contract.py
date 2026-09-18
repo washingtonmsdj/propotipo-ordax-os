@@ -21,9 +21,11 @@ class DiagnosticSummaryCopyContractTests(unittest.TestCase):
 
     def test_summary_rebuilds_from_structured_review_not_serialized_json(self):
         source = SUMMARY.read_text(encoding="utf-8")
-        self.assertIn("document.review", source)
+        self.assertIn("const root = asObject(document", source)
+        self.assertIn("root.review", source)
         self.assertNotIn("document.text", source)
         self.assertIn("redactDiagnosticText", source)
+        self.assertIn("contradicts report content", source)
         self.assertIn("A ausência do registro não comprova ausência de problemas", source)
         self.assertIn("isso não é um atestado geral de saúde", source)
         self.assertIn("Isso não prova falha do supervisor", source)
