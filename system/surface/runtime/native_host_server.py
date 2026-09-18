@@ -559,6 +559,9 @@ def read_power_status(sys_class_power_supply: str = "/sys/class/power_supply") -
             continue
         supply_type = read_small_text(os.path.join(path, "type"), 64)
         if supply_type == "Battery":
+            present = read_small_text(os.path.join(path, "present"), 8)
+            if present == "0":
+                continue
             raw_capacity = read_small_text(os.path.join(path, "capacity"), 16)
             try:
                 capacity = int(raw_capacity)
