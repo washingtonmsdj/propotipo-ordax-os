@@ -33,6 +33,7 @@ DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
+ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -46,10 +47,12 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE_LIFECYCLE,
             FILE_SPACE_CONTROLS,
             SYSTEM_OVERVIEW_CONTROLS,
+            ACCOUNT_OVERVIEW_CONTROLS,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
             SURFACE / "system.css",
+            SURFACE / "account.css",
             POWER_CONTROLS,
             APP_CATALOG,
             APP_CONTRACT,
@@ -100,7 +103,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
         self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
-        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
@@ -175,18 +178,32 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("recoverPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
 
-    def test_account_uses_neutral_identity_session_and_action_ports(self):
+    def test_account_uses_formal_shared_overview_and_neutral_identity_ports(self):
         account = APP_OWNERS["account"].read_text(encoding="utf-8")
+        overview = ACCOUNT_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
         session_contract = IDENTITY_SESSION_CONTRACT.read_text(encoding="utf-8")
         actions_contract = IDENTITY_ACTIONS_CONTRACT.read_text(encoding="utf-8")
         session_adapter = WEB_IDENTITY_ADAPTER.read_text(encoding="utf-8")
         actions_adapter = WEB_IDENTITY_ACTIONS_ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('kind: "identity-session"', account)
-        self.assertIn('kind: "identity-actions"', account)
+        css = (SURFACE / "account.css").read_text(encoding="utf-8")
+        web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
+        native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('kind: "extension"', account)
+        self.assertIn('extensionId: "account-overview"', account)
+        self.assertIn("contracts/identity-session.mjs", overview)
+        self.assertIn("contracts/identity-actions.mjs", overview)
+        self.assertIn("contracts/surface-host.mjs", overview)
+        self.assertIn("services/sync/runtime.mjs", overview)
         self.assertIn("ordax.identity-session/1", session_contract)
         self.assertIn("ordax.identity-actions/1", actions_contract)
         self.assertIn('state: "unavailable"', session_adapter)
         self.assertIn("supportedActions: []", actions_adapter)
+        self.assertIn(".ordax-account-view", css)
+        self.assertIn("../../surface/ui/account.css", web_html)
+        self.assertIn("../../surface/ui/account.css", native_html)
+        self.assertNotIn("adapters/native", overview)
+        self.assertNotIn("adapters/web", overview)
         self.assertNotIn("surface/ui", session_adapter)
         self.assertNotIn("surface/ui", actions_adapter)
 
@@ -304,6 +321,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertIn("../../surface/ui/files.css", html)
         self.assertIn("../../surface/ui/system.css", html)
+        self.assertIn("../../surface/ui/account.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
