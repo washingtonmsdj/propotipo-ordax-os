@@ -164,6 +164,28 @@ test("persisted pending appearance reconciles to the current local preference", 
   recovered.destroy();
 });
 
+test("sync persistence failure never breaks live preferences", () => {
+  const store = {
+    schema: SYNC_STATE_STORE_SCHEMA,
+    scope: "device",
+    load() {
+      return null;
+    },
+    save() {
+      throw new Error("disk unavailable");
+    },
+  };
+  const preferences = createFakePreferenceRuntime("light");
+  const sync = createPreferenceSyncRuntime(preferences, {
+    syncStateStore: store,
+    createIdempotencyKey: createKeyFactory("pref:failure"),
+  });
+  assert.doesNotThrow(() => preferences.setTheme("dark"));
+  assert.equal(sync.pendingMutations()[0].payload.theme, "dark");
+  assert.equal(sync.getSnapshot().queuePersistence, "session");
+  sync.destroy();
+});
+
 test("failed durable store reports session fallback", () => {
   const store = createFakeSyncStateStore("session");
   const preferences = createFakePreferenceRuntime("light");
