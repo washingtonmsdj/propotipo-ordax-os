@@ -183,6 +183,7 @@ Sistema
 | Senha, passkeys, autenticação e sessões | Conta | Sistema não edita credenciais. |
 | Rede, áudio e periféricos locais | Ajustes | Sistema mostra resumo de rede/hardware sem duplicar controles. |
 | Atualizações e histórico | Sistema → Atualizações | Rodapé abre essa mesma subseção. |
+| Versão do produto/componentes | Sistema → Sobre/Visão geral | A Surface pode resumir a versão humana; SHA/build permanece detalhe técnico. Componentes do mesmo bundle compartilham versão até existir empacotamento independente real. |
 | Falhas, saúde, logs e exportação técnica | Sistema → Diagnóstico | Alertas dos apps abrem ocorrência correspondente. |
 | Recuperação de sistema | Sistema → Recuperação | Atualizações aponta uma reversão já registrada. |
 | Reiniciar/desligar e política de energia | Sistema → Energia | Menu do rail chama as mesmas ações e confirmações. |
@@ -539,7 +540,7 @@ Substituir linguagem interna como “o host expõe contratos” por descrição 
 
 **Aceite:** prévia reflete locale escolhido; timestamps persistidos mantêm representação não ambígua e são formatados na borda; erros de relógio não determinam resolução de conflitos de sync.
 
-**Estado:** relógio formatado em pt-BR EXISTE; preferências NOVO/P2.
+**Estado:** relógio formatado em pt-BR EXISTE. No Native, a Surface fixa a apresentação atual em `America/Bahia` e o host mantém sincronização NTP contínua/fail-soft para não depender do RTC incorreto do equipamento. A futura preferência de fuso deve substituir essa constante por um contrato neutro; não deve criar um segundo relógio do sistema. Preferências de idioma/formato continuam NOVO/P2.
 
 ### 7.6 Rede e conexões
 
