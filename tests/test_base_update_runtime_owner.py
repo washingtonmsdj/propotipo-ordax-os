@@ -444,6 +444,27 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 owner._candidate_sources_from_minimal(repo)
 
 
+    def test_esp_staging_refuses_same_device_mounted_elsewhere(self):
+        with (
+            mock.patch.object(
+                owner,
+                "_esp_device_identity",
+                return_value=(Path("/dev/fake-esp"), "8:1"),
+            ),
+            mock.patch.object(
+                owner,
+                "_mount_points_for_identity",
+                return_value=[("/boot/efi", "vfat")],
+            ),
+            mock.patch.object(owner, "_run_busybox") as busybox,
+        ):
+            with self.assertRaisesRegex(
+                owner.OwnerError,
+                "already mounted outside",
+            ):
+                owner._prepare_esp_mount()
+        busybox.assert_not_called()
+
     def test_stage_owner_uses_persisted_envelope_and_never_activates_candidate(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
