@@ -145,26 +145,30 @@ export function createDiagnosticReviewController({
       const exportGeneration = generation;
       exportInFlight = true;
       updateState("exporting", null);
+
+      let exportResult;
       try {
-        const exportResult = await exportDiagnosticDocument(document, exportPort);
-        if (exportResult.status === "saved" && preparedDocument === document) {
-          preparedDocument = null;
-        }
-
-        if (generation === exportGeneration) {
-          const nextPhase = preparedDocument === null ? "idle" : "ready";
-          updateState(
-            nextPhase,
-            actionResult("export", exportResult.status, exportResult.code ?? ""),
-          );
-        }
-
-        return result(exportResult.status, {
-          ...(exportResult.code ? { code: exportResult.code } : {}),
-        });
-      } finally {
-        exportInFlight = false;
+        exportResult = await exportDiagnosticDocument(document, exportPort);
+      } catch {
+        exportResult = Object.freeze({ status: "failed", code: "export-failed" });
       }
+      exportInFlight = false;
+
+      if (exportResult.status === "saved" && preparedDocument === document) {
+        preparedDocument = null;
+      }
+
+      if (generation === exportGeneration) {
+        const nextPhase = preparedDocument === null ? "idle" : "ready";
+        updateState(
+          nextPhase,
+          actionResult("export", exportResult.status, exportResult.code ?? ""),
+        );
+      }
+
+      return result(exportResult.status, {
+        ...(exportResult.code ? { code: exportResult.code } : {}),
+      });
     },
   });
 }
