@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/diagnostics.json'
+      - 'system/contracts/diagnostic-journal-store.mjs'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
@@ -58,6 +59,7 @@ on:
   pull_request:
     paths:
       - 'docs/contracts/diagnostics.json'
+      - 'system/contracts/diagnostic-journal-store.mjs'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
