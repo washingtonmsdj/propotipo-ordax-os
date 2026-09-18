@@ -29,6 +29,7 @@ on:
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
+      - 'system/services/update/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -44,8 +45,8 @@ on:
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
       - 'tests/test_power_status.mjs'
-      - 'tests/test_update_status.mjs'
-      - 'tests/test_update_history.mjs'
+      - 'tests/test_update_*.mjs'
+      - 'tests/test_update_service_ci_ownership.py'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
@@ -83,6 +84,7 @@ on:
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
+      - 'system/services/update/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -98,8 +100,8 @@ on:
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
       - 'tests/test_power_status.mjs'
-      - 'tests/test_update_status.mjs'
-      - 'tests/test_update_history.mjs'
+      - 'tests/test_update_*.mjs'
+      - 'tests/test_update_service_ci_ownership.py'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
@@ -145,6 +147,7 @@ jobs:
             system/services/preferences \
             system/services/sync \
             system/services/diagnostics \
+            system/services/update \
             system/apps \
             system/surface/ui \
             system/adapters/web \
@@ -162,8 +165,7 @@ jobs:
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
           node --test tests/test_power_status.mjs
-          node --test tests/test_update_status.mjs
-          node --test tests/test_update_history.mjs
+          node --test tests/test_update_*.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_network_status.mjs
           node --test tests/test_network_management.mjs
