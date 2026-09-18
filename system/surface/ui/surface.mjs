@@ -51,8 +51,12 @@ function element(tag, className, text) {
 }
 
 function placeChildAt(container, child, index) {
+  // Never reinsert an already connected interactive node. Traditional DOM
+  // insertion APIs remove + reinsert existing nodes and may reset focus and
+  // other interaction state. Runtime collection order is stable by identity;
+  // visual window stacking is carried by active state, not DOM movement.
+  if (child.parentElement === container) return;
   const current = container.children[index] ?? null;
-  if (current === child) return;
   container.insertBefore(child, current);
 }
 
