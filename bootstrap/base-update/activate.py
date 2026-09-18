@@ -19,7 +19,7 @@ import sys
 LOADER_GUID = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 VARIABLE_NAME = f"LoaderEntryOneShot-{LOADER_GUID}"
 EFI_VARIABLE_ATTRIBUTES = 0x00000007  # NV | BS | RT
-ENTRY_ID = "ordax-candidate"
+ENTRY_ID = "ordax-candidate.conf"
 CANDIDATE_ENTRY = Path("loader/entries/ordax-candidate+01-00.conf")
 CURRENT_ENTRY = Path("loader/entries/ordax.conf")
 RECOVERY_ENTRY = Path("loader/entries/ordax-recovery.conf")
