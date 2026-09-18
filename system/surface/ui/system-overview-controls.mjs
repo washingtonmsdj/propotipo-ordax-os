@@ -85,6 +85,17 @@ function node(documentObject, tag, className, text) {
   return element;
 }
 
+function formatObservationReceivedAt(value) {
+  if (!Number.isFinite(value)) return "horário desconhecido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Bahia",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
 function formatBytes(bytes) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
@@ -158,6 +169,8 @@ export function mountSystemOverviewControls(
   }
   let metricsSnapshot = null;
   let metricsPending = false;
+  let metricsReadFailed = false;
+  let metricsLastSuccessAt = null;
   let metricsMessage = "";
   let metricsOrdinal = 0;
   let historySnapshot = null;
@@ -253,7 +266,13 @@ export function mountSystemOverviewControls(
     appendMetricCard(documentObject, grid, {
       label: "Tempo ligado",
       value: metricsSnapshot ? formatUptime(metricsSnapshot.uptimeSeconds) : "—",
-      detail: metricsPort ? "Leitura local do dispositivo" : "Métrica local indisponível",
+      detail: !metricsPort
+        ? "Métrica local indisponível"
+        : metricsReadFailed && metricsSnapshot
+          ? `Leitura anterior · recebida pela Surface às ${formatObservationReceivedAt(metricsLastSuccessAt)}`
+          : metricsSnapshot
+            ? `Leitura local · recebida às ${formatObservationReceivedAt(metricsLastSuccessAt)}`
+            : "Aguardando leitura local",
     });
 
     view.append(grid);
@@ -294,6 +313,17 @@ export function mountSystemOverviewControls(
       );
       view.append(section);
       return;
+    }
+
+    if (metricsReadFailed) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-warning",
+          `Leitura antiga · a tentativa atual falhou. Última leitura recebida pela Surface às ${formatObservationReceivedAt(metricsLastSuccessAt)}.`,
+        ),
+      );
     }
 
     const memoryUsed = metricsSnapshot.memoryTotalBytes - metricsSnapshot.memoryAvailableBytes;
@@ -344,6 +374,17 @@ export function mountSystemOverviewControls(
       );
       view.append(section);
       return;
+    }
+
+    if (metricsReadFailed) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-warning",
+          `Leitura antiga · a tentativa atual falhou. Última leitura recebida pela Surface às ${formatObservationReceivedAt(metricsLastSuccessAt)}.`,
+        ),
+      );
     }
 
     const storageUsed = metricsSnapshot.userStorageTotalBytes - metricsSnapshot.userStorageFreeBytes;
@@ -646,9 +687,14 @@ export function mountSystemOverviewControls(
       const next = validateSystemMetricsSnapshot(await metricsPort.read());
       if (destroyed || ordinal !== metricsOrdinal) return;
       metricsSnapshot = next;
+      metricsReadFailed = false;
+      metricsLastSuccessAt = Date.now();
     } catch {
       if (destroyed || ordinal !== metricsOrdinal) return;
-      metricsMessage = "Não foi possível atualizar a leitura dos recursos.";
+      metricsReadFailed = true;
+      metricsMessage = metricsSnapshot
+        ? "A leitura atual falhou; os valores abaixo são a última leitura válida recebida pela Surface."
+        : "Não foi possível obter uma leitura válida dos recursos nesta sessão.";
     } finally {
       if (!destroyed && ordinal === metricsOrdinal) {
         metricsPending = false;
