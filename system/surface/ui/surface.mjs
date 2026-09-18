@@ -11,6 +11,7 @@ import {
 import {
   ACCESSIBILITY_CONTRAST_PREFERENCE_ID,
   ACCESSIBILITY_MOTION_PREFERENCE_ID,
+  ACCESSIBILITY_TEXT_SCALE_PREFERENCE_ID,
 } from "../../services/preferences/accessibility.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
@@ -327,6 +328,8 @@ export function mountSurface(
     root.dataset.ordaxTheme = state.preferences[APPEARANCE_PREFERENCE_ID];
     root.dataset.ordaxContrast = state.preferences[ACCESSIBILITY_CONTRAST_PREFERENCE_ID];
     root.dataset.ordaxMotion = state.preferences[ACCESSIBILITY_MOTION_PREFERENCE_ID];
+    documentElement.dataset.ordaxTextScale =
+      state.preferences[ACCESSIBILITY_TEXT_SCALE_PREFERENCE_ID];
     launcher.hidden = !state.launcherOpen;
     launcherToggle.setAttribute("aria-expanded", String(state.launcherOpen));
 
@@ -692,6 +695,7 @@ export function mountSurface(
       delete root.dataset.ordaxTheme;
       delete root.dataset.ordaxContrast;
       delete root.dataset.ordaxMotion;
+      delete documentElement.dataset.ordaxTextScale;
       root.replaceChildren();
     },
   });
