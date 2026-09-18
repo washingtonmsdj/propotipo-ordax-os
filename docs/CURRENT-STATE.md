@@ -30,6 +30,11 @@ SURFACE_BOOTSTRAP_RUNTIME=YES
 GRAPHICAL_SURFACE_SOURCE=IMPLEMENTED
 SHARED_WORKSPACE_WINDOW_MODEL=IMPLEMENTED
 FIRST_PARTY_APP_REGISTRY=FILES,SETTINGS,ACCOUNT,SYSTEM
+SETTINGS_VISIBLE_LABEL=AJUSTES
+SURFACE_HOME_TECHNICAL_UPDATE_MARKERS=REMOVED
+UPDATE_HUMAN_IDENTITY=DELIVERY_NUMBER
+UPDATE_PR_NUMBER_IS_PRODUCT_IDENTITY=NO
+UPDATE_RUNNING_LABEL=EM_EXECUCAO
 WEB_CLIENT_CANDIDATE=PASS
 APPEARANCE_THEME_VALUES=DARK,LIGHT
 APPEARANCE_PERSISTENCE=WEB_LOCAL_PASS
@@ -44,6 +49,8 @@ NATIVE_GUARDIAN_SUPERVISOR=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_RESCUE_CHANNEL=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_TELEMETRY_RELAY=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_CANDIDATE_PREFLIGHT_SUCCESS_PATH=PASS_PHYSICAL_DEVELOPMENT_USB
+CANONICAL_KERNEL_ACPI_BATTERY_SUPPORT=EXPLICIT
+CANONICAL_KERNEL_SYSRQ_RESTART_FALLBACK=EXPLICIT
 REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
 GRAPHICAL_SURFACE_COMPLETE=NO
 CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
@@ -51,7 +58,7 @@ CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 
 `system/` is the shared product source. The native development path is physically proven through `system/entrypoint (guardian) -> system/supervisor -> system/surface/entrypoint -> system/surface/bin/ordax-surface`; repository CI also proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
 
-The shared graphical source remains under `system/surface/ui/` with platform-neutral contracts, workspace/window lifecycle and capability-driven app availability. Platform-specific behavior belongs in adapters/compositions, not in forks of the shared Surface.
+The shared graphical source remains under `system/surface/ui/` with platform-neutral contracts, workspace/window lifecycle and capability-driven app availability. Platform-specific behavior belongs in adapters/compositions, not in forks of the shared Surface. The normal Home now keeps technical delivery/recovery markers out of the area label; real delivery identity and update details live in Sistema. The visible settings identity is standardized as **Ajustes** while preserving the stable internal app id `settings`.
 
 On the target notebook, the owner/development USB has physically proven the Git-first native host: Cage/Wayland + Barkery/WebKitGTK renders the shared Surface fullscreen; keyboard and mouse/touchpad work; authenticated native restart and shutdown work; and Git changes can be pulled and applied with a Surface reload while the notebook remains running. The temporary live-update marker appeared and then disappeared automatically in the same running session, proving the rebootless update round trip.
 
@@ -59,7 +66,7 @@ The Git-first update path is now split between a stable `system/entrypoint` guar
 
 Recovery no longer depends on that supervisor alone. A persistent, bounded `ordax-rescue` agent lives under `/state/ordax/rescue/` and consumes only target-bound, monotonic commands from the separate Git rescue ref. The physical notebook has acknowledged multiple rescue generations, including no-op generations while healthy. The rescue protocol does not provide remote shell, arbitrary commands, reboot, poweroff or arbitrary Git reset.
 
-Operational observability is also physically active through the temporary Supabase relay. A host-base telemetry agent starts before the graphical runtime and reports checkout SHA, updater state, health state, rescue generation/action and a supervisor state-file heartbeat. Supabase is observation-only and has no command semantics. This allowed the recovery from the stale `d071477a` graphical session to be diagnosed and verified without relying on the visible screen.
+Operational observability is also physically active through the temporary Supabase relay. A host-base telemetry agent starts before the graphical runtime and reports checkout SHA, human `deliveryNumber`, pending `bootRefreshRequired`, updater state, health state, rescue generation/action, power-action proof fields and a supervisor state-file heartbeat. The deployed relay configuration is source-controlled. Supabase is observation-only and has no command semantics. This allowed the recovery from the stale `d071477a` graphical session to be diagnosed and verified without relying on the visible screen.
 
 A native-host update delivered through the live Git path has been physically validated to restart only the Surface and return to the graphical session without rebooting the notebook. Candidate Git objects are now preflighted before switching the live checkout, and the valid-candidate success path has been physically exercised; rejection/rollback of an intentionally broken candidate remains a separate physical exercise. The durable offline sync-state store is implemented and CI-proven; survival of a deliberately created pending mutation across a later explicit Surface restart remains a separate physical persistence exercise.
 
@@ -107,9 +114,10 @@ GITHUB_ACTIONS_IMMUTABLE_SHA_POLICY=PASS
 GITHUB_ACTIONS_MUTABLE_TAGS=FORBIDDEN
 GITHUB_ACTIONS_UNKNOWN_EXTERNAL_REFS=FORBIDDEN
 GITHUB_ACTIONS_PULL_REQUEST_TARGET=FORBIDDEN_BY_DEFAULT
+BASE_UPDATE_FAT32_STAGING_PROOF=PASS_DISPOSABLE_CI
 ```
 
-GitHub Actions remains the current build/proof executor; repository recipes are source authority. Kernel/build reproducibility, Action pinning and deterministic real-`system/` bundling remain CI-proven. CI proof does not authorize destructive physical writes or substitute for hardware validation.
+GitHub Actions remains the current build/proof executor; repository recipes are source authority. Kernel/build reproducibility, Action pinning and deterministic real-`system/` bundling remain CI-proven. The current A/B base staging code is also exercised on a disposable FAT32 loop image: the proof preserves current/recovery entries and the active slot, writes and verifies the inactive candidate, unmounts, runs read-only `fsck.vfat`, remounts and re-verifies bytes. That proof is explicitly filesystem-staging-only: it does not exercise canonical release trust, authorize physical writes, activate a candidate or prove notebook boot. CI proof does not authorize destructive physical writes or substitute for hardware validation.
 
 ## Physical architecture
 
@@ -275,6 +283,9 @@ SUPERVISOR_GIT_ACCESS=YES
 INTENTIONALLY_BAD_UPDATE_ROLLBACK_PHYSICAL_PROOF=PENDING
 FULL_A_B_RUNTIME_ACTIVATION=NO
 BASE_UPDATE_A_B_CONTRACT=DEFINED
+BASE_UPDATE_FAT32_STAGING_PROOF=PASS_DISPOSABLE_CI
+BASE_UPDATE_CANONICAL_TRUST_EXERCISED_BY_FAT32_PROOF=NO
+BASE_UPDATE_PHYSICAL_HARDWARE_PROVEN=NO
 BASE_UPDATE_PHYSICAL_WRITER=NO
 ```
 
