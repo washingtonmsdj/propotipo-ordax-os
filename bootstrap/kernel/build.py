@@ -138,6 +138,9 @@ def check_contract() -> dict:
     assignments = parse_fragment(fragment)
     for required in (
         "CONFIG_EFI_STUB",
+        "CONFIG_POWER_SUPPLY",
+        "CONFIG_ACPI_AC",
+        "CONFIG_ACPI_BATTERY",
         "CONFIG_EXT4_FS",
         "CONFIG_VFAT_FS",
         "CONFIG_IWLWIFI",
