@@ -47,4 +47,14 @@ Update freshness is evaluated at the review timestamp through the shared update 
 
 `createDiagnosticReviewDocument()` serializes the review envelope, manifest, freshness observation and redacted report into deterministic JSON. It still does not write, download or upload anything. Physical save/export and any future support submission remain separate explicit actions.
 
+## Explicit review controller
+
+`controller.mjs` is the narrow orchestration boundary intended for a future diagnostic UI. The Surface does not need to call collectors, freshness logic and export services separately. It asks the controller to `prepare()` a review and, only after review/confirmation, calls `exportPrepared()`.
+
+The controller never accepts an arbitrary document argument for export. Only the exact latest review produced by its own `prepare()` lifecycle can cross the export boundary. Starting a newer review immediately invalidates older prepared material; an older in-flight collection that finishes later returns `superseded` instead of restoring stale content.
+
+Exports are single-flight. A successful save consumes the prepared review so repeated activation cannot silently write it twice. Cancellation or a stable export failure keeps the prepared review available for an explicit retry. Missing export capability, missing prepared review and concurrent export are represented by stable non-secret codes rather than exception text.
+
+The controller remains provider- and platform-neutral. Physical Native persistence is supplied through `ordax.diagnostic-export/1`; the Native adapter saves confirmed UTF-8 JSON into the bounded user `/Downloads` space through the existing file-space capability. No browser, filesystem path, Native endpoint or telemetry provider is part of the controller semantics.
+
 Concrete logging libraries, metrics stores and telemetry vendors may change later without changing these product semantics.
