@@ -6,7 +6,10 @@ import {
   assertUpdateStatusPort,
   validateUpdateStatusSnapshot,
 } from "../system/contracts/update-status.mjs";
-import { createNativeUpdateWatcher } from "../system/adapters/native/update-runtime.mjs";
+import {
+  buildReloadUrl,
+  createNativeUpdateWatcher,
+} from "../system/adapters/native/update-runtime.mjs";
 
 function fakeWindow() {
   return {
@@ -22,7 +25,7 @@ function fakeWindow() {
         },
       };
     },
-    location: { reload() {} },
+    location: { href: "http://127.0.0.1:8765/composition/native/index.html?source=old", reload() {}, replace() {} },
     setTimeout() { return 1; },
     clearTimeout() {},
   };
@@ -53,4 +56,27 @@ test("native update watcher implements neutral update status port", () => {
   assert.equal(watcher.schema, UPDATE_STATUS_SCHEMA);
   assert.equal(assertUpdateStatusPort(watcher), watcher);
   watcher.dispose();
+});
+
+test("native reload URL carries target SHA and bounded retry marker", () => {
+  const url = buildReloadUrl(
+    "http://127.0.0.1:8765/composition/native/index.html?source=old#surface",
+    "abcdef0123456789abcdef0123456789abcdef01",
+    3,
+  );
+  assert.equal(
+    url,
+    "http://127.0.0.1:8765/composition/native/index.html?source=abcdef0123456789abcdef0123456789abcdef01&ordax_reload=3#surface",
+  );
+});
+
+test("native reload URL replaces prior retry marker instead of growing forever", () => {
+  const url = buildReloadUrl(
+    "http://127.0.0.1:8765/composition/native/index.html?source=old&ordax_reload=2",
+    "0123456789012345678901234567890123456789",
+    4,
+  );
+  assert.match(url, /source=0123456789012345678901234567890123456789/);
+  assert.match(url, /ordax_reload=4/);
+  assert.equal((url.match(/ordax_reload=/g) ?? []).length, 1);
 });
