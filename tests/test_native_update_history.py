@@ -69,6 +69,7 @@ class NativeUpdateHistoryTests(unittest.TestCase):
                 self.assertEqual(
                     set(snapshot["applications"][0]),
                     {
+                        "deliveryNumber",
                         "versionNumber",
                         "sourceSha",
                         "appliedAt",
