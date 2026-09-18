@@ -28,6 +28,7 @@ POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
 SURFACE_HEARTBEAT_PATH = "/__ordax/native/surface-heartbeat"
+CLIENT_DIAGNOSTIC_PATH = "/__ordax/native/client-diagnostic"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
@@ -43,17 +44,20 @@ SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
 UPDATE_HISTORY_FILE = "/var/lib/ordax/update-history.tsv"
 RELEASE_HISTORY_FILE = "/var/lib/ordax/release-history.tsv"
 SURFACE_HEARTBEAT_FILE = "/var/lib/ordax/surface-heartbeat.json"
+CLIENT_DIAGNOSTIC_FILE = "/var/lib/ordax/client-diagnostic.json"
 TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
 RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
 BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 NETWORK_TOKEN_HEADER = "X-OrdaX-Network-Token"
+DIAGNOSTIC_TOKEN_HEADER = "X-OrdaX-Diagnostic-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
 MAX_NETWORK_ACTION_BODY = 1024
 MAX_NETWORK_SCAN_BYTES = 512 * 1024
 MAX_NETWORKS = 32
 MAX_SURFACE_HEARTBEAT_BODY = 512
+MAX_CLIENT_DIAGNOSTIC_BODY = 512
 MAX_PREFERENCE_BODY = 8192
 MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
@@ -67,6 +71,9 @@ MAX_APPLICATION_HISTORY_ENTRIES = 200
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 NETWORK_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
+CLIENT_DIAGNOSTIC_STAGE_RE = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
+CLIENT_DIAGNOSTIC_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,63}$")
+CLIENT_DIAGNOSTIC_SOURCE_RE = re.compile(r"^[A-Za-z0-9_.-]+\\.mjs:[1-9][0-9]{0,5}:[1-9][0-9]{0,5}$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 DEFAULT_NETWORK_SESSION_DIR = "/run/ordax-surface"
@@ -173,6 +180,7 @@ def build_telemetry_payload(device_id: str) -> dict:
     if not isinstance(last_applied_at, str) or last_applied_at in {"", "unknown"}:
         last_applied_at = ""
 
+    client_diagnostic = read_client_diagnostic()
     return {
         "deviceId": device_id,
         "sourceSha": update.get("sourceSha") if valid_commit_sha(update.get("sourceSha")) else "",
@@ -194,6 +202,11 @@ def build_telemetry_payload(device_id: str) -> dict:
         "surfaceState": "running",
         "bootId": read_small_text(BOOT_ID_FILE, 256),
         "lastError": update.get("lastError") if isinstance(update.get("lastError"), str) else "",
+        "clientDiagnosticSha": client_diagnostic.get("sourceSha", ""),
+        "clientDiagnosticStage": client_diagnostic.get("stage", ""),
+        "clientDiagnosticName": client_diagnostic.get("errorName", ""),
+        "clientDiagnosticSource": client_diagnostic.get("source", ""),
+        "clientDiagnosticEpoch": client_diagnostic.get("observedEpoch"),
         "relayVersion": 2,
     }
 
@@ -308,6 +321,67 @@ def valid_commit_sha(value: object) -> bool:
         and len(value) == 40
         and all(character in "0123456789abcdef" for character in value)
     )
+
+
+def valid_client_diagnostic_payload(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"sourceSha", "stage", "errorName", "source"}
+        and valid_commit_sha(value.get("sourceSha"))
+        and isinstance(value.get("stage"), str)
+        and CLIENT_DIAGNOSTIC_STAGE_RE.fullmatch(value["stage"]) is not None
+        and isinstance(value.get("errorName"), str)
+        and CLIENT_DIAGNOSTIC_NAME_RE.fullmatch(value["errorName"]) is not None
+        and isinstance(value.get("source"), str)
+        and (
+            value["source"] == ""
+            or CLIENT_DIAGNOSTIC_SOURCE_RE.fullmatch(value["source"]) is not None
+        )
+    )
+
+
+def record_client_diagnostic(payload: dict) -> None:
+    if not valid_client_diagnostic_payload(payload):
+        raise ValueError("invalid client diagnostic")
+    directory = os.path.dirname(CLIENT_DIAGNOSTIC_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    record = {
+        "sourceSha": payload["sourceSha"],
+        "stage": payload["stage"],
+        "errorName": payload["errorName"],
+        "source": payload["source"],
+        "observedEpoch": max(0, int(time.time())),
+    }
+    temporary = f"{CLIENT_DIAGNOSTIC_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        json.dump(record, handle, separators=(",", ":"), sort_keys=True, allow_nan=False)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, CLIENT_DIAGNOSTIC_FILE)
+
+
+def read_client_diagnostic() -> dict:
+    try:
+        with open(CLIENT_DIAGNOSTIC_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    candidate = {
+        "sourceSha": payload.get("sourceSha"),
+        "stage": payload.get("stage"),
+        "errorName": payload.get("errorName"),
+        "source": payload.get("source"),
+    }
+    if not valid_client_diagnostic_payload(candidate):
+        return {}
+    observed_epoch = payload.get("observedEpoch")
+    if not isinstance(observed_epoch, int) or observed_epoch < 0:
+        return {}
+    return {**candidate, "observedEpoch": observed_epoch}
 
 
 def valid_preference_record(value: object) -> bool:
@@ -1325,6 +1399,7 @@ class NativeHostServer(ThreadingHTTPServer):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
         self.network_token = secrets.token_urlsafe(32)
+        self.diagnostic_token = secrets.token_urlsafe(32)
         self.health_token = secrets.token_urlsafe(32)
         self.power_request_path = power_request_path
         self.supported_actions = supported_power_actions(power_request_path)
@@ -1479,6 +1554,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 {
                     "token": self.server.power_token,
                     "networkToken": self.server.network_token,
+                    "diagnosticToken": self.server.diagnostic_token,
                     "supportedActions": list(self.server.supported_actions),
                 },
             )
@@ -1552,6 +1628,24 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 record_surface_health(source_sha)
             except OSError as exc:
                 print(f"ordax-native-host: could not record Surface health: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path == CLIENT_DIAGNOSTIC_PATH:
+            supplied_token = self.headers.get(DIAGNOSTIC_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.diagnostic_token):
+                self._empty(403)
+                return
+            payload = self._read_json_body(MAX_CLIENT_DIAGNOSTIC_BODY)
+            if payload is None or not valid_client_diagnostic_payload(payload):
+                self._empty(400)
+                return
+            try:
+                record_client_diagnostic(payload)
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not record client diagnostic: {exc}", file=sys.stderr, flush=True)
                 self._empty(500)
                 return
             self._empty(204)
