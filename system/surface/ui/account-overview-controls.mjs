@@ -17,6 +17,7 @@ import {
   validateWorkspaceMetadata,
 } from "../../contracts/workspace-metadata-source.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { repaintPreservingInteraction } from "./view-interaction.mjs";
 
 const ACCOUNT_WINDOW_SELECTOR = '[data-window-id="account"]';
 const ACCOUNT_EXTENSION_SELECTOR = '[data-app-extension="account-overview"]';
@@ -324,7 +325,7 @@ export function mountAccountOverviewControls(
     }
     if (!force && slot === mountedSlot) return;
     mountedSlot = slot;
-    paint(slot);
+    repaintPreservingInteraction(slot, () => paint(slot));
   };
 
   const replaceView = () => renderView(true);
