@@ -607,23 +607,175 @@ def _refresh_release_agent_if_needed(
     return "refreshed", target_sha
 
 
+def _validate_release_channel_payload(payload: bytes, label: str) -> str:
+    try:
+        value = payload.decode("ascii")
+    except UnicodeError as exc:
+        raise OwnerError(f"{label} is not ASCII") from exc
+    lines = value.splitlines()
+    if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
+        raise OwnerError(f"{label} must contain exactly one URL")
+    url = lines[0]
+    if not url.startswith("https://") or any(character.isspace() for character in url):
+        raise OwnerError(f"{label} must be one absolute HTTPS URL")
+    return url
+
+
+def _repository_release_channel_authority(
+    repo_root: Path,
+) -> tuple[bytes, str]:
+    channel_bytes = _regular_bytes(
+        repo_root / RELEASE_CHANNEL_RELATIVE,
+        "repository release channel",
+        MAX_CHANNEL_BYTES,
+    )
+    _validate_release_channel_payload(
+        channel_bytes,
+        "repository release channel",
+    )
+    channel_sha = _sha256(channel_bytes)
+
+    _minimal_bytes, minimal = _strict_json(
+        repo_root / MINIMAL_RELATIVE,
+        "minimal bootstrap contract",
+    )
+    if minimal.get("$schema") != MINIMAL_SCHEMA:
+        raise OwnerError("minimal bootstrap schema is invalid for release channel")
+    if minimal.get("physical_write_allowed") is not False:
+        raise OwnerError("minimal bootstrap must remain non-destructive")
+    groups = minimal.get("artifact_groups")
+    if not isinstance(groups, list):
+        raise OwnerError("minimal bootstrap artifact groups are invalid")
+    channel_groups = [
+        group
+        for group in groups
+        if isinstance(group, dict) and group.get("id") == "bootstrap-release-channel"
+    ]
+    if len(channel_groups) != 1:
+        raise OwnerError("minimal bootstrap release-channel group is invalid")
+    group = channel_groups[0]
+    artifacts = group.get("artifacts")
+    if (
+        group.get("resolved") is not True
+        or not isinstance(artifacts, list)
+        or len(artifacts) != 1
+    ):
+        raise OwnerError("minimal bootstrap release-channel group is unresolved")
+    artifact = artifacts[0]
+    if (
+        artifact.get("source_path") != RELEASE_CHANNEL_RELATIVE.as_posix()
+        or artifact.get("target_path") != "/ordax/bootstrap/config/release-envelope-url"
+        or artifact.get("sha256") != channel_sha
+        or artifact.get("mode") != "0644"
+    ):
+        raise OwnerError("minimal bootstrap release-channel binding is invalid")
+    return channel_bytes, channel_sha
+
+
+def _install_release_channel(
+    physical_root: Path,
+    channel_bytes: bytes,
+    channel_sha: str,
+) -> str:
+    config_dir = _ensure_real_directory_tree(
+        physical_root,
+        RELEASE_CHANNEL_RELATIVE.parent,
+    )
+    target = config_dir / RELEASE_CHANNEL_RELATIVE.name
+    try:
+        existing = target.lstat()
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        raise OwnerError("cannot inspect physical release channel") from exc
+
+    if existing is not None:
+        if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
+            raise OwnerError("physical release channel is unsafe")
+        actual = _sha256(
+            _regular_bytes(
+                target,
+                "physical release channel",
+                MAX_CHANNEL_BYTES,
+            )
+        )
+        if actual != channel_sha:
+            raise OwnerError(
+                "physical release channel conflicts with canonical repository channel"
+            )
+        _validate_release_channel_payload(
+            _regular_bytes(
+                target,
+                "physical release channel",
+                MAX_CHANNEL_BYTES,
+            ),
+            "physical release channel",
+        )
+        return "already-enrolled"
+
+    temporary = target.with_name(
+        f".{target.name}.ordax-enroll-{os.getpid()}"
+    )
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(temporary, flags, 0o644)
+        offset = 0
+        while offset < len(channel_bytes):
+            written = os.write(descriptor, channel_bytes[offset:])
+            if written <= 0:
+                raise OwnerError(
+                    "short write while enrolling canonical release channel"
+                )
+            offset += written
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        enrolled = _regular_bytes(
+            temporary,
+            "temporary release channel",
+            MAX_CHANNEL_BYTES,
+        )
+        if _sha256(enrolled) != channel_sha:
+            raise OwnerError(
+                "temporary release channel hash changed during enrollment"
+            )
+        _validate_release_channel_payload(
+            enrolled,
+            "temporary release channel",
+        )
+        os.replace(temporary, target)
+        _fsync_directory(config_dir)
+        return "enrolled"
+    except Exception:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def _read_release_channel(physical_root: Path) -> str:
     payload = _regular_bytes(
         physical_root / RELEASE_CHANNEL_RELATIVE,
         "physical release channel",
         MAX_CHANNEL_BYTES,
     )
-    try:
-        value = payload.decode("ascii")
-    except UnicodeError as exc:
-        raise OwnerError("physical release channel is not ASCII") from exc
-    lines = value.splitlines()
-    if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
-        raise OwnerError("physical release channel must contain exactly one URL")
-    url = lines[0]
-    if not url.startswith("https://") or any(character.isspace() for character in url):
-        raise OwnerError("physical release channel must be one absolute HTTPS URL")
-    return url
+    return _validate_release_channel_payload(
+        payload,
+        "physical release channel",
+    )
 
 
 def _require_release_agent(physical_root: Path) -> Path:
@@ -781,6 +933,8 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         "pendingBootRefreshSha": pending,
         "releaseAgentRefreshState": "blocked",
         "releaseAgentSha256": None,
+        "releaseChannelEnrollmentState": "blocked",
+        "releaseChannelSha256": None,
         "canonicalTrustPinned": False,
         "physicalTrustEnrolled": False,
         "trustEnrollmentState": "blocked",
@@ -813,6 +967,29 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
             status["blocker"] = "release-agent-refresh-unavailable"
         else:
             status["blocker"] = "release-agent-refresh-validation-failed"
+        status["detail"] = message[:512]
+        _atomic_status(state_root, status)
+        return status
+
+    try:
+        channel_bytes, channel_sha = _repository_release_channel_authority(
+            repo_root,
+        )
+        channel_state = _install_release_channel(
+            physical_root,
+            channel_bytes,
+            channel_sha,
+        )
+        status["releaseChannelEnrollmentState"] = channel_state
+        status["releaseChannelSha256"] = channel_sha
+        status["phase"] = "trust-enrollment"
+    except OwnerError as exc:
+        message = str(exc)
+        status["phase"] = "bootstrap-component-enrollment"
+        if "conflicts with canonical repository channel" in message:
+            status["blocker"] = "release-channel-conflict"
+        else:
+            status["blocker"] = "release-channel-enrollment-validation-failed"
         status["detail"] = message[:512]
         _atomic_status(state_root, status)
         return status
