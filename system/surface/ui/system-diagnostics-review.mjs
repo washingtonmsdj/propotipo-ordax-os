@@ -9,7 +9,7 @@ import {
   updateStatusLabel,
 } from "../../services/update/presentation.mjs";
 
-const CONTROLLER_PHASES = new Set(["idle", "preparing", "ready", "exporting"]);
+const CONTROLLER_PHASES = new Set(["idle", "preparing", "ready", "copying", "exporting"]);
 
 const SOURCE_LABELS = Object.freeze({
   surface: "Surface",
@@ -35,7 +35,9 @@ const FAILURE_LABELS = Object.freeze({
 
 const LAST_RESULT_LABELS = Object.freeze({
   "review-prepare-failed": "Não foi possível preparar a revisão local. Tente novamente.",
-  "review-not-prepared": "Prepare uma revisão antes de salvar o diagnóstico.",
+  "copy-unavailable": "Copiar resumo não está disponível neste modo.",
+  "copy-in-progress": "O resumo sanitizado já está sendo copiado.",
+  "copy-failed": "Não foi possível copiar o resumo sanitizado. A revisão continua disponível para nova tentativa.",
   "export-unavailable": "Salvar diagnóstico não está disponível neste modo.",
   "export-in-progress": "O diagnóstico já está sendo salvo.",
   "export-failed": "Não foi possível salvar o diagnóstico. A revisão continua disponível para nova tentativa.",
@@ -67,8 +69,14 @@ function requireControllerState(value) {
   if (typeof value.exportAvailable !== "boolean") {
     throw new TypeError("Diagnostic review controller exportAvailable must be boolean");
   }
-  if ((value.phase === "ready" || value.phase === "exporting") && !value.document) {
-    throw new TypeError("Ready/exporting diagnostic review state requires a prepared document");
+  if (typeof value.copyAvailable !== "boolean") {
+    throw new TypeError("Diagnostic review controller copyAvailable must be boolean");
+  }
+  if (
+    (value.phase === "ready" || value.phase === "copying" || value.phase === "exporting")
+    && !value.document
+  ) {
+    throw new TypeError("Ready/copying/exporting diagnostic review state requires a prepared document");
   }
   if (value.phase === "preparing" && value.document !== null) {
     throw new TypeError("Preparing diagnostic review state cannot expose a stale document");
@@ -83,7 +91,13 @@ function assertDiagnosticReviewController(controller) {
   if (controller.schema !== DIAGNOSTIC_REVIEW_CONTROLLER_SCHEMA) {
     throw new TypeError(`Unsupported diagnostic review controller: ${String(controller.schema)}`);
   }
-  for (const method of ["getSnapshot", "subscribe", "prepare", "exportPrepared"]) {
+  for (const method of [
+    "getSnapshot",
+    "subscribe",
+    "prepare",
+    "copyPreparedSummary",
+    "exportPrepared",
+  ]) {
     if (typeof controller[method] !== "function") {
       throw new TypeError(`Diagnostic review controller must implement ${method}()`);
     }
@@ -192,19 +206,36 @@ function actionPresentation(snapshot) {
   if (snapshot.phase === "preparing") {
     return freeze({ kind: "progress", text: "Preparando uma revisão local e sanitizada…" });
   }
+  if (snapshot.phase === "copying") {
+    return freeze({ kind: "progress", text: "Copiando resumo sanitizado…" });
+  }
   if (snapshot.phase === "exporting") {
     return freeze({ kind: "progress", text: "Salvando a revisão confirmada em Downloads…" });
   }
   const last = snapshot.lastResult;
   if (!last) return null;
   if (last.action === "prepare" && last.status === "ready") {
-    return freeze({ kind: "success", text: "Revisão preparada localmente. Confira as fontes e os eventos antes de salvar." });
+    return freeze({
+      kind: "success",
+      text: "Revisão preparada localmente. Confira as fontes e os eventos antes de copiar ou salvar.",
+    });
+  }
+  if (last.action === "copy" && last.status === "copied") {
+    return freeze({ kind: "success", text: "Resumo sanitizado copiado." });
   }
   if (last.action === "export" && last.status === "saved") {
     return freeze({ kind: "success", text: "Diagnóstico salvo em Downloads." });
   }
   if (last.action === "export" && last.status === "cancelled") {
     return freeze({ kind: "neutral", text: "Salvamento cancelado. A revisão continua disponível." });
+  }
+  if (last.code === "review-not-prepared") {
+    return freeze({
+      kind: "warning",
+      text: last.action === "copy"
+        ? "Prepare uma revisão antes de copiar o resumo sanitizado."
+        : "Prepare uma revisão antes de salvar o diagnóstico.",
+    });
   }
   const text = LAST_RESULT_LABELS[last.code] ?? "A operação de diagnóstico não foi concluída.";
   return freeze({ kind: "warning", text });
@@ -267,10 +298,22 @@ export function createDiagnosticReviewPresentation(snapshotValue) {
   return freeze({
     phase: snapshot.phase,
     exportAvailable: snapshot.exportAvailable,
+    copyAvailable: snapshot.copyAvailable,
     action: actionPresentation(snapshot),
     prepare: freeze({
       label: snapshot.phase === "preparing" ? "Preparando…" : "Preparar nova revisão",
-      disabled: snapshot.phase === "preparing" || snapshot.phase === "exporting",
+      disabled: snapshot.phase === "preparing"
+        || snapshot.phase === "copying"
+        || snapshot.phase === "exporting",
+    }),
+    copy: freeze({
+      label: snapshot.phase === "copying"
+        ? "Copiando…"
+        : snapshot.copyAvailable
+          ? "Copiar resumo sanitizado"
+          : "Copiar indisponível",
+      disabled: snapshot.phase !== "ready" || !snapshot.copyAvailable,
+      visible: document !== null,
     }),
     export: freeze({
       label: snapshot.phase === "exporting"
@@ -317,8 +360,8 @@ function appendFact(documentObject, list, label, value) {
 
 function renderReview(documentObject, container, presentation) {
   const heading = node(documentObject, "div", "ordax-system-section-heading");
-  const copy = node(documentObject, "div");
-  copy.append(
+  const headingCopy = node(documentObject, "div");
+  headingCopy.append(
     node(documentObject, "span", "ordax-system-section-kicker", "Revisão local"),
     node(documentObject, "h4", "ordax-system-section-title", "Diagnóstico revisável"),
   );
@@ -328,6 +371,13 @@ function renderReview(documentObject, container, presentation) {
   prepare.dataset.systemDiagnosticsPrepare = "";
   prepare.disabled = presentation.prepare.disabled;
   actions.append(prepare);
+  if (presentation.copy.visible) {
+    const copyButton = node(documentObject, "button", "ordax-system-action", presentation.copy.label);
+    copyButton.type = "button";
+    copyButton.dataset.systemDiagnosticsCopy = "";
+    copyButton.disabled = presentation.copy.disabled;
+    actions.append(copyButton);
+  }
   if (presentation.export.visible) {
     const exportButton = node(documentObject, "button", "ordax-system-action", presentation.export.label);
     exportButton.type = "button";
@@ -335,7 +385,7 @@ function renderReview(documentObject, container, presentation) {
     exportButton.disabled = presentation.export.disabled;
     actions.append(exportButton);
   }
-  heading.append(copy, actions);
+  heading.append(headingCopy, actions);
   container.append(heading);
 
   container.append(
@@ -343,7 +393,7 @@ function renderReview(documentObject, container, presentation) {
       documentObject,
       "p",
       "ordax-system-section-copy",
-      "A revisão é criada somente quando solicitada. Ela usa dados locais permitidos, registra fontes ausentes ou com falha e não envia conteúdo automaticamente.",
+      "A revisão é criada somente quando solicitada. Ela usa dados locais permitidos, registra fontes ausentes ou com falha e não envia conteúdo automaticamente. Copiar e salvar são ações explícitas sobre esta mesma revisão.",
     ),
   );
 
@@ -365,7 +415,7 @@ function renderReview(documentObject, container, presentation) {
         documentObject,
         "p",
         "ordax-system-placeholder",
-        "Prepare uma revisão para consultar as fontes disponíveis, a atualidade dos sinais e os eventos locais antes de salvar qualquer arquivo.",
+        "Prepare uma revisão para consultar as fontes disponíveis, a atualidade dos sinais e os eventos locais antes de copiar ou salvar qualquer informação.",
       ),
     );
     return;
@@ -496,9 +546,11 @@ export function mountSystemDiagnosticsReview(container, controllerValue) {
     if (destroyed) return;
     const focused = documentObject.activeElement?.dataset?.systemDiagnosticsPrepare !== undefined
       ? "prepare"
-      : documentObject.activeElement?.dataset?.systemDiagnosticsExport !== undefined
-        ? "export"
-        : null;
+      : documentObject.activeElement?.dataset?.systemDiagnosticsCopy !== undefined
+        ? "copy"
+        : documentObject.activeElement?.dataset?.systemDiagnosticsExport !== undefined
+          ? "export"
+          : null;
     const presentation = createDiagnosticReviewPresentation(stateValue);
     const section = node(documentObject, "section", "ordax-system-section");
     section.dataset.systemDiagnosticsReview = "";
@@ -506,11 +558,12 @@ export function mountSystemDiagnosticsReview(container, controllerValue) {
     container.replaceChildren(section);
 
     if (focused) {
-      const target = section.querySelector(
-        focused === "prepare"
-          ? "[data-system-diagnostics-prepare]"
-          : "[data-system-diagnostics-export]",
-      );
+      const selector = focused === "prepare"
+        ? "[data-system-diagnostics-prepare]"
+        : focused === "copy"
+          ? "[data-system-diagnostics-copy]"
+          : "[data-system-diagnostics-export]";
+      const target = section.querySelector(selector);
       if (target && !target.disabled) target.focus({ preventScroll: true });
     }
   };
@@ -521,6 +574,8 @@ export function mountSystemDiagnosticsReview(container, controllerValue) {
     if (!target || !container.contains(target) || target.disabled) return;
     if (target.dataset.systemDiagnosticsPrepare !== undefined) {
       void controller.prepare();
+    } else if (target.dataset.systemDiagnosticsCopy !== undefined) {
+      void controller.copyPreparedSummary();
     } else if (target.dataset.systemDiagnosticsExport !== undefined) {
       void controller.exportPrepared();
     }

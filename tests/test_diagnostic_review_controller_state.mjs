@@ -64,6 +64,7 @@ test("controller exposes an immutable initial state and replays it on subscribe"
     schema: DIAGNOSTIC_REVIEW_CONTROLLER_STATE_SCHEMA,
     phase: "idle",
     exportAvailable: false,
+    copyAvailable: false,
     document: null,
     lastResult: null,
   });

@@ -1,4 +1,6 @@
+import { assertDiagnosticCopyPort } from "../../contracts/diagnostic-copy.mjs";
 import { assertDiagnosticExportPort } from "../../contracts/diagnostic-export.mjs";
+import { copyDiagnosticReviewSummary } from "./copy.mjs";
 import { exportDiagnosticDocument } from "./export.mjs";
 import { createDiagnosticReviewDocument } from "./review.mjs";
 
@@ -25,6 +27,7 @@ export function createDiagnosticReviewController({
   updateHistory = null,
   diagnosticJournal = null,
   diagnosticExport = null,
+  diagnosticCopy = null,
   updateMaxAgeSeconds = undefined,
   clock = () => new Date().toISOString(),
 }) {
@@ -34,10 +37,13 @@ export function createDiagnosticReviewController({
   const exportPort = diagnosticExport === null
     ? null
     : assertDiagnosticExportPort(diagnosticExport);
+  const copyPort = diagnosticCopy === null
+    ? null
+    : assertDiagnosticCopyPort(diagnosticCopy);
 
   let generation = 0;
   let preparedDocument = null;
-  let exportInFlight = false;
+  let outputInFlight = null;
   // phase describes this explicit review workflow only; it is not a device/service health verdict.
   let phase = "idle";
   let lastResult = null;
@@ -47,6 +53,7 @@ export function createDiagnosticReviewController({
     schema: DIAGNOSTIC_REVIEW_CONTROLLER_STATE_SCHEMA,
     phase,
     exportAvailable: exportPort !== null,
+    copyAvailable: copyPort !== null,
     document: preparedDocument,
     lastResult,
   });
@@ -57,7 +64,7 @@ export function createDiagnosticReviewController({
       try {
         listener(value);
       } catch {
-        // Presentation subscribers must never break collection/export semantics.
+        // Presentation subscribers must never break collection/output semantics.
       }
     }
   };
@@ -67,6 +74,10 @@ export function createDiagnosticReviewController({
     lastResult = nextResult;
     publish();
   };
+
+  const outputBusyCode = () => outputInFlight === "copy"
+    ? "copy-in-progress"
+    : "export-in-progress";
 
   return Object.freeze({
     schema: DIAGNOSTIC_REVIEW_CONTROLLER_SCHEMA,
@@ -127,9 +138,49 @@ export function createDiagnosticReviewController({
       }
     },
 
+    async copyPreparedSummary() {
+      if (outputInFlight !== null) {
+        return result("failed", { code: outputBusyCode() });
+      }
+      if (preparedDocument === null) {
+        const failure = actionResult("copy", "failed", "review-not-prepared");
+        updateState(phase, failure);
+        return result("failed", { code: failure.code });
+      }
+      if (copyPort === null) {
+        const failure = actionResult("copy", "failed", "copy-unavailable");
+        updateState(phase, failure);
+        return result("failed", { code: failure.code });
+      }
+
+      const document = preparedDocument;
+      const copyGeneration = generation;
+      outputInFlight = "copy";
+      updateState("copying", null);
+
+      let copyResult;
+      try {
+        copyResult = await copyDiagnosticReviewSummary(document, copyPort);
+      } catch {
+        copyResult = Object.freeze({ status: "failed", code: "copy-failed" });
+      }
+      outputInFlight = null;
+
+      if (generation === copyGeneration && preparedDocument === document) {
+        updateState(
+          "ready",
+          actionResult("copy", copyResult.status, copyResult.code ?? ""),
+        );
+      }
+
+      return result(copyResult.status, {
+        ...(copyResult.code ? { code: copyResult.code } : {}),
+      });
+    },
+
     async exportPrepared() {
-      if (exportInFlight) {
-        return result("failed", { code: "export-in-progress" });
+      if (outputInFlight !== null) {
+        return result("failed", { code: outputBusyCode() });
       }
       if (preparedDocument === null) {
         const failure = actionResult("export", "failed", "review-not-prepared");
@@ -144,7 +195,7 @@ export function createDiagnosticReviewController({
 
       const document = preparedDocument;
       const exportGeneration = generation;
-      exportInFlight = true;
+      outputInFlight = "export";
       updateState("exporting", null);
 
       let exportResult;
@@ -153,7 +204,7 @@ export function createDiagnosticReviewController({
       } catch {
         exportResult = Object.freeze({ status: "failed", code: "export-failed" });
       }
-      exportInFlight = false;
+      outputInFlight = null;
 
       if (exportResult.status === "saved" && preparedDocument === document) {
         preparedDocument = null;

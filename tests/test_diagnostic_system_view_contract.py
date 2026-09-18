@@ -15,11 +15,14 @@ class SystemDiagnosticsReviewViewContractTests(unittest.TestCase):
         self.assertIn("createDiagnosticReviewPresentation", source)
         self.assertIn("mountSystemDiagnosticsReview", source)
         self.assertNotIn("adapters/native", source)
+        self.assertNotIn("adapters/web", source)
         self.assertNotIn("/__ordax/native/", source)
         self.assertNotIn("fetch(", source)
         self.assertNotIn("localStorage", source)
         self.assertNotIn("sessionStorage", source)
         self.assertNotIn("FileSystem", source)
+        self.assertNotIn("navigator.clipboard", source)
+        self.assertNotIn("writeText(", source)
 
     def test_view_uses_safe_dom_construction_and_explicit_actions(self):
         source = self.source()
@@ -27,9 +30,12 @@ class SystemDiagnosticsReviewViewContractTests(unittest.TestCase):
         self.assertIn("textContent", source)
         self.assertNotIn("innerHTML", source)
         self.assertIn("dataset.systemDiagnosticsPrepare", source)
+        self.assertIn("dataset.systemDiagnosticsCopy", source)
         self.assertIn("dataset.systemDiagnosticsExport", source)
         self.assertIn("controller.prepare()", source)
+        self.assertIn("controller.copyPreparedSummary()", source)
         self.assertIn("controller.exportPrepared()", source)
+        self.assertIn("Copiar resumo sanitizado", source)
         self.assertIn("Salvar em Downloads", source)
 
     def test_absence_of_observation_is_not_rendered_as_health(self):
