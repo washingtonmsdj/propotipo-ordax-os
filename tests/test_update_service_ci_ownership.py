@@ -11,12 +11,13 @@ class UpdateServiceCiOwnershipTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         push, rest = workflow.split("  pull_request:\n", 1)
         pull_request, _ = rest.split("  workflow_dispatch:\n", 1)
+        validation_block = workflow.split("          find ", 1)[1].split("            -type f", 1)[0]
 
         self.assertIn("- 'system/services/update/**'", push)
         self.assertIn("- 'system/services/update/**'", pull_request)
         self.assertIn("- 'tests/test_update_*.mjs'", push)
         self.assertIn("- 'tests/test_update_*.mjs'", pull_request)
-        self.assertIn("system/services/update \\", workflow)
+        self.assertIn("system/services/update", validation_block)
         self.assertIn("node --test tests/test_update_*.mjs", workflow)
 
     def test_freshness_service_remains_platform_neutral(self):
