@@ -17,7 +17,7 @@ spec.loader.exec_module(promote)
 
 class BaseUpdatePromotionTests(unittest.TestCase):
     RELEASE = "a" * 40
-    BOOT_ID = "01234567-89ab-cdef-0123-456789abcdef"
+    BOOT_ID = "0123456789abcdef0123456789abcdef"
 
     def evidence(self):
         return {
@@ -94,7 +94,7 @@ class BaseUpdatePromotionTests(unittest.TestCase):
         mutations = [
             ("source_sha", "b" * 40),
             ("healthy_sha", "b" * 40),
-            ("boot_id", "fedcba98-7654-3210-fedc-ba9876543210"),
+            ("boot_id", "fedcba9876543210fedcba9876543210"),
             ("expected_candidate_slot", "a"),
         ]
         for key, value in mutations:
@@ -105,7 +105,7 @@ class BaseUpdatePromotionTests(unittest.TestCase):
                     promote.evaluate_health(**evidence)
 
         evidence = self.evidence()
-        evidence["base_heartbeat"] = dict(evidence["base_heartbeat"], bootId="fedcba98-7654-3210-fedc-ba9876543210")
+        evidence["base_heartbeat"] = dict(evidence["base_heartbeat"], bootId="fedcba9876543210fedcba9876543210")
         with self.assertRaises(promote.PromotionError):
             promote.evaluate_health(**evidence)
 

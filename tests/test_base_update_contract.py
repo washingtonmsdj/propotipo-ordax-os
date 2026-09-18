@@ -53,7 +53,7 @@ class BaseUpdateContractTests(unittest.TestCase):
                 "base_heartbeat": "/state/ordax/base-update/base-heartbeat.json",
                 "surface_health": "/run/ordax-update/healthy-sha",
                 "surface_heartbeat": "/state/ordax/native-state/surface-heartbeat.json",
-                "boot_id": "/proc/sys/kernel/random/boot_id",
+                "boot_id": "/run/ordax-update/base-boot-id",
                 "cmdline": "/proc/cmdline",
             },
         )

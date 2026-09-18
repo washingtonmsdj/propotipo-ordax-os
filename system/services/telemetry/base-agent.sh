@@ -19,7 +19,7 @@ REJECTED_FILE=$STATE_DIR/rejected-commit
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
 RESCUE_ACTION_FILE=$STATE_DIR/rescue/last-action
-BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
+BOOT_ID_FILE=/run/ordax-update/base-boot-id
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 
 mkdir -p "$TELEMETRY_DIR" "$STATE_DIR/native-state"

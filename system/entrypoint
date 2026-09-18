@@ -11,7 +11,7 @@ WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BASE_UPDATE_STATE_DIR=${ORDAX_BASE_UPDATE_STATE_DIR:-/state/ordax/base-update}
 BASE_HEARTBEAT_FILE=$BASE_UPDATE_STATE_DIR/base-heartbeat.json
-BOOT_ID_FILE=/proc/sys/kernel/random/boot_id
+BASE_BOOT_ID_FILE=$UPDATE_RUN_DIR/base-boot-id
 CMDLINE_FILE=/proc/cmdline
 GUARDIAN_PID_FILE=$UPDATE_RUN_DIR/guardian.pid
 SUPERVISOR_PID_FILE=$UPDATE_RUN_DIR/supervisor.pid
@@ -81,6 +81,28 @@ is_sha() {
     esac
 }
 
+ensure_base_boot_id() {
+    current=""
+    if [ -r "$BASE_BOOT_ID_FILE" ]; then
+        current=$(/bin/busybox cat "$BASE_BOOT_ID_FILE" 2>/dev/null || true)
+    fi
+    if [ "${#current}" -eq 32 ]; then
+        case "$current" in *[!0-9a-f]*) current="" ;; esac
+    else
+        current=""
+    fi
+    [ -n "$current" ] && return 0
+
+    generated=$(/bin/busybox od -An -N16 -tx1 /dev/urandom 2>/dev/null | /bin/busybox tr -d ' \n' || true)
+    [ "${#generated}" -eq 32 ] || return 1
+    case "$generated" in *[!0-9a-f]*) return 1 ;; esac
+
+    temporary=$BASE_BOOT_ID_FILE.tmp.$
+    printf '%s\n' "$generated" >"$temporary"
+    chmod 600 "$temporary"
+    /bin/busybox mv -f "$temporary" "$BASE_BOOT_ID_FILE"
+}
+
 cmdline_value() {
     key=$1
     [ -r "$CMDLINE_FILE" ] || return 1
@@ -123,11 +145,14 @@ write_base_update_heartbeat() {
         log "candidate base heartbeat could not resolve current release"
         return 0
     }
-    boot_id=$(/bin/busybox cat "$BOOT_ID_FILE" 2>/dev/null || true)
+    boot_id=$(/bin/busybox cat "$BASE_BOOT_ID_FILE" 2>/dev/null || true)
+    [ "${#boot_id}" -eq 32 ] || {
+        log "candidate base heartbeat could not resolve boot session id"
+        return 0
+    }
     case "$boot_id" in
-        ''|*[!0-9a-f-]*) log "candidate base heartbeat could not resolve boot id"; return 0 ;;
+        *[!0-9a-f]*) log "candidate base heartbeat rejected invalid boot session id"; return 0 ;;
     esac
-    [ "${#boot_id}" -le 64 ] || return 0
 
     /bin/busybox mkdir -p "$BASE_UPDATE_STATE_DIR"
     chmod 700 "$BASE_UPDATE_STATE_DIR"
