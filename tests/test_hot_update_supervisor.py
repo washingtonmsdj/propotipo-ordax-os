@@ -148,11 +148,35 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
 
     def test_update_state_carries_operator_visible_metadata(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('"targetSha":"%s"', text)
+        self.assertIn('"phase":"%s"', text)
+        self.assertIn('"attemptId":"%s"', text)
         self.assertIn('"checkedAt":"%s"', text)
         self.assertIn('"lastAppliedSha":"%s"', text)
         self.assertIn('"lastAppliedAt":"%s"', text)
         self.assertIn('"rejectedSha":"%s"', text)
+        self.assertIn('"lastError":"%s"', text)
+        self.assertIn("set_update_context()", text)
+        self.assertIn("clear_update_context()", text)
         self.assertIn("record_applied", text)
+
+    def test_update_transaction_phases_are_explicit_and_bounded(self):
+        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('set_update_context fetching "$remote_sha" "$attempt_id" ""', text)
+        self.assertIn('set_update_context validating "$new_sha" "$attempt_id" ""', text)
+        self.assertIn('set_update_context health-wait "$new_sha" "$attempt_id" ""', text)
+        self.assertIn('set_update_context activating "$new_sha" "$attempt_id" ""', text)
+        self.assertIn('set_update_context rollback "$failed_sha" "$UPDATE_ATTEMPT_ID" "$reason"', text)
+        self.assertIn('printf \'%s %s %s\\n\' "$old_sha" "$new_sha" "$attempt_id"', text)
+        self.assertIn('guard_attempt=${3:-}', text)
+
+    def test_update_center_surfaces_transaction_diagnostics(self):
+        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        self.assertIn("readablePhase", controls)
+        self.assertIn("targetSha", controls)
+        self.assertIn('"Tentativa"', controls)
+        self.assertIn('"Diagnóstico"', controls)
+        self.assertIn("lastError", controls)
 
     def test_surface_launcher_is_gracefully_restartable(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
