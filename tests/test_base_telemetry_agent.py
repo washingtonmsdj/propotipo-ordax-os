@@ -23,6 +23,11 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn('supervisor_checked_at=$(json_field checkedAt "$UPDATE_STATE")', text)
         self.assertIn('supervisor_state_epoch=$(/bin/busybox stat -c %Y "$UPDATE_STATE"', text)
         self.assertIn('"supervisorStateEpoch":%s', text)
+        self.assertIn("SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json", text)
+        self.assertIn('"surfaceSourceSha":"%s"', text)
+        self.assertIn('"surfaceHeartbeatEpoch":%s', text)
+        self.assertIn("surface_state=running", text)
+        self.assertIn("surface_state=stopped", text)
         self.assertIn("attemptId", text)
         self.assertIn("lastError", text)
         for forbidden in (
