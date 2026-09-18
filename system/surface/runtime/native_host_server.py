@@ -1452,8 +1452,14 @@ def record_surface_heartbeat(source_sha: str) -> None:
     directory = os.path.dirname(SURFACE_HEARTBEAT_FILE)
     os.makedirs(directory, mode=0o700, exist_ok=True)
     temporary = f"{SURFACE_HEARTBEAT_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    boot_id = read_small_text(BOOT_ID_FILE, 128)
+    if not boot_id or len(boot_id) > 64 or any(
+        character not in "0123456789abcdef-" for character in boot_id
+    ):
+        raise ValueError("invalid current boot id")
     payload = {
         "sourceSha": source_sha,
+        "bootId": boot_id,
         "observedEpoch": max(0, int(time.time())),
     }
     try:
