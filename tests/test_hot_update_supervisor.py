@@ -67,7 +67,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('candidate_shell_is_valid "$candidate_sha" system/supervisor', text)
         self.assertIn("candidate-preflight-failed", text)
         self.assertIn('reason=${CHECKOUT_ERROR:-checkout-failed}', text)
-        self.assertIn('temporary=$UPDATE_RUN_DIR/candidate-shell.$', text)
+        self.assertIn('temporary=$UPDATE_RUN_DIR/candidate-shell.tmp', text)
         self.assertLess(
             text.index('validate_candidate_tree "$expected_sha"'),
             text.index('reset --hard "$expected_sha"'),
