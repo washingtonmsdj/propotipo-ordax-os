@@ -12,6 +12,7 @@ export async function createNativeSyncStateStore(windowRef = globalThis.window) 
   }
 
   let memory = null;
+  let durable = false;
   try {
     const response = await windowRef.fetch(SYNC_STATE_ENDPOINT, {
       method: "GET",
@@ -21,6 +22,7 @@ export async function createNativeSyncStateStore(windowRef = globalThis.window) 
     if (response.ok) {
       const payload = await response.json();
       memory = validateSyncStatePayload(payload?.payload ?? null);
+      durable = true;
     }
   } catch {
     // Sync continuity is optional for boot. Session memory remains usable.
@@ -42,7 +44,7 @@ export async function createNativeSyncStateStore(windowRef = globalThis.window) 
 
   const store = {
     schema: SYNC_STATE_STORE_SCHEMA,
-    scope: "device",
+    scope: durable ? "device" : "session",
     load() {
       return memory;
     },
