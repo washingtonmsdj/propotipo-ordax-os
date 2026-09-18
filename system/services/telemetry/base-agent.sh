@@ -126,7 +126,7 @@ write_result() {
 }
 
 existing_pid=$(read_first_line "$PID_FILE")
-if is_pid "$existing_pid" && [ "$existing_pid" != "$$" ] && kill -0 "$existing_pid" >/dev/null 2>&1; then
+if is_pid "$existing_pid" && [ "$existing_pid" != "$" ] && [ -d "/proc/$existing_pid" ]; then
     exit 0
 fi
 printf '%s\n' "$$" >"$PID_FILE"
