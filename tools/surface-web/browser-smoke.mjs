@@ -316,6 +316,9 @@ let bundleDirGlobal = null;
 async function main() {
   const { bundleDir } = parseArgs(process.argv.slice(2));
   bundleDirGlobal = bundleDir;
+  if (typeof WebSocket !== 'function') {
+    throw new Error(`Node ${process.version} does not provide the global WebSocket required by the CDP smoke gate`);
+  }
   if (!existsSync(bundleDir)) throw new Error(`bundle directory does not exist: ${bundleDir}`);
   const modules = await collectModules(bundleDir);
   const styles = (await Promise.all(CSS_FILES.map((path) => readFile(join(bundleDir, path), 'utf8')))).join('\n');
@@ -386,7 +389,7 @@ async function main() {
         child.once('exit', () => { clearTimeout(timer); resolvePromise(); });
       });
     }
-    await rm(profile, { recursive: true, force: true });
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     if (child.exitCode && child.exitCode !== 0 && stderr) process.stderr.write(stderr);
   }
 }
