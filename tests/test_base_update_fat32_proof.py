@@ -44,6 +44,30 @@ class BaseUpdateFat32ProofTests(unittest.TestCase):
         self.assertIn('rm -f "$PRIVATE_KEY"', proof)
         self.assertIn('test ! -e "$PRIVATE_KEY"', proof)
 
+    def test_signed_proof_exercises_real_legacy_to_ab_transition(self):
+        proof = SIGNED_PROOF.read_text(encoding="utf-8")
+        self.assertIn('--active-slot legacy', proof)
+        self.assertIn('"active_slot": "legacy"', proof)
+        self.assertIn('"previous_slot": "a"', proof)
+        self.assertIn('"candidate_slot": "b"', proof)
+        self.assertIn('"legacy_default_preserved": True', proof)
+        self.assertIn(
+            '"legacy_known_good_enrolled_as_slot_a": True',
+            proof,
+        )
+        self.assertIn(
+            'linux /ordax/vmlinuz',
+            proof,
+        )
+        self.assertIn(
+            'test "$(sudo sha256sum "$MOUNT/ordax/base/a/vmlinuz"',
+            proof,
+        )
+        self.assertIn(
+            'test "$(sudo sha256sum "$MOUNT/ordax/base/b/vmlinuz"',
+            proof,
+        )
+
     def test_signed_proof_refuses_preexisting_ordax_root(self):
         proof = SIGNED_PROOF.read_text(encoding="utf-8")
         self.assertIn("if [ -e /ordax ]; then", proof)
