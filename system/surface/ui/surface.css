@@ -1055,8 +1055,8 @@ button.ordax-tray-item {
 }
 
 .ordax-battery-bolt {
-  fill: var(--ordax-bg);
-  stroke: var(--ordax-bg);
+  fill: var(--ordax-accent);
+  stroke: var(--ordax-accent);
   opacity: 0;
 }
 
