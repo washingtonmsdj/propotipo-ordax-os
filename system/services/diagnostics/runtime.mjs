@@ -47,6 +47,7 @@ export async function createDiagnosticJournalRuntime({
   let events = Object.freeze([]);
   let persistenceStatus = journalStore?.scope ?? "session";
   let persistenceErrorCode = "";
+  let persistenceQueue = Promise.resolve(true);
 
   if (journalStore) {
     try {
@@ -58,22 +59,36 @@ export async function createDiagnosticJournalRuntime({
     }
   }
 
-  const persist = async () => {
-    if (!journalStore) return false;
+  const persist = () => {
+    if (!journalStore) return Promise.resolve(false);
+
+    let payload;
     try {
-      const payload = serializeState(events);
-      const result = await journalStore.save(payload);
-      if (result === false) {
-        throw new Error("Diagnostic journal store rejected persistence");
-      }
-      persistenceStatus = journalStore.scope;
-      persistenceErrorCode = "";
-      return true;
+      payload = serializeState(events);
     } catch {
       persistenceStatus = "degraded";
       persistenceErrorCode = "save-failed";
-      return false;
+      return Promise.resolve(false);
     }
+
+    const write = async () => {
+      try {
+        const result = await journalStore.save(payload);
+        if (result === false) {
+          throw new Error("Diagnostic journal store rejected persistence");
+        }
+        persistenceStatus = journalStore.scope;
+        persistenceErrorCode = "";
+        return true;
+      } catch {
+        persistenceStatus = "degraded";
+        persistenceErrorCode = "save-failed";
+        return false;
+      }
+    };
+
+    persistenceQueue = persistenceQueue.then(write, write);
+    return persistenceQueue;
   };
 
   const snapshot = () => Object.freeze({
