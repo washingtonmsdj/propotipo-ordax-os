@@ -464,6 +464,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("data-ordax-clock", shell)
         self.assertIn("data-ordax-tray-clock", shell)
         self.assertIn("data-connectivity-icon", shell)
+        self.assertIn("ordax-network-symbol-wifi", shell)
+        self.assertIn("ordax-network-symbol-ethernet", shell)
+        self.assertIn('data-signal-level="0"', shell)
         self.assertIn('data-launch-app="settings"', shell)
         self.assertIn("ordax-system-tray", shell)
         self.assertIn('SURFACE_TIME_ZONE = "America/Bahia"', shell)
@@ -479,6 +482,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn(".ordax-identity-art", css)
         self.assertIn(".ordax-rail", css)
         self.assertIn(".ordax-statusbar", css)
+        self.assertIn(".ordax-wifi-arc-outer", css)
+        self.assertIn('[data-network-kind="ethernet"]', css)
 
     def test_windows_center_by_default_and_maximize_to_full_workspace(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
