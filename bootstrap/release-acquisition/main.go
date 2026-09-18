@@ -750,7 +750,7 @@ func installCommand(args []string) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|verify-base-update-envelope|install> [options]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|install> [options]")
 }
 
 func main() {
@@ -762,8 +762,6 @@ func main() {
 	switch os.Args[1] {
 	case "verify-envelope":
 		err = verifyCommand(os.Args[2:])
-	case "verify-base-update-envelope":
-		err = verifyBaseUpdateCommand(os.Args[2:])
 	case "install":
 		err = installCommand(os.Args[2:])
 	default:
