@@ -353,6 +353,12 @@ class NativeHostServer(ThreadingHTTPServer):
 class NativeHostHandler(SimpleHTTPRequestHandler):
     server_version = "OrdaXNativeHost/1"
 
+    def end_headers(self) -> None:
+        if not urlsplit(self.path).path.startswith("/__ordax/native/"):
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
+        super().end_headers()
+
     def _write_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
