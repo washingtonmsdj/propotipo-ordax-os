@@ -48,7 +48,7 @@ MINIMAL_RELATIVE = Path("docs/contracts/minimal-bootstrap.json")
 BOOT_REFRESH_RELATIVE = Path("boot-refresh-required")
 STATUS_RELATIVE = Path("base-update/owner-status.json")
 STAGE_SCRIPT_RELATIVE = Path("bootstrap/base-update/stage.py")
-STAGE_PLANNER_RELATIVE = Path("bootstrap/base-update/planner.py")
+STAGE_PLANNER_RELATIVE = Path("bootstrap/base-update/plan.py")
 ESP_LABEL = Path("/dev/disk/by-label/ORDAX-ESP")
 ESP_MOUNT = Path("/run/ordax-base-update/esp")
 
