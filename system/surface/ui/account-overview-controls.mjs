@@ -1,3 +1,4 @@
+import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   assertIdentityActionsPort,
   isIdentityActionSupported,
@@ -8,10 +9,6 @@ import {
   validateIdentitySessionSnapshot,
 } from "../../contracts/identity-session.mjs";
 import {
-  assertSurfaceHost,
-  validateSurfaceSnapshot,
-} from "../../contracts/surface-host.mjs";
-import {
   assertSyncRuntimePort,
   validateSyncRuntimeSnapshot,
 } from "../../contracts/sync-runtime.mjs";
@@ -19,11 +16,30 @@ import {
   assertWorkspaceMetadataSource,
   validateWorkspaceMetadata,
 } from "../../contracts/workspace-metadata-source.mjs";
-import { SYNC_CORE_STATUS } from "../../services/sync/runtime.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const ACCOUNT_WINDOW_SELECTOR = '[data-window-id="account"]';
 const ACCOUNT_EXTENSION_SELECTOR = '[data-app-extension="account-overview"]';
+
+const ACCOUNT_SECTIONS = Object.freeze([
+  Object.freeze({ id: "overview", label: "Visão geral" }),
+  Object.freeze({ id: "sync", label: "Sincronização" }),
+]);
+
+const SECTION_COPY = Object.freeze({
+  overview: Object.freeze({
+    title: "Conta",
+    subtitle: "Identidade disponível nesta composição, sem simular login ou perfil remoto.",
+  }),
+  sync: Object.freeze({
+    title: "Sincronização",
+    subtitle: "Estado local preparado para continuidade, sem afirmar envio à nuvem sem transporte confirmado.",
+  }),
+});
+
+function validAccountSection(value) {
+  return ACCOUNT_SECTIONS.some((section) => section.id === value);
+}
 
 function node(documentObject, tag, className, text) {
   const element = documentObject.createElement(tag);
@@ -71,28 +87,28 @@ function appendStateCard(documentObject, container, label, value, detail, state 
 
 export function mountAccountOverviewControls(
   root,
-  host,
   identitySession,
   identityActions,
   surfaceLifecycle = null,
   syncRuntime = null,
   workspaceMetadataSource = null,
+  appActivation = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Account overview controls require a Surface root Element");
   }
 
-  const hostPort = assertSurfaceHost(host);
   const sessionPort = assertIdentitySessionPort(identitySession);
   const actionsPort = assertIdentityActionsPort(identityActions);
   const syncPort = syncRuntime === null ? null : assertSyncRuntimePort(syncRuntime);
   const workspaceMetadataPort = workspaceMetadataSource === null
     ? null
     : assertWorkspaceMetadataSource(workspaceMetadataSource);
+  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
-  let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
+
   let sessionSnapshot = validateIdentitySessionSnapshot(sessionPort.getSnapshot());
   let actionsSnapshot = validateIdentityActionsSnapshot(actionsPort.getSnapshot());
   let syncSnapshot = syncPort ? validateSyncRuntimeSnapshot(syncPort.getSnapshot()) : null;
@@ -101,11 +117,38 @@ export function mountAccountOverviewControls(
     : null;
   let pendingAction = null;
   let actionMessage = "";
+  let activeSection = "overview";
   let destroyed = false;
   let mountedSlot = null;
 
   const findSlot = () =>
     root.querySelector(`${ACCOUNT_WINDOW_SELECTOR} ${ACCOUNT_EXTENSION_SELECTOR}`);
+
+  const renderHeader = (view) => {
+    const header = node(documentObject, "header", "ordax-account-header");
+    const copy = SECTION_COPY[activeSection];
+    header.append(
+      node(documentObject, "span", "ordax-account-eyebrow", "Conta"),
+      node(documentObject, "h3", "ordax-account-title", copy.title),
+      node(documentObject, "p", "ordax-account-subtitle", copy.subtitle),
+    );
+    view.append(header);
+  };
+
+  const renderSectionNavigation = (view) => {
+    const navigation = node(documentObject, "nav", "ordax-account-navigation");
+    navigation.setAttribute("aria-label", "Seções de Conta");
+    for (const section of ACCOUNT_SECTIONS) {
+      const button = node(documentObject, "button", "ordax-account-navigation-item", section.label);
+      button.type = "button";
+      button.dataset.accountSection = section.id;
+      const active = activeSection === section.id;
+      button.dataset.active = String(active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+      navigation.append(button);
+    }
+    view.append(navigation);
+  };
 
   const renderIdentity = (view) => {
     const section = node(documentObject, "section", "ordax-account-section");
@@ -113,7 +156,7 @@ export function mountAccountOverviewControls(
     const copy = node(documentObject, "div");
     copy.append(
       node(documentObject, "span", "ordax-account-eyebrow", "Identidade"),
-      node(documentObject, "h3", "ordax-account-title", "Conta OrdaX"),
+      node(documentObject, "h4", "ordax-account-section-title", "Sessão OrdaX"),
       node(documentObject, "p", "ordax-account-subtitle", sessionDescription(sessionSnapshot)),
     );
 
@@ -173,72 +216,60 @@ export function mountAccountOverviewControls(
   const renderContinuity = (view) => {
     const section = node(documentObject, "section", "ordax-account-section");
     section.append(
-      node(documentObject, "span", "ordax-account-eyebrow", "Continuidade"),
-      node(documentObject, "h4", "ordax-account-section-title", "Estado compartilhado com limites explícitos"),
+      node(documentObject, "span", "ordax-account-eyebrow", "Estado local"),
+      node(documentObject, "h4", "ordax-account-section-title", "Continuidade preparada neste dispositivo"),
+      node(
+        documentObject,
+        "p",
+        "ordax-account-subtitle",
+        "Estes dados descrevem apenas a fila e o metadata locais. Nada é chamado de sincronizado sem confirmação de um transporte autenticado.",
+      ),
     );
 
     const grid = node(documentObject, "div", "ordax-account-grid");
-    const identityAvailable = hostSnapshot.capabilityIds.includes("account.identity");
-    const syncAvailable = hostSnapshot.capabilityIds.includes("sync.safe-state");
-
-    appendStateCard(
-      documentObject,
-      grid,
-      "Identidade do host",
-      identityAvailable ? "Disponível" : "Indisponível",
-      identityAvailable
-        ? "O host declarou capacidade de identidade autenticada."
-        : "Nenhuma identidade autenticada foi anunciada.",
-      identityAvailable ? "available" : "unavailable",
-    );
-    appendStateCard(
-      documentObject,
-      grid,
-      "Sincronização segura",
-      syncAvailable ? "Ativa" : "Não ativa",
-      syncAvailable
-        ? "O host pode sincronizar somente classes de estado autorizadas."
-        : "O estado permanece local até existir um transporte autorizado.",
-      syncAvailable ? "available" : "neutral",
-    );
-    appendStateCard(
-      documentObject,
-      grid,
-      "Protocolo de sync",
-      SYNC_CORE_STATUS.protocolCore === "implemented" ? "Preparado" : "Indisponível",
-      "O protocolo compartilhado é independente do provedor de identidade.",
-      SYNC_CORE_STATUS.protocolCore === "implemented" ? "available" : "unavailable",
-    );
     const pendingMutationCount = syncSnapshot?.pendingMutationCount ?? 0;
     const appearanceTracked = syncSnapshot?.trackedDataClasses.includes("appearance") ?? false;
-    appendStateCard(
-      documentObject,
-      grid,
-      "Preferências ao vivo",
-      appearanceTracked
-        ? pendingMutationCount > 0
-          ? "Aguardando transporte"
-          : "Conectadas ao núcleo local"
-        : "Preparadas",
-      appearanceTracked
-        ? pendingMutationCount > 0
-          ? `${pendingMutationCount} alteração local aguarda um transporte autenticado; nada foi enviado para a nuvem.`
-          : "A aparência já alimenta o núcleo local de sync, sem ativar transporte ou conta."
-        : "A integração local ainda não está conectada nesta composição.",
-      appearanceTracked ? "available" : "neutral",
-    );
     const queueIsDurable = syncSnapshot?.queuePersistence === "device";
     const workspaceAreaCount = workspaceMetadataSnapshot?.areas.length ?? 0;
     const workspaceAppCount = workspaceMetadataSnapshot
       ? workspaceMetadataSnapshot.areas.reduce((total, area) => total + area.appIds.length, 0)
       : 0;
+
+    appendStateCard(
+      documentObject,
+      grid,
+      "Alterações locais",
+      syncSnapshot
+        ? pendingMutationCount > 0
+          ? `${pendingMutationCount} pendente${pendingMutationCount === 1 ? "" : "s"}`
+          : "Nenhuma pendência"
+        : "Estado indisponível",
+      syncSnapshot
+        ? pendingMutationCount > 0
+          ? "As alterações aguardam um transporte autenticado; nada foi anunciado como enviado à nuvem."
+          : "A fila local está vazia; isso não prova que exista uma conta ou nuvem sincronizada."
+        : "Esta composição não expõe o runtime local de sincronização.",
+      syncSnapshot ? (pendingMutationCount > 0 ? "neutral" : "available") : "unavailable",
+    );
+
+    appendStateCard(
+      documentObject,
+      grid,
+      "Aparência",
+      appearanceTracked ? "Acompanhada localmente" : "Não acompanhada",
+      appearanceTracked
+        ? "Mudanças de aparência entram no núcleo local de continuidade, sem ativar transporte por conta própria."
+        : "A aparência continua funcional localmente sem depender de sincronização.",
+      appearanceTracked ? "available" : "neutral",
+    );
+
     appendStateCard(
       documentObject,
       grid,
       "Áreas e apps",
       workspaceMetadataSnapshot
         ? `${workspaceAreaCount} área${workspaceAreaCount === 1 ? "" : "s"} · ${workspaceAppCount} app${workspaceAppCount === 1 ? "" : "s"}`
-        : "Preparação indisponível",
+        : "Metadata indisponível",
       workspaceMetadataSnapshot
         ? "Somente áreas e apps abertos entram no metadata portátil; posição, tamanho, maximização e minimização continuam locais."
         : "A composição atual ainda não expõe metadata portátil do workspace.",
@@ -250,53 +281,34 @@ export function mountAccountOverviewControls(
       grid,
       "Fila offline",
       syncSnapshot
-        ? pendingMutationCount > 0
-          ? `${pendingMutationCount} pendente · ${queueIsDurable ? "persistente" : "sessão"}`
-          : queueIsDurable ? "Vazia · persistente" : "Vazia · sessão"
-        : SYNC_CORE_STATUS.offlineMutationQueue === "implemented"
-          ? "Preparada"
-          : "Indisponível",
+        ? queueIsDurable
+          ? "Persistente neste dispositivo"
+          : "Somente nesta sessão"
+        : "Indisponível",
       syncSnapshot
         ? queueIsDurable
-          ? "A fila sobrevive a reload/reinício neste dispositivo e continua bloqueada até existir transporte autorizado."
-          : "Este host só conseguiu manter a fila nesta sessão; nenhum dado foi enviado."
-        : "Mutações locais podem aguardar conectividade sem inventar uma sessão.",
-      syncSnapshot ? (queueIsDurable ? "available" : "neutral") : SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "available" : "unavailable",
+          ? "A fila sobrevive a reload/reinício neste dispositivo e continua local até existir transporte autorizado."
+          : "Pendências podem ser perdidas ao encerrar a sessão desta composição; nenhum dado foi enviado."
+        : "Nenhuma fila local foi exposta por esta composição.",
+      syncSnapshot ? (queueIsDurable ? "available" : "neutral") : "unavailable",
     );
-    section.append(grid);
-    view.append(section);
-  };
 
-  const renderPrivacy = (view) => {
-    const section = node(documentObject, "section", "ordax-account-section");
-    section.append(
-      node(documentObject, "span", "ordax-account-eyebrow", "Fronteira"),
-      node(documentObject, "h4", "ordax-account-section-title", "O dispositivo continua sendo uma fronteira de confiança"),
-    );
-    const facts = node(documentObject, "div", "ordax-account-facts");
-    for (const [title, detail] of [
-      ["Segredos de dispositivo", "Permanecem locais e não fazem parte do estado sincronizável."],
-      ["Provedor de login", "É responsabilidade de um adapter autorizado; a Surface não conhece Google, Microsoft ou passkeys."],
-      ["Estado sincronizável", "Só cruza dispositivos quando classificado e permitido pelo contrato de sync."],
-    ]) {
-      const fact = node(documentObject, "div", "ordax-account-fact");
-      fact.append(
-        node(documentObject, "strong", "", title),
-        node(documentObject, "span", "", detail),
-      );
-      facts.append(fact);
-    }
-    section.append(facts);
+    section.append(grid);
     view.append(section);
   };
 
   const paint = (slot) => {
     slot.replaceChildren();
     slot.dataset.ordaxAccountOverviewView = "";
+    slot.dataset.accountSection = activeSection;
     const view = node(documentObject, "div", "ordax-account-view");
-    renderIdentity(view);
-    renderContinuity(view);
-    renderPrivacy(view);
+    renderHeader(view);
+    renderSectionNavigation(view);
+    if (activeSection === "overview") {
+      renderIdentity(view);
+    } else if (activeSection === "sync") {
+      renderContinuity(view);
+    }
     slot.append(view);
   };
 
@@ -335,6 +347,18 @@ export function mountAccountOverviewControls(
   };
 
   const onClick = (event) => {
+    const sectionButton = event.target.closest("[data-account-section]");
+    if (
+      sectionButton
+      && root.contains(sectionButton)
+      && validAccountSection(sectionButton.dataset.accountSection)
+    ) {
+      activeSection = sectionButton.dataset.accountSection;
+      actionMessage = "";
+      replaceView();
+      return;
+    }
+
     const button = event.target.closest("[data-account-identity-action]");
     if (button && root.contains(button)) {
       void invoke(button.dataset.accountIdentityAction);
@@ -343,9 +367,16 @@ export function mountAccountOverviewControls(
 
   root.addEventListener("click", onClick);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
-  const unsubscribeHost = hostPort.subscribe((snapshot) => {
-    hostSnapshot = validateSurfaceSnapshot(snapshot);
-    replaceView();
+  const unsubscribeActivation = activationPort?.subscribe((activation) => {
+    if (
+      activation.appId === "account"
+      && activation.target !== null
+      && validAccountSection(activation.target)
+    ) {
+      activeSection = activation.target;
+      actionMessage = "";
+      replaceView();
+    }
   });
   const unsubscribeSession = sessionPort.subscribe((snapshot) => {
     sessionSnapshot = validateIdentitySessionSnapshot(snapshot);
@@ -373,7 +404,7 @@ export function mountAccountOverviewControls(
       unsubscribeSync?.();
       unsubscribeActions?.();
       unsubscribeSession?.();
-      unsubscribeHost?.();
+      unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
       const slot = findSlot();
