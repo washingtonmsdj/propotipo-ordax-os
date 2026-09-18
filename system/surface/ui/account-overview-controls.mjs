@@ -108,7 +108,6 @@ export function mountAccountOverviewControls(
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
-
   let sessionSnapshot = validateIdentitySessionSnapshot(sessionPort.getSnapshot());
   let actionsSnapshot = validateIdentityActionsSnapshot(actionsPort.getSnapshot());
   let syncSnapshot = syncPort ? validateSyncRuntimeSnapshot(syncPort.getSnapshot()) : null;
@@ -126,6 +125,59 @@ export function mountAccountOverviewControls(
 
   const findSlot = () =>
     root.querySelector(`${ACCOUNT_WINDOW_SELECTOR} ${ACCOUNT_EXTENSION_SELECTOR}`);
+
+  const focusIdentity = (element) => {
+    if (!element || !element.dataset) return null;
+    if (element.dataset.accountSection) {
+      return Object.freeze({ kind: "section", value: element.dataset.accountSection });
+    }
+    if (element.dataset.accountIdentityAction) {
+      return Object.freeze({ kind: "identity-action", value: element.dataset.accountIdentityAction });
+    }
+    return null;
+  };
+
+  const findFocusTarget = (slot, identity) => {
+    if (!identity) return null;
+    for (const element of slot.querySelectorAll("button")) {
+      const candidate = focusIdentity(element);
+      if (
+        candidate
+        && candidate.kind === identity.kind
+        && candidate.value === identity.value
+      ) {
+        return element;
+      }
+    }
+    return null;
+  };
+
+  const captureInteractionState = (slot) => {
+    const windowBody = slot.closest(".ordax-window-body");
+    const activeElement = documentObject.activeElement;
+    const activeInside = activeElement && slot.contains(activeElement);
+    return Object.freeze({
+      section: slot.dataset.accountSection ?? "",
+      windowScrollTop: windowBody?.scrollTop ?? 0,
+      windowScrollLeft: windowBody?.scrollLeft ?? 0,
+      focus: activeInside ? focusIdentity(activeElement) : null,
+    });
+  };
+
+  const restoreInteractionState = (slot, snapshot) => {
+    const sameSection = Boolean(snapshot) && snapshot.section === activeSection;
+    if (!sameSection) return;
+
+    const windowBody = slot.closest(".ordax-window-body");
+    if (windowBody) {
+      windowBody.scrollTop = snapshot.windowScrollTop;
+      windowBody.scrollLeft = snapshot.windowScrollLeft;
+    }
+
+    const target = findFocusTarget(slot, snapshot.focus);
+    if (!target || target.disabled) return;
+    target.focus({ preventScroll: true });
+  };
 
   const renderHeader = (view) => {
     const header = node(documentObject, "header", "ordax-account-header");
@@ -300,7 +352,7 @@ export function mountAccountOverviewControls(
     view.append(section);
   };
 
-  const paint = (slot) => {
+  const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxAccountOverviewView = "";
     slot.dataset.accountSection = activeSection;
@@ -313,6 +365,7 @@ export function mountAccountOverviewControls(
       renderContinuity(view);
     }
     slot.append(view);
+    restoreInteractionState(slot, interaction);
   };
 
   const renderView = (force = false) => {
@@ -323,8 +376,10 @@ export function mountAccountOverviewControls(
       return;
     }
     if (!force && slot === mountedSlot) return;
+    const interaction =
+      force && slot === mountedSlot ? captureInteractionState(slot) : null;
     mountedSlot = slot;
-    paint(slot);
+    paint(slot, interaction);
   };
 
   const replaceView = () => renderView(true);
