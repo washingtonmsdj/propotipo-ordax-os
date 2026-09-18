@@ -2,6 +2,7 @@ export const SYNC_RUNTIME_SCHEMA = "ordax.sync-runtime/1";
 
 const TRANSPORT_STATES = new Set(["host-required", "available"]);
 const CONTINUITY_STATES = new Set(["not-active", "active"]);
+const QUEUE_PERSISTENCE_STATES = new Set(["session", "device"]);
 
 export function validateSyncRuntimeSnapshot(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -16,6 +17,9 @@ export function validateSyncRuntimeSnapshot(value) {
   if (!Number.isSafeInteger(value.pendingMutationCount) || value.pendingMutationCount < 0) {
     throw new TypeError("Sync pendingMutationCount must be a non-negative safe integer");
   }
+  if (!QUEUE_PERSISTENCE_STATES.has(value.queuePersistence)) {
+    throw new TypeError("Sync queuePersistence must be session or device");
+  }
   if (
     !Array.isArray(value.trackedDataClasses) ||
     value.trackedDataClasses.some((item) => typeof item !== "string" || !item) ||
@@ -27,6 +31,7 @@ export function validateSyncRuntimeSnapshot(value) {
     transport: value.transport,
     accountContinuity: value.accountContinuity,
     pendingMutationCount: value.pendingMutationCount,
+    queuePersistence: value.queuePersistence,
     trackedDataClasses: Object.freeze([...value.trackedDataClasses]),
   });
 }
