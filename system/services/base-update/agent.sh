@@ -26,7 +26,7 @@ log() {
 write_preflight_status() {
     blocker=${1:-physical-root-unavailable}
     case "$blocker" in
-        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|mount-stage-conflict|mount-stage-failed|physical-mountpoint-conflict|physical-mount-failed|physical-bind-conflict|physical-bind-failed|release-channel-missing|development-state-missing|development-state-unsafe)
+        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|mount-stage-conflict|mount-stage-failed|physical-mountpoint-conflict|physical-mount-failed|physical-bind-conflict|physical-bind-failed|development-state-missing|development-state-unsafe)
             ;;
         *) blocker=physical-root-unavailable ;;
     esac
@@ -255,13 +255,6 @@ EOF
             log "physical ORDAX chroot bind was not observable"
             return 1
         }
-    fi
-
-    release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url
-    if [ ! -f "$release_channel" ] || [ -L "$release_channel" ]; then
-        PREPARE_BLOCKER=release-channel-missing
-        log "physical ORDAX root does not expose the release channel"
-        return 1
     fi
 
     host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax
