@@ -1,5 +1,6 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import { assertFileSpacePort, validateFileListing } from "../../contracts/file-space.mjs";
+import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
 
@@ -27,7 +28,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function mountFileSpaceControls(root, fileSpace = null, appActivation = null) {
+export function mountFileSpaceControls(root, fileSpace = null, appActivation = null, surfaceLifecycle = null) {
   if (!(root instanceof Element)) {
     throw new TypeError("File-space controls require a Surface root Element");
   }
@@ -36,6 +37,7 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
   if (!port) {
     return Object.freeze({ destroy() {} });
   }
+  const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
 
   let listing = null;
   let pending = false;
@@ -183,9 +185,8 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
     }
   };
 
-  const observer = new MutationObserver(() => renderPanel());
-  observer.observe(root, { childList: true, subtree: true });
   root.addEventListener("click", onClick);
+  const unsubscribeRender = lifecycle.subscribeRender(renderPanel);
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (activation.appId === "files" && activation.target) {
       void load(activation.target);
@@ -198,7 +199,7 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
       destroyed = true;
       requestOrdinal += 1;
       unsubscribeActivation?.();
-      observer.disconnect();
+      unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.querySelector(`${FILE_WINDOW_SELECTOR} [data-ordax-file-space-panel]`)?.remove();
     },
