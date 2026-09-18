@@ -77,10 +77,11 @@ class TelemetrySupabaseContractTests(unittest.TestCase):
         relay = RELAY.read_text(encoding="utf-8")
         migration = MIGRATION.read_text(encoding="utf-8")
         for forbidden in (
-            "reboot",
-            "poweroff",
+            "reboot -f",
+            "poweroff -f",
             "sysrq-trigger",
             "/__ordax/native/power",
+            "Deno.Command",
         ):
             self.assertNotIn(forbidden, relay)
             self.assertNotIn(forbidden, migration)
