@@ -2,32 +2,21 @@ import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
 import { validateSystemMetricsSnapshot } from "../../contracts/system-metrics.mjs";
 import { validateUpdateHistorySnapshot } from "../../contracts/update-history.mjs";
 import { validateUpdateStatusSnapshot } from "../../contracts/update-status.mjs";
+import { redactDiagnosticText } from "./redaction.mjs";
+import { validateDiagnosticJournalRuntimeSnapshot } from "./runtime.mjs";
 
-export const DIAGNOSTIC_REPORT_SCHEMA = "ordax.diagnostic-report/1";
-
-const MAX_DIAGNOSTIC_TEXT = 1000;
+export const DIAGNOSTIC_REPORT_SCHEMA = "ordax.diagnostic-report/2";
 
 function validateGeneratedAt(value) {
-  if (typeof value !== "string" || value.length === 0 || Number.isNaN(Date.parse(value))) {
-    throw new TypeError("Diagnostic report generatedAt must be a valid timestamp string");
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > 64
+    || Number.isNaN(Date.parse(value))
+  ) {
+    throw new TypeError("Diagnostic report generatedAt must be a bounded valid timestamp string");
   }
   return value;
-}
-
-export function redactDiagnosticText(value) {
-  if (value === undefined || value === null || value === "") return "";
-  if (typeof value !== "string") {
-    throw new TypeError("Diagnostic report text must be a string");
-  }
-
-  return value
-    .slice(0, MAX_DIAGNOSTIC_TEXT)
-    .replace(/\bBearer\s+[A-Za-z0-9._~+\/=:-]+/gi, "Bearer [redacted]")
-    .replace(/\b(token|secret|password|passwd|api[-_]?key)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
-    .replace(/\b[A-Z]:\\Users\\[^\\\s]+/gi, "[user-path]")
-    .replace(/\/home\/[^/\s]+/g, "/home/[user]")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
-    .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[ip]");
 }
 
 function summarizeUpdate(value) {
@@ -79,12 +68,42 @@ function summarizeHistory(value) {
   });
 }
 
+function summarizeJournal(value) {
+  if (value === null || value === undefined) return null;
+  const snapshot = validateDiagnosticJournalRuntimeSnapshot(value);
+  return Object.freeze({
+    eventCount: snapshot.events.length,
+    retentionLimit: snapshot.retentionLimit,
+    configuredStoreScope: snapshot.configuredStoreScope,
+    persistenceStatus: snapshot.persistenceStatus,
+    persistenceErrorCode: snapshot.persistenceErrorCode,
+    events: Object.freeze(
+      snapshot.events.map((entry) => Object.freeze({
+        $schema: entry.$schema,
+        eventCode: entry.eventCode,
+        component: entry.component,
+        severity: entry.severity,
+        occurredAt: entry.occurredAt,
+        correlationKey: entry.correlationKey,
+        deliveryNumber: entry.deliveryNumber,
+        sourceSha: entry.sourceSha,
+        targetSha: entry.targetSha,
+        rejectedSha: entry.rejectedSha,
+        status: entry.status,
+        phase: entry.phase,
+        message: redactDiagnosticText(entry.message),
+      })),
+    ),
+  });
+}
+
 export function createDiagnosticReport({
   generatedAt = new Date().toISOString(),
   surface,
   update = null,
   metrics = null,
   history = null,
+  journal = null,
 }) {
   const surfaceSnapshot = validateSurfaceSnapshot(surface);
 
@@ -99,6 +118,7 @@ export function createDiagnosticReport({
     update: summarizeUpdate(update),
     metrics: summarizeMetrics(metrics),
     history: summarizeHistory(history),
+    journal: summarizeJournal(journal),
   });
 }
 
