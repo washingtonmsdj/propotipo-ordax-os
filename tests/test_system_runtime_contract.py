@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_ENTRYPOINT = ROOT / "system" / "entrypoint"
+SYSTEM_SUPERVISOR = ROOT / "system" / "supervisor"
 SURFACE_ENTRYPOINT = ROOT / "system" / "surface" / "entrypoint"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
@@ -20,6 +21,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
             self.assertTrue(path.is_file(), path)
             mode = stat.S_IMODE(path.stat().st_mode)
             self.assertEqual(mode, 0o755, f"{path} mode={mode:o}")
+        self.assertTrue(SYSTEM_SUPERVISOR.is_file(), SYSTEM_SUPERVISOR)
         self.assertTrue(NATIVE_HOST_SERVER.is_file(), NATIVE_HOST_SERVER)
         self.assertTrue(RESCUE_AGENT.is_file(), RESCUE_AGENT)
         self.assertTrue(BASE_TELEMETRY_AGENT.is_file(), BASE_TELEMETRY_AGENT)
@@ -27,7 +29,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertTrue((NATIVE_COMPOSITION / "main.mjs").is_file())
 
     def test_shell_syntax_is_valid(self):
-        for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME, RESCUE_AGENT, BASE_TELEMETRY_AGENT):
+        for path in (SYSTEM_ENTRYPOINT, SYSTEM_SUPERVISOR, SURFACE_ENTRYPOINT, SURFACE_RUNTIME, RESCUE_AGENT, BASE_TELEMETRY_AGENT):
             subprocess.run(["sh", "-n", str(path)], check=True)
 
     def test_native_host_user_folder_provisioning_is_fail_soft(self):
@@ -41,13 +43,19 @@ class SystemRuntimeContractTests(unittest.TestCase):
             check=True,
         )
 
-    def test_system_entrypoint_is_fail_closed(self):
+    def test_system_entrypoint_is_guardian_and_fail_closed(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
-        self.assertIn("surface/entrypoint", text)
+        supervisor = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("SUPERVISOR=$SYSTEM_ROOT/supervisor", text)
         self.assertIn("/ordax/bootstrap/recovery/entrypoint", text)
-        self.assertNotIn("exec sh", text)
+        self.assertIn("start_supervisor()", text)
+        self.assertIn("terminate_supervisor()", text)
+        self.assertIn("supervisor heartbeat stale", text)
+        self.assertNotIn("surface/entrypoint", text)
+        self.assertNotIn("ls-remote", text)
         self.assertNotIn("http://", text)
         self.assertNotIn("https://", text)
+        self.assertIn("SURFACE_ENTRYPOINT=$SYSTEM_ROOT/surface/entrypoint", supervisor)
 
     def test_surface_entrypoint_owns_only_surface_handoff(self):
         text = SURFACE_ENTRYPOINT.read_text(encoding="utf-8")

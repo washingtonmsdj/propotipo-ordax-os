@@ -3,514 +3,188 @@ set -eu
 
 SYSTEM_ROOT=${0%/*}
 SYSTEM_ENTRYPOINT=$SYSTEM_ROOT/entrypoint
-SURFACE_ENTRYPOINT=$SYSTEM_ROOT/surface/entrypoint
+SUPERVISOR=$SYSTEM_ROOT/supervisor
 RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
-WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
-STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
-PINNED_FILE=$STATE_DIR/pinned-commit
-PREVIOUS_FILE=$STATE_DIR/previous-commit
-CURRENT_FILE=$STATE_DIR/current-commit
-BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
-LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
-LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
-REJECTED_FILE=$STATE_DIR/rejected-commit
-SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
-UPDATE_LOG=$UPDATE_RUN_DIR/update.log
-HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha
-GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
-BRANCH=${ORDAX_REPO_BRANCH:-main}
-UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
-REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
-FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
-GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
-SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
-UPDATE_TARGET_SHA=""
-UPDATE_PHASE=idle
-UPDATE_ATTEMPT_ID=""
-UPDATE_ERROR=""
-SURFACE_PID=""
+GUARDIAN_PID_FILE=$UPDATE_RUN_DIR/guardian.pid
+SUPERVISOR_PID_FILE=$UPDATE_RUN_DIR/supervisor.pid
+GUARDIAN_LOG=$UPDATE_RUN_DIR/guardian.log
+CHECK_INTERVAL=${ORDAX_GUARDIAN_CHECK_SECONDS:-10}
+STALE_SECONDS=${ORDAX_SUPERVISOR_STALE_SECONDS:-120}
+CRASH_LIMIT=${ORDAX_SUPERVISOR_CRASH_LIMIT:-3}
+STABLE_SECONDS=${ORDAX_SUPERVISOR_STABLE_SECONDS:-60}
+SUPERVISOR_PID=""
+STOPPING=0
+
+mkdir -p "$UPDATE_RUN_DIR"
+chmod 700 "$UPDATE_RUN_DIR"
 
 log() {
-    echo "ordax-system: $*" >&2
+    printf '%s ordax-guardian: %s\n' "$(/bin/busybox date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf unknown)" "$*" >>"$GUARDIAN_LOG"
 }
 
-case "$UPDATE_INTERVAL" in
-    ''|*[!0-9]*) UPDATE_INTERVAL=5 ;;
-esac
-[ "$UPDATE_INTERVAL" -ge 5 ] 2>/dev/null || UPDATE_INTERVAL=5
-
-case "$REMOTE_TIMEOUT" in
-    ''|*[!0-9]*) REMOTE_TIMEOUT=20 ;;
-esac
-[ "$REMOTE_TIMEOUT" -ge 5 ] 2>/dev/null || REMOTE_TIMEOUT=20
-
-case "$FETCH_TIMEOUT" in
-    ''|*[!0-9]*) FETCH_TIMEOUT=45 ;;
-esac
-[ "$FETCH_TIMEOUT" -ge 10 ] 2>/dev/null || FETCH_TIMEOUT=45
-
-case "$GIT_LOW_SPEED_TIME" in
-    ''|*[!0-9]*) GIT_LOW_SPEED_TIME=15 ;;
-esac
-[ "$GIT_LOW_SPEED_TIME" -ge 5 ] 2>/dev/null || GIT_LOW_SPEED_TIME=15
-
-case "$SURFACE_HEALTH_TIMEOUT" in
-    ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=30 ;;
-esac
-[ "$SURFACE_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30
-
-GIT_TERMINAL_PROMPT=0
-export GIT_TERMINAL_PROMPT
-
-run_bounded_git() {
-    timeout_seconds=$1
-    shift
-    /bin/busybox timeout -k 5 "$timeout_seconds"         "$GIT_BIN"         -c http.lowSpeedLimit=1         -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME"         "$@"
+normalize_number() {
+    value=$1
+    fallback=$2
+    minimum=$3
+    case "$value" in
+        ''|*[!0-9]*) value=$fallback ;;
+    esac
+    [ "$value" -ge "$minimum" ] 2>/dev/null || value=$fallback
+    printf '%s' "$value"
 }
 
-write_state_value() {
+CHECK_INTERVAL=$(normalize_number "$CHECK_INTERVAL" 10 5)
+STALE_SECONDS=$(normalize_number "$STALE_SECONDS" 120 60)
+CRASH_LIMIT=$(normalize_number "$CRASH_LIMIT" 3 2)
+STABLE_SECONDS=$(normalize_number "$STABLE_SECONDS" 60 30)
+
+epoch_now() {
+    /bin/busybox date +%s 2>/dev/null || printf '0\n'
+}
+
+state_epoch() {
+    [ -f "$UPDATE_STATE" ] || {
+        printf '0\n'
+        return 0
+    }
+    /bin/busybox stat -c %Y "$UPDATE_STATE" 2>/dev/null || printf '0\n'
+}
+
+is_pid() {
+    case "${1:-}" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$1" -gt 1 ] 2>/dev/null
+}
+
+write_pid() {
     destination=$1
     value=$2
-    temporary=$destination.tmp.$
+    temporary=$destination.tmp.$$
     printf '%s\n' "$value" >"$temporary"
     /bin/busybox mv -f "$temporary" "$destination"
 }
 
-apply_remote_checkout() {
-    previous_sha=$1
-    expected_sha=$2
+terminate_supervisor() {
+    pid=${SUPERVISOR_PID:-}
+    is_pid "$pid" || return 0
+    kill -0 "$pid" >/dev/null 2>&1 || return 0
 
-    if [ -n "$("$GIT_BIN" -C "$WORKTREE" status --porcelain)" ]; then
-        log "checkout has local changes; refusing automatic update"
-        return 1
-    fi
-
-    if ! run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" fetch --no-tags origin         "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >>"$UPDATE_LOG" 2>&1; then
-        log "Git fetch failed or timed out after ${FETCH_TIMEOUT}s"
-        return 1
-    fi
-
-    fetched_sha=$("$GIT_BIN" -C "$WORKTREE" rev-parse "refs/remotes/origin/$BRANCH" 2>>"$UPDATE_LOG" || true)
-    [ "$fetched_sha" = "$expected_sha" ] || {
-        log "fetched SHA mismatch: expected $expected_sha, got ${fetched_sha:-unknown}"
-        return 1
-    }
-
-    "$GIT_BIN" -C "$WORKTREE" merge-base --is-ancestor "$previous_sha" "$expected_sha" >>"$UPDATE_LOG" 2>&1 || {
-        log "remote update is not a fast-forward from $previous_sha"
-        return 1
-    }
-
-    "$GIT_BIN" -C "$WORKTREE" reset --hard "$expected_sha" >>"$UPDATE_LOG" 2>&1 || return 1
-    "$GIT_BIN" -C "$WORKTREE" sparse-checkout set --no-cone /system/ >>"$UPDATE_LOG" 2>&1 || return 1
-    write_state_value "$PREVIOUS_FILE" "$previous_sha"
-    write_state_value "$CURRENT_FILE" "$expected_sha"
-    return 0
-}
-
-/bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR"
-chmod 700 "$UPDATE_RUN_DIR"
-: >"$UPDATE_LOG"
-
-utc_now() {
-    /bin/busybox date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'unknown\n'
-}
-
-read_state_value() {
-    file=$1
-    value=""
-    if [ -s "$file" ]; then
-        IFS= read -r value <"$file" || true
-    fi
-    printf '%s' "$value"
-}
-
-current_sha() {
-    "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
-}
-
-set_update_context() {
-    UPDATE_PHASE=$1
-    UPDATE_TARGET_SHA=${2:-}
-    UPDATE_ATTEMPT_ID=${3:-}
-    UPDATE_ERROR=${4:-}
-}
-
-clear_update_context() {
-    UPDATE_PHASE=idle
-    UPDATE_TARGET_SHA=""
-    UPDATE_ATTEMPT_ID=""
-    UPDATE_ERROR=""
-}
-
-write_update_state() {
-    source_sha=$1
-    status=$2
-    apply_mode=$3
-    boot_refresh=false
-    [ -f "$BOOT_REFRESH_FILE" ] && boot_refresh=true
-    checked_at=$(utc_now)
-    last_applied_sha=$(read_state_value "$LAST_APPLIED_SHA_FILE")
-    last_applied_at=$(read_state_value "$LAST_APPLIED_AT_FILE")
-    rejected_sha=$(read_state_value "$REJECTED_FILE")
-    [ -n "$last_applied_at" ] || last_applied_at=unknown
-    temporary=$UPDATE_STATE.tmp.$$
-    printf '{"sourceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s"}\n' \
-        "$source_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
-        "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
-    /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
-}
-
-record_applied() {
-    source_sha=$1
-    temporary=$LAST_APPLIED_SHA_FILE.tmp.$$
-    printf '%s\n' "$source_sha" >"$temporary"
-    /bin/busybox mv -f "$temporary" "$LAST_APPLIED_SHA_FILE"
-    temporary=$LAST_APPLIED_AT_FILE.tmp.$$
-    utc_now >"$temporary"
-    /bin/busybox mv -f "$temporary" "$LAST_APPLIED_AT_FILE"
-}
-
-mark_boot_refresh_required() {
-    source_sha=$1
-    temporary=$BOOT_REFRESH_FILE.tmp.$$
-    printf '%s\n' "$source_sha" >"$temporary"
-    /bin/busybox mv -f "$temporary" "$BOOT_REFRESH_FILE"
-}
-
-start_surface() {
-    [ -x "$SURFACE_ENTRYPOINT" ] || return 1
-    ORDAX_SYSTEM_ROOT=$SYSTEM_ROOT
-    export ORDAX_SYSTEM_ROOT
-    "$SURFACE_ENTRYPOINT" &
-    SURFACE_PID=$!
-    log "Surface started as pid $SURFACE_PID"
-}
-
-stop_surface() {
-    [ -n "$SURFACE_PID" ] || return 0
-    if kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
-        kill "$SURFACE_PID" >/dev/null 2>&1 || true
-        remaining=5
-        while kill -0 "$SURFACE_PID" >/dev/null 2>&1 && [ "$remaining" -gt 0 ]; do
-            /bin/busybox sleep 1
-            remaining=$((remaining - 1))
-        done
-        if kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
-            log "Surface did not stop gracefully; forcing pid $SURFACE_PID"
-            kill -KILL "$SURFACE_PID" >/dev/null 2>&1 || true
-        fi
-    fi
-    wait "$SURFACE_PID" 2>/dev/null || true
-    SURFACE_PID=""
-}
-
-surface_stays_running() {
-    seconds=${1:-4}
-    while [ "$seconds" -gt 0 ]; do
-        [ -n "$SURFACE_PID" ] && kill -0 "$SURFACE_PID" >/dev/null 2>&1 || return 1
+    kill "$pid" >/dev/null 2>&1 || true
+    remaining=5
+    while kill -0 "$pid" >/dev/null 2>&1 && [ "$remaining" -gt 0 ]; do
         /bin/busybox sleep 1
-        seconds=$((seconds - 1))
+        remaining=$((remaining - 1))
     done
-    return 0
+    if kill -0 "$pid" >/dev/null 2>&1; then
+        log "forcing stalled supervisor pid $pid"
+        kill -KILL "$pid" >/dev/null 2>&1 || true
+    fi
+    wait "$pid" 2>/dev/null || true
 }
 
-wait_for_surface_health() {
-    expected_sha=$1
-    seconds=${2:-12}
-    while [ "$seconds" -gt 0 ]; do
-        healthy_sha=$(read_state_value "$HEALTH_FILE")
-        [ "$healthy_sha" = "$expected_sha" ] && return 0
-        /bin/busybox sleep 1
-        seconds=$((seconds - 1))
-    done
-    return 1
+cleanup() {
+    STOPPING=1
+    terminate_supervisor
+    rm -f "$SUPERVISOR_PID_FILE" "$GUARDIAN_PID_FILE" >/dev/null 2>&1 || true
 }
 
 terminate() {
     trap - EXIT HUP INT TERM
-    stop_surface
+    cleanup
     exit 0
 }
 
 fail_closed() {
-    log "$*"
-    stop_surface
+    reason=$1
+    log "$reason"
+    terminate_supervisor
+    rm -f "$SUPERVISOR_PID_FILE" "$GUARDIAN_PID_FILE" >/dev/null 2>&1 || true
     if [ -x "$RECOVERY_ENTRYPOINT" ]; then
         trap - EXIT HUP INT TERM
         exec "$RECOVERY_ENTRYPOINT"
     fi
-    log "recovery entrypoint unavailable"
     exit 1
 }
 
-validate_updated_tree() {
-    [ -x "$SYSTEM_ENTRYPOINT" ] || return 1
-    [ -x "$SURFACE_ENTRYPOINT" ] || return 1
-    [ -x "$SYSTEM_ROOT/surface/bin/ordax-surface" ] || return 1
-    [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
-    [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || return 1
-    /bin/sh -n "$SYSTEM_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
-    /bin/sh -n "$SURFACE_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
-    /bin/sh -n "$SYSTEM_ROOT/surface/bin/ordax-surface" >>"$UPDATE_LOG" 2>&1 || return 1
+start_supervisor() {
+    [ -f "$SUPERVISOR" ] || return 1
+    /bin/sh -n "$SUPERVISOR" >>"$GUARDIAN_LOG" 2>&1 || return 1
+    /bin/sh "$SUPERVISOR" >>"$GUARDIAN_LOG" 2>&1 &
+    SUPERVISOR_PID=$!
+    write_pid "$SUPERVISOR_PID_FILE" "$SUPERVISOR_PID"
+    log "started supervisor pid $SUPERVISOR_PID"
     return 0
 }
 
-rollback_update() {
-    previous_sha=$1
-    failed_sha=$2
-    failed_mode=$3
-    reason=$4
-    set_update_context rollback "$failed_sha" "$UPDATE_ATTEMPT_ID" "$reason"
-    write_update_state "$failed_sha" applied "$failed_mode"
-    log "rejecting update $failed_sha: $reason; rolling back to $previous_sha"
-    temporary=$REJECTED_FILE.tmp.$$
-    printf '%s\n' "$failed_sha" >"$temporary"
-    /bin/busybox mv -f "$temporary" "$REJECTED_FILE"
-    rm -f "$HEALTH_FILE"
-    stop_surface
-    if ! "$GIT_BIN" -C "$WORKTREE" reset --hard "$previous_sha" >>"$UPDATE_LOG" 2>&1; then
-        fail_closed "automatic rollback to $previous_sha failed"
-    fi
-    start_surface || fail_closed "rolled-back Surface could not be started"
-    surface_stays_running 4 || fail_closed "rolled-back Surface did not stay running"
-    write_update_state "$previous_sha" rolled-back "$failed_mode"
-}
-
-classify_changes() {
-    old_sha=$1
-    new_sha=$2
-    APPLY_MODE=none
-    LOW_LEVEL_CHANGED=0
-    supervisor_changed=0
-    surface_host_changed=0
-    live_surface_changed=0
-
-    if ! changed_paths=$("$GIT_BIN" -C "$WORKTREE" diff --name-only "$old_sha" "$new_sha" 2>>"$UPDATE_LOG"); then
-        APPLY_MODE=surface-restart
-        return 0
-    fi
-
-    while IFS= read -r path; do
-        [ -n "$path" ] || continue
-        case "$path" in
-            boot/*|bootstrap/*)
-                LOW_LEVEL_CHANGED=1
-                ;;
-            system/entrypoint)
-                supervisor_changed=1
-                ;;
-            system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint|system/services/telemetry/base-agent.sh|system/services/telemetry/relay.json)
-                surface_host_changed=1
-                ;;
-            system/apps/*|system/adapters/*|system/contracts/*|system/services/*|system/composition/*|system/surface/ui/*)
-                live_surface_changed=1
-                ;;
-            system/*)
-                surface_host_changed=1
-                ;;
-        esac
-    done <<EOF
-$changed_paths
-EOF
-
-    if [ "$supervisor_changed" -eq 1 ]; then
-        APPLY_MODE=supervisor-restart
-    elif [ "$surface_host_changed" -eq 1 ]; then
-        APPLY_MODE=surface-restart
-    elif [ "$live_surface_changed" -eq 1 ]; then
-        APPLY_MODE=reload
-    fi
-}
-
-check_for_update() {
-    current=$(current_sha)
-
-    if [ -s "$PINNED_FILE" ]; then
-        set_update_context blocked "" "" "pinned"
-        write_update_state "$current" pinned none
-        return 0
-    fi
-    if [ ! -x "$GIT_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
-        set_update_context blocked "" "" "git-unavailable"
-        write_update_state "$current" disabled none
-        return 0
-    fi
-
-    if ! remote_output=$(run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
-        log "remote check failed or timed out after ${REMOTE_TIMEOUT}s; keeping running Surface"
-        set_update_context error "" "" "remote-check-failed"
-        write_update_state "$current" network-error none
-        return 0
-    fi
-    set -- $remote_output
-    remote_sha=${1:-}
-    case "$remote_sha" in
-        ''|*[!0-9a-f]*)
-            set_update_context error "" "" "invalid-remote-sha"
-            write_update_state "$current" remote-error none
-            return 0
-            ;;
-    esac
-
-    rejected_sha=$(read_state_value "$REJECTED_FILE")
-
-    if [ "$remote_sha" = "$current" ]; then
-        healthy_sha=$(read_state_value "$HEALTH_FILE")
-        if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ] && [ "$healthy_sha" = "$current" ]; then
-            rm -f "$REJECTED_FILE"
-            rejected_sha=""
-            log "cleared stale rejected state for healthy current checkout $current"
-        fi
-        if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ]; then
-            set_update_context blocked "$current" "" "rejected-commit"
-            write_update_state "$current" rejected none
-        else
-            clear_update_context
-            write_update_state "$current" running none
-        fi
-        return 0
-    fi
-
-    if [ -n "$rejected_sha" ] && [ "$remote_sha" = "$rejected_sha" ]; then
-        set_update_context blocked "$remote_sha" "" "rejected-commit"
-        write_update_state "$current" rejected none
-        return 0
-    fi
-    if [ -n "$rejected_sha" ] && [ "$remote_sha" != "$rejected_sha" ]; then
-        rm -f "$REJECTED_FILE"
-    fi
-
-    old_sha=$current
-    attempt_id=$(utc_now)
-    set_update_context fetching "$remote_sha" "$attempt_id" ""
-    write_update_state "$old_sha" updating none
-    log "update available: $old_sha -> $remote_sha"
-
-    if ! apply_remote_checkout "$old_sha" "$remote_sha"; then
-        log "automatic supervisor-owned Git update failed; keeping running Surface"
-        set_update_context error "$remote_sha" "$attempt_id" "checkout-failed"
-        write_update_state "$old_sha" pull-error none
-        return 0
-    fi
-
-    new_sha=$(current_sha)
-    if [ "$new_sha" = "$old_sha" ] || [ "$new_sha" = unknown ]; then
-        set_update_context error "$remote_sha" "$attempt_id" "checkout-sha-invalid"
-        write_update_state "$old_sha" pull-error none
-        return 0
-    fi
-
-    set_update_context validating "$new_sha" "$attempt_id" ""
-    write_update_state "$new_sha" updating none
-    classify_changes "$old_sha" "$new_sha"
-    if ! validate_updated_tree; then
-        rollback_update "$old_sha" "$new_sha" "$APPLY_MODE" "updated system tree failed preflight validation"
-        return 0
-    fi
-
-    if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
-        mark_boot_refresh_required "$new_sha"
-        log "boot/bootstrap changes detected; current session remains running and boot refresh is marked pending"
-    fi
-
-    case "$APPLY_MODE" in
-        reload)
-            rm -f "$HEALTH_FILE"
-            set_update_context health-wait "$new_sha" "$attempt_id" ""
-            write_update_state "$new_sha" applied reload
-            log "live-safe system update applied; waiting for Surface health acknowledgement"
-            if wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
-                record_applied "$new_sha"
-                clear_update_context
-                write_update_state "$new_sha" running reload
-                log "updated Surface acknowledged healthy state"
-            else
-                rollback_update "$old_sha" "$new_sha" reload "Surface did not acknowledge healthy state"
-            fi
-            ;;
-        surface-restart)
-            set_update_context activating "$new_sha" "$attempt_id" ""
-            write_update_state "$new_sha" applied surface-restart
-            log "native host update applied; restarting Surface only"
-            stop_surface
-            if ! start_surface || ! surface_stays_running 4; then
-                rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not stay running"
-                return 0
-            fi
-            record_applied "$new_sha"
-            clear_update_context
-            write_update_state "$new_sha" running surface-restart
-            ;;
-        supervisor-restart)
-            rm -f "$HEALTH_FILE"
-            set_update_context activating "$new_sha" "$attempt_id" ""
-            temporary=$SUPERVISOR_GUARD_FILE.tmp.$
-            printf '%s %s %s\n' "$old_sha" "$new_sha" "$attempt_id" >"$temporary"
-            /bin/busybox mv -f "$temporary" "$SUPERVISOR_GUARD_FILE"
-            write_update_state "$new_sha" applied supervisor-restart
-            log "supervisor update applied; restarting system supervisor without reboot"
-            stop_surface
-            trap - EXIT HUP INT TERM
-            exec "$SYSTEM_ENTRYPOINT"
-            ;;
-        none)
-            record_applied "$new_sha"
-            clear_update_context
-            write_update_state "$new_sha" running none
-            log "repository update has no running-system effect"
-            ;;
-    esac
-}
-
-trap stop_surface EXIT
+trap cleanup EXIT
 trap terminate HUP INT TERM
 
-[ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
+write_pid "$GUARDIAN_PID_FILE" "$$"
+log "guardian started pid=$$"
 
-initial_sha=$(current_sha)
-clear_update_context
-write_update_state "$initial_sha" running initial
-log "starting shared OrdaX Surface with Git hot-update supervisor"
-start_surface || fail_closed "surface entrypoint could not be started"
-
-if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
-    guard_line=$(read_state_value "$SUPERVISOR_GUARD_FILE")
-    set -- $guard_line
-    guard_previous=${1:-}
-    guard_current=${2:-}
-    guard_attempt=${3:-}
-    if [ -n "$guard_previous" ] && [ "$guard_current" = "$initial_sha" ]; then
-        set_update_context health-wait "$guard_current" "$guard_attempt" ""
-        write_update_state "$guard_current" applied supervisor-restart
-        log "validating restarted supervisor and Surface for $guard_current"
-        if surface_stays_running 4 && wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"; then
-            record_applied "$guard_current"
-            rm -f "$SUPERVISOR_GUARD_FILE"
-            clear_update_context
-            write_update_state "$guard_current" running supervisor-restart
-            log "restarted supervisor and Surface acknowledged healthy state"
-        else
-            rm -f "$SUPERVISOR_GUARD_FILE"
-            rollback_update "$guard_previous" "$guard_current" supervisor-restart "restarted supervisor/Surface did not become healthy"
-        fi
-    else
-        rm -f "$SUPERVISOR_GUARD_FILE"
-    fi
-fi
+consecutive_failures=0
 
 while :; do
-    /bin/busybox sleep "$UPDATE_INTERVAL"
+    start_supervisor || fail_closed "supervisor script is missing or invalid"
 
-    if [ -n "$SURFACE_PID" ] && ! kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
-        surface_rc=0
-        wait "$SURFACE_PID" 2>/dev/null || surface_rc=$?
-        SURFACE_PID=""
-        log "Surface exited with status $surface_rc; restarting without reboot"
-        start_surface || fail_closed "Surface restart failed"
+    started_at=$(epoch_now)
+    stale_restart=0
+
+    while is_pid "$SUPERVISOR_PID" && kill -0 "$SUPERVISOR_PID" >/dev/null 2>&1; do
+        /bin/busybox sleep "$CHECK_INTERVAL"
+        [ "$STOPPING" -eq 0 ] || exit 0
+
+        now=$(epoch_now)
+        heartbeat=$(state_epoch)
+        case "$now:$heartbeat" in
+            *[!0-9:]*|'0:'*|*:0) continue ;;
+        esac
+
+        age=$((now - heartbeat))
+        if [ "$age" -gt "$STALE_SECONDS" ] 2>/dev/null; then
+            log "supervisor heartbeat stale for ${age}s; restarting child"
+            stale_restart=1
+            terminate_supervisor
+            break
+        fi
+    done
+
+    supervisor_rc=0
+    if [ "$stale_restart" -eq 0 ]; then
+        wait "$SUPERVISOR_PID" 2>/dev/null || supervisor_rc=$?
+    else
+        supervisor_rc=124
+    fi
+    rm -f "$SUPERVISOR_PID_FILE" >/dev/null 2>&1 || true
+    SUPERVISOR_PID=""
+
+    if [ "$supervisor_rc" -eq 75 ]; then
+        log "supervisor requested guardian refresh"
+        trap - EXIT HUP INT TERM
+        exec "$SYSTEM_ENTRYPOINT"
     fi
 
-    check_for_update
- done
+    ended_at=$(epoch_now)
+    runtime=0
+    case "$started_at:$ended_at" in
+        *[!0-9:]*|'0:'*|*:0) runtime=0 ;;
+        *) runtime=$((ended_at - started_at)) ;;
+    esac
+
+    if [ "$runtime" -ge "$STABLE_SECONDS" ] 2>/dev/null; then
+        consecutive_failures=0
+    else
+        consecutive_failures=$((consecutive_failures + 1))
+    fi
+
+    log "supervisor exited rc=$supervisor_rc runtime=${runtime}s failures=$consecutive_failures"
+
+    if [ "$consecutive_failures" -ge "$CRASH_LIMIT" ] 2>/dev/null; then
+        fail_closed "supervisor exceeded crash budget"
+    fi
+
+    /bin/busybox sleep 2
+done
