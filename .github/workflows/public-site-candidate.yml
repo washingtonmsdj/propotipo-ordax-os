@@ -8,6 +8,7 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/contracts/public-site.json'
+      - 'docs/contracts/public-site-deployment.json'
       - 'docs/contracts/public-identity.json'
       - 'docs/contracts/public-release-catalog.json'
       - 'services/public-identity/**'
@@ -19,6 +20,7 @@ on:
       - 'tests/test_public_release_catalog.py'
       - 'tests/test_public_identity_backend_prep.py'
       - 'tests/test_public_identity_gateway.py'
+      - 'tests/test_public_site_runtime_smoke.py'
       - '.github/workflows/public-site-candidate.yml'
   pull_request:
     paths:
@@ -26,6 +28,7 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/contracts/public-site.json'
+      - 'docs/contracts/public-site-deployment.json'
       - 'docs/contracts/public-identity.json'
       - 'docs/contracts/public-release-catalog.json'
       - 'services/public-identity/**'
@@ -37,6 +40,7 @@ on:
       - 'tests/test_public_release_catalog.py'
       - 'tests/test_public_identity_backend_prep.py'
       - 'tests/test_public_identity_gateway.py'
+      - 'tests/test_public_site_runtime_smoke.py'
       - '.github/workflows/public-site-candidate.yml'
   workflow_dispatch:
 
@@ -67,6 +71,7 @@ jobs:
           python -m unittest tests.test_public_release_catalog -v
           python -m unittest tests.test_public_identity_backend_prep -v
           python -m unittest tests.test_public_identity_gateway -v
+          python -m unittest tests.test_public_site_runtime_smoke -v
 
       - name: Build and verify deterministic public site
         run: |
