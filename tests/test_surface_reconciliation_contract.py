@@ -21,6 +21,17 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertNotIn("runningApps.replaceChildren()", surface)
         self.assertNotIn("areaSwitcher.replaceChildren()", surface)
 
+    def test_order_changes_move_only_the_nodes_that_need_moving(self):
+        surface = self.read_surface()
+        self.assertIn("function placeChildAt", surface)
+        self.assertIn("if (current === child) return;", surface)
+        self.assertIn("container.insertBefore(child, current)", surface)
+        self.assertIn("placeChildAt(windowLayer, windowNode, renderedIndex)", surface)
+        self.assertIn("placeChildAt(body, section, index)", surface)
+        self.assertIn("placeChildAt(appLauncher, button, index)", surface)
+        self.assertIn("placeChildAt(runningApps, button, index)", surface)
+        self.assertIn("placeChildAt(areaSwitcher, button, index)", surface)
+
     def test_windows_are_reconciled_by_workspace_and_window_identity(self):
         surface = self.read_surface()
         self.assertIn("function syncWindowNode", surface)
@@ -29,7 +40,7 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertIn("node.dataset.areaId === area.id", surface)
         self.assertIn("node.dataset.windowId === windowState.id", surface)
         self.assertIn("node.dataset.appId === app.id", surface)
-        self.assertIn("windowLayer.append(windowNode)", surface)
+        self.assertIn("placeChildAt(windowLayer, windowNode, renderedIndex)", surface)
         self.assertIn("if (!retained.has(staleWindow)) staleWindow.remove();", surface)
 
     def test_minimize_does_not_destroy_application_dom(self):
@@ -37,6 +48,8 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertIn("windowNode.hidden = windowState.minimized", surface)
         self.assertIn("windowNode.dataset.minimized = String(windowState.minimized)", surface)
         self.assertNotIn("if (windowState.minimized) continue;", surface)
+        self.assertIn('if (action === "minimize" || action === "close")', surface)
+        self.assertIn("workspace.focus({ preventScroll: true });", surface)
 
     def test_extension_slots_survive_shell_reconciliation(self):
         surface = self.read_surface()
@@ -45,12 +58,16 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertIn('return `extension:${panel.extensionId}`', surface)
         self.assertIn('if (panel.kind === "extension") {', surface)
         self.assertIn("section.dataset.appExtension = panel.extensionId", surface)
-        self.assertIn("body.append(section)", surface)
+        self.assertIn("placeChildAt(body, section, index)", surface)
 
     def test_launcher_dock_and_area_controls_keep_stable_nodes(self):
         surface = self.read_surface()
         self.assertIn("button.hidden = !matches", surface)
-        self.assertIn("activeElement?.dataset?.launchApp && activeElement.hidden", surface)
+        self.assertIn(
+            "const focusedLauncherApp = root.ownerDocument.activeElement?.dataset?.launchApp ?? null",
+            surface,
+        )
+        self.assertIn("focusedButton.hidden || focusedButton.disabled", surface)
         self.assertIn('child.dataset?.openWindow === windowState.id', surface)
         self.assertIn('child.dataset?.areaId === area.id', surface)
         self.assertIn('button:not(:disabled):not([hidden])', surface)
