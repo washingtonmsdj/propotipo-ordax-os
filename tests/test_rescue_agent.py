@@ -15,7 +15,8 @@ class RescueAgentContractTests(unittest.TestCase):
         self.assertIn('ls-remote --heads origin "refs/heads/$RESCUE_BRANCH"', text)
         self.assertIn('"refs/heads/$RESCUE_BRANCH:refs/remotes/origin/$RESCUE_BRANCH"', text)
         self.assertIn('"$rescue_sha:rescue/command.txt"', text)
-        for forbidden in ("curl ", "wget ", "ssh ", "eval ", "source "):
+        self.assertIn("GIT_TERMINAL_PROMPT=0", text)
+        for forbidden in ("curl ", "wget ", "ssh ", "eval ", "source ", "sh -c"):
             self.assertNotIn(forbidden, text)
 
     def test_protocol_is_closed_and_target_bound_to_current_main(self):
