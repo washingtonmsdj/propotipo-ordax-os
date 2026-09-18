@@ -943,29 +943,71 @@ kbd {
   color: var(--ordax-accent-strong);
 }
 
-.ordax-status {
+.ordax-system-tray {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 14px;
+  gap: 4px;
+  padding-left: 10px;
   border-left: 1px solid var(--ordax-border);
   color: var(--ordax-muted);
-  font-size: 0.72rem;
 }
 
-.ordax-status-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ordax-faint);
+.ordax-tray-item {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.7rem;
+  white-space: nowrap;
 }
 
-.ordax-status-dot[data-state="online"] {
-  background: var(--ordax-accent);
+button.ordax-tray-item {
+  cursor: pointer;
 }
 
-.ordax-status-dot[data-state="offline"] {
-  background: var(--ordax-danger);
+.ordax-tray-icon {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ordax-muted);
+}
+
+.ordax-tray-icon[data-state="online"] {
+  color: var(--ordax-accent);
+}
+
+.ordax-tray-icon[data-state="offline"] {
+  color: var(--ordax-danger);
+}
+
+.ordax-tray-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ordax-tray-clock {
+  color: var(--ordax-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.ordax-tray-clock time {
+  min-width: 36px;
+}
+
+.ordax-tray-item:hover,
+button.ordax-tray-item:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
 }
 
 .ordax-area-button:hover:not(:disabled),
@@ -1085,6 +1127,20 @@ kbd {
     grid-row: 3;
     padding-inline: 8px;
     gap: 4px;
+  }
+
+  .ordax-system-tray {
+    gap: 2px;
+    padding-left: 4px;
+  }
+
+  .ordax-tray-item {
+    gap: 4px;
+    padding-inline: 5px;
+  }
+
+  .ordax-tray-label {
+    display: none;
   }
 
   .ordax-brandbar {

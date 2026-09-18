@@ -195,7 +195,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("assertUpdateHistoryPort", overview)
         self.assertIn("assertSystemMetricsPort", overview)
         self.assertIn("Histórico de atualizações", overview)
-        self.assertIn("Componentes integrados", overview)
+        self.assertIn("Versão global", overview)
+        self.assertIn("Incluído nesta entrega", overview)
         self.assertIn("America/Bahia", overview)
         self.assertIn(".ordax-system-view", css)
         self.assertIn("../../surface/ui/system.css", web_html)
@@ -453,6 +454,7 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_desktop_identity_shell_is_shared_semantic_and_non_remote(self):
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
         for app_id in ("files", "settings", "account", "system"):
@@ -460,8 +462,14 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("data-power-slot", shell)
         self.assertIn("data-update-slot", shell)
         self.assertIn("data-ordax-clock", shell)
+        self.assertIn("data-ordax-tray-clock", shell)
+        self.assertIn("data-connectivity-icon", shell)
+        self.assertIn('data-launch-app="settings"', shell)
+        self.assertIn("ordax-system-tray", shell)
         self.assertIn('SURFACE_TIME_ZONE = "America/Bahia"', shell)
         self.assertIn('timeZone: SURFACE_TIME_ZONE', shell)
+        self.assertIn("trayTimeNode.textContent = formattedTime", shell)
+        self.assertIn('root.querySelector("[data-connectivity-icon]").dataset.state', surface)
         self.assertIn("data-launcher-query", shell)
         self.assertIn("Ctrl + K", shell)
         self.assertIn("ordax-brand-symbol", shell)

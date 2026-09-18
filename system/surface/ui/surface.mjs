@@ -326,7 +326,8 @@ export function mountSurface(
 
     const connectivityLabel = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
     root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
-    root.querySelector("[data-connectivity-dot]").dataset.state = state.connectivity;
+    root.querySelector("[data-connectivity-icon]").dataset.state = state.connectivity;
+    root.querySelector("[data-connectivity-tray]").title = `Rede: ${connectivityLabel}`;
 
     for (const targetButton of root.querySelectorAll("[data-requires-capability]")) {
       const capabilityId = targetButton.dataset.requiresCapability;
