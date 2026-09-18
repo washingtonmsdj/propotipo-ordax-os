@@ -38,6 +38,7 @@ NETWORK_BROKER_SOURCE=$SYSTEM_ROOT/surface/runtime/network_broker.sh
 POWER_REQUEST=$SESSION_DIR/power-request
 POWER_STATE_DIR=$STATE_ROOT/power
 POWER_LAST_REQUEST=$POWER_STATE_DIR/last-request
+POWER_PENDING_STALE_SECONDS=120
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
 RUNTIME_ID=alpine-v3.22-cage-barkery-v1
@@ -637,30 +638,25 @@ start_time_sync_agent() {
     kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
 }
 
-record_power_request() {
+write_power_request_record() {
     action=${1:-}
-    status=${2:-pending}
+    request_boot_id=${2:-}
+    request_epoch=${3:-0}
+    status=${4:-pending}
     case "$action" in
         restart|shutdown) ;;
         *) return 1 ;;
     esac
+    case "$request_boot_id" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+    [ "${#request_boot_id}" -le 128 ] || return 1
+    case "$request_epoch" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
     case "$status" in
         pending|failed) ;;
         *) return 1 ;;
-    esac
-
-    request_boot_id=""
-    if [ -s /run/ordax-update/base-boot-id ]; then
-        IFS= read -r request_boot_id </run/ordax-update/base-boot-id || true
-    fi
-    case "$request_boot_id" in
-        ''|*[!0-9a-f]*) request_boot_id="" ;;
-    esac
-    [ "${#request_boot_id}" -le 128 ] || request_boot_id=""
-
-    request_epoch=$(/bin/busybox date +%s 2>/dev/null || true)
-    case "$request_epoch" in
-        ''|*[!0-9]*) request_epoch=0 ;;
     esac
 
     temporary=$POWER_LAST_REQUEST.tmp.$
@@ -668,6 +664,60 @@ record_power_request() {
     chmod 600 "$temporary" || return 1
     /bin/busybox mv -f "$temporary" "$POWER_LAST_REQUEST" || return 1
     return 0
+}
+
+current_power_boot_id() {
+    current_boot_id=""
+    if [ -s /run/ordax-update/base-boot-id ]; then
+        IFS= read -r current_boot_id </run/ordax-update/base-boot-id || true
+    fi
+    case "$current_boot_id" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+    [ "${#current_boot_id}" -le 128 ] || return 1
+    printf '%s\n' "$current_boot_id"
+}
+
+record_power_request() {
+    action=${1:-}
+    status=${2:-pending}
+    request_boot_id=$(current_power_boot_id 2>/dev/null || true)
+    [ -n "$request_boot_id" ] || return 1
+    request_epoch=$(/bin/busybox date +%s 2>/dev/null || true)
+    case "$request_epoch" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    write_power_request_record "$action" "$request_boot_id" "$request_epoch" "$status"
+}
+
+reconcile_stale_power_request() {
+    [ -s "$POWER_LAST_REQUEST" ] || return 0
+
+    action=""
+    request_boot_id=""
+    request_epoch=""
+    status=""
+    IFS='|' read -r action request_boot_id request_epoch status <"$POWER_LAST_REQUEST" || return 0
+    [ "$status" = "pending" ] || return 0
+    case "$action" in restart|shutdown) ;; *) return 0 ;; esac
+    case "$request_boot_id" in ''|*[!0-9a-f]*) return 0 ;; esac
+    case "$request_epoch" in ''|*[!0-9]*) return 0 ;; esac
+
+    current_boot_id=$(current_power_boot_id 2>/dev/null || true)
+    [ -n "$current_boot_id" ] || return 0
+
+    # A different boot id is positive cross-boot evidence. Do not rewrite it as
+    # failure; the telemetry owner will report lastPowerRequestCrossedBoot=true.
+    [ "$request_boot_id" = "$current_boot_id" ] || return 0
+
+    now=$(/bin/busybox date +%s 2>/dev/null || true)
+    case "$now" in ''|*[!0-9]*) return 0 ;; esac
+    age=$((now - request_epoch))
+    [ "$age" -ge "$POWER_PENDING_STALE_SECONDS" ] 2>/dev/null || return 0
+
+    if write_power_request_record "$action" "$request_boot_id" "$request_epoch" failed; then
+        echo "ordax-surface: stale $action request remained in the same boot for ${age}s; marked failed" >>"$HOST_LOG"
+    fi
 }
 
 restart_host() {
@@ -765,6 +815,7 @@ prepare_input_stack() {
 }
 
 [ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
+reconcile_stale_power_request || echo "ordax-surface: stale power request reconciliation failed safely" >>"$HOST_LOG"
 ensure_base_telemetry_agent || echo "ordax-surface: base telemetry bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 start_time_sync_agent || echo "ordax-surface: automatic time synchronization unavailable; continuing Surface startup" >>"$HOST_LOG"
