@@ -320,7 +320,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 
 ### 6.2 Estrutura comum do gerenciador
 
-**Topo:** Voltar/Avançar, subir um nível, breadcrumbs, busca no local, Atualizar e Nova pasta. Mostrar só operações implementadas.
+**Topo:** Voltar/Avançar, subir um nível, breadcrumbs, busca no local, Atualizar e Nova pasta. Voltar/Avançar/Subir agora existem com histórico local delimitado por janela; a busca atual filtra nomes somente na pasta aberta. Mostrar só operações implementadas.
 
 **Navegação interna:** Meu espaço; Recentes; Favoritos; Documentos; Imagens; Downloads; locais adicionais e Lixeira quando disponíveis.
 
