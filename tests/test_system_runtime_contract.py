@@ -185,7 +185,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
         self.assertIn("failed to bind host resources into graphical runtime", text)
-        self.assertIn("native Surface HTTP/control server failed to start", text)
+        self.assertIn("native Surface HTTP/control server failed readiness check", text)
         self.assertIn("native Cage/Barkery host exited with status", text)
 
 
