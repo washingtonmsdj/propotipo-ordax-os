@@ -45,8 +45,8 @@ class PublicSiteContractTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertNotIn("http://", text, path)
             self.assertNotIn("https://", text, path)
-            self.assertNotIn("src="//", text, path)
-            self.assertNotIn("href="//", text, path)
+            self.assertNotIn('src="//', text, path)
+            self.assertNotIn('href="//', text, path)
 
     def test_runtime_integration_uses_same_origin_paths(self):
         script = (SITE / "assets" / "site.js").read_text(encoding="utf-8")
