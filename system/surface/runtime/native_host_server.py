@@ -33,6 +33,7 @@ MAX_CONTROL_BODY = 512
 MAX_PREFERENCE_BODY = 8192
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
+STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
@@ -289,6 +290,26 @@ def create_user_directory(user_root: str, logical_path: str, name: str) -> dict:
     finally:
         os.close(descriptor)
     return list_user_directory(user_root, logical_path)
+
+
+def ensure_standard_user_directories(user_root: str) -> tuple[str, ...]:
+    descriptor = open_user_directory(user_root, "/")
+    ready = []
+    try:
+        for name in STANDARD_USER_DIRECTORIES:
+            try:
+                os.mkdir(name, mode=0o700, dir_fd=descriptor)
+            except FileExistsError:
+                try:
+                    child = os.open(name, _directory_open_flags(), dir_fd=descriptor)
+                except OSError:
+                    continue
+                else:
+                    os.close(child)
+            ready.append(name)
+    finally:
+        os.close(descriptor)
+    return tuple(ready)
 
 
 def requested_file_path(request_target: str) -> str:
@@ -553,6 +574,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    standard_directories = ensure_standard_user_directories(args.user_root)
+    if len(standard_directories) != len(STANDARD_USER_DIRECTORIES):
+        missing = sorted(set(STANDARD_USER_DIRECTORIES) - set(standard_directories))
+        print(
+            "ordax-native-host: standard user directories unavailable: %s" % ",".join(missing),
+            file=sys.stderr,
+            flush=True,
+        )
     handler = partial(NativeHostHandler, directory=args.directory)
     server = NativeHostServer(
         (args.bind, args.port),

@@ -4,6 +4,7 @@ import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
+import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 
 const root = document.querySelector("#ordax-root");
@@ -16,6 +17,7 @@ const preferenceStore = createWebPreferenceStore(window);
 const workspaceStore = createWebWorkspaceStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
+const appActivation = createAppActivationChannel();
 validateAccountRuntime(
   host.getSnapshot(),
   identitySession.getSnapshot(),
@@ -28,6 +30,7 @@ const surface = mountSurface(
   identitySession,
   identityActions,
   workspaceStore,
+  appActivation,
 );
 
 window.addEventListener(

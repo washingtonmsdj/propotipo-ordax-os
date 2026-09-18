@@ -8,6 +8,7 @@ import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs"
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
+import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -25,6 +26,7 @@ async function start() {
   const workspaceStore = createNativeWorkspaceStore(window);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
+  const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
 
   let powerActions = null;
@@ -71,8 +73,9 @@ async function start() {
     identitySession,
     identityActions,
     workspaceStore,
+    appActivation,
   );
-  const fileSpaceControls = mountFileSpaceControls(root, fileSpace);
+  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation);
   const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics);
   const systemStatusControls = mountSystemStatusControls(root, updateWatcher);
   const updateControls = mountUpdateControls(root, updateWatcher);

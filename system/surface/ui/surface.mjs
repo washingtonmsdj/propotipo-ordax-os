@@ -4,6 +4,7 @@ import {
   isIdentityActionSupported,
   validateIdentityActionsSnapshot,
 } from "../../contracts/identity-actions.mjs";
+import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
@@ -261,6 +262,7 @@ export function mountSurface(
   identitySession = null,
   identityActions = null,
   workspaceStore = null,
+  appActivation = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Surface root must be a DOM Element");
@@ -270,6 +272,7 @@ export function mountSurface(
   const identityPort = identitySession === null ? null : assertIdentitySessionPort(identitySession);
   const identityActionsPort = identityActions === null ? null : assertIdentityActionsPort(identityActions);
   const workspacePort = workspaceStore === null ? null : assertWorkspaceStore(workspaceStore);
+  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const preferenceSeed = store ? validatePreferenceRecord(store.load()) : {};
   const workspaceSeed = workspacePort ? validateWorkspaceRecord(workspacePort.load()) : null;
   let identitySnapshot = validateIdentitySessionSnapshot(
@@ -434,6 +437,14 @@ export function mountSurface(
     root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
     root.querySelector("[data-connectivity-dot]").dataset.state = state.connectivity;
 
+    for (const targetButton of root.querySelectorAll("[data-requires-capability]")) {
+      const capabilityId = targetButton.dataset.requiresCapability;
+      const available = state.capabilityIds.includes(capabilityId);
+      targetButton.disabled = !available;
+      targetButton.setAttribute("aria-disabled", String(!available));
+      targetButton.title = available ? "" : "Este destino requer o espaço local do usuário.";
+    }
+
     renderLauncher();
     renderWindows();
     renderDock();
@@ -514,7 +525,20 @@ export function mountSurface(
 
     const appButton = event.target.closest("[data-launch-app]");
     if (appButton) {
-      dispatch({ type: "app.launch", appId: appButton.dataset.launchApp });
+      const appId = appButton.dataset.launchApp;
+      const requiredCapability = appButton.dataset.requiresCapability;
+      const app = getFirstPartyApp(appId);
+      if (
+        (requiredCapability && !state.capabilityIds.includes(requiredCapability)) ||
+        !isAppAvailable(app, state.capabilityIds)
+      ) {
+        return;
+      }
+      dispatch({ type: "app.launch", appId });
+      const target = appButton.dataset.appTarget;
+      if (target && activationPort) {
+        activationPort.publish({ appId, target });
+      }
       launcherQuery.value = "";
       return;
     }
