@@ -7,6 +7,10 @@ import {
   validateFileListing,
   validateTextFile,
 } from "../../contracts/file-space.mjs";
+import {
+  assertRecentFilesPort,
+  validateRecentFilesSnapshot,
+} from "../../contracts/recent-files.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
@@ -68,6 +72,7 @@ export function mountFileSpaceControls(
   fileSpace = null,
   appActivation = null,
   surfaceLifecycle = null,
+  recentFiles = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("File-space controls require a Surface root Element");
@@ -77,6 +82,7 @@ export function mountFileSpaceControls(
   if (!port) {
     return Object.freeze({ destroy() {} });
   }
+  const recentPort = recentFiles === null ? null : assertRecentFilesPort(recentFiles);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -103,12 +109,25 @@ export function mountFileSpaceControls(
   let navigationHistory = [];
   let navigationIndex = -1;
   let focusRequest = null;
+  let recentSnapshot = recentPort?.getSnapshot() ?? null;
+  let recentMode = false;
+  let selectedRecentPath = null;
+  let recentSearchQuery = "";
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
 
+  const interactionContext = () =>
+    recentMode ? "recent" : `path:${listing?.path ?? ""}`;
+
   const focusIdentity = (element) => {
     if (!element || !element.dataset) return null;
+    if (element.dataset.fileRecentSearch !== undefined) {
+      return Object.freeze({ kind: "recent-search", value: "" });
+    }
+    if (element.dataset.fileRecentPath) {
+      return Object.freeze({ kind: "recent-row", value: element.dataset.fileRecentPath });
+    }
     if (element.dataset.fileSearch !== undefined) {
       return Object.freeze({ kind: "search", value: "" });
     }
@@ -163,7 +182,7 @@ export function mountFileSpaceControls(
           })
         : null;
     return Object.freeze({
-      path: slot.dataset.fileSpacePath ?? "",
+      context: slot.dataset.fileSpaceContext ?? "",
       windowScrollTop: windowBody?.scrollTop ?? 0,
       windowScrollLeft: windowBody?.scrollLeft ?? 0,
       listScrollTop: list?.scrollTop ?? 0,
@@ -180,30 +199,30 @@ export function mountFileSpaceControls(
   };
 
   const restoreInteractionState = (slot, snapshot) => {
-    const samePath =
+    const sameContext =
       Boolean(snapshot)
-      && snapshot.path === (listing?.path ?? "");
+      && snapshot.context === interactionContext();
     const windowBody = slot.closest(".ordax-window-body");
-    if (windowBody && samePath) {
+    if (windowBody && sameContext) {
       windowBody.scrollTop = snapshot.windowScrollTop;
       windowBody.scrollLeft = snapshot.windowScrollLeft;
     }
 
     const list = slot.querySelector(".ordax-files-list");
-    if (list && samePath) {
+    if (list && sameContext) {
       list.scrollTop = snapshot.listScrollTop;
       list.scrollLeft = snapshot.listScrollLeft;
     }
 
     const preview = slot.querySelector(".ordax-files-preview-content");
-    if (preview && samePath) {
+    if (preview && sameContext) {
       preview.scrollTop = snapshot.previewScrollTop;
       preview.scrollLeft = snapshot.previewScrollLeft;
     }
 
     const requested = focusRequest;
     focusRequest = null;
-    const identity = requested ?? (samePath ? snapshot?.focus : null) ?? null;
+    const identity = requested ?? (sameContext ? snapshot?.focus : null) ?? null;
     const target = findFocusTarget(slot, identity);
     if (!target || target.disabled) return;
 
@@ -211,7 +230,7 @@ export function mountFileSpaceControls(
     if (!(target instanceof HTMLInputElement)) return;
 
     const savedSelection =
-      samePath
+      sameContext
       && snapshot?.selection
       && snapshot.selection.identity.kind === identity.kind
       && snapshot.selection.identity.value === identity.value
@@ -235,15 +254,26 @@ export function mountFileSpaceControls(
   const renderLocations = (container) => {
     const heading = node(documentObject, "p", "ordax-files-section-label", "Locais");
     container.append(heading);
-    for (const location of LOCATIONS) {
+    LOCATIONS.forEach((location, index) => {
       const button = node(documentObject, "button", "ordax-files-location", location.label);
       button.type = "button";
       button.dataset.fileOpenPath = location.path;
-      const active = Boolean(listing && locationIsActive(listing.path, location.path));
+      const active = Boolean(
+        !recentMode && listing && locationIsActive(listing.path, location.path),
+      );
       button.dataset.active = String(active);
       button.setAttribute("aria-current", active ? "page" : "false");
       container.append(button);
-    }
+
+      if (index === 0 && recentPort) {
+        const recent = node(documentObject, "button", "ordax-files-location", "Recentes");
+        recent.type = "button";
+        recent.dataset.fileOpenRecent = "";
+        recent.dataset.active = String(recentMode);
+        recent.setAttribute("aria-current", recentMode ? "page" : "false");
+        container.append(recent);
+      }
+    });
   };
 
   const parentPath = (path) => {
@@ -769,10 +799,228 @@ export function mountFileSpaceControls(
     container.append(preview);
   };
 
+  const visibleRecentEntries = () => {
+    const entries = recentSnapshot?.entries ?? [];
+    const query = recentSearchQuery.trim().toLocaleLowerCase(FILE_SEARCH_LOCALE);
+    if (!query) return [...entries];
+    return entries.filter((entry) =>
+      entry.name.toLocaleLowerCase(FILE_SEARCH_LOCALE).includes(query)
+      || entry.path.toLocaleLowerCase(FILE_SEARCH_LOCALE).includes(query),
+    );
+  };
+
+  const selectedRecentEntry = () =>
+    recentSnapshot?.entries.find((entry) => entry.path === selectedRecentPath) ?? null;
+
+  const renderRecentEntries = (container) => {
+    const list = node(documentObject, "div", "ordax-files-list");
+    list.setAttribute("aria-label", "Arquivos recentes");
+    const header = node(documentObject, "div", "ordax-files-list-header");
+    header.append(
+      node(documentObject, "span", "", "Nome"),
+      node(documentObject, "span", "", "Tipo"),
+      node(documentObject, "span", "", "Local"),
+      node(documentObject, "span", "", "Aberto"),
+    );
+    list.append(header);
+
+    const allEntries = recentSnapshot?.entries ?? [];
+    const entries = visibleRecentEntries();
+    if (allEntries.length === 0) {
+      list.append(
+        node(
+          documentObject,
+          "div",
+          "ordax-files-empty",
+          "Nenhum arquivo foi aberto recentemente pelo OrdaX.",
+        ),
+      );
+      container.append(list);
+      return;
+    }
+    if (entries.length === 0) {
+      list.append(
+        node(
+          documentObject,
+          "div",
+          "ordax-files-empty",
+          "Nenhum arquivo recente corresponde à busca.",
+        ),
+      );
+      container.append(list);
+      return;
+    }
+
+    for (const entry of entries) {
+      const selected = selectedRecentPath === entry.path;
+      const row = node(documentObject, "button", "ordax-file-row");
+      row.type = "button";
+      row.dataset.fileRecentPath = entry.path;
+      row.dataset.kind = "file";
+      row.dataset.selected = String(selected);
+      row.setAttribute("aria-pressed", String(selected));
+      row.setAttribute(
+        "aria-label",
+        selected ? `${entry.name}, arquivo recente, selecionado` : `${entry.name}, arquivo recente`,
+      );
+
+      const nameCell = node(documentObject, "span", "ordax-file-name");
+      const icon = node(documentObject, "span", "ordax-file-icon");
+      icon.dataset.kind = "file";
+      icon.setAttribute("aria-hidden", "true");
+      nameCell.append(icon, node(documentObject, "span", "", entry.name));
+      row.append(
+        nameCell,
+        node(documentObject, "span", "ordax-file-meta", "Arquivo"),
+        node(documentObject, "span", "ordax-file-meta", parentPath(entry.path)),
+        node(documentObject, "span", "ordax-file-meta", formatModifiedAt(entry.openedAt)),
+      );
+      list.append(row);
+    }
+    container.append(list);
+  };
+
+  const renderRecentDetails = (container) => {
+    const selected = selectedRecentEntry();
+    if (!selected) return;
+    const details = node(documentObject, "section", "ordax-files-details");
+    details.setAttribute("aria-label", "Detalhes do arquivo recente selecionado");
+    const summary = node(documentObject, "div", "ordax-files-details-summary");
+    summary.append(
+      node(documentObject, "strong", "ordax-files-details-title", selected.name),
+      node(documentObject, "span", "ordax-files-details-meta", "Arquivo aberto pelo OrdaX"),
+      node(documentObject, "span", "ordax-files-details-path", selected.path),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-details-path",
+        `Aberto: ${formatModifiedAt(selected.openedAt)}`,
+      ),
+    );
+    const actions = node(documentObject, "div", "ordax-files-details-actions");
+    const open = node(
+      documentObject,
+      "button",
+      "ordax-files-action ordax-files-action-primary",
+      "Abrir",
+    );
+    open.type = "button";
+    open.dataset.fileRecentOpen = "";
+    open.disabled = previewPending;
+    const reveal = node(documentObject, "button", "ordax-files-action", "Mostrar na pasta");
+    reveal.type = "button";
+    reveal.dataset.fileRecentReveal = "";
+    reveal.disabled = pending || previewPending;
+    const remove = node(documentObject, "button", "ordax-files-action", "Remover da lista");
+    remove.type = "button";
+    remove.dataset.fileRecentRemove = "";
+    remove.disabled = previewPending;
+    actions.append(open, reveal, remove);
+    details.append(summary, actions);
+    container.append(details);
+  };
+
+  const renderRecentContent = (content) => {
+    const toolbar = node(documentObject, "header", "ordax-files-toolbar");
+    const title = node(documentObject, "div", "ordax-files-breadcrumb");
+    title.append(node(documentObject, "strong", "", "Recentes"));
+
+    const search = node(documentObject, "div", "ordax-files-search");
+    const searchInput = node(documentObject, "input", "ordax-files-search-input");
+    searchInput.type = "search";
+    searchInput.maxLength = 120;
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchInput.placeholder = "Buscar nos recentes";
+    searchInput.value = recentSearchQuery;
+    searchInput.dataset.fileRecentSearch = "";
+    searchInput.setAttribute("aria-label", "Buscar nos arquivos recentes");
+    search.append(searchInput);
+    if (recentSearchQuery) {
+      const clearSearch = node(documentObject, "button", "ordax-files-search-clear", "Limpar");
+      clearSearch.type = "button";
+      clearSearch.dataset.fileRecentSearchClear = "";
+      search.append(clearSearch);
+    }
+
+    const actions = node(documentObject, "div", "ordax-files-actions");
+    const clearHistory = node(documentObject, "button", "ordax-files-action", "Limpar histórico");
+    clearHistory.type = "button";
+    clearHistory.dataset.fileRecentClear = "";
+    clearHistory.disabled = (recentSnapshot?.entries.length ?? 0) === 0 || previewPending;
+    actions.append(clearHistory);
+    toolbar.append(title, search, actions);
+    content.append(toolbar);
+
+    const allEntries = recentSnapshot?.entries ?? [];
+    const status = node(
+      documentObject,
+      "div",
+      "ordax-files-status",
+      `${recentSearchQuery ? `${visibleRecentEntries().length} de ` : ""}${allEntries.length} ${allEntries.length === 1 ? "arquivo" : "arquivos"} · ${recentSnapshot?.persistence === "device" ? "histórico salvo neste dispositivo" : "histórico somente nesta sessão"}`,
+    );
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    content.append(status);
+    if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
+    renderRecentEntries(content);
+    renderRecentDetails(content);
+    renderTextPreview(content);
+    content.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-files-boundary",
+        "Recentes registra somente arquivos abertos pelo OrdaX. Remover ou limpar este histórico não apaga arquivos.",
+      ),
+    );
+  };
+
+  const enterRecentMode = () => {
+    if (!recentPort) return;
+    requestOrdinal += 1;
+    pending = false;
+    recentMode = true;
+    selectedRecentPath = null;
+    message = null;
+    transferEntry = null;
+    creatingDirectory = false;
+    renamingPath = null;
+    copyingPath = null;
+    previewRequestOrdinal += 1;
+    previewPending = false;
+    textPreview = null;
+    replaceView();
+  };
+
+  const revealRecent = async () => {
+    const selected = selectedRecentEntry();
+    if (!selected) return;
+    const targetPath = selected.path;
+    recentMode = false;
+    selectedRecentPath = null;
+    previewRequestOrdinal += 1;
+    previewPending = false;
+    textPreview = null;
+    const loaded = await load(parentPath(targetPath));
+    if (destroyed || !loaded) return;
+    const exists = listing?.entries.some(
+      (entry) => joinPath(listing.path, entry.name) === targetPath,
+    );
+    if (exists) {
+      selectPath(targetPath, { focus: true });
+      return;
+    }
+    selectedPath = null;
+    message = "Arquivo não encontrado. A referência pode ser removida de Recentes.";
+    replaceView();
+  };
+
   const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxFileSpaceView = "";
-    slot.dataset.fileSpacePath = listing?.path ?? "";
+    slot.dataset.fileSpacePath = recentMode ? "" : (listing?.path ?? "");
+    slot.dataset.fileSpaceContext = interactionContext();
 
     const view = node(documentObject, "div", "ordax-files-view");
     const locations = node(documentObject, "nav", "ordax-files-locations");
@@ -780,6 +1028,13 @@ export function mountFileSpaceControls(
     renderLocations(locations);
 
     const content = node(documentObject, "section", "ordax-files-content");
+    if (recentMode) {
+      renderRecentContent(content);
+      view.append(locations, content);
+      slot.append(view);
+      restoreInteractionState(slot, interaction);
+      return;
+    }
     const toolbar = node(documentObject, "header", "ordax-files-toolbar");
     const navigation = node(documentObject, "div", "ordax-files-navigation");
 
@@ -909,6 +1164,8 @@ export function mountFileSpaceControls(
   const replaceView = () => renderView(true);
 
   const load = async (path, { recordHistory = true } = {}) => {
+    recentMode = false;
+    selectedRecentPath = null;
     const ordinal = ++requestOrdinal;
     pending = true;
     message = null;
@@ -982,6 +1239,7 @@ export function mountFileSpaceControls(
       const next = validateTextFile(await port.readTextFile(path));
       if (destroyed || ordinal !== previewRequestOrdinal) return;
       textPreview = next;
+      if (recentPort) recentPort.recordOpened(next.path);
     } catch (error) {
       if (destroyed || ordinal !== previewRequestOrdinal) return;
       const status = operationStatus(error);
@@ -1039,6 +1297,9 @@ export function mountFileSpaceControls(
       const next = validateFileListing(await operation);
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
+      if (source.mode === "move" && recentPort) {
+        recentPort.relocate(source.sourceFullPath, nextPath);
+      }
       transferEntry = null;
       selectedPath = nextPath;
       if (!selectionIsVisible()) selectedPath = null;
@@ -1306,6 +1567,7 @@ export function mountFileSpaceControls(
       );
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
+      if (recentPort) recentPort.relocate(previousPath, nextPath);
       selectedPath = nextPath;
       if (!selectionIsVisible()) selectedPath = null;
       renamingPath = null;
@@ -1380,6 +1642,72 @@ export function mountFileSpaceControls(
   };
 
   const onClick = (event) => {
+    const recentLocation = event.target.closest("[data-file-open-recent]");
+    if (recentLocation && root.contains(recentLocation) && recentPort) {
+      enterRecentMode();
+      return;
+    }
+    const recentRow = event.target.closest("[data-file-recent-path]");
+    if (recentRow && root.contains(recentRow) && recentMode) {
+      const path = recentRow.dataset.fileRecentPath;
+      if (selectedRecentPath === path) {
+        if (!previewPending) void openTextFile(path);
+      } else {
+        selectedRecentPath = path;
+        message = null;
+        if (textPreview?.path !== path) {
+          previewRequestOrdinal += 1;
+          previewPending = false;
+          textPreview = null;
+        }
+        replaceView();
+      }
+      return;
+    }
+    const recentOpen = event.target.closest("[data-file-recent-open]");
+    if (recentOpen && root.contains(recentOpen)) {
+      const selected = selectedRecentEntry();
+      if (selected && !previewPending) void openTextFile(selected.path);
+      return;
+    }
+    const recentReveal = event.target.closest("[data-file-recent-reveal]");
+    if (recentReveal && root.contains(recentReveal)) {
+      void revealRecent();
+      return;
+    }
+    const recentRemove = event.target.closest("[data-file-recent-remove]");
+    if (recentRemove && root.contains(recentRemove) && recentPort) {
+      const selected = selectedRecentEntry();
+      if (selected) {
+        message = `“${selected.name}” foi removido de Recentes. O arquivo não foi apagado.`;
+        selectedRecentPath = null;
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+        recentPort.remove(selected.path);
+        replaceView();
+      }
+      return;
+    }
+    const recentClear = event.target.closest("[data-file-recent-clear]");
+    if (recentClear && root.contains(recentClear) && recentPort) {
+      message = "Histórico limpo. Nenhum arquivo foi apagado.";
+      selectedRecentPath = null;
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+      recentPort.clear();
+      replaceView();
+      return;
+    }
+    const recentSearchClear = event.target.closest("[data-file-recent-search-clear]");
+    if (recentSearchClear && root.contains(recentSearchClear)) {
+      recentSearchQuery = "";
+      message = null;
+      requestFocus("recent-search");
+      replaceView();
+      return;
+    }
     const sort = event.target.closest("[data-file-sort-key]");
     if (sort && root.contains(sort) && !pending) {
       changeSort(sort.dataset.fileSortKey);
@@ -1606,7 +1934,20 @@ export function mountFileSpaceControls(
   };
 
   const onInput = (event) => {
-    if (event.target.matches?.("[data-file-search]")) {
+    if (event.target.matches?.("[data-file-recent-search]")) {
+      recentSearchQuery = String(event.target.value ?? "").slice(0, 120);
+      if (
+        selectedRecentPath
+        && !visibleRecentEntries().some((entry) => entry.path === selectedRecentPath)
+      ) {
+        selectedRecentPath = null;
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+      }
+      message = null;
+      replaceView();
+    } else if (event.target.matches?.("[data-file-search]")) {
       searchQuery = String(event.target.value ?? "").slice(0, 120);
       if (!selectionIsVisible()) {
         selectedPath = null;
@@ -1630,6 +1971,49 @@ export function mountFileSpaceControls(
   };
 
   const onKeyDown = (event) => {
+    if (event.target.matches?.("[data-file-recent-search]")) {
+      if (event.key === "Escape" && recentSearchQuery) {
+        event.preventDefault();
+        recentSearchQuery = "";
+        message = null;
+        requestFocus("recent-search");
+        replaceView();
+      }
+      return;
+    }
+
+    const recentRow = event.target.closest?.("[data-file-recent-path]");
+    if (recentRow && root.contains(recentRow)) {
+      const slot = findSlot();
+      const rows = slot ? [...slot.querySelectorAll("[data-file-recent-path]")] : [];
+      const index = rows.indexOf(recentRow);
+      if (index < 0) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        selectedRecentPath = recentRow.dataset.fileRecentPath;
+        void openTextFile(selectedRecentPath);
+        return;
+      }
+      if (event.key === " ") {
+        event.preventDefault();
+        selectedRecentPath = recentRow.dataset.fileRecentPath;
+        message = null;
+        replaceView();
+        return;
+      }
+      let nextIndex = null;
+      if (event.key === "ArrowDown") nextIndex = Math.min(rows.length - 1, index + 1);
+      if (event.key === "ArrowUp") nextIndex = Math.max(0, index - 1);
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = rows.length - 1;
+      if (nextIndex === null || nextIndex === index) return;
+      event.preventDefault();
+      selectedRecentPath = rows[nextIndex].dataset.fileRecentPath;
+      message = null;
+      replaceView();
+      return;
+    }
+
     if (event.target.matches?.("[data-file-search]")) {
       if (event.key === "Escape" && searchQuery) {
         event.preventDefault();
@@ -1723,6 +2107,17 @@ export function mountFileSpaceControls(
   root.addEventListener("change", onChange);
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKeyDown);
+  const unsubscribeRecent = recentPort?.subscribe((snapshot) => {
+    if (destroyed) return;
+    recentSnapshot = validateRecentFilesSnapshot(snapshot);
+    if (
+      selectedRecentPath
+      && !recentSnapshot.entries.some((entry) => entry.path === selectedRecentPath)
+    ) {
+      selectedRecentPath = null;
+    }
+    if (recentMode) replaceView();
+  });
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (activation.appId === "files" && activation.target) {
@@ -1737,6 +2132,7 @@ export function mountFileSpaceControls(
       requestOrdinal += 1;
       previewRequestOrdinal += 1;
       unsubscribeActivation?.();
+      unsubscribeRecent?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
@@ -1747,6 +2143,7 @@ export function mountFileSpaceControls(
         slot.replaceChildren();
         delete slot.dataset.ordaxFileSpaceView;
         delete slot.dataset.fileSpacePath;
+        delete slot.dataset.fileSpaceContext;
       }
       mountedSlot = null;
     },

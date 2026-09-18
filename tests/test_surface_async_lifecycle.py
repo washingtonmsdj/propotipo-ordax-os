@@ -132,8 +132,11 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         self.assertIn('requestFocus("rename-name", selected.path)', files)
         self.assertIn('requestFocus("copy-name", selected.path)', files)
         self.assertIn('requestFocus("search")', files)
-        self.assertIn("snapshot.path === (listing?.path ?? \"\")", files)
-        self.assertIn("slot.dataset.fileSpacePath = listing?.path ?? \"\"", files)
+        self.assertIn('recentMode ? "recent" : `path:${listing?.path ?? ""}`', files)
+        self.assertIn('context: slot.dataset.fileSpaceContext ?? ""', files)
+        self.assertIn("snapshot.context === interactionContext()", files)
+        self.assertIn("slot.dataset.fileSpaceContext = interactionContext()", files)
+        self.assertIn('slot.dataset.fileSpacePath = recentMode ? "" : (listing?.path ?? "")', files)
         self.assertNotIn("queueMicrotask(() => input.isConnected && input.focus())", files)
 
     def test_system_preserves_read_only_interaction_across_repaints(self):

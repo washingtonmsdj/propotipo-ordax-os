@@ -22,11 +22,14 @@ on:
       - 'system/contracts/update-status.mjs'
       - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
+      - 'system/contracts/recent-files.mjs'
+      - 'system/contracts/recent-files-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/files/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -40,6 +43,8 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
+      - 'tests/test_recent_files.mjs'
+      - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
@@ -78,11 +83,14 @@ on:
       - 'system/contracts/update-status.mjs'
       - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
+      - 'system/contracts/recent-files.mjs'
+      - 'system/contracts/recent-files-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/files/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -96,6 +104,8 @@ on:
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
+      - 'tests/test_recent_files.mjs'
+      - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
       - 'tests/test_identity_session.mjs'
@@ -146,6 +156,7 @@ jobs:
             system/contracts \
             system/services/account \
             system/services/apps \
+            system/services/files \
             system/services/preferences \
             system/services/sync \
             system/services/diagnostics \
@@ -161,6 +172,7 @@ jobs:
             | xargs -0 -n1 node --check
           node --test tests/test_surface_preferences.mjs
           node --test tests/test_surface_workspace.mjs
+          node --test tests/test_recent_files.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
@@ -180,6 +192,7 @@ jobs:
         run: |
           python -m unittest tests.test_surface_ui_contract -v
           python -m unittest tests.test_surface_web_builder -v
+          python -m unittest tests.test_recent_files_ui_contract -v
 
       - name: Build and verify deterministic Web client
         run: |

@@ -384,7 +384,12 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertIn("createNativeFileSpace", composition)
-        self.assertIn("mountFileSpaceControls(root, fileSpace, appActivation, surface)", composition)
+        self.assertIn("createNativeRecentFilesStore", composition)
+        self.assertIn("createRecentFilesRuntime", composition)
+        self.assertIn(
+            "mountFileSpaceControls(root, fileSpace, appActivation, surface, recentFiles)",
+            composition,
+        )
         self.assertIn("createAppActivationChannel", composition)
         self.assertIn("appActivation", composition)
         self.assertIn("userFileSpaceAvailable", composition)
