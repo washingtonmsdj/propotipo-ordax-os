@@ -105,6 +105,17 @@ class NativePowerStatusTests(unittest.TestCase):
         self.assertIn("CONFIG_ACPI_AC=y", fragment)
         self.assertIn("CONFIG_ACPI_BATTERY=y", fragment)
 
+    def test_battery_tray_stays_visible_when_detection_is_unavailable(self):
+        tray = TRAY.read_text(encoding="utf-8")
+        self.assertIn('item.dataset.batteryState = "not-detected"', tray)
+        self.assertIn('item.dataset.batteryState = "unavailable"', tray)
+        self.assertIn('icon.dataset.batteryLevel = "unknown"', tray)
+        self.assertIn('label.textContent = "--"', tray)
+        self.assertIn('item.title = "Bateria não detectada"', tray)
+        null_block = tray.split("if (value.battery === null)", 1)[1].split("return;", 1)[0]
+        self.assertIn("item.hidden = false", null_block)
+        self.assertNotIn("item.hidden = true", null_block)
+
     def test_contract_adapter_tray_and_native_composition_are_separated(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
