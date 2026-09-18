@@ -21,6 +21,7 @@ BASE_TELEMETRY_PID_FILE=$BASE_TELEMETRY_DIR/agent.pid
 SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
+TIME_SYNC_LOG=$SESSION_DIR/time-sync.log
 POWER_REQUEST=$SESSION_DIR/power-request
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
@@ -30,6 +31,7 @@ RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
 GRAPHICS_PID=""
 POWER_BROKER_PID=""
+TIME_SYNC_PID=""
 STAGING_DIR=""
 DEV_BOUND=0
 PROC_BOUND=0
@@ -44,6 +46,7 @@ mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RES
 chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR"
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
+: > "$TIME_SYNC_LOG"
 
 persistent_agent_pid_matches() {
     pid=${1:-}
@@ -265,6 +268,10 @@ remove_stale_seatd_socket() {
 }
 
 cleanup() {
+    if [ -n "$TIME_SYNC_PID" ]; then
+        terminate_child "$TIME_SYNC_PID" "time sync agent"
+        TIME_SYNC_PID=""
+    fi
     if [ -n "$POWER_BROKER_PID" ]; then
         terminate_child "$POWER_BROKER_PID" "power broker"
         POWER_BROKER_PID=""
@@ -499,6 +506,29 @@ bind_runtime_mounts() {
     RUN_BOUND=1
 }
 
+start_time_sync_agent() {
+    (
+        retry_delay=120
+        steady_delay=1800
+        while :; do
+            synced=0
+            for server in time.cloudflare.com time.google.com pool.ntp.org; do
+                if /bin/busybox timeout -k 1 6 /bin/busybox ntpd -q -n -p "$server" >>"$TIME_SYNC_LOG" 2>&1; then
+                    synced=1
+                    break
+                fi
+            done
+            if [ "$synced" -eq 1 ]; then
+                /bin/busybox sleep "$steady_delay"
+            else
+                /bin/busybox sleep "$retry_delay"
+            fi
+        done
+    ) &
+    TIME_SYNC_PID=$!
+    kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
+}
+
 prepare_power_broker() {
     rm -f "$POWER_REQUEST" >/dev/null 2>&1 || true
     /bin/busybox mkfifo "$POWER_REQUEST" >>"$HOST_LOG" 2>&1 || return 1
@@ -571,6 +601,7 @@ prepare_input_stack() {
 [ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
 ensure_base_telemetry_agent || echo "ordax-surface: base telemetry bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
+start_time_sync_agent || echo "ordax-surface: automatic time synchronization unavailable; continuing Surface startup" >>"$HOST_LOG"
 [ -f "$SYSTEM_ROOT/composition/native/index.html" ] || fallback_with_reason "native Surface composition is missing: $SYSTEM_ROOT/composition/native/index.html"
 [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
