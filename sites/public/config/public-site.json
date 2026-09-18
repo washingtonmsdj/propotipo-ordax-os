@@ -1,0 +1,10 @@
+{
+  "$schema": "prototype-ordax.public-site-runtime/1",
+  "identity": {
+    "login_url": null,
+    "register_url": null
+  },
+  "downloads": {
+    "catalog_url": null
+  }
+}
