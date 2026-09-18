@@ -58,7 +58,7 @@ class PublicSiteRuntimeSmokeTests(unittest.TestCase):
         self.assertEqual(contract["routing"]["identity_prefix"], "/auth/")
 
     def test_landing_and_download_pages_are_served(self):
-        for path in ("/", "/download/", "/login/", "/cadastro/", "/licencas/"):
+        for path in ("/", "/download/", "/login/", "/cadastro/", "/licencas/", "/privacidade/", "/termos/"):
             with self.subTest(path=path):
                 with self.fetch(path) as response:
                     self.assertEqual(response.status, 200)

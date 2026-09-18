@@ -17,6 +17,8 @@ sites/public/
   login/index.html
   cadastro/index.html
   licencas/index.html
+  privacidade/index.html
+  termos/index.html
   assets/
   config/public-site.json
 ```
@@ -32,6 +34,8 @@ Keeping the portal in the monorepo does not make it part of the operating-system
 - `/login/`: sign-in entry point.
 - `/cadastro/`: account-creation entry point.
 - `/licencas/`: release-specific license, SBOM and source-compliance entry point.
+- `/privacidade/`: privacy-readiness page; not a final policy while account activation is blocked.
+- `/termos/`: terms-readiness page; not final terms while account activation is blocked.
 
 Future routes such as support, docs, legal and account management may be added here only when they have a real owner and service contract.
 
@@ -119,3 +123,10 @@ The candidate workflow builds the site twice and compares outputs to protect det
 It refuses non-loopback binds and is **not** the production server.
 
 Production hosting remains adapter-neutral. The required route shape, cache policy and security headers are machine-readable in `docs/contracts/public-site-deployment.json`. A future host adapter must preserve the public site's status codes and apply the declared CSP, anti-framing, MIME-sniffing, referrer and permissions policies. HTTPS is mandatory before enabling live identity routes.
+
+
+## Legal readiness before live accounts
+
+The public account entry points are also gated by `docs/contracts/public-legal-readiness.json`. While that contract is not ready, `sites/public/config/public-site.json` must keep both login and registration targets null. The build fails if someone tries to enable them early.
+
+The readiness pages under `/privacidade/` and `/termos/` intentionally describe only the current prototype state. Final legal documents, versions and effective dates must be reviewed and published before this gate can move to ready.

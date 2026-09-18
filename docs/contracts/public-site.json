@@ -10,7 +10,9 @@
     "download": "/download/",
     "login": "/login/",
     "register": "/cadastro/",
-    "licenses": "/licencas/"
+    "licenses": "/licencas/",
+    "privacy": "/privacidade/",
+    "terms": "/termos/"
   },
   "runtime_dependencies": {
     "remote_javascript": false,
@@ -24,7 +26,9 @@
     "client_stores_service_secrets": false,
     "unconfigured_behavior": "fail-closed-with-unavailable-state",
     "configured_target_policy": "same-origin",
-    "contract": "docs/contracts/public-identity.json"
+    "contract": "docs/contracts/public-identity.json",
+    "legal_readiness_contract": "docs/contracts/public-legal-readiness.json",
+    "account_activation_requires_legal_readiness": true
   },
   "downloads": {
     "hard_coded_latest_allowed": false,

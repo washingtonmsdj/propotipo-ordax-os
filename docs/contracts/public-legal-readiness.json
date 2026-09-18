@@ -1,0 +1,33 @@
+{
+  "$schema": "prototype-ordax.public-legal-readiness/1",
+  "status": "not-ready",
+  "account_activation_ready": false,
+  "documents": {
+    "privacy": {
+      "route": "/privacidade/",
+      "final": false,
+      "version": null,
+      "effective_date": null
+    },
+    "terms": {
+      "route": "/termos/",
+      "final": false,
+      "version": null,
+      "effective_date": null
+    }
+  },
+  "identity_activation_requirements": {
+    "final_privacy_document": true,
+    "final_terms_document": true,
+    "stable_document_versions": true,
+    "effective_dates": true,
+    "same_origin_identity_gateway": true,
+    "production_https": true,
+    "account_lifecycle_owner_defined": true
+  },
+  "build_gate": {
+    "identity_urls_must_remain_null_while_not_ready": true,
+    "readiness_page_may_exist_before_activation": true,
+    "placeholder_legal_acceptance_allowed": false
+  }
+}

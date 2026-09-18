@@ -16,6 +16,8 @@ class PublicSiteContractTests(unittest.TestCase):
             "login/index.html",
             "cadastro/index.html",
             "licencas/index.html",
+            "privacidade/index.html",
+            "termos/index.html",
         ):
             self.assertTrue((SITE / relative).is_file(), relative)
 
@@ -31,6 +33,9 @@ class PublicSiteContractTests(unittest.TestCase):
         self.assertIsNone(config["identity"]["login_url"])
         self.assertIsNone(config["identity"]["register_url"])
         self.assertEqual(config["downloads"]["catalog_url"], "/releases/catalog.json")
+        self.assertFalse(config["legal"]["account_activation_ready"])
+        self.assertEqual(config["legal"]["privacy_url"], "/privacidade/")
+        self.assertEqual(config["legal"]["terms_url"], "/termos/")
 
         login = (SITE / "login" / "index.html").read_text(encoding="utf-8")
         register = (SITE / "cadastro" / "index.html").read_text(encoding="utf-8")

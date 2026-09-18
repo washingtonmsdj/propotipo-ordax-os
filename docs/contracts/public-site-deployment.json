@@ -9,7 +9,9 @@
       "/login/",
       "/cadastro/",
       "/releases/catalog.json",
-      "/licencas/"
+      "/licencas/",
+      "/privacidade/",
+      "/termos/"
     ],
     "identity_prefix": "/auth/",
     "identity_gateway_entrypoint": "services/public-identity/gateway.py:application",
@@ -34,6 +36,7 @@
     "https": true,
     "host_adapter_must_apply_security_headers": true,
     "host_adapter_must_preserve_auth_status_codes": true,
-    "public_identity_provider_must_be_configured_before_enabling_login_links": true
+    "public_identity_provider_must_be_configured_before_enabling_login_links": true,
+    "final_legal_documents_required_before_identity_activation": true
   }
 }
