@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.base-update/1",
-  "status": "contract-defined-implementation-pending",
+  "status": "staging-and-one-shot-activation-proof",
   "scope": "transactional-boot-kernel-initramfs-update",
   "owner": "bootstrap/base-update",
   "normal_git_hot_update_owns_this": false,
@@ -40,7 +40,8 @@
     "candidate_tries_left": 1,
     "default_entry_unchanged_before_health": true,
     "automatic_fallback": "existing-current-entry",
-    "reboot_required": true
+    "reboot_required": true,
+    "entry_id": "ordax-candidate.conf"
   },
   "staging": {
     "signed_manifest_required": true,
