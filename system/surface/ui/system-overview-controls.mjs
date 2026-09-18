@@ -20,7 +20,7 @@ const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 const SYSTEM_EXTENSION_SELECTOR = '[data-app-extension="system-overview"]';
 
 const UPDATE_LABELS = Object.freeze({
-  running: "Atualizado",
+  running: "Em execução",
   applied: "Atualização aplicada",
   updating: "Atualizando",
   "network-error": "Sem conexão para atualizar",
