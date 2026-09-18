@@ -11,9 +11,10 @@ class FilesSortingTests(unittest.TestCase):
         controls = CONTROLS.read_text(encoding="utf-8")
         self.assertIn('let sortKey = "name"', controls)
         self.assertIn('let sortDirection = "asc"', controls)
-        self.assertIn('["name", "type", "size"]', controls)
+        self.assertIn('["name", "type", "size", "modified"]', controls)
         self.assertIn('sortKey === "size"', controls)
-        self.assertNotIn("modifiedAt", controls)
+        self.assertIn('sortKey === "modified"', controls)
+        self.assertIn("modifiedAt", controls)
 
     def test_directories_stay_grouped_before_files(self):
         controls = CONTROLS.read_text(encoding="utf-8")
@@ -30,6 +31,7 @@ class FilesSortingTests(unittest.TestCase):
         self.assertIn('sortButton("Nome", "name")', controls)
         self.assertIn('sortButton("Tipo", "type")', controls)
         self.assertIn('sortButton("Tamanho", "size")', controls)
+        self.assertIn('sortButton("Modificado", "modified")', controls)
 
     def test_sort_controls_have_focus_and_direction_styles(self):
         css = CSS.read_text(encoding="utf-8")

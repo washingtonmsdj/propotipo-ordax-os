@@ -1,4 +1,4 @@
-export const FILE_SPACE_SCHEMA = "ordax.file-space/5";
+export const FILE_SPACE_SCHEMA = "ordax.file-space/6";
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 export const MAX_FILE_COPY_BYTES = 64 * 1024 * 1024;
 
@@ -39,7 +39,15 @@ export function validateFileEntry(value) {
   if (!Number.isInteger(value.size) || value.size < 0) {
     throw new TypeError("File-space entry size must be a non-negative integer");
   }
-  return Object.freeze({ name: value.name, kind: value.kind, size: value.size });
+  if (!Number.isSafeInteger(value.modifiedAt) || value.modifiedAt < 0) {
+    throw new TypeError("File-space entry modifiedAt must be a non-negative epoch millisecond");
+  }
+  return Object.freeze({
+    name: value.name,
+    kind: value.kind,
+    size: value.size,
+    modifiedAt: value.modifiedAt,
+  });
 }
 
 export function validateFileListing(value) {

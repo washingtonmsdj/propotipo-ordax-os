@@ -358,7 +358,7 @@
 .ordax-files-list-header,
 .ordax-file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 100px 90px;
+  grid-template-columns: minmax(180px, 1fr) 90px 86px 132px;
   min-width: 0;
   align-items: center;
   gap: 10px;
@@ -570,11 +570,11 @@ button.ordax-file-row:focus-visible {
 
   .ordax-files-list-header,
   .ordax-file-row {
-    grid-template-columns: minmax(140px, 1fr) 72px;
+    grid-template-columns: minmax(140px, 1fr) 72px 116px;
   }
 
-  .ordax-files-list-header > :last-child,
-  .ordax-file-row > :last-child {
+  .ordax-files-list-header > :nth-child(3),
+  .ordax-file-row > :nth-child(3) {
     display: none;
   }
 }

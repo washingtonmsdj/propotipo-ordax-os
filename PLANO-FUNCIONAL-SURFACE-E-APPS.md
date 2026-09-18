@@ -102,7 +102,7 @@ As prioridades são de implementação, não de exposição: uma tela P2 não de
 
 ### 2.2 Limitações importantes encontradas no código
 
-1. `system/contracts/file-space.mjs` evoluiu para `ordax.file-space/5`: além de `list()`, `createDirectory()`, `readTextFile()`, `renameEntry()` e `copyFile()`, o Native oferece `moveEntry()` para arquivo ou pasta entre diretórios da mesma raiz autorizada, com no-clobber atômico via `renameat2`, bloqueio de symlink, rejeição de mover pasta para dentro dela mesma e rejeição explícita de movimento entre volumes. `copyFile()` continua limitado a arquivo regular na mesma pasta, 64 MiB, criação exclusiva do destino e limpeza de cópia parcial em falha. A visualização continua somente leitura, UTF-8 e limitada a 256 KB. Entradas continuam com `name`, `kind` e `size`; ainda não há data de modificação, cópia entre pastas/volumes, excluir/lixeira ou abertura por associação de app.
+1. `system/contracts/file-space.mjs` evoluiu para `ordax.file-space/6`: além de `list()`, `createDirectory()`, `readTextFile()`, `renameEntry()` e `copyFile()`, o Native oferece `moveEntry()` para arquivo ou pasta entre diretórios da mesma raiz autorizada, com no-clobber atômico via `renameat2`, bloqueio de symlink, rejeição de mover pasta para dentro dela mesma e rejeição explícita de movimento entre volumes. `copyFile()` continua limitado a arquivo regular na mesma pasta, 64 MiB, criação exclusiva do destino e limpeza de cópia parcial em falha. A visualização continua somente leitura, UTF-8 e limitada a 256 KB. Entradas agora trazem `name`, `kind`, `size` e `modifiedAt` real em epoch milliseconds obtido do filesystem; cópia entre pastas/volumes, excluir/lixeira e abertura por associação de app continuam pendentes.
 2. A composição Web inspecionada não monta um adapter real de arquivos. A existência do app Arquivos não significa acesso ao disco no navegador.
 3. `appearance.theme` é a única preferência no catálogo observado. Não implementar controles de preferências apenas com alterações de CSS sem registrá-las, validá-las e persistir seu estado.
 4. `createWebIdentitySession()` retorna `unavailable`, e `createWebIdentityActions()` anuncia zero ações. A composição Native também usa essas portas de identidade. Portanto, não há login real demonstrado nesses caminhos.
@@ -324,7 +324,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 
 **Navegação interna:** Meu espaço; Recentes; Favoritos; Documentos; Imagens; Downloads; locais adicionais e Lixeira quando disponíveis.
 
-**Conteúdo:** lista com Nome, Tipo e Tamanho; os três campos existentes já podem ordenar localmente em ordem crescente/decrescente, mantendo pastas agrupadas antes dos arquivos. Adicionar Modificado somente com dado real no contrato. Modo grade/miniaturas vem após leitura segura de conteúdo.
+**Conteúdo:** lista com Nome, Tipo, Tamanho e Modificado real; os quatro campos podem ordenar localmente em ordem crescente/decrescente, mantendo pastas agrupadas antes dos arquivos. `modifiedAt` vem do metadata real do filesystem e é formatado apenas para apresentação. Modo grade/miniaturas vem após leitura segura de conteúdo.
 
 **Rodapé contextual:** quantidade de itens, quantidade selecionada e operação em andamento. Espaço livre pode aparecer como resumo com atalho para Sistema → Armazenamento.
 
