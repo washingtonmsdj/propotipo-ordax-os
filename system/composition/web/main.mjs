@@ -79,6 +79,8 @@ const systemOverviewControls = mountSystemOverviewControls(
   null,
   null,
   surface,
+  null,
+  appActivation,
 );
 
 window.addEventListener(

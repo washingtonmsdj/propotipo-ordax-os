@@ -413,10 +413,11 @@ export function mountSurface(
       ) {
         return;
       }
-      dispatch({ type: "app.launch", appId });
       const target = appButton.dataset.appTarget;
       if (target && activationPort) {
         activationPort.publish({ appId, target });
+      } else {
+        dispatch({ type: "app.launch", appId });
       }
       launcherQuery.value = "";
       return;
@@ -615,6 +616,11 @@ export function mountSurface(
   root.addEventListener("pointercancel", onPointerCancel);
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("keydown", onKeyDown);
+  const unsubscribeActivation = activationPort?.subscribe((activation) => {
+    const app = getFirstPartyApp(activation.appId);
+    if (!isAppAvailable(app, state.capabilityIds)) return;
+    dispatch({ type: "app.launch", appId: activation.appId });
+  });
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
   render();
 
@@ -656,6 +662,7 @@ export function mountSurface(
         dragSession = null;
       }
       unsubscribeHost?.();
+      unsubscribeActivation?.();
       root.removeEventListener("click", onClick);
       root.removeEventListener("input", onInput);
       root.removeEventListener("contextmenu", onContextMenu);

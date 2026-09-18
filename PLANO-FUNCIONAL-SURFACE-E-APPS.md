@@ -1031,8 +1031,8 @@ USB e Native podem compartilhar adapter, mas o nome Native não comprova o perfi
 | Entrega | Conteúdo | Dependências | Saída verificável |
 |---|---|---|---|
 | E0 / P0 | Revalidar source, inventariar capacidades, padronizar Ajustes, mapear seções e destinos únicos. | `main` atual e contratos. | Mapa de navegação e inventário factual atualizados. |
-| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | Rail e subseções funcionam sem duplicação de janelas ou páginas. |
-| E2 / P1 | Sistema: Visão geral, Atualizações observacionais, Sobre e Energia; remover traduções duplicadas. | E1, portas existentes. | Dados reais e atalhos únicos, inclusive rodapé. |
+| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema já possui subseções canônicas validadas e deep link por `app-activation/1` sem segundo roteador; persistência da subseção por área/janela e a mesma disciplina nos demais apps ainda faltam. |
+| E2 / P1 | Sistema: Visão geral, Atualizações observacionais, Armazenamento, Diagnóstico, Sobre e Energia quando suportada; remover traduções duplicadas. | E1, portas existentes. | **Parcial:** Visão geral, Atualizações, Armazenamento, Diagnóstico e Sobre já têm destinos canônicos com dados reais; rodapé abre a única seção Atualizações e a tradução comum foi centralizada. Energia completa permanece condicionada à capacidade real. |
 | E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | Preferências reais, persistidas, acessíveis nos dois temas. |
 | E4 / P1 | Arquivos básico completo em incrementos: seleção/detalhes, leitura/abertura, importação/exportação e mutações. | E1, extensões de contrato/backend por operação. | Fluxos de usuário com dados reais e proteção da raiz. |
 | E5 / P1 | Conta com estados honestos e Sincronização local compreensível. | E1, identity/sync existentes. | Nenhuma identidade ou nuvem simulada; pendências locais explicadas. |
@@ -1047,12 +1047,12 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 ### 12.2 Backlog de correções imediatas
 
 - [ ] Rótulo Ajustes consistente em rail, janela, busca e acessibilidade, mantendo `settings` como ID.
-- [ ] Destino canônico de Atualizações em Sistema, com rodapé apontando para ele.
-- [ ] Uma tradução/derivação compartilhada para fase, resultado e impacto de atualização.
+- [x] Destino canônico de Atualizações em Sistema, com rodapé apontando para ele via `app-activation/1`.
+- [x] Uma tradução/derivação compartilhada para fase, resultado e impacto de atualização em `system/services/update/presentation.mjs`.
 - [ ] Revisar “Atualizado”, “Sincronização ativa” e “Operando normalmente” para exigir evidência suficiente.
 - [ ] Distinguir recarga de interface, reinício da Surface, reinício do supervisor e reinício da máquina.
 - [ ] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot.
-- [ ] Mover detalhes técnicos de capacidades para Diagnóstico.
+- [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
 - [ ] Remover marcadores temporários de investigação da mesa normal.
 - [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot.
 - [ ] Estado ausente, indisponível, offline e antigo são distintos.
@@ -1062,7 +1062,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 
 **Meta básica:** o usuário abre os quatro apps, entende limites reais, navega pelas seções entregues, personaliza o tema, realiza operações de arquivos suportadas, consulta versão/atualização/métricas, usa energia nativa confirmada e mantém estado entre recargas.
 
-Para essa meta, faltam principalmente navegação interna uniforme; UX de dados reais; contratos/implementações de operações de arquivos; preferências além do tema; diagnóstico compreensível; e testes de ponta a ponta da Surface. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
+Para essa meta, faltam principalmente estender a navegação interna uniforme de Sistema aos demais apps e persistir a subseção por área/janela; preferências além do tema; diagnóstico/exportação técnica mais completa; recursos P2 de Arquivos; e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
 
 **Não chamar de concluído:** login real sem provedor; cloud sem transporte e autorização; gerenciador de arquivos completo sem leitura/mutações; recuperação canônica sem gates; áudio/suspensão sem prova; instalação nativa baseada apenas em imagem conceitual.
 

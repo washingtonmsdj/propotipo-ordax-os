@@ -10,6 +10,8 @@ NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_serv
 NATIVE_UPDATE_ADAPTER = ROOT / "system" / "adapters" / "native" / "update-runtime.mjs"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 UPDATE_CONTROLS = ROOT / "system" / "surface" / "ui" / "update-controls.mjs"
+SYSTEM_OVERVIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
+UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 
 
 class HotUpdateSupervisorContractTests(unittest.TestCase):
@@ -168,7 +170,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_delivery_numbers_are_pr_independent_and_history_is_bounded(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         host = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
-        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
         self.assertIn("delivery_number_for_sha()", text)
         self.assertIn('rev-list --first-parent --count "$DELIVERY_EPOCH_SHA..$source_sha"', text)
         self.assertIn("DELIVERY_EPOCH_NUMBER=220", text)
@@ -192,7 +195,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("rolled-back", text)
         self.assertIn('UPDATE_HISTORY_PATH = "/__ordax/native/update-history"', host)
         self.assertIn('"deliveryNumber": version', host)
-        self.assertIn("deliveryLabel(snapshot?.deliveryNumber)", controls)
+        self.assertIn("export function deliveryLabel", presentation)
+        self.assertIn("deliveryLabel(updateSnapshot.deliveryNumber)", overview)
 
     def test_surface_runs_continuous_fail_soft_ntp_sync(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -331,6 +335,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         adapter = NATIVE_UPDATE_ADAPTER.read_text(encoding="utf-8")
         composition = NATIVE_COMPOSITION.read_text(encoding="utf-8")
         controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
         self.assertIn('UPDATE_STATE_PATH = "/__ordax/native/update"', adapter)
         self.assertIn('UPDATE_HEALTH_PATH = "/__ordax/native/health"', adapter)
         self.assertIn("const DEFAULT_INTERVAL_MS = 750;", adapter)
@@ -343,10 +349,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("mountUpdateControls", composition)
         self.assertIn("updateWatcher.markHealthy()", composition)
         self.assertIn("updateControls.destroy()", composition)
-        self.assertIn('"Atualização revertida"', controls)
-        self.assertIn('"Reinício necessário"', controls)
-        self.assertIn("lastAppliedAt", controls)
-        self.assertIn("rejectedSha", controls)
+        self.assertIn('target: "updates"', controls)
+        self.assertIn("updateIsAlerting", controls)
+        self.assertIn('"rolled-back": "Atualização revertida"', presentation)
+        self.assertIn('"Reinício necessário"', overview)
+        self.assertIn("lastAppliedAt", overview)
+        self.assertIn("rejectedSha", overview)
 
     def test_stale_rendered_surface_heartbeat_recovers_once_without_restart_storm(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
@@ -409,12 +417,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('guard_attempt=${3:-}', text)
 
     def test_update_center_surfaces_transaction_diagnostics(self):
-        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
-        self.assertIn("readablePhase", controls)
-        self.assertIn("targetSha", controls)
-        self.assertIn('"Tentativa"', controls)
-        self.assertIn('"Diagnóstico"', controls)
-        self.assertIn("lastError", controls)
+        overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
+        self.assertIn("readableUpdatePhase", overview)
+        self.assertIn("targetSha", overview)
+        self.assertIn('"Tentativa"', overview)
+        self.assertIn('"Diagnóstico"', overview)
+        self.assertIn("lastError", overview)
 
     def test_guardian_owns_supervisor_lifetime_without_git_or_network(self):
         guardian = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")

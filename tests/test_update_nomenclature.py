@@ -8,6 +8,7 @@ SUPERVISOR = ROOT / "system" / "supervisor"
 UPDATE_STATUS = ROOT / "system" / "contracts" / "update-status.mjs"
 UPDATE_HISTORY = ROOT / "system" / "contracts" / "update-history.mjs"
 UPDATE_CONTROLS = ROOT / "system" / "surface" / "ui" / "update-controls.mjs"
+UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 SYSTEM_OVERVIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 
 
@@ -58,9 +59,10 @@ class UpdateNomenclatureTests(unittest.TestCase):
 
     def test_surface_uses_delivery_language_not_fake_component_versions(self):
         update = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
         overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
-        self.assertIn("deliveryLabel(snapshot?.deliveryNumber)", update)
-        self.assertIn("SHA técnico", update)
+        self.assertIn("export function deliveryLabel", presentation)
+        self.assertIn('target: "updates"', update)
         self.assertIn("Entrega observada", overview)
         self.assertIn("Identidade da entrega", overview)
         self.assertIn("não é número de PR nem versão comercial do OrdaX", overview)
