@@ -41,7 +41,7 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
 
     def test_agent_pid_guard_uses_real_shell_pid(self):
         text = AGENT.read_text(encoding="utf-8")
-        self.assertIn('[ "$existing_pid" != "$" ]', text)
+        self.assertIn('[ "$existing_pid" != "$$" ]', text)
         self.assertNotIn('[ "$existing_pid" != "$" ]', text)
 
     def test_agent_reuses_native_device_identity_and_separates_base_row(self):
