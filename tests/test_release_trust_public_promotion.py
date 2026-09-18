@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest import mock
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "release-signing" / "promote_public_trust.py"
@@ -239,6 +240,75 @@ class PublicReleaseTrustPromotionTests(unittest.TestCase):
                 all(authorization["bindings"].values())
             )
             self.assertGreaterEqual(run.call_count, 2)
+
+    @mock.patch.object(promotion.subprocess, "run")
+    def test_single_handoff_zip_is_accepted_without_manual_extraction(self, run):
+        run.return_value = self.verified_process()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            promotion_dir, verifier = self.fixture(root)
+            handoff = root / "OrdaX-Public-Trust-Handoff.zip"
+            with zipfile.ZipFile(
+                handoff,
+                "w",
+                compression=zipfile.ZIP_DEFLATED,
+            ) as archive:
+                for name in sorted(promotion.PROMOTION_FILES):
+                    archive.write(
+                        promotion_dir / name,
+                        arcname=name,
+                    )
+
+            result = promotion.prepare_repository_promotion_zip(
+                root,
+                handoff,
+                verifier,
+            )
+
+            self.assertTrue(result["ready"])
+            self.assertFalse(result["physical_write_allowed"])
+            self.assertTrue(result["physical_authorization_eligible"])
+
+    @mock.patch.object(promotion.subprocess, "run")
+    def test_handoff_zip_rejects_extra_or_nested_entries(self, run):
+        run.return_value = self.verified_process()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            promotion_dir, verifier = self.fixture(root)
+
+            extra = root / "extra.zip"
+            with zipfile.ZipFile(extra, "w") as archive:
+                for name in sorted(promotion.PROMOTION_FILES):
+                    archive.write(promotion_dir / name, arcname=name)
+                archive.writestr("private.pem", "forbidden")
+            with self.assertRaisesRegex(
+                promotion.PromotionError,
+                "must contain exactly",
+            ):
+                promotion.prepare_repository_promotion_zip(
+                    root,
+                    extra,
+                    verifier,
+                )
+
+            nested = root / "nested.zip"
+            with zipfile.ZipFile(nested, "w") as archive:
+                for name in sorted(promotion.PROMOTION_FILES):
+                    source = promotion_dir / name
+                    arcname = (
+                        "nested/" + name
+                        if name == "release-ed25519.json"
+                        else name
+                    )
+                    archive.write(source, arcname=arcname)
+            with self.assertRaises(promotion.PromotionError):
+                promotion.prepare_repository_promotion_zip(
+                    root,
+                    nested,
+                    verifier,
+                )
+
+            run.assert_not_called()
 
     @mock.patch.object(promotion.subprocess, "run")
     def test_extra_public_promotion_file_is_rejected(self, run):
