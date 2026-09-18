@@ -622,7 +622,7 @@ F3, a observabilidade local de F9 e as provas de F8 podem avançar em trilhas in
 
 ### 8.2 O próximo lote recomendado
 
-Para continuar a etapa atual da sidebar, selecionar **F0/F1 e o primeiro incremento de F2**: navegação correta, estados reais de Sistema/Conta e operações úteis de arquivos. Depois, priorizar F3 conforme a necessidade de configurar o notebook sem terminal.
+F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. O lote atual prioriza **F3 em incrementos verticais**: primeiro observabilidade nativa somente leitura; depois seleção/conexão/esquecimento/reconexão usando o owner real de rede, sem expor credenciais à Surface, preferências, logs ou telemetria.
 
 Não abrir simultaneamente Store, grafo de objetos, federação, IA e um package manager. A entrega de arquivos, rede e retomada já recupera valor concreto que o legado perseguia, mantendo a estrutura limpa.
 
