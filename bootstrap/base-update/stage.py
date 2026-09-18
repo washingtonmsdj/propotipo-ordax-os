@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import hashlib
 import importlib.util
 import json
@@ -339,7 +340,7 @@ def _signed_manifest_from_envelope(envelope_path: Path, verified_commit: str) ->
         raise StageError("release envelope payload is invalid")
     try:
         payload = base64.b64decode(payload_text, validate=True)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise StageError("release envelope payload is invalid base64") from exc
     manifest = _strict_json_document(payload, "signed release manifest", MAX_MANIFEST_BYTES)
     expected_manifest_fields = {
