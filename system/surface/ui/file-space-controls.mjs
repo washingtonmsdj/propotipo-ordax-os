@@ -1,6 +1,7 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   MAX_FILE_COPY_BYTES,
+  MAX_FILE_EXPORT_BYTES,
   assertFileSpacePort,
   validateFileListing,
   validateTextFile,
@@ -489,11 +490,19 @@ export function mountFileSpaceControls(
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
     let copy = null;
+    let exportFile = null;
     if (selected.kind === "file") {
       copy = node(documentObject, "button", "ordax-files-action", "Copiar");
       copy.type = "button";
       copy.dataset.fileCopyToggle = "";
       copy.disabled = pending || previewPending;
+      exportFile = node(documentObject, "button", "ordax-files-action", "Exportar");
+      exportFile.type = "button";
+      exportFile.dataset.fileExport = "";
+      exportFile.disabled = pending || previewPending || selected.size > MAX_FILE_EXPORT_BYTES;
+      if (selected.size > MAX_FILE_EXPORT_BYTES) {
+        exportFile.title = "Exportação rápida limitada a 64 MiB";
+      }
     }
     const move = node(documentObject, "button", "ordax-files-action", "Mover");
     move.type = "button";
@@ -513,6 +522,7 @@ export function mountFileSpaceControls(
     open.dataset.fileActivateSelected = "";
     open.disabled = pending || previewPending;
     if (copy) actions.append(copy);
+    if (exportFile) actions.append(exportFile);
     actions.append(move, rename, open);
 
     details.append(summary, actions);
@@ -900,6 +910,48 @@ export function mountFileSpaceControls(
     }
   };
 
+  const exportSelected = async () => {
+    const selected = selectedEntry();
+    if (!selected || selected.kind !== "file") return;
+    if (selected.size > MAX_FILE_EXPORT_BYTES) {
+      message = "Este arquivo ultrapassa o limite de exportação de 64 MiB.";
+      replaceView();
+      return;
+    }
+
+    const ordinal = ++requestOrdinal;
+    pending = true;
+    message = null;
+    replaceView();
+    try {
+      await port.exportFile(selected.path);
+      if (destroyed || ordinal !== requestOrdinal) return;
+      message = `Download de “${selected.name}” iniciado.`;
+    } catch (error) {
+      if (destroyed || ordinal !== requestOrdinal) return;
+      const status = operationStatus(error);
+      if (status === 413) {
+        message = "Este arquivo ultrapassa o limite de exportação de 64 MiB.";
+      } else if (status === 412) {
+        message = "O arquivo mudou durante a exportação. Tente novamente.";
+      } else if (status === 404) {
+        message = "Este arquivo não existe mais. Atualize a pasta.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para exportar este arquivo.";
+      } else if (status === 400) {
+        message = "Este item não pode ser exportado.";
+      } else {
+        message = "Não foi possível exportar este arquivo.";
+      }
+    } finally {
+      if (!destroyed && ordinal === requestOrdinal) {
+        pending = false;
+        replaceView();
+        focusSelectedRow();
+      }
+    }
+  };
+
   const copySelected = async () => {
     const selected = selectedEntry();
     if (!selected || !listing || selected.kind !== "file") return;
@@ -1083,6 +1135,11 @@ export function mountFileSpaceControls(
       } else {
         selectPath(selected.dataset.fileSelectPath, { focus: true });
       }
+      return;
+    }
+    const exportFile = event.target.closest("[data-file-export]");
+    if (exportFile && root.contains(exportFile)) {
+      void exportSelected();
       return;
     }
     const moveToggle = event.target.closest("[data-file-move-toggle]");
