@@ -275,6 +275,114 @@ func TestInstallMaterializesBootableVerifiedRelease(t *testing.T) {
 	}
 }
 
+func TestMaterializeDoesNotActivateCurrent(t *testing.T) {
+	trust, pub, priv := testKeys(t)
+	artifact := validSystemTar(t)
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	m := manifestFor(server.URL+"/system.tar", artifact)
+	envelope := signedEnvelope(t, m, trust.KeyID, priv)
+	mux.HandleFunc("/release.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(envelope)
+	})
+	mux.HandleFunc("/system.tar", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(artifact)
+	})
+
+	root := t.TempDir()
+	old := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := os.MkdirAll(filepath.Join(root, "releases", old), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("releases", old), filepath.Join(root, "current")); err != nil {
+		t.Fatal(err)
+	}
+
+	receipt, err := materialize(
+		server.Client(),
+		server.URL+"/release.json",
+		root,
+		trust,
+		pub,
+		defaultRepo,
+		testCommit,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != "materialized" || receipt.SourceCommit != testCommit || receipt.Idempotent {
+		t.Fatalf("unexpected materialize receipt: %#v", receipt)
+	}
+	current, err := os.Readlink(filepath.Join(root, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != filepath.Join("releases", old) {
+		t.Fatalf("materialize changed current pointer: %s", current)
+	}
+	target := filepath.Join(root, "releases", testCommit)
+	if _, err := os.Stat(filepath.Join(target, "system", "entrypoint")); err != nil {
+		t.Fatalf("verified release was not materialized: %v", err)
+	}
+
+	second, err := materialize(
+		server.Client(),
+		server.URL+"/release.json",
+		root,
+		trust,
+		pub,
+		defaultRepo,
+		testCommit,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Idempotent {
+		t.Fatal("second materialize was not idempotent")
+	}
+	current, err = os.Readlink(filepath.Join(root, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != filepath.Join("releases", old) {
+		t.Fatalf("idempotent materialize changed current pointer: %s", current)
+	}
+}
+
+func TestMaterializeRejectsUnexpectedCommitBeforeRootMutation(t *testing.T) {
+	trust, pub, priv := testKeys(t)
+	artifact := validSystemTar(t)
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	m := manifestFor(server.URL+"/system.tar", artifact)
+	envelope := signedEnvelope(t, m, trust.KeyID, priv)
+	mux.HandleFunc("/release.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(envelope)
+	})
+	mux.HandleFunc("/system.tar", func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("artifact must not be requested when signed commit mismatches")
+	})
+
+	root := filepath.Join(t.TempDir(), "ordax-root")
+	unexpected := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	if _, err := materialize(
+		server.Client(),
+		server.URL+"/release.json",
+		root,
+		trust,
+		pub,
+		defaultRepo,
+		unexpected,
+	); err == nil {
+		t.Fatal("signed release for a different commit was materialized")
+	}
+	if _, err := os.Lstat(root); !os.IsNotExist(err) {
+		t.Fatal("commit mismatch mutated the OrdaX root")
+	}
+}
+
 func TestExistingReleaseRejectsMaterializedTreeTampering(t *testing.T) {
 	trust, pub, priv := testKeys(t)
 	artifact := validSystemTar(t)
