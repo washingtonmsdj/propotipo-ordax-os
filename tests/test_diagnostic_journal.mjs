@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   DIAGNOSTIC_EVENT_SCHEMA,
+  MAX_DIAGNOSTIC_JOURNAL_LIMIT,
   UPDATE_COMPONENT,
   UPDATE_STATE_EVENT_CODE,
   appendDiagnosticEvent,
   createUpdateDiagnosticEvent,
   rotateDiagnosticEvents,
   validateDiagnosticEvent,
+  validateDiagnosticJournalLimit,
 } from "../system/services/diagnostics/journal.mjs";
 
 const SOURCE_SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -95,13 +97,27 @@ test("event validation fails closed on schema identity component and severity", 
   }
 });
 
-test("constructor cannot emit an event with an unbounded correlation key", () => {
+test("constructor cannot emit unbounded correlation or timestamp fields", () => {
   assert.throws(
     () => createUpdateDiagnosticEvent({
       update: updateSnapshot({ attemptId: `attempt-${"x".repeat(300)}` }),
     }),
     TypeError,
   );
+  assert.throws(
+    () => createUpdateDiagnosticEvent({
+      occurredAt: `${"2".repeat(80)}-01-01T00:00:00Z`,
+      update: updateSnapshot(),
+    }),
+    TypeError,
+  );
+});
+
+test("retention limit is explicitly bounded", () => {
+  assert.equal(validateDiagnosticJournalLimit(1), 1);
+  assert.equal(validateDiagnosticJournalLimit(MAX_DIAGNOSTIC_JOURNAL_LIMIT), MAX_DIAGNOSTIC_JOURNAL_LIMIT);
+  assert.throws(() => validateDiagnosticJournalLimit(0), TypeError);
+  assert.throws(() => validateDiagnosticJournalLimit(MAX_DIAGNOSTIC_JOURNAL_LIMIT + 1), TypeError);
 });
 
 test("journal rotation is bounded and keeps the newest validated events", () => {
