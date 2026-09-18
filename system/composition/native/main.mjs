@@ -6,6 +6,7 @@ import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
+import { createNativePowerStatus } from "../../adapters/native/power-status.mjs";
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
@@ -23,6 +24,7 @@ import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-met
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
+import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -114,17 +116,26 @@ async function start() {
     console.warn("OrdaX native system metrics unavailable", error);
   }
 
+  let powerStatus = null;
+  try {
+    powerStatus = await createNativePowerStatus(window);
+  } catch (error) {
+    console.warn("OrdaX native power status unavailable", error);
+  }
+
   const bootControlAvailable = Boolean(
     powerActions?.getSnapshot().supportedActions.length,
   );
   const userFileSpaceAvailable = fileSpace !== null;
   const systemMetricsAvailable = systemMetrics !== null;
+  const powerStatusAvailable = powerStatus !== null;
   const networkStatusAvailable = networkStatus !== null;
   const networkManagementAvailable = networkManagement !== null;
   const host = createNativeSurfaceHost(window, {
     bootControlAvailable,
     userFileSpaceAvailable,
     systemMetricsAvailable,
+    powerStatusAvailable,
     networkStatusAvailable,
     networkManagementAvailable,
   });
@@ -141,6 +152,14 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  let batteryTrayControls = null;
+  if (powerStatus) {
+    try {
+      batteryTrayControls = mountBatteryTrayControls(root, powerStatus);
+    } catch (error) {
+      reportClientDiagnostic("battery-tray-status", error);
+    }
+  }
   let networkTrayControls = null;
   if (networkStatus) {
     try {
@@ -217,6 +236,7 @@ async function start() {
       systemOverviewControls.destroy();
       settingsOverviewControls.destroy();
       networkTrayControls?.destroy();
+      batteryTrayControls?.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
