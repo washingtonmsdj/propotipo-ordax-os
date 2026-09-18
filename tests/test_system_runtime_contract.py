@@ -196,6 +196,21 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("hmac.compare_digest", server)
         self.assertIn("Deliberately no CORS headers", server)
 
+    def test_native_restart_has_sync_and_kernel_fallback_without_weakening_shutdown(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("restart_host()", text)
+        self.assertIn('echo "ordax-surface: attempting primary reboot syscall"', text)
+        self.assertIn('/bin/busybox reboot -f', text)
+        self.assertIn('/bin/busybox sync', text)
+        self.assertIn('/proc/sysrq-trigger', text)
+        self.assertIn("printf 'b' >/proc/sysrq-trigger", text)
+        self.assertIn(
+            "all host restart methods returned without rebooting",
+            text,
+        )
+        self.assertIn('/bin/busybox poweroff -f', text)
+        self.assertNotIn("restart_host || true\n                        shutdown", text)
+
     def test_wlroots_physical_prerequisites_are_prepared(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("ensure_shared_memory", text)
