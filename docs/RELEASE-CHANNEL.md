@@ -151,7 +151,7 @@ fetch signed envelope
 
 `current` changes only after every candidate byte has passed authentication and integrity checks, and only when the caller explicitly uses the bootstrap `install` mode.
 
-The A/B base-update owner uses `materialize --expected-commit <checkout>`. That mode requires the signed source commit to match the running checkout exactly and ends after immutable release materialization; it must not change `/ordax/current`. An existing release may be reused only when its stored manifest, artifact and extracted tree still match; divergence fails closed.
+The A/B base-update owner uses `materialize --expected-commit <checkout>`. That mode requires the signed source commit to match the running checkout exactly and ends after immutable release materialization; it must not change `/ordax/current`. The exact verified release envelope is persisted as `release-envelope.json` beside the signed payload in `release-manifest.json`. An existing release may be reused only when envelope, signed payload, artifact and extracted tree still match; divergence fails closed. The persisted envelope is the only envelope the later A/B staging owner may consume, so staging never needs a second network fetch of signing authority.
 
 ## Failure/offline behavior
 
