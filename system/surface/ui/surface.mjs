@@ -8,6 +8,10 @@ import {
   assertWorkspaceStore,
   validateWorkspaceRecord,
 } from "../../contracts/workspace-store.mjs";
+import {
+  ACCESSIBILITY_CONTRAST_PREFERENCE_ID,
+  ACCESSIBILITY_MOTION_PREFERENCE_ID,
+} from "../../services/preferences/accessibility.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
 import { SURFACE_RENDER_LIFECYCLE_SCHEMA } from "./surface-lifecycle.mjs";
@@ -321,6 +325,8 @@ export function mountSurface(
 
   const render = () => {
     root.dataset.ordaxTheme = state.preferences[APPEARANCE_PREFERENCE_ID];
+    root.dataset.ordaxContrast = state.preferences[ACCESSIBILITY_CONTRAST_PREFERENCE_ID];
+    root.dataset.ordaxMotion = state.preferences[ACCESSIBILITY_MOTION_PREFERENCE_ID];
     launcher.hidden = !state.launcherOpen;
     launcherToggle.setAttribute("aria-expanded", String(state.launcherOpen));
 
@@ -684,6 +690,8 @@ export function mountSurface(
       preferenceListeners.clear();
       renderListeners.clear();
       delete root.dataset.ordaxTheme;
+      delete root.dataset.ordaxContrast;
+      delete root.dataset.ordaxMotion;
       root.replaceChildren();
     },
   });
