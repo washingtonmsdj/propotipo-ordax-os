@@ -69,7 +69,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             "/docs/evidence/release-trust-proof-manifest.json",
             "/docs/evidence/release-trust-recovery-envelope.json",
             "/bootstrap/base-update/stage.py",
-            "/bootstrap/base-update/planner.py",
+            "/bootstrap/base-update/plan.py",
             "/bootstrap/kernel/vmlinuz-6.6.52",
             "/bootstrap/initramfs/initramfs.cpio.gz",
         ):
