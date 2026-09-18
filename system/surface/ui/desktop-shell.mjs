@@ -175,6 +175,11 @@ export function createDesktopShellMarkup() {
             <span>Fuso horário</span>
             <strong>America/Bahia</strong>
           </div>
+          <div class="ordax-quick-time-sync">
+            <span>Sincronização automática</span>
+            <strong data-quick-time-sync-state data-state="checking">Verificando…</strong>
+            <small>Ajusta o relógio pela rede quando o serviço Native está disponível.</small>
+          </div>
         </section>
       </div>
     </div>
