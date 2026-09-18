@@ -1325,6 +1325,39 @@ button.ordax-tray-item:focus-visible {
   margin-top: 2px;
 }
 
+.ordax-quick-panel-battery {
+  width: min(340px, calc(100vw - 36px));
+}
+
+.ordax-quick-battery-status {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-md);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-quick-battery-status strong {
+  font-family: var(--ordax-font-display);
+  font-size: 2.4rem;
+  font-weight: 500;
+}
+
+.ordax-quick-battery-status span,
+.ordax-quick-battery-power span {
+  color: var(--ordax-muted);
+  font-size: 0.72rem;
+}
+
+.ordax-quick-battery-power {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--ordax-border-soft);
+}
+
 .ordax-quick-panel-datetime {
   width: min(340px, calc(100vw - 36px));
 }
@@ -1476,6 +1509,7 @@ button.ordax-tray-item:focus-visible {
   }
 
   .ordax-quick-panel,
+  .ordax-quick-panel-battery,
   .ordax-quick-panel-datetime {
     width: 100%;
     max-height: calc(100vh - 132px);
