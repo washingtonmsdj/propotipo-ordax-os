@@ -1,5 +1,6 @@
 import { listFirstPartyApps, getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
+import { PREFERENCE_RUNTIME_SCHEMA } from "../../contracts/preference-runtime.mjs";
 import { assertPreferenceStore, validatePreferenceRecord } from "../../contracts/preference-store.mjs";
 import { assertSurfaceHost } from "../../contracts/surface-host.mjs";
 import {
@@ -182,6 +183,7 @@ export function mountSurface(
   const workspaceSeed = workspacePort ? validateWorkspaceRecord(workspacePort.load()) : null;
   let dragSession = null;
   const renderListeners = new Set();
+  const preferenceListeners = new Set();
 
   root.innerHTML = createDesktopShellMarkup();
   const desktopClock = mountDesktopClock(root);
@@ -343,16 +345,21 @@ export function mountSurface(
   };
 
   const dispatch = (action) => {
+    const previousPreferences = state.preferences;
     const next = reduceSurfaceState(state, action);
     if (next === state) return;
     state = next;
-    if (action?.type === "preference.set" && store) {
+    const preferencesChanged = state.preferences !== previousPreferences;
+    if (preferencesChanged && store) {
       store.save(state.preferences);
     }
     if (workspacePort && WORKSPACE_PERSIST_ACTIONS.has(action?.type)) {
       workspacePort.save(createWorkspaceSnapshot(state));
     }
     render();
+    if (preferencesChanged) {
+      for (const listener of [...preferenceListeners]) listener(state.preferences);
+    }
   };
 
   const openLauncher = () => {
@@ -595,8 +602,28 @@ export function mountSurface(
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
   render();
 
+  const preferences = Object.freeze({
+    schema: PREFERENCE_RUNTIME_SCHEMA,
+    getSnapshot() {
+      return state.preferences;
+    },
+    set(preferenceId, value) {
+      dispatch({ type: "preference.set", preferenceId, value });
+      return state.preferences;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("Preference runtime listener must be a function");
+      }
+      preferenceListeners.add(listener);
+      listener(state.preferences);
+      return () => preferenceListeners.delete(listener);
+    },
+  });
+
   return Object.freeze({
     schema: SURFACE_RENDER_LIFECYCLE_SCHEMA,
+    preferences,
     subscribeRender(listener) {
       if (typeof listener !== "function") {
         throw new TypeError("Surface render listener must be a function");
@@ -621,6 +648,7 @@ export function mountSurface(
       root.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
+      preferenceListeners.clear();
       renderListeners.clear();
       delete root.dataset.ordaxTheme;
       root.replaceChildren();

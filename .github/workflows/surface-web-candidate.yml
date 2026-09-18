@@ -6,6 +6,7 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
+      - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
@@ -39,6 +40,7 @@ on:
     paths:
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/preference-store.mjs'
+      - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/identity-session.mjs'
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
