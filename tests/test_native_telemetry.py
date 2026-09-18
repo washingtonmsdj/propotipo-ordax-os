@@ -78,6 +78,22 @@ class NativeTelemetryTests(unittest.TestCase):
             self.assertNotIn("name", payload)
             self.assertNotIn("user", payload)
 
+    def test_surface_heartbeat_is_bounded_atomic_and_sha_only(self):
+        host = load_host()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            host.SURFACE_HEARTBEAT_FILE = str(root / "surface-heartbeat.json")
+            sha = "c" * 40
+            self.assertTrue(host.valid_surface_heartbeat_payload({"sourceSha": sha}))
+            self.assertFalse(host.valid_surface_heartbeat_payload({"sourceSha": "bad"}))
+            self.assertFalse(host.valid_surface_heartbeat_payload({"sourceSha": sha, "extra": True}))
+            host.record_surface_heartbeat(sha)
+            payload = json.loads((root / "surface-heartbeat.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["sourceSha"], sha)
+            self.assertIsInstance(payload["observedEpoch"], int)
+            self.assertGreaterEqual(payload["observedEpoch"], 0)
+            self.assertFalse(list(root.glob("*.tmp.*")))
+
     def test_telemetry_submission_failure_is_fail_soft(self):
         host = load_host()
         config = {
