@@ -47,6 +47,12 @@
   },
   "recovery": {
     "minimum_offline_backups": 1,
+    "verification_host": "developer-windows-machine",
+    "recovered_private_path_must_be_distinct": true,
+    "recovered_public_derivation_must_match": true,
+    "recovered_signing_proof_required": true,
+    "public_evidence_schema": "prototype-ordax.release-trust-ceremony-evidence/1",
+    "private_key_hash_in_public_evidence_allowed": false,
     "loss_before_distribution": "generate-new-key-and-repin-before-first-physical-write",
     "loss_after_prototype_provisioning": "reprovision-prototype-media-with-new-trust",
     "silent_key_replacement_allowed": false
