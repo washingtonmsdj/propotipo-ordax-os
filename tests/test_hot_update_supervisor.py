@@ -241,9 +241,35 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             "system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint",
             text,
         )
+        self.assertIn("system/services/base-update/agent.sh", text)
+        host_case = text.split(
+            "system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint",
+            1,
+        )[1].split(";;", 1)[0]
+        self.assertIn("system/services/base-update/agent.sh", host_case)
+        self.assertIn("surface_host_changed=1", host_case)
         self.assertIn('log "live-safe system update applied; waiting for Surface health acknowledgement"', text)
         self.assertIn('log "native host update applied; restarting Surface only"', text)
         self.assertIn("exit 75", text)
+
+    def test_base_update_agent_change_requires_surface_launcher_restart(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        classification = text.split("classify_changes() {", 1)[1].split(
+            "check_for_update() {",
+            1,
+        )[0]
+        host_case = classification.split(
+            "system/services/base-update/agent.sh)",
+            1,
+        )[0]
+        self.assertIn("surface_host_changed=1", classification)
+        self.assertNotIn(
+            "system/services/base-update/agent.sh",
+            classification.split(
+                "system/apps/*|system/adapters/*|system/contracts/*|system/services/*",
+                1,
+            )[1],
+        )
 
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
