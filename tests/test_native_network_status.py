@@ -87,7 +87,7 @@ class NativeNetworkStatusTests(unittest.TestCase):
         self.assertIn("await port.read()", adapter)
         self.assertIn("contracts/network-status.mjs", controls)
         self.assertIn('"Rede e conexões"', controls)
-        self.assertIn('"Somente leitura"', controls)
+        self.assertIn("Somente leitura nesta etapa", controls)
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertIn("createNativeNetworkStatus", composition)
