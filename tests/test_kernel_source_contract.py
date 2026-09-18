@@ -19,6 +19,15 @@ class KernelSourceContractTest(unittest.TestCase):
         )
         self.assertTrue(SOURCE["archive_url"].startswith("https://cdn.kernel.org/"))
 
+    def test_laptop_power_supply_support_is_explicit(self):
+        for selector in (
+            "CONFIG_ACPI=y",
+            "CONFIG_POWER_SUPPLY=y",
+            "CONFIG_ACPI_AC=y",
+            "CONFIG_ACPI_BATTERY=y",
+        ):
+            self.assertIn(selector + "\n", FRAGMENT, selector)
+
     def test_clean_fragment_has_no_old_layout_or_forge_language(self):
         for forbidden in (
             "ORDAX-PLATFORM",
