@@ -12,7 +12,8 @@ class DiagnosticJournalContractTests(unittest.TestCase):
     def test_journal_is_shared_and_depends_only_on_safe_domain_inputs(self):
         journal = self.read_journal()
         self.assertIn("contracts/update-status.mjs", journal)
-        self.assertIn('from "./report.mjs"', journal)
+        self.assertIn('from "./redaction.mjs"', journal)
+        self.assertNotIn('from "./report.mjs"', journal)
         self.assertNotIn("adapters/native", journal)
         self.assertNotIn("/__ordax/native/", journal)
         self.assertNotIn("fetch(", journal)
