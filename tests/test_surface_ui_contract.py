@@ -46,6 +46,7 @@ ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
 SYSTEM_TRAY_QUICK_PANELS = SURFACE / "system-tray-quick-panels.mjs"
 NETWORK_QUICK_PANEL = SURFACE / "network-quick-panel.mjs"
+BATTERY_QUICK_PANEL = SURFACE / "battery-quick-panel.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -509,6 +510,8 @@ class SurfaceUiContractTests(unittest.TestCase):
     def test_system_tray_quick_panels_are_shared_accessible_and_platform_neutral(self):
         controller = SYSTEM_TRAY_QUICK_PANELS.read_text(encoding="utf-8")
         network = NETWORK_QUICK_PANEL.read_text(encoding="utf-8")
+        battery = BATTERY_QUICK_PANEL.read_text(encoding="utf-8")
+        shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
 
@@ -529,6 +532,16 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('input.value = ""', network)
         for forbidden in ("localStorage", "sessionStorage", "/__ordax/native/", "telemetry"):
             self.assertNotIn(forbidden, network)
+        self.assertIn("assertPowerStatusPort", battery)
+        self.assertIn("validatePowerStatusSnapshot", battery)
+        self.assertIn('root.querySelector("[data-quick-battery-power]")', battery)
+        self.assertIn('"Conectada"', battery)
+        self.assertIn('"Desconectada"', battery)
+        self.assertIn("Fonte de energia", shell)
+        self.assertNotIn("/__ordax/native/", battery)
+        self.assertIn("mountBatteryQuickPanel", native_main)
+        self.assertIn('reportClientDiagnostic("battery-quick-panel", error)', native_main)
+        self.assertIn("batteryQuickPanel?.destroy()", native_main)
         self.assertIn("mountSystemTrayQuickPanels", native_main)
         self.assertIn("mountNetworkQuickPanel", native_main)
         self.assertIn("mountSystemTrayQuickPanels", web_main)

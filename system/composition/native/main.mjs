@@ -25,6 +25,7 @@ import { mountAccountOverviewControls } from "../../surface/ui/account-overview-
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
+import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -172,6 +173,14 @@ async function start() {
       reportClientDiagnostic("battery-tray-status", error);
     }
   }
+  let batteryQuickPanel = null;
+  if (powerStatus) {
+    try {
+      batteryQuickPanel = mountBatteryQuickPanel(root, powerStatus);
+    } catch (error) {
+      reportClientDiagnostic("battery-quick-panel", error);
+    }
+  }
   let networkTrayControls = null;
   if (networkStatus) {
     try {
@@ -251,6 +260,7 @@ async function start() {
       networkQuickPanel?.destroy();
       quickPanelControls?.destroy();
       batteryTrayControls?.destroy();
+      batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
