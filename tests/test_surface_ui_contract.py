@@ -35,6 +35,7 @@ WEB_PREFERENCE_ADAPTER = ROOT / "system" / "adapters" / "web" / "preferences.mjs
 WEB_IDENTITY_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity.mjs"
 WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-actions.mjs"
 NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
+NATIVE_SURFACE_HEARTBEAT_ADAPTER = ROOT / "system" / "adapters" / "native" / "surface-heartbeat.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
@@ -91,6 +92,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             WEB_IDENTITY_ADAPTER,
             WEB_IDENTITY_ACTIONS_ADAPTER,
             NATIVE_POWER_ADAPTER,
+            NATIVE_SURFACE_HEARTBEAT_ADAPTER,
             HOST_CONTRACT,
         ):
             self.assertTrue(path.is_file(), path)
@@ -295,6 +297,17 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("innerHTML", adapter)
         self.assertNotIn("adapters/native", web_main)
         self.assertNotIn("power-actions", web_main)
+
+    def test_native_composition_reports_rendered_surface_liveness_locally(self):
+        adapter = NATIVE_SURFACE_HEARTBEAT_ADAPTER.read_text(encoding="utf-8")
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        self.assertIn('/__ordax/native/surface-heartbeat', adapter)
+        self.assertIn("nativeSurfaceSourceSha", adapter)
+        self.assertIn("new URL(windowRef.location.href)", adapter)
+        self.assertIn("createNativeSurfaceHeartbeat", native_main)
+        self.assertIn("surfaceHeartbeat.dispose()", native_main)
+        self.assertNotIn("http://", adapter)
+        self.assertNotIn("https://", adapter)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
