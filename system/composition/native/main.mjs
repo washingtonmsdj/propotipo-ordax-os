@@ -217,6 +217,7 @@ async function start() {
       surface,
       networkStatus,
       networkManagement,
+      appActivation,
     );
   } catch (error) {
     reportClientDiagnostic("settings-network-management", error);
@@ -227,6 +228,7 @@ async function start() {
       surface,
       networkStatus,
       null,
+      appActivation,
     );
   }
   const systemOverviewControls = mountSystemOverviewControls(
