@@ -24,11 +24,11 @@ const UPDATE_LABELS = Object.freeze({
   applied: "Atualização aplicada",
   updating: "Atualizando",
   "network-error": "Sem conexão para atualizar",
-  "remote-error": "Git remoto indisponível",
+  "remote-error": "Fonte de atualização indisponível",
   "pull-error": "Falha ao atualizar",
   "rolled-back": "Atualização revertida",
-  rejected: "Versão bloqueada",
-  pinned: "Versão fixada",
+  rejected: "Entrega bloqueada",
+  pinned: "Entrega fixada",
   disabled: "Atualização indisponível",
   unavailable: "Estado indisponível",
 });
@@ -217,7 +217,7 @@ export function mountSystemOverviewControls(
       value: updateSnapshot ? deliveryLabel(updateSnapshot.deliveryNumber) : "—",
       detail: updateSnapshot
         ? `SHA ${shortSha(updateSnapshot.sourceSha)} · ${readableMode(updateSnapshot.applyMode)}`
-        : "Gerenciamento de versão não exposto neste host",
+        : "Gerenciamento de entrega não exposto neste host",
     });
 
     appendMetricCard(documentObject, grid, {
@@ -378,7 +378,7 @@ export function mountSystemOverviewControls(
         "ordax-system-warning",
         updateSnapshot.bootRefreshRequired
           ? "Existe uma atualização de boot/bootstrap pendente. O OrdaX não reiniciará a máquina automaticamente."
-          : "A versão atual permanece preservada enquanto o atualizador tenta recuperar um estado saudável.",
+          : "A entrega atual permanece preservada enquanto o atualizador tenta recuperar um estado saudável.",
       );
       section.append(warning);
     }
