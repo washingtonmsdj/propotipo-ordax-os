@@ -30,10 +30,15 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/1', contract)
-        self.assertIn("list() and createDirectory()", contract)
+        self.assertIn('ordax.file-space/2', contract)
+        self.assertIn("list(), createDirectory(), and readTextFile()", contract)
+        self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
+        self.assertIn("validateTextFile", contract)
         self.assertIn('/__ordax/native/files', adapter)
+        self.assertIn('/__ordax/native/file-content', adapter)
         self.assertIn("validateFileListing", adapter)
+        self.assertIn("validateTextFile", adapter)
+        self.assertIn("readTextFile", adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
 
@@ -56,6 +61,34 @@ class NativeUserFilesTests(unittest.TestCase):
                 {"name": "Documentos", "kind": "directory", "size": 0},
                 created["entries"],
             )
+
+    def test_text_preview_reads_only_bounded_utf8_regular_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            user_root = Path(temporary) / "home"
+            user_root.mkdir()
+            text_path = user_root / "notes.txt"
+            text_path.write_text("Olá OrdaX\nsegunda linha", encoding="utf-8")
+
+            preview = native_host.read_user_text_file(str(user_root), "/notes.txt")
+            self.assertEqual(preview["path"], "/notes.txt")
+            self.assertEqual(preview["text"], "Olá OrdaX\nsegunda linha")
+            self.assertEqual(preview["size"], len(text_path.read_bytes()))
+
+            (user_root / "binary.bin").write_bytes(b"\xff\xfe\x00")
+            with self.assertRaises(native_host.FileSpaceTextEncodingError):
+                native_host.read_user_text_file(str(user_root), "/binary.bin")
+
+            (user_root / "nul.txt").write_bytes(b"hello\x00world")
+            with self.assertRaises(native_host.FileSpaceTextEncodingError):
+                native_host.read_user_text_file(str(user_root), "/nul.txt")
+
+            (user_root / "large.txt").write_bytes(b"a" * (native_host.MAX_TEXT_FILE_BYTES + 1))
+            with self.assertRaises(native_host.FileSpaceTextTooLargeError):
+                native_host.read_user_text_file(str(user_root), "/large.txt")
+
+            (user_root / "folder").mkdir()
+            with self.assertRaises(ValueError):
+                native_host.read_user_text_file(str(user_root), "/folder")
 
     def test_standard_user_directories_are_idempotent_and_symlink_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -86,6 +119,7 @@ class NativeUserFilesTests(unittest.TestCase):
             outside.mkdir()
             (outside / "secret.txt").write_text("blocked", encoding="utf-8")
             os.symlink(outside, user_root / "escape")
+            os.symlink(outside / "secret.txt", user_root / "secret-link.txt")
 
             with self.assertRaises(ValueError):
                 native_host.list_user_directory(str(user_root), "/../outside")
@@ -93,6 +127,10 @@ class NativeUserFilesTests(unittest.TestCase):
                 native_host.create_user_directory(str(user_root), "/", "../outside")
             with self.assertRaises(OSError):
                 native_host.list_user_directory(str(user_root), "/escape")
+            with self.assertRaises(ValueError):
+                native_host.read_user_text_file(str(user_root), "/../outside/secret.txt")
+            with self.assertRaises(OSError):
+                native_host.read_user_text_file(str(user_root), "/secret-link.txt")
 
             root_listing = native_host.list_user_directory(str(user_root), "/")
             self.assertNotIn("escape", {entry["name"] for entry in root_listing["entries"]})
@@ -126,9 +164,16 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("ordax-files-breadcrumb", controls)
         self.assertIn("ordax-files-list", controls)
         self.assertIn("createDirectory", controls)
+        self.assertIn("readTextFile", controls)
+        self.assertIn("data-file-read-path", controls)
+        self.assertIn("ordax-files-preview-content", controls)
+        self.assertIn("Visualização segura de texto UTF-8", controls)
+        self.assertNotIn("innerHTML", controls)
         self.assertNotIn("📁", controls)
         self.assertNotIn("📄", controls)
         self.assertIn(".ordax-files-view", files_css)
+        self.assertIn(".ordax-files-preview", files_css)
+        self.assertIn(".ordax-files-preview-content", files_css)
         self.assertIn('kind: "extension"', files_app)
         self.assertIn('extensionId: "file-space"', files_app)
         self.assertIn("./surface-lifecycle.mjs", controls)
@@ -141,6 +186,16 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("createAppActivationChannel", composition)
         self.assertIn("appActivation", composition)
         self.assertIn("userFileSpaceAvailable", composition)
+
+        server = SERVER.read_text(encoding="utf-8")
+        self.assertIn('FILE_CONTENT_PATH = "/__ordax/native/file-content"', server)
+        self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", server)
+        self.assertIn("read_user_text_file", server)
+        self.assertIn("FileSpaceTextTooLargeError", server)
+        self.assertIn("FileSpaceTextEncodingError", server)
+        self.assertIn("self._empty(413)", server)
+        self.assertIn("self._empty(415)", server)
+        self.assertIn("{FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH}", server)
 
     def test_user_file_space_capability_is_additive_and_native(self):
         contract = json.loads(CAPABILITIES.read_text(encoding="utf-8"))
