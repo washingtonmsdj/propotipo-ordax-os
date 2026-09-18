@@ -400,3 +400,67 @@ button.ordax-file-row:focus-visible {
     display: none;
   }
 }
+
+.ordax-files-preview {
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-files-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-files-preview-identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ordax-files-preview-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-files-preview-meta,
+.ordax-files-preview-note,
+.ordax-files-preview-loading {
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+}
+
+.ordax-files-preview-content {
+  max-height: 230px;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--ordax-window-bg);
+  color: var(--ordax-text);
+  font-family: ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+  white-space: pre-wrap;
+}
+
+.ordax-files-preview-content:focus-visible {
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: -2px;
+}
+
+.ordax-files-preview-note,
+.ordax-files-preview-loading {
+  margin: 0;
+  padding: 9px 10px;
+  line-height: 1.45;
+}
