@@ -45,6 +45,15 @@ class RescueAgentContractTests(unittest.TestCase):
         self.assertIn('{"generation":%s,"action":"%s"}', text)
         self.assertNotIn('"command":', text)
 
+    def test_changed_rescue_agent_restarts_only_matching_persistent_process(self):
+        text = LAUNCHER.read_text(encoding="utf-8")
+        self.assertIn('/bin/busybox cmp "$RESCUE_SOURCE" "$RESCUE_AGENT"', text)
+        self.assertIn("rescue_agent_changed=1", text)
+        self.assertIn('terminate_child "$pid" "rescue agent"', text)
+        self.assertIn('persistent_agent_pid_matches "$pid" "$RESCUE_AGENT"', text)
+        self.assertIn('temporary=$RESCUE_AGENT.tmp.$', text)
+        self.assertIn('"/proc/$pid/cmdline"', text)
+
     def test_surface_copies_agent_into_persistent_state_and_does_not_own_its_lifetime(self):
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertIn("RESCUE_DIR=$STATE_ROOT/rescue", text)

@@ -67,6 +67,15 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn('chmod 600 "$temporary"', launcher)
         self.assertIn('/bin/setsid "$BASE_TELEMETRY_AGENT"', launcher)
 
+    def test_changed_base_agent_restarts_persistent_process_safely(self):
+        launcher = LAUNCHER.read_text(encoding="utf-8")
+        self.assertIn('/bin/busybox cmp "$BASE_TELEMETRY_SOURCE" "$BASE_TELEMETRY_AGENT"', launcher)
+        self.assertIn("base_agent_changed=1", launcher)
+        self.assertIn('terminate_child "$pid" "base telemetry agent"', launcher)
+        self.assertIn("refreshed persistent base telemetry agent", launcher)
+        self.assertIn('persistent_agent_pid_matches "$pid" "$BASE_TELEMETRY_AGENT"', launcher)
+        self.assertIn('temporary=$BASE_TELEMETRY_AGENT.tmp.$', launcher)
+
     def test_base_telemetry_starts_before_graphical_runtime(self):
         launcher = LAUNCHER.read_text(encoding="utf-8")
         self.assertLess(
