@@ -40,6 +40,7 @@ const CAPABILITY_LABELS = Object.freeze({
   "system.boot-control": "Energia do dispositivo",
   "filesystem.user-space": "Espaço local do usuário",
   "system.metrics": "Métricas do dispositivo",
+  "power.status": "Estado da bateria",
 });
 
 function node(documentObject, tag, className, text) {
