@@ -15,6 +15,7 @@ const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
 
 const CAPABILITY_LABELS = Object.freeze({
   "network.https": "Rede HTTPS",
+  "network.status": "Estado local de rede",
   "filesystem.user-space": "Arquivos persistentes",
   "system.boot-control": "Energia do dispositivo",
   "system.metrics": "Métricas locais",
