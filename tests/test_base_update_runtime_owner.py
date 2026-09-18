@@ -472,7 +472,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             repo, _state, physical, _trust = self.fixture(root)
 
             stage_script = repo / "bootstrap/base-update/stage.py"
-            planner_script = repo / "bootstrap/base-update/planner.py"
+            planner_script = repo / "bootstrap/base-update/plan.py"
             stage_script.parent.mkdir(parents=True, exist_ok=True)
             stage_script.write_text("# fixture stage\n", encoding="utf-8")
             planner_script.write_text("# fixture planner\n", encoding="utf-8")
@@ -559,7 +559,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             repo, _state, physical, _trust = self.fixture(root)
 
             stage_script = repo / "bootstrap/base-update/stage.py"
-            planner_script = repo / "bootstrap/base-update/planner.py"
+            planner_script = repo / "bootstrap/base-update/plan.py"
             stage_script.parent.mkdir(parents=True, exist_ok=True)
             stage_script.write_text("# fixture stage\n", encoding="utf-8")
             planner_script.write_text("# fixture planner\n", encoding="utf-8")
