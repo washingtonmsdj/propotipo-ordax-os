@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
 
 const STATIC_IMPORT_RE = /\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?["']([^"']+)["']/g;
 const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
@@ -103,13 +104,85 @@ function findBrowser() {
   throw new Error('Chrome/Chromium not found; set ORDAX_CHROME_BIN to an executable browser');
 }
 
-async function waitForFile(path, timeoutMs = 10_000) {
+const STARTUP_TIMEOUT_MS = 10_000;
+const STDERR_LIMIT = 8_000;
+
+const sleep = (ms) => new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+
+function appendDiagnostic(current, chunk) {
+  const combined = current + chunk;
+  return combined.length <= STDERR_LIMIT ? combined : combined.slice(-STDERR_LIMIT);
+}
+
+function exitSummary(exitState) {
+  if (!exitState) return 'still running';
+  const fields = [];
+  if (exitState.code !== null) fields.push(`code=${exitState.code}`);
+  if (exitState.signal !== null) fields.push(`signal=${exitState.signal}`);
+  return fields.length > 0 ? fields.join(', ') : 'exited';
+}
+
+async function reserveLoopbackPort() {
+  return new Promise((resolvePromise, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('could not allocate a loopback CDP port'));
+        return;
+      }
+      const { port } = address;
+      server.close((error) => {
+        if (error) reject(error);
+        else resolvePromise(port);
+      });
+    });
+  });
+}
+
+async function waitForDevTools(
+  port,
+  getExitState,
+  getSpawnError,
+  getStderr,
+  timeoutMs = STARTUP_TIMEOUT_MS,
+) {
+  const endpoint = `http://127.0.0.1:${port}/json/version`;
   const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
   while (Date.now() < deadline) {
-    if (existsSync(path)) return;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    const spawnError = getSpawnError();
+    if (spawnError) {
+      throw new Error(`failed to spawn Chromium: ${spawnError.message}`);
+    }
+    const exitState = getExitState();
+    if (exitState) {
+      throw new Error(
+        `Chromium exited before CDP became ready (${exitSummary(exitState)}); stderr=${JSON.stringify(getStderr())}`,
+      );
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 500);
+    try {
+      const response = await fetch(endpoint, { signal: controller.signal });
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timer);
+    }
+    await sleep(50);
   }
-  throw new Error(`timed out waiting for ${path}`);
+
+  throw new Error(
+    `timed out waiting for Chromium CDP at ${endpoint}; process=${exitSummary(getExitState())}; last=${lastError?.message ?? 'none'}; stderr=${JSON.stringify(getStderr())}`,
+  );
 }
 
 class CdpClient {
@@ -323,6 +396,7 @@ async function main() {
   const modules = await collectModules(bundleDir);
   const styles = (await Promise.all(CSS_FILES.map((path) => readFile(join(bundleDir, path), 'utf8')))).join('\n');
   const browser = findBrowser();
+  const cdpPort = await reserveLoopbackPort();
   const profile = await mkdtemp(join(tmpdir(), 'ordax-browser-smoke-'));
   const args = [
     '--headless=new',
@@ -334,7 +408,8 @@ async function main() {
     '--metrics-recording-only',
     '--no-first-run',
     '--no-default-browser-check',
-    '--remote-debugging-port=0',
+    '--remote-debugging-address=127.0.0.1',
+    `--remote-debugging-port=${cdpPort}`,
     `--user-data-dir=${profile}`,
     'about:blank',
   ];
@@ -342,14 +417,26 @@ async function main() {
 
   const child = spawn(browser, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
+  let exitState = null;
+  let spawnError = null;
+  let passed = false;
   child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  child.stderr.on('data', (chunk) => { stderr = appendDiagnostic(stderr, chunk); });
+  child.once('exit', (code, signal) => { exitState = { code, signal }; });
+  child.once('error', (error) => { spawnError = error; });
   let client = null;
   try {
-    const activePort = join(profile, 'DevToolsActivePort');
-    await waitForFile(activePort);
-    const [port] = (await readFile(activePort, 'utf8')).trim().split(/\r?\n/);
-    const pages = await fetch(`http://127.0.0.1:${port}/json/list`).then((response) => response.json());
+    await waitForDevTools(
+      cdpPort,
+      () => exitState,
+      () => spawnError,
+      () => stderr,
+    );
+    const pagesResponse = await fetch(`http://127.0.0.1:${cdpPort}/json/list`);
+    if (!pagesResponse.ok) {
+      throw new Error(`Chromium CDP target list failed with HTTP ${pagesResponse.status}`);
+    }
+    const pages = await pagesResponse.json();
     const page = pages.find((item) => item.type === 'page');
     if (!page) throw new Error('Chromium did not expose a page target');
     client = new CdpClient(page.webSocketDebuggerUrl);
@@ -376,6 +463,7 @@ async function main() {
     if (runtimeErrors.length || logErrors.length) {
       throw new Error(`browser emitted runtime errors: ${JSON.stringify([...runtimeErrors, ...logErrors], null, 2)}`);
     }
+    passed = true;
     console.log('SURFACE_BROWSER_SMOKE=PASS');
     console.log(`SURFACE_BROWSER_MODULE_COUNT=${modules.size}`);
     console.log(`SURFACE_BROWSER_EXECUTABLE=${browser}`);
@@ -390,7 +478,9 @@ async function main() {
       });
     }
     await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-    if (child.exitCode && child.exitCode !== 0 && stderr) process.stderr.write(stderr);
+    if (!passed && stderr) {
+      process.stderr.write(`CHROMIUM_STDERR_BEGIN\n${stderr}\nCHROMIUM_STDERR_END\n`);
+    }
   }
 }
 
