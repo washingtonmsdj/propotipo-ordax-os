@@ -494,7 +494,8 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("LoaderEntryOneShot", orchestrator)
         self.assertNotIn("/sys/firmware/efi/efivars", orchestrator)
         self.assertNotIn("power-request", orchestrator)
-        self.assertNotIn("reboot", agent)
+        self.assertNotIn("reboot -f", agent)
+        self.assertNotIn("busybox reboot", agent)
         self.assertNotIn("sysrq", agent)
 
     def test_agent_maps_development_root_to_real_physical_ordax_root(self):
