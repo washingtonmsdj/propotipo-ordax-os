@@ -68,6 +68,10 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             "/docs/evidence/release-trust-ceremony.json",
             "/docs/evidence/release-trust-proof-manifest.json",
             "/docs/evidence/release-trust-recovery-envelope.json",
+            "/bootstrap/base-update/stage.py",
+            "/bootstrap/base-update/planner.py",
+            "/bootstrap/kernel/vmlinuz-6.6.52",
+            "/bootstrap/initramfs/initramfs.cpio.gz",
         ):
             self.assertIn(authority_path, text)
         self.assertIn('PREVIOUS_FILE=$STATE_DIR/previous-commit', text)
