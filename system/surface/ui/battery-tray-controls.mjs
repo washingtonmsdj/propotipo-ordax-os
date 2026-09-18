@@ -66,8 +66,15 @@ export function mountBatteryTrayControls(
   const render = (snapshot) => {
     const value = validatePowerStatusSnapshot(snapshot);
     if (value.battery === null) {
-      item.hidden = true;
-      quickPercent.textContent = "--%";
+      item.hidden = false;
+      item.dataset.batteryState = "not-detected";
+      item.dataset.externalPower =
+        value.externalPower === null ? "unknown" : String(value.externalPower);
+      icon.dataset.batteryLevel = "unknown";
+      icon.dataset.charging = "false";
+      label.textContent = "--";
+      item.title = "Bateria não detectada";
+      quickPercent.textContent = "--";
       quickState.textContent = "Bateria não detectada.";
       quickPower.textContent = externalPowerLabel(value.externalPower);
       return;
@@ -91,7 +98,15 @@ export function mountBatteryTrayControls(
     try {
       render(await port.read());
     } catch {
-      item.hidden = true;
+      item.hidden = false;
+      item.dataset.batteryState = "unavailable";
+      icon.dataset.batteryLevel = "unknown";
+      icon.dataset.charging = "false";
+      label.textContent = "--";
+      item.title = "Estado da bateria indisponível";
+      quickPercent.textContent = "--";
+      quickState.textContent = "Estado da bateria indisponível.";
+      quickPower.textContent = "Não foi possível consultar a fonte de energia.";
     } finally {
       polling = false;
     }
