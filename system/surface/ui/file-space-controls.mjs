@@ -446,7 +446,7 @@ export function mountFileSpaceControls(
     breadcrumb.setAttribute("aria-label", "Caminho atual");
     renderBreadcrumb(breadcrumb);
 
-    const search = node(documentObject, "label", "ordax-files-search");
+    const search = node(documentObject, "div", "ordax-files-search");
     const searchInput = node(documentObject, "input", "ordax-files-search-input");
     searchInput.type = "search";
     searchInput.maxLength = 120;
@@ -636,6 +636,7 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
       selectedPath = nextPath;
+      if (!selectionIsVisible()) selectedPath = null;
       copyingPath = null;
       copyDraft = "";
       previewRequestOrdinal += 1;
@@ -696,6 +697,7 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
       selectedPath = nextPath;
+      if (!selectionIsVisible()) selectedPath = null;
       renamingPath = null;
       renameDraft = "";
       if (textPreview?.path === previousPath) {
