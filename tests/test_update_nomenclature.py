@@ -20,13 +20,29 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertFalse(contract["update"]["is_pull_request"])
         self.assertFalse(contract["product_version"]["currently_assigned"])
         self.assertFalse(contract["component_version"]["currently_independent"])
+        sequence = contract["delivery"]["prototype_sequence"]
+        self.assertEqual(sequence["method"], "anchored-first-parent-device-impact-count")
+        self.assertEqual(sequence["epoch"]["delivery_number"], 220)
+        self.assertEqual(
+            sequence["epoch"]["source_commit"],
+            "2361b9e74c02d97c4d907417d7e1b2836062e5e7",
+        )
+        self.assertFalse(sequence["proof_and_documentation_only_changes_increment_delivery"])
+        self.assertFalse(sequence["proof_and_documentation_only_changes_require_boot_refresh"])
+        self.assertIn("bootstrap/**/prove_*", sequence["excluded_paths"])
 
     def test_supervisor_delivery_sequence_does_not_parse_pull_request_numbers(self):
         text = SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("delivery_number_for_sha()", text)
-        self.assertIn('rev-list --first-parent --count "$source_sha"', text)
+        self.assertIn('DELIVERY_EPOCH_SHA=2361b9e74c02d97c4d907417d7e1b2836062e5e7', text)
+        self.assertIn("DELIVERY_EPOCH_NUMBER=220", text)
+        self.assertIn('rev-list --first-parent --count "$DELIVERY_EPOCH_SHA..$source_sha"', text)
         self.assertIn("system boot bootstrap", text)
-        self.assertIn(":(exclude)system/*.md", text)
+        self.assertIn(":(exclude,glob)system/**/*.md", text)
+        self.assertIn(":(exclude,glob)boot/**/*.md", text)
+        self.assertIn(":(exclude,glob)bootstrap/**/*.md", text)
+        self.assertIn(":(exclude,glob)boot/**/prove_*", text)
+        self.assertIn(":(exclude,glob)bootstrap/**/prove_*", text)
         self.assertNotIn("Merge pull request #", text)
         self.assertNotIn("version_number_for_sha()", text)
 
