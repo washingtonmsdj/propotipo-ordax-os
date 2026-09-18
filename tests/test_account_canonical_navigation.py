@@ -27,6 +27,8 @@ class AccountCanonicalNavigationTests(unittest.TestCase):
         self.assertIn('activation.appId === "account"', controls)
         self.assertIn("validAccountSection(activation.target)", controls)
         self.assertIn("unsubscribeActivation?.()", controls)
+        self.assertIn('lifecycle.getAppTarget("account")', controls)
+        self.assertIn('activationPort.publish({ appId: "account", target: nextSection })', controls)
 
     def test_sync_copy_does_not_claim_cloud_transport_from_capability_only(self):
         controls = ACCOUNT.read_text(encoding="utf-8")
