@@ -246,7 +246,7 @@ while :; do
         last_power_request_status=""
         last_power_request_crossed_boot=false
         if [ -s "$POWER_LAST_REQUEST_FILE" ]; then
-            IFS=" " read -r last_power_action last_power_request_boot_id last_power_request_epoch last_power_request_status <"$POWER_LAST_REQUEST_FILE" || true
+            IFS="|" read -r last_power_action last_power_request_boot_id last_power_request_epoch last_power_request_status <"$POWER_LAST_REQUEST_FILE" || true
             case "$last_power_action" in
                 restart|shutdown) ;;
                 *) last_power_action="" ;;

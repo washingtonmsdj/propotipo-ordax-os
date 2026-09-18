@@ -219,7 +219,9 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("record_power_request restart failed", text)
         self.assertIn("record_power_request shutdown pending", text)
         self.assertIn("record_power_request shutdown failed", text)
+        self.assertIn("printf '%s|%s|%s|%s\\n'", text)
         self.assertIn('/bin/busybox sync', text)
+        self.assertIn('host poweroff command returned without shutting down', text)
         self.assertLess(
             text.index("record_power_request restart pending"),
             text.index("if ! restart_host; then"),

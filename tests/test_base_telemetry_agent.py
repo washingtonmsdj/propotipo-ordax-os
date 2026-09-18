@@ -44,6 +44,7 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn('"lastPowerRequestStatus":"%s"', text)
         self.assertIn('"lastPowerRequestCrossedBoot":%s', text)
         self.assertIn("POWER_LAST_REQUEST_FILE=$STATE_DIR/power/last-request", text)
+        self.assertIn('IFS="|" read -r last_power_action', text)
         self.assertIn("last_power_request_crossed_boot=false", text)
         self.assertIn("power_supply_class_available=false", text)
         self.assertIn("battery_detected=false", text)
