@@ -9,6 +9,7 @@ SYSTEM_ENTRYPOINT = ROOT / "system" / "entrypoint"
 SURFACE_ENTRYPOINT = ROOT / "system" / "surface" / "entrypoint"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
+RESCUE_AGENT = ROOT / "system" / "rescue" / "agent.sh"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 
 
@@ -19,11 +20,12 @@ class SystemRuntimeContractTests(unittest.TestCase):
             mode = stat.S_IMODE(path.stat().st_mode)
             self.assertEqual(mode, 0o755, f"{path} mode={mode:o}")
         self.assertTrue(NATIVE_HOST_SERVER.is_file(), NATIVE_HOST_SERVER)
+        self.assertTrue(RESCUE_AGENT.is_file(), RESCUE_AGENT)
         self.assertTrue((NATIVE_COMPOSITION / "index.html").is_file())
         self.assertTrue((NATIVE_COMPOSITION / "main.mjs").is_file())
 
     def test_shell_syntax_is_valid(self):
-        for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME):
+        for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME, RESCUE_AGENT):
             subprocess.run(["sh", "-n", str(path)], check=True)
 
     def test_native_host_user_folder_provisioning_is_fail_soft(self):
@@ -106,6 +108,15 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn('mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA"', text)
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
+
+    def test_native_surface_bootstraps_persistent_rescue_agent_fail_soft(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("RESCUE_SOURCE=$SYSTEM_ROOT/rescue/agent.sh", text)
+        self.assertIn("RESCUE_DIR=$STATE_ROOT/rescue", text)
+        self.assertIn("ensure_rescue_agent()", text)
+        self.assertIn('/bin/setsid "$RESCUE_AGENT"', text)
+        self.assertIn("rescue agent bootstrap failed; continuing Surface startup", text)
+        self.assertNotIn('kill "$RESCUE', text)
 
     def test_native_surface_waits_for_http_and_watches_server_lifetime(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
