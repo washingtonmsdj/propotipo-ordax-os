@@ -805,6 +805,8 @@ export function mountFileSpaceControls(
         message = "A origem ou o destino não existe mais. Atualize e tente novamente.";
       } else if (status === 403) {
         message = "O OrdaX não tem permissão para mover este item.";
+      } else if (status === 400) {
+        message = "O destino não é válido para este movimento.";
       } else {
         message = "Não foi possível mover este item. A origem foi preservada.";
       }
@@ -866,6 +868,12 @@ export function mountFileSpaceControls(
         message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
       } else if (status === 507) {
         message = "Não há espaço suficiente para criar a cópia.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para copiar este arquivo.";
+      } else if (status === 404) {
+        message = "O arquivo de origem não existe mais.";
+      } else if (status === 400) {
+        message = "O nome da cópia não é válido.";
       } else {
         message = "Não foi possível copiar este arquivo.";
       }
@@ -921,9 +929,17 @@ export function mountFileSpaceControls(
     } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
       const status = operationStatus(error);
-      message = status === 409
-        ? "Já existe um item com esse nome. Nada foi substituído."
-        : "Não foi possível renomear este item.";
+      if (status === 409) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para renomear este item.";
+      } else if (status === 404) {
+        message = "Este item não existe mais. Atualize a pasta.";
+      } else if (status === 400) {
+        message = "O novo nome não é válido.";
+      } else {
+        message = "Não foi possível renomear este item.";
+      }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
@@ -951,9 +967,20 @@ export function mountFileSpaceControls(
       creatingDirectory = false;
       directoryDraft = "";
       message = `Pasta “${trimmed}” criada.`;
-    } catch {
+    } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
-      message = "A pasta não pôde ser criada. Verifique o nome ou se ela já existe.";
+      const status = operationStatus(error);
+      if (status === 409) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para criar uma pasta aqui.";
+      } else if (status === 507) {
+        message = "Não há espaço suficiente para criar a pasta.";
+      } else if (status === 400) {
+        message = "O nome da pasta não é válido.";
+      } else {
+        message = "Não foi possível criar a pasta.";
+      }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
