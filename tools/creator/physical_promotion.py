@@ -127,7 +127,11 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
         for group in groups
     )
     _add(blockers, minimal.get("all_artifacts_resolved") is True, "minimal-bootstrap-not-fully-resolved")
-    _add(blockers, minimal.get("physical_write_allowed") is True, "minimal-bootstrap-write-not-authorized")
+    _add(
+        blockers,
+        minimal.get("physical_write_allowed") is False,
+        "minimal-bootstrap-must-remain-non-destructive",
+    )
     _add(blockers, groups_ok, "minimal-bootstrap-has-unresolved-group")
 
     trust_sha: str | None = None
