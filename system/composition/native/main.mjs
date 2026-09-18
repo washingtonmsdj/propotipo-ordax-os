@@ -27,8 +27,9 @@ async function start() {
   }
 
   const preferenceStore = await createNativePreferenceStore(window);
-  const workspaceStore = createNativeWorkspaceStore(window);
-  const workspaceMetadata = createWorkspaceMetadataBridge(workspaceStore);
+  const localWorkspaceStore = createNativeWorkspaceStore(window);
+  const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
+  const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
@@ -83,7 +84,7 @@ async function start() {
     root,
     host,
     preferenceStore,
-    workspaceMetadata.store,
+    workspaceStore,
     appActivation,
   );
   let syncMutationOrdinal = 0;
