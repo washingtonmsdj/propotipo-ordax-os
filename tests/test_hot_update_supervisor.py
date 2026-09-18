@@ -58,6 +58,21 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('CURRENT_FILE=$STATE_DIR/current-commit', text)
         self.assertNotIn('/usr/local/bin/ordax-pull', text)
 
+    def test_candidate_is_preflighted_before_live_checkout_switch(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("validate_candidate_tree()", text)
+        self.assertIn('show "$candidate_sha:$candidate_path"', text)
+        self.assertIn('cat-file -e "$candidate_sha:$candidate_path"', text)
+        self.assertIn('ls-tree "$candidate_sha" -- "$candidate_path"', text)
+        self.assertIn('candidate_shell_is_valid "$candidate_sha" system/supervisor', text)
+        self.assertIn("candidate-preflight-failed", text)
+        self.assertIn('reason=${CHECKOUT_ERROR:-checkout-failed}', text)
+        self.assertIn('temporary=$UPDATE_RUN_DIR/candidate-shell.$', text)
+        self.assertLess(
+            text.index('validate_candidate_tree "$expected_sha"'),
+            text.index('reset --hard "$expected_sha"'),
+        )
+
     def test_live_safe_and_host_changes_have_distinct_apply_modes(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn(
