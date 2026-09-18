@@ -27,7 +27,9 @@ class ReleaseTrustRecoveryProofTests(unittest.TestCase):
         self.assertIn("Recovered backup derives different public trust", text)
         self.assertIn("sign --manifest $ProofManifestPath --private-key $RecoveredPrivateKeyPath", text)
         self.assertIn("--trust $TrustPath", text)
+        self.assertIn("verify-envelope --envelope $RecoveryEnvelopePath --trust $TrustPath", text)
         self.assertIn("RECOVERED_SIGNING_PROOF=YES", text)
+        self.assertIn("RECOVERED_ENVELOPE_VERIFIED=YES", text)
         self.assertNotIn("PrimaryPrivateHash", text)
         self.assertNotIn("RecoveredPrivateHash", text)
 
@@ -43,6 +45,8 @@ class ReleaseTrustRecoveryProofTests(unittest.TestCase):
         self.assertIn("public-promotion", text)
         self.assertIn("Copy-Item -LiteralPath $TrustPath -Destination $PromotionTrustPath", text)
         self.assertIn("Copy-Item -LiteralPath $PublicEvidencePath -Destination $PromotionEvidencePath", text)
+        self.assertIn("Copy-Item -LiteralPath $ProofManifestPath -Destination $PromotionProofManifestPath", text)
+        self.assertIn("Copy-Item -LiteralPath $RecoveryEnvelopePath -Destination $PromotionRecoveryEnvelopePath", text)
         self.assertIn("PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO", text)
         self.assertIn("READY_TO_PIN_PUBLIC_ANCHOR=YES", text)
         self.assertNotIn("Copy-Item -LiteralPath $PrimaryPrivateKeyPath", text)
@@ -56,6 +60,8 @@ class ReleaseTrustRecoveryProofTests(unittest.TestCase):
         self.assertIn("Complete-OrdaXReleaseTrust.ps1", workflow)
         self.assertIn("3-Verify-OrdaXTrustRecovery.cmd", workflow)
         self.assertIn("trust_recovery_finalizer", workflow)
+        self.assertIn("promote_public_trust.py", workflow)
+        self.assertIn("public_trust_promoter", workflow)
 
     def test_initializer_still_stops_before_public_anchor_promotion(self):
         text = INITIALIZER.read_text(encoding="utf-8")

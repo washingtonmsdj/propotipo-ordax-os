@@ -144,6 +144,73 @@ func TestGenerateDeriveAndSignRoundTrip(t *testing.T) {
 	}
 }
 
+func TestVerifyEnvelopeRoundTripAndTamper(t *testing.T) {
+	root := t.TempDir()
+	privatePath := filepath.Join(root, "private.pem")
+	trustPath := filepath.Join(root, "trust.json")
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
+	envelopePath := filepath.Join(root, "envelope.json")
+
+	if _, err := generateKeyFiles(privatePath, trustPath, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := signManifest(manifestPath, privatePath, trustPath, envelopePath, "prototype-1", defaultRepo); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := verifyEnvelope(envelopePath, trustPath, defaultRepo)
+	if err != nil {
+		t.Fatalf("verifyEnvelope: %v", err)
+	}
+	if manifest.SourceCommit != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("verified source commit = %q", manifest.SourceCommit)
+	}
+
+	data, err := os.ReadFile(envelopePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope Envelope
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	envelope.Payload = append([]byte(nil), envelope.Payload...)
+	envelope.Payload[len(envelope.Payload)-2] ^= 1
+	tampered, err := marshalJSON(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamperedPath := filepath.Join(root, "tampered-envelope.json")
+	if err := os.WriteFile(tamperedPath, tampered, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyEnvelope(tamperedPath, trustPath, defaultRepo); err == nil || !strings.Contains(err.Error(), "signature verification failed") {
+		t.Fatalf("tampered verification error = %v", err)
+	}
+}
+
+func TestVerifyEnvelopeRejectsDifferentTrust(t *testing.T) {
+	root := t.TempDir()
+	privateA := filepath.Join(root, "a.pem")
+	trustA := filepath.Join(root, "a.json")
+	privateB := filepath.Join(root, "b.pem")
+	trustB := filepath.Join(root, "b.json")
+	manifestPath := writeManifestForTest(t, root, validManifestBytes())
+	envelopePath := filepath.Join(root, "envelope.json")
+
+	if _, err := generateKeyFiles(privateA, trustA, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := generateKeyFiles(privateB, trustB, "prototype-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := signManifest(manifestPath, privateA, trustA, envelopePath, "prototype-1", defaultRepo); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyEnvelope(envelopePath, trustB, defaultRepo); err == nil || !strings.Contains(err.Error(), "signature verification failed") {
+		t.Fatalf("different trust verification error = %v", err)
+	}
+}
+
 func TestSignPreservesWhitespaceInExactPayload(t *testing.T) {
 	root := t.TempDir()
 	privatePath := filepath.Join(root, "private.pem")

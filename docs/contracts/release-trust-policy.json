@@ -67,6 +67,6 @@
     "key_material_generated": false,
     "public_anchor_pinned": false,
     "minimal_bootstrap_resolved": false,
-    "physical_write_allowed": false
+    "physical_authorization_eligible": false
   }
 }

@@ -89,7 +89,7 @@ class PhysicalPromotionBoundaryTests(unittest.TestCase):
                 "key_material_generated": True,
                 "public_anchor_pinned": True,
                 "minimal_bootstrap_resolved": True,
-                "physical_write_allowed": True,
+                "physical_authorization_eligible": True,
             },
         }
         write_json(root / "docs/contracts/release-trust-policy.json", policy)
@@ -136,6 +136,24 @@ class PhysicalPromotionBoundaryTests(unittest.TestCase):
                 (root / "docs/contracts/minimal-bootstrap.json").read_text(encoding="utf-8")
             )
             self.assertFalse(minimal["physical_write_allowed"])
+
+    def test_trust_policy_rejects_duplicate_destructive_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_ready_fixture(root)
+            policy_path = root / "docs/contracts/release-trust-policy.json"
+
+            policy = json.loads(policy_path.read_text(encoding="utf-8"))
+            policy["gates"]["physical_write_allowed"] = False
+            write_json(policy_path, policy)
+
+            status = promotion.evaluate(root)
+
+            self.assertFalse(status["ready"])
+            self.assertIn(
+                "release-trust-policy-gates-not-authorized",
+                status["blockers"],
+            )
 
     def test_payload_level_destructive_flag_is_rejected_even_with_valid_bindings(self):
         with tempfile.TemporaryDirectory() as temporary:

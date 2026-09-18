@@ -27,6 +27,7 @@ const (
 	trustSchema    = "prototype-ordax.release-trust/1"
 	defaultRepo    = "washingtonmsdj/prototipo-ordax-os"
 	maxManifest    = 512 << 10
+	maxEnvelope    = 2 << 20
 	maxPrivateKey  = 16 << 10
 	maxTrust       = 16 << 10
 	maxArtifact    = int64(16 << 30)
@@ -416,6 +417,63 @@ func signManifest(manifestPath, privatePath, trustPath, outputPath, keyID, repos
 	return manifest.SourceCommit, nil
 }
 
+func verifyEnvelope(envelopePath, trustPath, repository string) (Manifest, error) {
+	envelopeBytes, err := readRegular(envelopePath, maxEnvelope, false)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("envelope: %w", err)
+	}
+	var envelope Envelope
+	if err := decodeStrict(envelopeBytes, maxEnvelope, &envelope); err != nil {
+		return Manifest{}, fmt.Errorf("envelope: %w", err)
+	}
+	if envelope.Schema != envelopeSchema {
+		return Manifest{}, errors.New("unsupported release envelope schema")
+	}
+	if err := validateKeyID(envelope.KeyID); err != nil {
+		return Manifest{}, fmt.Errorf("envelope: %w", err)
+	}
+	trust, trustedPublic, err := loadTrustAnchor(trustPath)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if envelope.KeyID != trust.KeyID {
+		return Manifest{}, errors.New("release envelope key id does not match trust anchor")
+	}
+	if len(envelope.Signature) != ed25519.SignatureSize {
+		return Manifest{}, errors.New("release envelope signature length is invalid")
+	}
+	if !ed25519.Verify(trustedPublic, envelope.Payload, envelope.Signature) {
+		return Manifest{}, errors.New("release envelope signature verification failed")
+	}
+	manifest, err := strictManifest(envelope.Payload, repository)
+	if err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
+}
+
+func verifyCommand(args []string) error {
+	flags := flag.NewFlagSet("verify-envelope", flag.ContinueOnError)
+	envelopePath := flags.String("envelope", "", "signed release envelope JSON path")
+	trustPath := flags.String("trust", "", "public trust-anchor JSON path")
+	repository := flags.String("repository", defaultRepo, "expected source repository")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if *envelopePath == "" || *trustPath == "" || flags.NArg() != 0 {
+		return errors.New("verify-envelope requires --envelope and --trust")
+	}
+	manifest, err := verifyEnvelope(*envelopePath, *trustPath, *repository)
+	if err != nil {
+		return err
+	}
+	fmt.Printf(
+		"RELEASE_ENVELOPE_VERIFIED=YES\nSOURCE_COMMIT=%s\nKEY_ID_VERIFIED=YES\nSIGNATURE_VERIFIED=YES\n",
+		manifest.SourceCommit,
+	)
+	return nil
+}
+
 func generateCommand(args []string) error {
 	flags := flag.NewFlagSet("generate-key", flag.ContinueOnError)
 	privatePath := flags.String("private-key", "", "new external PKCS#8 Ed25519 private-key path")
@@ -477,7 +535,7 @@ func signCommand(args []string) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-release-signing <generate-key|derive-trust|sign> [options]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-release-signing <generate-key|derive-trust|sign|verify-envelope> [options]")
 }
 
 func main() {
@@ -493,6 +551,8 @@ func main() {
 		err = deriveCommand(os.Args[2:])
 	case "sign":
 		err = signCommand(os.Args[2:])
+	case "verify-envelope":
+		err = verifyCommand(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
