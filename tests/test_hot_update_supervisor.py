@@ -100,6 +100,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('rm -f "$REJECTED_FILE"', text)
         self.assertIn('cleared stale rejected state for healthy current checkout', text)
 
+    def test_host_base_telemetry_changes_restart_surface(self):
+        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn("system/services/telemetry/base-agent.sh", text)
+        self.assertIn("system/services/telemetry/relay.json", text)
+        self.assertIn("surface_host_changed=1", text)
+
     def test_live_reload_requires_surface_health_acknowledgement(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
