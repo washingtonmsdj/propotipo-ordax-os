@@ -96,9 +96,9 @@ export function createNativeUpdateWatcher(
       if (!state || typeof state.sourceSha !== "string" || state.sourceSha.length === 0) return;
 
       notify(state);
-      void submitHealthIfNeeded();
       if (observedSha === null) {
         observedSha = snapshot.sourceSha;
+        void submitHealthIfNeeded();
         return;
       }
 
@@ -106,8 +106,15 @@ export function createNativeUpdateWatcher(
       observedSha = snapshot.sourceSha;
       if (shouldReloadForUpdate(previousSha, snapshot)) {
         stopped = true;
+        if (timer !== null) {
+          windowRef.clearTimeout(timer);
+          timer = null;
+        }
         windowRef.location.reload();
+        return;
       }
+
+      void submitHealthIfNeeded();
     } catch {
       // Network/update polling must never take the running Surface down.
     } finally {
