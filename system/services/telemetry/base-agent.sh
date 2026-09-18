@@ -14,6 +14,7 @@ LAST_RESULT_FILE=$TELEMETRY_DIR/last-result
 UPDATE_STATE=/run/ordax-update/state.json
 HEALTH_FILE=/run/ordax-update/healthy-sha
 SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json
+CLIENT_DIAGNOSTIC_FILE=$STATE_DIR/native-state/client-diagnostic.json
 REJECTED_FILE=$STATE_DIR/rejected-commit
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
@@ -237,13 +238,36 @@ while :; do
         case "$last_stage_duration" in ''|*[!0-9]*) last_stage_duration=0 ;; esac
         [ "$last_stage_duration" -le 3600 ] 2>/dev/null || last_stage_duration=0
         boot_id=$(read_first_line "$BOOT_ID_FILE")
+
+        client_diagnostic_sha=$(json_field sourceSha "$CLIENT_DIAGNOSTIC_FILE")
+        is_sha "$client_diagnostic_sha" || client_diagnostic_sha=""
+        client_diagnostic_stage=$(json_field stage "$CLIENT_DIAGNOSTIC_FILE")
+        case "$client_diagnostic_stage" in
+            ''|*[!a-z0-9.-]*) client_diagnostic_stage="" ;;
+        esac
+        [ "${#client_diagnostic_stage}" -le 64 ] || client_diagnostic_stage=""
+        client_diagnostic_name=$(json_field errorName "$CLIENT_DIAGNOSTIC_FILE")
+        case "$client_diagnostic_name" in
+            ''|*[!A-Za-z0-9]*) client_diagnostic_name="" ;;
+        esac
+        [ "${#client_diagnostic_name}" -le 64 ] || client_diagnostic_name=""
+        client_diagnostic_source=$(json_field source "$CLIENT_DIAGNOSTIC_FILE")
+        case "$client_diagnostic_source" in
+            ''|*[!A-Za-z0-9_.:-]*) client_diagnostic_source="" ;;
+        esac
+        [ "${#client_diagnostic_source}" -le 96 ] || client_diagnostic_source=""
+        client_diagnostic_epoch=$(json_number_field observedEpoch "$CLIENT_DIAGNOSTIC_FILE")
+        case "$client_diagnostic_epoch" in
+            ''|*[!0-9]*) client_diagnostic_epoch=null ;;
+        esac
+
         read_rescue_state
 
         if [ -n "$device_root" ]; then
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \

@@ -1,3 +1,7 @@
+import {
+  createNativeClientDiagnostics,
+  renderedSourceSha,
+} from "../../adapters/native/client-diagnostics.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
@@ -38,6 +42,27 @@ async function start() {
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
+  let clientDiagnostics = null;
+  try {
+    clientDiagnostics = await createNativeClientDiagnostics(window);
+  } catch (error) {
+    console.warn("OrdaX native client diagnostics unavailable", error);
+  }
+  const reportClientDiagnostic = (stage, error) => {
+    console.error(`OrdaX Surface diagnostic: ${stage}`, error);
+    if (clientDiagnostics) {
+      void clientDiagnostics.report(renderedSourceSha(window), stage, error);
+    }
+  };
+  const onWindowError = (event) => {
+    reportClientDiagnostic("window-error", event.error ?? new Error("window-error"));
+  };
+  const onUnhandledRejection = (event) => {
+    const reason = event.reason instanceof Error ? event.reason : new Error("unhandled-rejection");
+    reportClientDiagnostic("unhandled-rejection", reason);
+  };
+  window.addEventListener("error", onWindowError);
+  window.addEventListener("unhandledrejection", onUnhandledRejection);
   let updateHistory = null;
   try {
     updateHistory = await createNativeUpdateHistory(window);
@@ -134,14 +159,27 @@ async function start() {
     workspaceMetadata.source,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
-  const settingsOverviewControls = mountSettingsOverviewControls(
-    root,
-    host,
-    surface.preferences,
-    surface,
-    networkStatus,
-    networkManagement,
-  );
+  let settingsOverviewControls;
+  try {
+    settingsOverviewControls = mountSettingsOverviewControls(
+      root,
+      host,
+      surface.preferences,
+      surface,
+      networkStatus,
+      networkManagement,
+    );
+  } catch (error) {
+    reportClientDiagnostic("settings-network-management", error);
+    settingsOverviewControls = mountSettingsOverviewControls(
+      root,
+      host,
+      surface.preferences,
+      surface,
+      networkStatus,
+      null,
+    );
+  }
   const systemOverviewControls = mountSystemOverviewControls(
     root,
     host,
@@ -162,6 +200,8 @@ async function start() {
   window.addEventListener(
     "pagehide",
     () => {
+      window.removeEventListener("error", onWindowError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
       surfaceHeartbeat.dispose();
       powerControls.destroy();
       updateControls.destroy();

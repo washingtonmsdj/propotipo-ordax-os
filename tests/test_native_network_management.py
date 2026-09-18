@@ -188,6 +188,18 @@ class NativeNetworkManagementTests(unittest.TestCase):
         self.assertNotIn("networkPassword", controls)
         self.assertIn("networkManagement,", composition)
 
+    def test_native_composition_recovers_if_optional_wifi_settings_mount_fails(self):
+        composition = COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn("createNativeClientDiagnostics", composition)
+        self.assertIn('reportClientDiagnostic("settings-network-management", error)', composition)
+        self.assertIn("let settingsOverviewControls;", composition)
+        self.assertIn("networkStatus,\n      networkManagement,", composition)
+        self.assertIn("networkStatus,\n      null,", composition)
+        self.assertLess(
+            composition.index('reportClientDiagnostic("settings-network-management", error)'),
+            composition.index("void updateWatcher.markHealthy()"),
+        )
+
     def test_contract_and_adapter_do_not_expose_generic_command_execution(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
