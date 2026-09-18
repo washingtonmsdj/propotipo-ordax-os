@@ -163,7 +163,7 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 
 **Entrega mínima em incrementos:**
 
-1. Seleção, detalhes, navegação por teclado e leitura segura de arquivo suportado; integração “Abrir com” somente para apps realmente disponíveis.
+1. Seleção, detalhes, navegação por teclado e leitura segura de arquivo suportado; integração “Abrir com” somente para apps realmente disponíveis. **Estado atual:** seleção única, painel de detalhes, setas/Home/End/Enter, duplo clique e visualização segura UTF-8 de até 256 KB estão implementados no Native; “Abrir com” continua pendente até existir app compatível real.
 2. Renomear arquivo/pasta, com validação consistente no cliente e no owner da operação.
 3. Copiar arquivo com limite explícito, conflito de nome e resultado persistido; depois ampliar para múltiplos itens/diretórios se houver necessidade.
 4. Importar/exportar conforme o ambiente; transferência sem permissões de host indevidas.
