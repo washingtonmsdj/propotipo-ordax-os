@@ -21,10 +21,10 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertNotIn("runningApps.replaceChildren()", surface)
         self.assertNotIn("areaSwitcher.replaceChildren()", surface)
 
-    def test_order_changes_move_only_the_nodes_that_need_moving(self):
+    def test_connected_interactive_nodes_are_never_reinserted(self):
         surface = self.read_surface()
         self.assertIn("function placeChildAt", surface)
-        self.assertIn("if (current === child) return;", surface)
+        self.assertIn("if (child.parentElement === container) return;", surface)
         self.assertIn("container.insertBefore(child, current)", surface)
         self.assertIn("placeChildAt(windowLayer, windowNode, renderedIndex)", surface)
         self.assertIn("placeChildAt(body, section, index)", surface)
@@ -40,7 +40,6 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertIn("node.dataset.areaId === area.id", surface)
         self.assertIn("node.dataset.windowId === windowState.id", surface)
         self.assertIn("node.dataset.appId === app.id", surface)
-        self.assertIn("placeChildAt(windowLayer, windowNode, renderedIndex)", surface)
         self.assertIn("if (!retained.has(staleWindow)) staleWindow.remove();", surface)
 
     def test_minimize_does_not_destroy_application_dom(self):
