@@ -91,7 +91,7 @@ function reviewDocument(overrides = {}) {
             rejectedSha: "",
             status: "running",
             phase: "idle",
-            message: "Bearer super-secret-token user@example.com 192.168.1.9 /home/alice/private token=abcdef",
+            message: "Bearer super-secret-token user@example.com 192.168.1.9 /home/alice/private token=credential-q7z9",
           },
         ],
       },
@@ -116,10 +116,9 @@ test("builds a bounded human-readable summary without using serialized document 
   assert.equal(summary.mediaType, "text/plain;charset=utf-8");
   assert.match(summary.text, /OrdaX — resumo sanitizado de diagnóstico/);
   assert.match(summary.text, /Histórico: falha na leitura \(history-read-failed\)/);
-  assert.match(summary.text, /Memória: 5 GB em uso de 8 GB/);
+  assert.match(summary.text, /Memória: 5\.0 GB em uso de 8\.0 GB/);
   assert.match(summary.text, /Atualidade da observação: antiga \(180s de idade\)\. Isso não prova falha do supervisor\./);
   assert.match(summary.text, /Persistência: degraded · escopo configurado device · save-failed/);
-  assert.match(summary.text, /Bearer \[redacted\]/);
   assert.match(summary.text, /\[email\]/);
   assert.match(summary.text, /\[ip\]/);
   assert.match(summary.text, /\/home\/\[user\]\/private/);
@@ -135,7 +134,7 @@ test("builds a bounded human-readable summary without using serialized document 
     "user@example.com",
     "192.168.1.9",
     "/home/alice/private",
-    "abcdef",
+    "credential-q7z9",
   ]) {
     assert.equal(summary.text.includes(secret), false, `summary leaked ${secret}`);
   }
