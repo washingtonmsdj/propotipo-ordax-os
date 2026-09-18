@@ -58,26 +58,73 @@ function capabilityState(capabilityIds, capabilityId) {
   return capabilityIds.includes(capabilityId) ? "Disponível" : "Indisponível neste host";
 }
 
-function renderPreferenceChoice(panel, state) {
+function panelKey(panel, index) {
+  if (panel.kind === "extension") return `extension:${panel.extensionId}`;
+  if (panel.kind === "preference-choice") return `preference:${panel.preferenceId}`;
+  if (panel.kind === "capability") return `capability:${panel.capabilityId}`;
+  return `${panel.kind}:${index}`;
+}
+
+function createPreferenceChoice(panel, state) {
   const choices = element("div", "ordax-preference-choices");
+  choices.dataset.preferenceChoices = panel.preferenceId;
+  syncPreferenceChoice(choices, panel, state);
+  return choices;
+}
+
+function syncPreferenceChoice(choices, panel, state) {
   const selected = state.preferences[panel.preferenceId];
+  const existing = new Map(
+    Array.from(choices.children)
+      .filter((child) => child.dataset?.preferenceValue !== undefined)
+      .map((child) => [child.dataset.preferenceValue, child]),
+  );
+  const retained = new Set();
+
   for (const option of panel.options) {
-    const button = element("button", "ordax-preference-choice", option.label);
-    button.type = "button";
+    let button = existing.get(option.value) ?? null;
+    if (!button) {
+      button = element("button", "ordax-preference-choice");
+      button.type = "button";
+    }
+    button.textContent = option.label;
     button.dataset.preferenceId = panel.preferenceId;
     button.dataset.preferenceValue = option.value;
     button.dataset.selected = String(selected === option.value);
     button.setAttribute("aria-pressed", String(selected === option.value));
     choices.append(button);
+    retained.add(button);
   }
-  return choices;
+
+  for (const child of Array.from(choices.children)) {
+    if (!retained.has(child)) child.remove();
+  }
 }
 
-function renderPanel(panel, state) {
+function renderCapabilitiesPanel(section, state) {
+  section.querySelector("[data-surface-capabilities]")?.remove();
+  let content;
+  if (state.capabilityIds.length === 0) {
+    content = element("p", "ordax-empty", "Nenhuma capacidade adicional foi declarada.");
+  } else {
+    content = element("ul", "ordax-capability-list");
+    for (const capabilityId of state.capabilityIds) {
+      content.append(element("li", "", capabilityId));
+    }
+  }
+  content.dataset.surfaceCapabilities = "";
+  const body = section.querySelector(".ordax-app-panel-body");
+  if (body) section.insertBefore(content, body);
+  else section.append(content);
+}
+
+function renderPanel(panel, state, index) {
   const section = element(
     "section",
     panel.kind === "extension" ? "ordax-app-extension" : "ordax-app-panel",
   );
+  section.dataset.surfacePanelKey = panelKey(panel, index);
+  section.dataset.surfacePanelKind = panel.kind;
   section.append(element("span", "ordax-app-panel-label", panel.label));
   section.append(element("h3", "ordax-app-panel-title", panel.title));
 
@@ -95,29 +142,88 @@ function renderPanel(panel, state) {
     badge.dataset.state = available ? "available" : "unavailable";
     section.append(badge);
   } else if (panel.kind === "capabilities") {
-    if (state.capabilityIds.length === 0) {
-      section.append(element("p", "ordax-empty", "Nenhuma capacidade adicional foi declarada."));
-    } else {
-      const list = element("ul", "ordax-capability-list");
-      for (const capabilityId of state.capabilityIds) {
-        list.append(element("li", "", capabilityId));
-      }
-      section.append(list);
-    }
+    renderCapabilitiesPanel(section, state);
   } else if (panel.kind === "preference-choice") {
-    section.append(renderPreferenceChoice(panel, state));
+    section.append(createPreferenceChoice(panel, state));
   }
 
   if (panel.body) section.append(element("p", "ordax-app-panel-body", panel.body));
   return section;
 }
 
-function createWindow(app, windowState, state, index) {
-  const activeArea = getActiveArea(state);
-  const windowNode = element("article", "ordax-window");
+function syncPanel(section, panel, state) {
+  section.dataset.surfacePanelKind = panel.kind;
+  if (panel.kind === "extension") {
+    section.dataset.appExtension = panel.extensionId;
+    section.setAttribute("aria-label", panel.title);
+    return;
+  }
+
+  const label = section.querySelector(".ordax-app-panel-label");
+  const title = section.querySelector(".ordax-app-panel-title");
+  if (label) label.textContent = panel.label;
+  if (title) title.textContent = panel.title;
+
+  if (panel.kind === "connectivity") {
+    const badge = section.querySelector(".ordax-inline-status");
+    if (badge) {
+      badge.textContent = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
+      badge.dataset.state = state.connectivity;
+    }
+  } else if (panel.kind === "capability") {
+    const available = state.capabilityIds.includes(panel.capabilityId);
+    const badge = section.querySelector(".ordax-inline-status");
+    if (badge) {
+      badge.textContent = capabilityState(state.capabilityIds, panel.capabilityId);
+      badge.dataset.state = available ? "available" : "unavailable";
+    }
+  } else if (panel.kind === "capabilities") {
+    renderCapabilitiesPanel(section, state);
+  } else if (panel.kind === "preference-choice") {
+    const choices = section.querySelector(".ordax-preference-choices");
+    if (choices) syncPreferenceChoice(choices, panel, state);
+  }
+
+  const body = section.querySelector(".ordax-app-panel-body");
+  if (body && panel.body) body.textContent = panel.body;
+}
+
+function syncWindowPanels(body, app, state) {
+  const existing = new Map(
+    Array.from(body.children)
+      .filter((child) => child.dataset?.surfacePanelKey)
+      .map((child) => [child.dataset.surfacePanelKey, child]),
+  );
+  const retained = new Set();
+
+  for (const [index, panel] of app.panels.entries()) {
+    const key = panelKey(panel, index);
+    let section = existing.get(key) ?? null;
+    if (!section || section.dataset.surfacePanelKind !== panel.kind) {
+      section?.remove();
+      section = renderPanel(panel, state, index);
+    } else {
+      syncPanel(section, panel, state);
+    }
+    body.append(section);
+    retained.add(section);
+  }
+
+  for (const child of Array.from(body.children)) {
+    if (!retained.has(child)) child.remove();
+  }
+}
+
+function syncWindowNode(windowNode, app, windowState, state, index, area) {
   windowNode.dataset.windowId = windowState.id;
-  windowNode.dataset.active = String(activeArea.activeWindowId === windowState.id);
+  windowNode.dataset.appId = app.id;
+  windowNode.dataset.areaId = area.id;
+  windowNode.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
   windowNode.dataset.maximized = String(windowState.maximized);
+  windowNode.dataset.minimized = String(windowState.minimized);
+  windowNode.hidden = windowState.minimized;
+  delete windowNode.dataset.dragging;
+
   const placementOrdinal = windowState.placementOrdinal ?? index + 1;
   windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 5) * 18}px`);
   if (
@@ -129,17 +235,44 @@ function createWindow(app, windowState, state, index) {
     windowNode.style.top = `${windowState.positionY}px`;
     windowNode.style.transform = "none";
     windowNode.dataset.positioned = "true";
+  } else {
+    windowNode.style.removeProperty("left");
+    windowNode.style.removeProperty("top");
+    windowNode.style.removeProperty("transform");
+    delete windowNode.dataset.positioned;
   }
+
   windowNode.setAttribute("role", "region");
   windowNode.setAttribute("aria-label", app.title);
-
-  const titlebar = element("header", "ordax-window-titlebar");
-  titlebar.dataset.windowTitlebar = "";
-  titlebar.tabIndex = 0;
-  titlebar.setAttribute(
+  const titlebar = windowNode.querySelector("[data-window-titlebar]");
+  titlebar?.setAttribute(
     "aria-label",
     `Mover ${app.title}. Use Alt mais setas ou arraste quando houver espaço.`,
   );
+
+  for (const control of windowNode.querySelectorAll("[data-window-action]")) {
+    control.dataset.windowId = windowState.id;
+    const action = control.dataset.windowAction;
+    if (action === "minimize") control.setAttribute("aria-label", `Minimizar ${app.title}`);
+    if (action === "maximize") {
+      control.setAttribute(
+        "aria-label",
+        windowState.maximized ? `Restaurar ${app.title}` : `Maximizar ${app.title}`,
+      );
+    }
+    if (action === "close") control.setAttribute("aria-label", `Fechar ${app.title}`);
+  }
+
+  const body = windowNode.querySelector(".ordax-window-body");
+  if (body) syncWindowPanels(body, app, state);
+}
+
+function createWindow(app, windowState, state, index, area) {
+  const windowNode = element("article", "ordax-window");
+  const titlebar = element("header", "ordax-window-titlebar");
+  titlebar.dataset.windowTitlebar = "";
+  titlebar.tabIndex = 0;
+
   const identity = element("div", "ordax-window-identity");
   identity.append(element("span", "ordax-app-mark", app.monogram));
   const titleGroup = element("div", "ordax-window-title-group");
@@ -148,25 +281,21 @@ function createWindow(app, windowState, state, index) {
   identity.append(titleGroup);
 
   const controls = element("div", "ordax-window-controls");
-  for (const [action, label, glyph] of [
-    ["minimize", `Minimizar ${app.title}`, "−"],
-    ["maximize", windowState.maximized ? `Restaurar ${app.title}` : `Maximizar ${app.title}`, "□"],
-    ["close", `Fechar ${app.title}`, "×"],
+  for (const [action, glyph] of [
+    ["minimize", "−"],
+    ["maximize", "□"],
+    ["close", "×"],
   ]) {
     const button = element("button", `ordax-window-control ordax-window-${action}`, glyph);
     button.type = "button";
     button.dataset.windowAction = action;
-    button.dataset.windowId = windowState.id;
-    button.setAttribute("aria-label", label);
     controls.append(button);
   }
   titlebar.append(identity, controls);
 
   const body = element("div", "ordax-window-body");
-  for (const panel of app.panels) {
-    body.append(renderPanel(panel, state));
-  }
   windowNode.append(titlebar, body);
+  syncWindowNode(windowNode, app, windowState, state, index, area);
   return windowNode;
 }
 
@@ -205,8 +334,12 @@ export function mountSurface(
   const areaSwitcher = root.querySelector("[data-area-switcher]");
   const areaKicker = root.querySelector("[data-area-kicker]");
 
-  const findRenderedWindow = (windowId) =>
-    Array.from(windowLayer.children).find((node) => node.dataset.windowId === windowId) ?? null;
+  const findRenderedWindow = (windowId) => {
+    const areaId = getActiveArea(state).id;
+    return Array.from(windowLayer.children).find(
+      (node) => node.dataset.areaId === areaId && node.dataset.windowId === windowId,
+    ) ?? null;
+  };
 
   const isMovableWorkspace = () =>
     windowLayer.getBoundingClientRect().width >= MOVABLE_WORKSPACE_MIN_WIDTH;
@@ -231,59 +364,120 @@ export function mountSurface(
   };
 
   const renderLauncher = () => {
-    appLauncher.replaceChildren();
     const query = launcherQuery.value.trim().toLocaleLowerCase("pt-BR");
+    const retained = new Set();
     let visible = 0;
+
     for (const app of listFirstPartyApps()) {
       const available = isAppAvailable(app, state.capabilityIds);
       const searchable = `${app.title} ${app.description} ${app.id}`.toLocaleLowerCase("pt-BR");
-      if (query && !searchable.includes(query)) continue;
-      const button = element("button", "ordax-launcher-app");
-      button.type = "button";
-      button.dataset.launchApp = app.id;
+      const matches = !query || searchable.includes(query);
+      let button = Array.from(appLauncher.children).find(
+        (child) => child.dataset?.launchApp === app.id,
+      ) ?? null;
+      if (!button) {
+        button = element("button", "ordax-launcher-app");
+        button.type = "button";
+        button.dataset.launchApp = app.id;
+        button.append(element("span", "ordax-app-mark", app.monogram));
+        const copy = element("span", "ordax-launcher-app-copy");
+        copy.append(element("strong"));
+        copy.append(element("small"));
+        button.append(copy);
+      }
+
+      button.hidden = !matches;
       button.disabled = !available;
       button.setAttribute("aria-label", available ? `Abrir ${app.title}` : `${app.title} indisponível`);
-      button.append(element("span", "ordax-app-mark", app.monogram));
-      const copy = element("span", "ordax-launcher-app-copy");
-      copy.append(element("strong", "", app.title));
-      copy.append(element("small", "", available ? app.description : "Capacidades necessárias indisponíveis"));
-      button.append(copy);
+      const copy = button.querySelector(".ordax-launcher-app-copy");
+      if (copy) {
+        const title = copy.querySelector("strong");
+        const description = copy.querySelector("small");
+        if (title) title.textContent = app.title;
+        if (description) {
+          description.textContent = available ? app.description : "Capacidades necessárias indisponíveis";
+        }
+      }
       appLauncher.append(button);
-      visible += 1;
+      retained.add(button);
+      if (matches) visible += 1;
     }
+
+    for (const child of Array.from(appLauncher.children)) {
+      if (child.dataset?.launchApp && !retained.has(child)) child.remove();
+    }
+
+    let empty = appLauncher.querySelector("[data-launcher-empty]");
     if (visible === 0) {
-      appLauncher.append(element("p", "ordax-launcher-empty", "Nenhum aplicativo encontrado."));
+      if (!empty) {
+        empty = element("p", "ordax-launcher-empty", "Nenhum aplicativo encontrado.");
+        empty.dataset.launcherEmpty = "";
+      }
+      appLauncher.append(empty);
+    } else {
+      empty?.remove();
+    }
+
+    const activeElement = root.ownerDocument.activeElement;
+    if (activeElement?.dataset?.launchApp && activeElement.hidden) {
+      launcherQuery.focus({ preventScroll: true });
     }
   };
 
   const renderWindows = () => {
     const area = getActiveArea(state);
-    windowLayer.replaceChildren();
+    const retained = new Set();
     let visibleIndex = 0;
+
     for (const windowState of area.windows) {
-      if (windowState.minimized) continue;
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
-      windowLayer.append(
-        createWindow(app, windowState, state, visibleIndex),
-      );
-      visibleIndex += 1;
+      const index = visibleIndex;
+      if (!windowState.minimized) visibleIndex += 1;
+
+      let windowNode = Array.from(windowLayer.children).find(
+        (node) =>
+          node.dataset.areaId === area.id
+          && node.dataset.windowId === windowState.id
+          && node.dataset.appId === app.id,
+      ) ?? null;
+      if (!windowNode) {
+        windowNode = createWindow(app, windowState, state, index, area);
+      } else {
+        syncWindowNode(windowNode, app, windowState, state, index, area);
+      }
+      windowLayer.append(windowNode);
+      retained.add(windowNode);
+    }
+
+    for (const staleWindow of Array.from(windowLayer.children)) {
+      if (!retained.has(staleWindow)) staleWindow.remove();
     }
   };
 
   const renderDock = () => {
     const area = getActiveArea(state);
-    runningApps.replaceChildren();
+    const retained = new Set();
     for (const windowState of area.windows) {
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
-      const button = element("button", "ordax-running-app", app.monogram);
-      button.type = "button";
-      button.dataset.openWindow = windowState.id;
+      let button = Array.from(runningApps.children).find(
+        (child) => child.dataset?.openWindow === windowState.id,
+      ) ?? null;
+      if (!button) {
+        button = element("button", "ordax-running-app");
+        button.type = "button";
+        button.dataset.openWindow = windowState.id;
+      }
+      button.textContent = app.monogram;
       button.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
       button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
       button.title = app.title;
       runningApps.append(button);
+      retained.add(button);
+    }
+    for (const child of Array.from(runningApps.children)) {
+      if (child.dataset?.openWindow && !retained.has(child)) child.remove();
     }
   };
 
@@ -300,27 +494,46 @@ export function mountSurface(
 
   const renderAreas = () => {
     const activeArea = getActiveArea(state);
-    areaSwitcher.replaceChildren();
+    const retained = new Set();
     for (const area of state.areas) {
       const active = area.id === state.activeAreaId;
-      const button = element("button", "ordax-area-button", areaLabel(area));
-      button.type = "button";
-      button.dataset.areaId = area.id;
+      let button = Array.from(areaSwitcher.children).find(
+        (child) => child.dataset?.areaId === area.id,
+      ) ?? null;
+      if (!button) {
+        button = element("button", "ordax-area-button");
+        button.type = "button";
+        button.dataset.areaId = area.id;
+      }
+      button.textContent = areaLabel(area);
       button.dataset.active = String(active);
       button.setAttribute("aria-current", active ? "true" : "false");
       button.setAttribute("aria-label", `Mudar para ${areaLabel(area)}`);
       if (active) {
-        button.prepend(element("span", "ordax-area-dot"));
-        button.firstElementChild.setAttribute("aria-hidden", "true");
+        const dot = element("span", "ordax-area-dot");
+        dot.setAttribute("aria-hidden", "true");
+        button.prepend(dot);
       }
       areaSwitcher.append(button);
+      retained.add(button);
     }
+
+    let add = areaSwitcher.querySelector("[data-area-create]");
     if (state.areas.length < MAX_WORKSPACE_AREAS) {
-      const add = element("button", "ordax-area-button ordax-area-add", "+");
-      add.type = "button";
-      add.dataset.areaCreate = "";
-      add.setAttribute("aria-label", "Criar nova área de trabalho");
+      if (!add) {
+        add = element("button", "ordax-area-button ordax-area-add", "+");
+        add.type = "button";
+        add.dataset.areaCreate = "";
+        add.setAttribute("aria-label", "Criar nova área de trabalho");
+      }
       areaSwitcher.append(add);
+      retained.add(add);
+    } else {
+      add?.remove();
+    }
+
+    for (const child of Array.from(areaSwitcher.children)) {
+      if (!retained.has(child)) child.remove();
     }
     areaKicker.textContent = areaLabel(activeArea);
   };
@@ -577,7 +790,7 @@ export function mountSurface(
     }
 
     if (event.target === launcherQuery && state.launcherOpen) {
-      const firstApp = appLauncher.querySelector("button:not(:disabled)");
+      const firstApp = appLauncher.querySelector("button:not(:disabled):not([hidden])");
       if (event.key === "ArrowDown" && firstApp) {
         firstApp.focus();
         event.preventDefault();
