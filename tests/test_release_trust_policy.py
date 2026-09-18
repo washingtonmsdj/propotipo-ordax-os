@@ -24,6 +24,19 @@ class ReleaseTrustPolicyTests(unittest.TestCase):
         self.assertTrue(policy["rotation"]["signed_trust_transition_required_for_production"])
         self.assertFalse(policy["rotation"]["production_rotation_implemented"])
 
+    def test_recovery_requires_distinct_cryptographic_proof_without_private_hashes(self):
+        recovery = self.load_policy()["recovery"]
+        self.assertEqual(recovery["minimum_offline_backups"], 1)
+        self.assertEqual(recovery["verification_host"], "developer-windows-machine")
+        self.assertTrue(recovery["recovered_private_path_must_be_distinct"])
+        self.assertTrue(recovery["recovered_public_derivation_must_match"])
+        self.assertTrue(recovery["recovered_signing_proof_required"])
+        self.assertEqual(
+            recovery["public_evidence_schema"],
+            "prototype-ordax.release-trust-ceremony-evidence/1",
+        )
+        self.assertFalse(recovery["private_key_hash_in_public_evidence_allowed"])
+
     def test_private_key_locations_explicitly_forbid_repository_and_usb(self):
         forbidden = set(self.load_policy()["private_key"]["forbidden_locations"])
         for location in {"git", "usb-bootstrap", "github-actions-artifacts", "logs", "chat"}:
