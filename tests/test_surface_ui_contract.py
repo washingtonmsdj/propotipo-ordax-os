@@ -41,6 +41,7 @@ UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
 UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
+VIEW_INTERACTION = SURFACE / "view-interaction.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
@@ -59,6 +60,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface-state.mjs",
             DESKTOP_SHELL,
             SURFACE_LIFECYCLE,
+            VIEW_INTERACTION,
             FILE_SPACE_CONTROLS,
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
@@ -136,6 +138,35 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('root.removeEventListener("contextmenu", onContextMenu)', surface)
         for browser_action in ("Back", "Forward", "Stop", "Reload"):
             self.assertNotIn(browser_action, surface)
+
+    def test_live_extension_repaints_preserve_focus_scroll_and_sensitive_input(self):
+        helper = VIEW_INTERACTION.read_text(encoding="utf-8")
+        system = SYSTEM_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
+        settings = SETTINGS_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
+        account = ACCOUNT_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
+        files = FILE_SPACE_CONTROLS.read_text(encoding="utf-8")
+
+        self.assertIn("repaintPreservingInteraction", helper)
+        self.assertIn('slot.closest(".ordax-window-body")', helper)
+        self.assertIn("scrollContainer.scrollTop = scrollTop", helper)
+        self.assertIn("target.focus({ preventScroll: true })", helper)
+        self.assertIn('active.type !== "password"', helper)
+
+        for controls in (system, settings, account):
+            self.assertIn('./view-interaction.mjs', controls)
+            self.assertIn("repaintPreservingInteraction(slot, () => paint(slot))", controls)
+
+        self.assertIn("sensitiveNetworkInputIsActive", settings)
+        self.assertIn("snapshotRepaintDeferred", settings)
+        self.assertIn("repaintForSnapshot()", settings)
+        self.assertIn('root.addEventListener("focusout", onFocusOut)', settings)
+        self.assertIn('root.removeEventListener("focusout", onFocusOut)', settings)
+
+        self.assertIn("searchQuery = String(event.target.value", files)
+        self.assertIn("input.setSelectionRange?.(caret, caret)", files)
+        self.assertIn("directoryDraft = event.target.value", files)
+        self.assertIn("renameDraft = event.target.value", files)
+        self.assertIn("copyDraft = event.target.value", files)
 
     def test_shared_extensions_use_explicit_surface_render_lifecycle(self):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
