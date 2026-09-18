@@ -29,6 +29,7 @@ REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
+RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}
 SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}
 UPDATE_TARGET_SHA=""
 UPDATE_PHASE=idle
@@ -67,6 +68,11 @@ case "$SURFACE_HEALTH_TIMEOUT" in
     ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=30 ;;
 esac
 [ "$SURFACE_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30
+
+case "$RELOAD_HEALTH_TIMEOUT" in
+    ''|*[!0-9]*) RELOAD_HEALTH_TIMEOUT=8 ;;
+esac
+[ "$RELOAD_HEALTH_TIMEOUT" -ge 4 ] 2>/dev/null || RELOAD_HEALTH_TIMEOUT=8
 
 case "$SURFACE_STALE_SECONDS" in
     ''|*[!0-9]*) SURFACE_STALE_SECONDS=90 ;;
@@ -137,41 +143,66 @@ candidate_path_is_executable() {
 
 validate_candidate_tree() {
     candidate_sha=$1
+    candidate_mode=${2:-surface-restart}
 
-    for path in         system/entrypoint         system/surface/entrypoint         system/surface/bin/ordax-surface
-    do
-        candidate_path_exists "$candidate_sha" "$path" || {
-            log "candidate preflight missing required path: $path"
-            return 1
-        }
-        candidate_path_is_executable "$candidate_sha" "$path" || {
-            log "candidate preflight requires executable mode: $path"
-            return 1
-        }
-        candidate_shell_is_valid "$candidate_sha" "$path" || {
-            log "candidate preflight shell syntax failed: $path"
-            return 1
-        }
-    done
+    case "$candidate_mode" in
+        none)
+            return 0
+            ;;
+        reload)
+            candidate_path_exists "$candidate_sha" system/composition/native/main.mjs || {
+                log "candidate preflight missing system/composition/native/main.mjs"
+                return 1
+            }
+            return 0
+            ;;
+        surface-restart|supervisor-restart)
+            for path in \
+                system/entrypoint \
+                system/surface/entrypoint \
+                system/surface/bin/ordax-surface
+            do
+                candidate_path_exists "$candidate_sha" "$path" || {
+                    log "candidate preflight missing required path: $path"
+                    return 1
+                }
+                candidate_path_is_executable "$candidate_sha" "$path" || {
+                    log "candidate preflight requires executable mode: $path"
+                    return 1
+                }
+                candidate_shell_is_valid "$candidate_sha" "$path" || {
+                    log "candidate preflight shell syntax failed: $path"
+                    return 1
+                }
+            done
 
-    candidate_path_exists "$candidate_sha" system/supervisor || {
-        log "candidate preflight missing system/supervisor"
-        return 1
-    }
-    candidate_shell_is_valid "$candidate_sha" system/supervisor || {
-        log "candidate preflight shell syntax failed: system/supervisor"
-        return 1
-    }
+            for path in \
+                system/composition/native/main.mjs \
+                system/surface/runtime/native_host_server.py
+            do
+                candidate_path_exists "$candidate_sha" "$path" || {
+                    log "candidate preflight missing required path: $path"
+                    return 1
+                }
+            done
 
-    for path in         system/composition/native/main.mjs         system/surface/runtime/native_host_server.py
-    do
-        candidate_path_exists "$candidate_sha" "$path" || {
-            log "candidate preflight missing required path: $path"
+            if [ "$candidate_mode" = supervisor-restart ]; then
+                candidate_path_exists "$candidate_sha" system/supervisor || {
+                    log "candidate preflight missing system/supervisor"
+                    return 1
+                }
+                candidate_shell_is_valid "$candidate_sha" system/supervisor || {
+                    log "candidate preflight shell syntax failed: system/supervisor"
+                    return 1
+                }
+            fi
+            return 0
+            ;;
+        *)
+            log "candidate preflight received unknown apply mode: $candidate_mode"
             return 1
-        }
-    done
-
-    return 0
+            ;;
+    esac
 }
 
 apply_remote_checkout() {
@@ -204,9 +235,10 @@ apply_remote_checkout() {
         return 1
     }
 
+    classify_changes "$previous_sha" "$expected_sha"
     set_update_context validating "$expected_sha" "$UPDATE_ATTEMPT_ID" ""
-    write_update_state "$previous_sha" updating none
-    if ! validate_candidate_tree "$expected_sha"; then
+    write_update_state "$previous_sha" updating "$APPLY_MODE"
+    if ! validate_candidate_tree "$expected_sha" "$APPLY_MODE"; then
         CHECKOUT_ERROR=candidate-preflight-failed
         log "candidate preflight failed before live checkout switch"
         return 1
@@ -440,17 +472,44 @@ fail_closed() {
 }
 
 validate_updated_tree() {
-    [ -x "$SYSTEM_ENTRYPOINT" ] || return 1
-    [ -f "$SUPERVISOR_SCRIPT" ] || return 1
-    [ -x "$SURFACE_ENTRYPOINT" ] || return 1
-    [ -x "$SYSTEM_ROOT/surface/bin/ordax-surface" ] || return 1
-    [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
-    [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || return 1
-    /bin/sh -n "$SYSTEM_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
-    /bin/sh -n "$SUPERVISOR_SCRIPT" >>"$UPDATE_LOG" 2>&1 || return 1
-    /bin/sh -n "$SURFACE_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
-    /bin/sh -n "$SYSTEM_ROOT/surface/bin/ordax-surface" >>"$UPDATE_LOG" 2>&1 || return 1
-    return 0
+    validation_mode=${1:-surface-restart}
+
+    case "$validation_mode" in
+        none)
+            return 0
+            ;;
+        reload)
+            [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
+            return 0
+            ;;
+        surface-restart)
+            [ -x "$SYSTEM_ENTRYPOINT" ] || return 1
+            [ -x "$SURFACE_ENTRYPOINT" ] || return 1
+            [ -x "$SYSTEM_ROOT/surface/bin/ordax-surface" ] || return 1
+            [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
+            [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || return 1
+            /bin/sh -n "$SYSTEM_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+            /bin/sh -n "$SURFACE_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+            /bin/sh -n "$SYSTEM_ROOT/surface/bin/ordax-surface" >>"$UPDATE_LOG" 2>&1 || return 1
+            return 0
+            ;;
+        supervisor-restart)
+            [ -x "$SYSTEM_ENTRYPOINT" ] || return 1
+            [ -f "$SUPERVISOR_SCRIPT" ] || return 1
+            [ -x "$SURFACE_ENTRYPOINT" ] || return 1
+            [ -x "$SYSTEM_ROOT/surface/bin/ordax-surface" ] || return 1
+            [ -f "$SYSTEM_ROOT/composition/native/main.mjs" ] || return 1
+            [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || return 1
+            /bin/sh -n "$SYSTEM_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+            /bin/sh -n "$SUPERVISOR_SCRIPT" >>"$UPDATE_LOG" 2>&1 || return 1
+            /bin/sh -n "$SURFACE_ENTRYPOINT" >>"$UPDATE_LOG" 2>&1 || return 1
+            /bin/sh -n "$SYSTEM_ROOT/surface/bin/ordax-surface" >>"$UPDATE_LOG" 2>&1 || return 1
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 rollback_update() {
@@ -604,8 +663,7 @@ check_for_update() {
 
     set_update_context validating "$new_sha" "$attempt_id" ""
     write_update_state "$new_sha" updating none
-    classify_changes "$old_sha" "$new_sha"
-    if ! validate_updated_tree; then
+    if ! validate_updated_tree "$APPLY_MODE"; then
         rollback_update "$old_sha" "$new_sha" "$APPLY_MODE" "updated system tree failed preflight validation"
         return 0
     fi
@@ -621,7 +679,7 @@ check_for_update() {
             set_update_context health-wait "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
-            if wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
+            if wait_for_surface_health "$new_sha" "$RELOAD_HEALTH_TIMEOUT"; then
                 record_applied "$new_sha"
                 record_runtime_surface_sha "$new_sha"
                 clear_update_context
