@@ -55,7 +55,7 @@ class NativeFileExportTests(unittest.TestCase):
         adapter = ADAPTER.read_text(encoding="utf-8")
         contract = CONTRACT.read_text(encoding="utf-8")
         controls = CONTROLS.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/8', contract)
+        self.assertIn('ordax.file-space/9', contract)
         self.assertIn("MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024", contract)
         self.assertIn("exportFile()", contract)
         self.assertIn('FILE_EXPORT_ENDPOINT = "/__ordax/native/file-export"', adapter)
