@@ -130,6 +130,13 @@ normalize_apply_mode() {
     esac
 }
 
+normalize_boolean() {
+    case "${1:-}" in
+        true|false) printf '%s' "$1" ;;
+        *) printf 'false' ;;
+    esac
+}
+
 read_rescue_state() {
     generation=""
     action=none
@@ -276,23 +283,13 @@ while :; do
         materialized_release_sha=$(json_field materializedReleaseSha "$BASE_OWNER_STATUS_FILE")
         is_sha "$materialized_release_sha" || materialized_release_sha=""
 
-        canonical_trust_pinned=$(json_boolean_field canonicalTrustPinned "$BASE_OWNER_STATUS_FILE")
-        physical_trust_enrolled=$(json_boolean_field physicalTrustEnrolled "$BASE_OWNER_STATUS_FILE")
-        signed_release_materialized=$(json_boolean_field signedReleaseMaterialized "$BASE_OWNER_STATUS_FILE")
-        kernel_staged=$(json_boolean_field kernelStaged "$BASE_OWNER_STATUS_FILE")
-        candidate_armed=$(json_boolean_field candidateArmed "$BASE_OWNER_STATUS_FILE")
-        reboot_requested=$(json_boolean_field rebootRequested "$BASE_OWNER_STATUS_FILE")
-        promotion_attempted=$(json_boolean_field promotionAttempted "$BASE_OWNER_STATUS_FILE")
-        for owner_boolean in \
-            canonical_trust_pinned physical_trust_enrolled signed_release_materialized \
-            kernel_staged candidate_armed reboot_requested promotion_attempted
-        do
-            eval "owner_boolean_value=\${$owner_boolean}"
-            case "$owner_boolean_value" in
-                true|false) ;;
-                *) eval "$owner_boolean=false" ;;
-            esac
-        done
+        canonical_trust_pinned=$(normalize_boolean "$(json_boolean_field canonicalTrustPinned "$BASE_OWNER_STATUS_FILE")")
+        physical_trust_enrolled=$(normalize_boolean "$(json_boolean_field physicalTrustEnrolled "$BASE_OWNER_STATUS_FILE")")
+        signed_release_materialized=$(normalize_boolean "$(json_boolean_field signedReleaseMaterialized "$BASE_OWNER_STATUS_FILE")")
+        kernel_staged=$(normalize_boolean "$(json_boolean_field kernelStaged "$BASE_OWNER_STATUS_FILE")")
+        candidate_armed=$(normalize_boolean "$(json_boolean_field candidateArmed "$BASE_OWNER_STATUS_FILE")")
+        reboot_requested=$(normalize_boolean "$(json_boolean_field rebootRequested "$BASE_OWNER_STATUS_FILE")")
+        promotion_attempted=$(normalize_boolean "$(json_boolean_field promotionAttempted "$BASE_OWNER_STATUS_FILE")")
 
         last_power_action=""
         last_power_request_boot_id=""
