@@ -34,6 +34,7 @@ SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
+SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -48,11 +49,13 @@ class SurfaceUiContractTests(unittest.TestCase):
             FILE_SPACE_CONTROLS,
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
+            SETTINGS_OVERVIEW_CONTROLS,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
+            SURFACE / "settings.css",
             POWER_CONTROLS,
             APP_CATALOG,
             APP_CONTRACT,
@@ -88,6 +91,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         power = POWER_CONTROLS.read_text(encoding="utf-8")
         self.assertIn("contracts/surface-host.mjs", surface)
         self.assertIn("contracts/preference-store.mjs", surface)
+        self.assertIn("contracts/preference-runtime.mjs", surface)
+        self.assertIn("PREFERENCE_RUNTIME_SCHEMA", surface)
+        self.assertIn("preferences,", surface)
         self.assertNotIn("contracts/identity-session.mjs", surface)
         self.assertNotIn("contracts/identity-actions.mjs", surface)
         self.assertIn("contracts/app-activation.mjs", surface)
@@ -103,7 +109,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
         self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
-        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
@@ -165,18 +171,31 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/system.css", web_html)
         self.assertIn("../../surface/ui/system.css", native_html)
 
-    def test_settings_uses_shared_appearance_preference(self):
+    def test_settings_uses_live_preference_runtime_and_shared_overview(self):
         settings = APP_OWNERS["settings"].read_text(encoding="utf-8")
+        overview = SETTINGS_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
         appearance = APPEARANCE.read_text(encoding="utf-8")
         preferences = PREFERENCE_CATALOG.read_text(encoding="utf-8")
-        self.assertIn("../../services/preferences/appearance.mjs", settings)
-        self.assertIn('kind: "preference-choice"', settings)
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        css = (SURFACE / "settings.css").read_text(encoding="utf-8")
+        web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        self.assertIn('kind: "extension"', settings)
+        self.assertIn('extensionId: "settings-overview"', settings)
+        self.assertIn("contracts/preference-runtime.mjs", overview)
+        self.assertIn("assertPreferenceRuntimePort", overview)
+        self.assertIn("listPreferenceDefinitions", overview)
         self.assertIn('"appearance.theme"', appearance)
         self.assertIn('defaultValue: "light"', appearance)
         self.assertIn('value: "dark"', appearance)
         self.assertIn("createPreferenceSnapshot", preferences)
-        self.assertIn("recoverPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
+        self.assertIn("PREFERENCE_RUNTIME_SCHEMA", surface)
+        self.assertIn(".ordax-settings-view", css)
+        self.assertIn("surface.preferences", web_main)
+        self.assertIn("surface.preferences", native_main)
+        self.assertNotIn("localStorage", overview)
+        self.assertNotIn("/__ordax/native/preferences", overview)
 
     def test_account_uses_formal_shared_overview_and_neutral_identity_ports(self):
         account = APP_OWNERS["account"].read_text(encoding="utf-8")
@@ -322,6 +341,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/files.css", html)
         self.assertIn("../../surface/ui/system.css", html)
         self.assertIn("../../surface/ui/account.css", html)
+        self.assertIn("../../surface/ui/settings.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
@@ -393,6 +413,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/services/account/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/services/preferences/**'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/preference-runtime.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)
