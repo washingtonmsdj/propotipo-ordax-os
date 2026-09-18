@@ -37,6 +37,13 @@ second supervisor timer or control path.
 Heartbeat repetition does not create journal rows; only meaningful operational
 transitions do. This history is observational and never authorizes an action.
 
+Repository identity and rendered-runtime identity are deliberately separate.
+`sourceSha` is the checked-out Git HEAD, while `runtimeSurfaceSha` is the last
+commit whose runtime-affecting Surface activation completed successfully.
+Documentation-only or otherwise runtime-neutral updates may advance `sourceSha`
+without changing `runtimeSurfaceSha`. Remote UI-staleness detection must compare
+`surfaceSourceSha` against `runtimeSurfaceSha`, not blindly against Git HEAD.
+
 Control remains separate:
 
 - normal product/update path: Git `main`;
