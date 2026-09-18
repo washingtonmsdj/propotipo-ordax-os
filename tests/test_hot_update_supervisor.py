@@ -76,9 +76,11 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         markdown = text.index("system/*.md)")
-        broad_system = text.index("system/*)", markdown + 1)
-        self.assertLess(markdown, broad_system)
-        markdown_block = text[markdown:broad_system]
+        next_case = text.index("boot/*|bootstrap/*)", markdown + 1)
+        broad_system = text.index("system/*)", next_case + 1)
+        self.assertLess(markdown, next_case)
+        self.assertLess(next_case, broad_system)
+        markdown_block = text[markdown:next_case]
         self.assertIn(";;", markdown_block)
         self.assertNotIn("surface_host_changed=1", markdown_block)
         self.assertNotIn("live_surface_changed=1", markdown_block)
