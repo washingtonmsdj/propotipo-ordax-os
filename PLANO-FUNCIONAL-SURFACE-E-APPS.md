@@ -1055,7 +1055,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot; a apresentação compartilhada deixa explícito que reiniciar manualmente sozinho não aplica bytes ainda não preparados.
 - [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
 - [x] Remover marcadores temporários/de implementação da mesa normal; a Home mostra apenas a área atual, sem “Surface compartilhada”, recuperação ao vivo ou número de entrega.
-- [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot.
+- [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot. **Parcial:** Ajustes → Rede preserva scroll, foco e a senha digitada somente em memória durante repaint síncrono causado por polling/status, sem persistir ou sincronizar a credencial; aplicar o mesmo princípio aos demais formulários/owners antes de marcar concluído.
 - [ ] Estado ausente, indisponível, offline e antigo são distintos.
 - [ ] Preservar lifecycle e descarte de operações/respostas antigas.
 
