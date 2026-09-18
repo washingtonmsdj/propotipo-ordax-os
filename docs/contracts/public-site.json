@@ -9,7 +9,8 @@
     "landing": "/",
     "download": "/download/",
     "login": "/login/",
-    "register": "/cadastro/"
+    "register": "/cadastro/",
+    "licenses": "/licencas/"
   },
   "runtime_dependencies": {
     "remote_javascript": false,
@@ -33,7 +34,9 @@
     "sha256_owned_by_release_pipeline": true,
     "catalog_path": "/releases/catalog.json",
     "catalog_contract": "docs/contracts/public-release-catalog.json",
-    "publication_source": "platform/releases/publications.json"
+    "publication_source": "platform/releases/publications.json",
+    "release_compliance_contract": "docs/contracts/release-compliance.json",
+    "compliance_required_for_public_release": true
   },
   "security": {
     "secrets_in_site_source_allowed": false,

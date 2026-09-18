@@ -15,6 +15,7 @@ class PublicSiteContractTests(unittest.TestCase):
             "download/index.html",
             "login/index.html",
             "cadastro/index.html",
+            "licencas/index.html",
         ):
             self.assertTrue((SITE / relative).is_file(), relative)
 
@@ -69,10 +70,16 @@ class PublicSiteContractTests(unittest.TestCase):
         releases = json.loads(
             (ROOT / "docs" / "contracts" / "public-release-catalog.json").read_text(encoding="utf-8")
         )
+        compliance = json.loads(
+            (ROOT / "docs" / "contracts" / "release-compliance.json").read_text(encoding="utf-8")
+        )
         self.assertFalse(identity["credentials"]["static_site_collects_passwords"])
         self.assertTrue(identity["account_model"]["one_identity_across_product_modes"])
         self.assertTrue(releases["rules"]["public_authorization_required_per_release"])
         self.assertTrue(releases["rules"]["artifact_sha256_required"])
+        self.assertTrue(releases["rules"]["compliance_artifacts_required"])
+        self.assertTrue(compliance["release_publication_gate"])
+        self.assertTrue(compliance["required_artifacts"]["sbom"]["required"])
 
     def test_public_site_is_independent_build_artifact(self):
         contract = json.loads(BUILD_CONTRACT.read_text(encoding="utf-8"))
@@ -83,7 +90,7 @@ class PublicSiteContractTests(unittest.TestCase):
 
     def test_landing_links_public_routes_without_fake_claims(self):
         landing = (SITE / "index.html").read_text(encoding="utf-8")
-        for href in ("/download/", "/login/", "/cadastro/"):
+        for href in ("/download/", "/login/", "/cadastro/", "/licencas/"):
             self.assertIn(f'href="{href}"', landing)
         self.assertIn("Protótipo em desenvolvimento", landing)
         self.assertIn("Downloads públicos aparecem somente", landing)

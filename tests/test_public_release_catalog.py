@@ -37,6 +37,24 @@ class PublicReleaseCatalogTests(unittest.TestCase):
                     "public_download_authorized": True,
                 }
             ],
+            "compliance": {
+                "public_compliance_authorized": True,
+                "sbom": {
+                    "href": "/releases/v1/sbom.spdx.json",
+                    "sha256": "b" * 64,
+                    "size": 2048,
+                },
+                "third_party_notices": {
+                    "href": "/releases/v1/THIRD-PARTY-NOTICES.txt",
+                    "sha256": "c" * 64,
+                    "size": 3072,
+                },
+                "source_bundle": {
+                    "href": "/releases/v1/source-compliance.tar.xz",
+                    "sha256": "d" * 64,
+                    "size": 4096,
+                },
+            },
         }
 
     def test_empty_publications_render_empty_catalog(self):
@@ -71,6 +89,34 @@ class PublicReleaseCatalogTests(unittest.TestCase):
         }
         with self.assertRaises(catalog.PublicReleaseCatalogError):
             self.render(value)
+
+    def test_release_compliance_authorization_is_mandatory(self):
+        release = self.base_release()
+        release["compliance"]["public_compliance_authorized"] = False
+        value = {
+            "$schema": catalog.PUBLICATIONS_SCHEMA,
+            "status": "candidate",
+            "releases": [release],
+        }
+        with self.assertRaises(catalog.PublicReleaseCatalogError):
+            self.render(value)
+
+    def test_release_compliance_artifacts_are_mandatory_and_integrity_bound(self):
+        for name in ("sbom", "third_party_notices", "source_bundle"):
+            release = self.base_release()
+            release["compliance"][name] = {
+                "href": "https://example.test/compliance",
+                "sha256": "x" * 64,
+                "size": 0,
+            }
+            value = {
+                "$schema": catalog.PUBLICATIONS_SCHEMA,
+                "status": "candidate",
+                "releases": [release],
+            }
+            with self.subTest(name=name):
+                with self.assertRaises(catalog.PublicReleaseCatalogError):
+                    self.render(value)
 
     def test_download_path_must_be_clean_same_origin(self):
         for href in (
@@ -114,8 +160,18 @@ class PublicReleaseCatalogTests(unittest.TestCase):
         rendered = result["releases"][0]
         self.assertNotIn("public_authorized", rendered)
         self.assertNotIn("public_download_authorized", rendered["targets"][0])
+        self.assertNotIn("public_compliance_authorized", rendered["compliance"])
         self.assertEqual(rendered["release_id"], release["release_id"])
         self.assertEqual(rendered["targets"][0]["sha256"], "a" * 64)
+        self.assertEqual(rendered["compliance"]["sbom"]["sha256"], "b" * 64)
+        self.assertEqual(
+            rendered["compliance"]["third_party_notices"]["href"],
+            "/releases/v1/THIRD-PARTY-NOTICES.txt",
+        )
+        self.assertEqual(
+            rendered["compliance"]["source_bundle"]["size"],
+            4096,
+        )
 
 
 if __name__ == "__main__":
