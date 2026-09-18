@@ -9,6 +9,8 @@ const ICONS = Object.freeze({
   search: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>`,
   folder: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19z"/></svg>`,
   arrow: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg>`,
+  network: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5a12 12 0 0 1 16 0"/><path d="M7 13a7.5 7.5 0 0 1 10 0"/><path d="M10 16.4a3 3 0 0 1 4 0"/><circle cx="12" cy="19" r="1"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.2 2"/></svg>`,
 });
 
 function railButton(appId, label, icon) {
@@ -109,9 +111,15 @@ export function createDesktopShellMarkup() {
         <div class="ordax-area-switcher" data-area-switcher aria-label="Áreas de trabalho"></div>
         <div class="ordax-running-apps" data-running-apps aria-label="Aplicações abertas"></div>
         <div class="ordax-status-actions" data-update-slot></div>
-        <div class="ordax-status" role="status" aria-live="polite">
-          <span class="ordax-status-dot" data-connectivity-dot aria-hidden="true"></span>
-          <span data-connectivity-label>Conectividade desconhecida</span>
+        <div class="ordax-system-tray" aria-label="Estado do sistema">
+          <div class="ordax-tray-item ordax-tray-network" role="status" aria-live="polite" data-connectivity-tray>
+            <span class="ordax-tray-icon" data-connectivity-icon data-state="unknown" aria-hidden="true">${ICONS.network}</span>
+            <span class="ordax-tray-label" data-connectivity-label>Conectividade desconhecida</span>
+          </div>
+          <div class="ordax-tray-item ordax-tray-clock" title="Horário de Salvador/Bahia">
+            <span class="ordax-tray-icon" aria-hidden="true">${ICONS.clock}</span>
+            <time data-ordax-tray-clock>--:--</time>
+          </div>
         </div>
       </footer>
     </div>
@@ -131,22 +139,28 @@ function formatDate(date) {
 
 export function mountDesktopClock(root, clock = globalThis) {
   const timeNode = root.querySelector("[data-ordax-clock]");
+  const trayTimeNode = root.querySelector("[data-ordax-tray-clock]");
   const dateNode = root.querySelector("[data-ordax-date]");
-  if (!timeNode || !dateNode) {
+  if (!timeNode || !trayTimeNode || !dateNode) {
     throw new Error("OrdaX desktop clock requires clock and date nodes");
   }
 
   const render = () => {
     const now = new Date();
-    timeNode.textContent = new Intl.DateTimeFormat(SURFACE_LOCALE, {
+    const formattedTime = new Intl.DateTimeFormat(SURFACE_LOCALE, {
       timeZone: SURFACE_TIME_ZONE,
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }).format(now);
+    timeNode.textContent = formattedTime;
+    trayTimeNode.textContent = formattedTime;
     dateNode.textContent = formatDate(now);
-    timeNode.setAttribute("datetime", now.toISOString());
+    const isoNow = now.toISOString();
+    timeNode.setAttribute("datetime", isoNow);
+    trayTimeNode.setAttribute("datetime", isoNow);
     timeNode.title = "Horário de Salvador/Bahia";
+    trayTimeNode.title = "Horário de Salvador/Bahia";
   };
 
   render();
