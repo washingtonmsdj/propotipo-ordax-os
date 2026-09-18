@@ -8,6 +8,7 @@ import {
 const FILES_ENDPOINT = "/__ordax/native/files";
 const FILE_CONTENT_ENDPOINT = "/__ordax/native/file-content";
 const FILE_EXPORT_ENDPOINT = "/__ordax/native/file-export";
+const FILE_IMPORT_ENDPOINT = "/__ordax/native/file-import";
 
 export class FileSpaceOperationError extends Error {
   constructor(operation, status) {
@@ -40,6 +41,10 @@ function exportEndpointFor(path) {
 function fileNameFromPath(path) {
   const parts = String(path).split("/").filter(Boolean);
   return parts[parts.length - 1] || "arquivo";
+}
+
+function importEndpointFor(path, name) {
+  return `${FILE_IMPORT_ENDPOINT}?path=${encodeURIComponent(path)}&name=${encodeURIComponent(name)}`;
 }
 
 export async function createNativeFileSpace(windowRef = globalThis.window) {
@@ -142,6 +147,20 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
         anchor.remove();
         windowRef.setTimeout?.(() => revokeObjectURL(objectUrl), 0);
       }
+    },
+    async importFile(path, name, bytes) {
+      if (!(bytes instanceof Uint8Array)) {
+        throw new TypeError("Native file import requires Uint8Array payload");
+      }
+      const response = await windowRef.fetch(importEndpointFor(path, name), {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: bytes,
+      });
+      requireSuccess(response, "import");
+      return validateFileListing(await response.json());
     },
     async createDirectory(path, name) {
       const response = await windowRef.fetch(FILES_ENDPOINT, {
