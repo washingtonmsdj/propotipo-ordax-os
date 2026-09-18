@@ -10,6 +10,7 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
 const FILE_EXTENSION_SELECTOR = '[data-app-extension="file-space"]';
 const FILE_SEARCH_LOCALE = "pt-BR";
+const MAX_NAVIGATION_HISTORY = 64;
 const LOCATIONS = Object.freeze([
   Object.freeze({ label: "Meu espaço", path: "/" }),
   Object.freeze({ label: "Documentos", path: "/Documentos" }),
@@ -87,6 +88,8 @@ export function mountFileSpaceControls(
   let copyingPath = null;
   let copyDraft = "";
   let searchQuery = "";
+  let navigationHistory = [];
+  let navigationIndex = -1;
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -103,6 +106,27 @@ export function mountFileSpaceControls(
       button.setAttribute("aria-current", active ? "page" : "false");
       container.append(button);
     }
+  };
+
+  const parentPath = (path) => {
+    if (typeof path !== "string" || path === "/") return "/";
+    const parts = path.split("/").filter(Boolean);
+    parts.pop();
+    return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+  };
+
+  const canGoBack = () => navigationIndex > 0;
+  const canGoForward = () =>
+    navigationIndex >= 0 && navigationIndex < navigationHistory.length - 1;
+
+  const recordNavigation = (path) => {
+    if (navigationHistory[navigationIndex] === path) return;
+    navigationHistory = navigationHistory.slice(0, navigationIndex + 1);
+    navigationHistory.push(path);
+    if (navigationHistory.length > MAX_NAVIGATION_HISTORY) {
+      navigationHistory = navigationHistory.slice(-MAX_NAVIGATION_HISTORY);
+    }
+    navigationIndex = navigationHistory.length - 1;
   };
 
   const renderBreadcrumb = (container) => {
@@ -442,6 +466,31 @@ export function mountFileSpaceControls(
 
     const content = node(documentObject, "section", "ordax-files-content");
     const toolbar = node(documentObject, "header", "ordax-files-toolbar");
+    const navigation = node(documentObject, "div", "ordax-files-navigation");
+
+    const back = node(documentObject, "button", "ordax-files-nav-action", "←");
+    back.type = "button";
+    back.dataset.fileHistoryBack = "";
+    back.setAttribute("aria-label", "Voltar");
+    back.title = "Voltar";
+    back.disabled = pending || !canGoBack();
+
+    const forward = node(documentObject, "button", "ordax-files-nav-action", "→");
+    forward.type = "button";
+    forward.dataset.fileHistoryForward = "";
+    forward.setAttribute("aria-label", "Avançar");
+    forward.title = "Avançar";
+    forward.disabled = pending || !canGoForward();
+
+    const up = node(documentObject, "button", "ordax-files-nav-action", "↑");
+    up.type = "button";
+    up.dataset.fileHistoryUp = "";
+    up.setAttribute("aria-label", "Subir um nível");
+    up.title = "Subir um nível";
+    up.disabled = pending || !listing || listing.path === "/";
+
+    navigation.append(back, forward, up);
+
     const breadcrumb = node(documentObject, "nav", "ordax-files-breadcrumb");
     breadcrumb.setAttribute("aria-label", "Caminho atual");
     renderBreadcrumb(breadcrumb);
@@ -476,7 +525,7 @@ export function mountFileSpaceControls(
     create.dataset.fileCreateToggle = "";
     create.disabled = pending || !listing;
     actions.append(refresh, create);
-    toolbar.append(breadcrumb, search, actions);
+    toolbar.append(navigation, breadcrumb, search, actions);
     content.append(toolbar);
 
     const status = node(
@@ -527,7 +576,7 @@ export function mountFileSpaceControls(
 
   const replaceView = () => renderView(true);
 
-  const load = async (path) => {
+  const load = async (path, { recordHistory = true } = {}) => {
     const ordinal = ++requestOrdinal;
     const preserveSelection = Boolean(listing && listing.path === path);
     pending = true;
@@ -550,21 +599,45 @@ export function mountFileSpaceControls(
       const next = validateFileListing(await port.list(path));
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
+      if (recordHistory) recordNavigation(next.path);
       if (
         selectedPath &&
         !listing.entries.some((entry) => joinPath(listing.path, entry.name) === selectedPath)
       ) {
         selectedPath = null;
       }
+      return true;
     } catch {
-      if (destroyed || ordinal !== requestOrdinal) return;
+      if (destroyed || ordinal !== requestOrdinal) return false;
       message = "Não foi possível abrir este local.";
+      return false;
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
         replaceView();
       }
     }
+  };
+
+  const navigateHistory = async (targetIndex) => {
+    if (
+      pending ||
+      targetIndex < 0 ||
+      targetIndex >= navigationHistory.length ||
+      targetIndex === navigationIndex
+    ) {
+      return;
+    }
+    const targetPath = navigationHistory[targetIndex];
+    const previousIndex = navigationIndex;
+    const loaded = await load(targetPath, { recordHistory: false });
+    if (destroyed) return;
+    if (loaded) {
+      navigationIndex = targetIndex;
+    } else {
+      navigationIndex = previousIndex;
+    }
+    replaceView();
   };
 
   const openTextFile = async (path) => {
@@ -831,6 +904,21 @@ export function mountFileSpaceControls(
       replaceView();
       return;
     }
+    const back = event.target.closest("[data-file-history-back]");
+    if (back && root.contains(back) && canGoBack() && !pending) {
+      void navigateHistory(navigationIndex - 1);
+      return;
+    }
+    const forward = event.target.closest("[data-file-history-forward]");
+    if (forward && root.contains(forward) && canGoForward() && !pending) {
+      void navigateHistory(navigationIndex + 1);
+      return;
+    }
+    const up = event.target.closest("[data-file-history-up]");
+    if (up && root.contains(up) && listing && listing.path !== "/" && !pending) {
+      void load(parentPath(listing.path));
+      return;
+    }
     const open = event.target.closest("[data-file-open-path]");
     if (open && root.contains(open)) {
       void load(open.dataset.fileOpenPath);
@@ -846,7 +934,7 @@ export function mountFileSpaceControls(
     }
     const refresh = event.target.closest("[data-file-refresh]");
     if (refresh && listing) {
-      void load(listing.path);
+      void load(listing.path, { recordHistory: false });
       return;
     }
     const createToggle = event.target.closest("[data-file-create-toggle]");
