@@ -162,6 +162,10 @@ def build_telemetry_payload(device_id: str) -> dict:
         "surfaceState": "running",
         "bootId": read_small_text(BOOT_ID_FILE, 256),
         "lastError": update.get("lastError") if isinstance(update.get("lastError"), str) else "",
+        "prepareSeconds": update.get("prepareSeconds") if isinstance(update.get("prepareSeconds"), int) and update.get("prepareSeconds") >= 0 else 0,
+        "activationSeconds": update.get("activationSeconds") if isinstance(update.get("activationSeconds"), int) and update.get("activationSeconds") >= 0 else 0,
+        "totalSeconds": update.get("totalSeconds") if isinstance(update.get("totalSeconds"), int) and update.get("totalSeconds") >= 0 else 0,
+        "targetSeconds": update.get("targetSeconds") if isinstance(update.get("targetSeconds"), int) and update.get("targetSeconds") >= 1 else 5,
         "relayVersion": 1,
     }
 
