@@ -993,6 +993,48 @@ button.ordax-tray-item {
   height: 17px;
 }
 
+.ordax-network-symbol {
+  display: none;
+}
+
+.ordax-tray-network-icon[data-network-kind="wifi"] .ordax-network-symbol-wifi,
+.ordax-tray-network-icon[data-network-kind="unknown"] .ordax-network-symbol-wifi {
+  display: block;
+}
+
+.ordax-tray-network-icon[data-network-kind="ethernet"] .ordax-network-symbol-ethernet {
+  display: block;
+}
+
+.ordax-tray-network-icon[data-network-kind="other"] .ordax-network-symbol-other {
+  display: block;
+}
+
+.ordax-wifi-arc,
+.ordax-wifi-dot {
+  opacity: 0.2;
+}
+
+.ordax-tray-network-icon[data-state="offline"] .ordax-wifi-arc,
+.ordax-tray-network-icon[data-state="offline"] .ordax-wifi-dot,
+.ordax-tray-network-icon[data-state="unknown"] .ordax-wifi-arc,
+.ordax-tray-network-icon[data-state="unknown"] .ordax-wifi-dot {
+  opacity: 0.65;
+}
+
+.ordax-tray-network-icon[data-signal-level="1"] .ordax-wifi-dot,
+.ordax-tray-network-icon[data-signal-level="2"] .ordax-wifi-dot,
+.ordax-tray-network-icon[data-signal-level="3"] .ordax-wifi-dot,
+.ordax-tray-network-icon[data-signal-level="4"] .ordax-wifi-dot,
+.ordax-tray-network-icon[data-signal-level="2"] .ordax-wifi-arc-inner,
+.ordax-tray-network-icon[data-signal-level="3"] .ordax-wifi-arc-inner,
+.ordax-tray-network-icon[data-signal-level="4"] .ordax-wifi-arc-inner,
+.ordax-tray-network-icon[data-signal-level="3"] .ordax-wifi-arc-middle,
+.ordax-tray-network-icon[data-signal-level="4"] .ordax-wifi-arc-middle,
+.ordax-tray-network-icon[data-signal-level="4"] .ordax-wifi-arc-outer {
+  opacity: 1;
+}
+
 .ordax-tray-clock {
   color: var(--ordax-text);
   font-variant-numeric: tabular-nums;
