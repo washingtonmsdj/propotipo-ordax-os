@@ -110,7 +110,7 @@ class NativeFileImportTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn("source.read(min(65536, remaining))", server)
         self.assertIn("os.O_EXCL", server)
-        self.assertIn("os.O_NOFOLLOW", server)
+        self.assertIn('getattr(os, "O_NOFOLLOW", 0)', server)
         self.assertIn("os.fsync(destination_fd)", server)
         self.assertIn("os.unlink(name, dir_fd=directory_fd)", server)
         self.assertIn('content_type != "application/octet-stream"', server)
