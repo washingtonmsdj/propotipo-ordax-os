@@ -30,6 +30,10 @@ WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-
 NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
+SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
+FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
+SYSTEM_METRICS_CONTROLS = SURFACE / "system-metrics-controls.mjs"
+SYSTEM_STATUS_CONTROLS = SURFACE / "system-status-controls.mjs"
 HOST_CONTRACT = ROOT / "system" / "contracts" / "surface-host.mjs"
 WEB_WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
@@ -40,6 +44,10 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface.mjs",
             SURFACE / "surface-state.mjs",
             DESKTOP_SHELL,
+            SURFACE_LIFECYCLE,
+            FILE_SPACE_CONTROLS,
+            SYSTEM_METRICS_CONTROLS,
+            SYSTEM_STATUS_CONTROLS,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             POWER_CONTROLS,
@@ -83,7 +91,21 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
         self.assertIn("./desktop-shell.mjs", surface)
+        self.assertIn("./surface-lifecycle.mjs", surface)
+        self.assertIn("SURFACE_RENDER_LIFECYCLE_SCHEMA", surface)
+        self.assertIn("subscribeRender(listener)", surface)
         self.assertIn("../../contracts/power-actions.mjs", power)
+
+    def test_shared_extensions_use_explicit_surface_render_lifecycle(self):
+        lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
+        self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
+        self.assertIn("assertSurfaceRenderLifecycle", lifecycle)
+        for path in (FILE_SPACE_CONTROLS, SYSTEM_METRICS_CONTROLS, SYSTEM_STATUS_CONTROLS):
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("./surface-lifecycle.mjs", text, path)
+            self.assertIn("assertSurfaceRenderLifecycle", text, path)
+            self.assertIn("subscribeRender", text, path)
+            self.assertNotIn("MutationObserver", text, path)
 
     def test_first_party_apps_have_independent_owners_and_thin_catalog(self):
         catalog = APP_CATALOG.read_text(encoding="utf-8")
