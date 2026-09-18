@@ -454,6 +454,7 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_desktop_identity_shell_is_shared_semantic_and_non_remote(self):
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
         for app_id in ("files", "settings", "account", "system"):
