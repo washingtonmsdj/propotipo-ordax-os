@@ -198,6 +198,7 @@ export function mountNetworkQuickPanel(
     const settings = node(documentObject, "button", "ordax-quick-settings-link", "Abrir Ajustes de rede");
     settings.type = "button";
     settings.dataset.launchApp = "settings";
+    settings.dataset.appTarget = "network";
     settings.dataset.quickPanelClose = "";
     content.append(settings);
   };
