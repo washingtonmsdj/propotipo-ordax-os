@@ -9,6 +9,7 @@ import {
 import {
   buildReloadUrl,
   createNativeUpdateWatcher,
+  shouldReloadForUpdate,
 } from "../system/adapters/native/update-runtime.mjs";
 
 function fakeWindow() {
@@ -123,6 +124,19 @@ test("native reload URL replaces prior retry marker instead of growing forever",
   assert.match(url, /source=0123456789012345678901234567890123456789/);
   assert.match(url, /ordax_reload=4/);
   assert.equal((url.match(/ordax_reload=/g) ?? []).length, 1);
+});
+
+test("runtime-neutral checkout advancement does not suppress the next live reload", () => {
+  const docsSha = "3333333333333333333333333333333333333333";
+  const targetSha = "4444444444444444444444444444444444444444";
+  assert.equal(
+    shouldReloadForUpdate(docsSha, {
+      sourceSha: targetSha,
+      status: "applied",
+      applyMode: "reload",
+    }),
+    true,
+  );
 });
 
 test("native update watcher never acknowledges a SHA different from the rendered page", async () => {
