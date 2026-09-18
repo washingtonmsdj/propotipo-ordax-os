@@ -59,6 +59,9 @@ class ReleaseTrustRecoveryProofTests(unittest.TestCase):
         self.assertIn("PUBLIC_TRUST_HANDOFF_ZIP=", text)
         self.assertIn("PUBLIC_TRUST_HANDOFF_ZIP_SHA256=", text)
         self.assertIn("PUBLIC_HANDOFF_SECRET_MATERIAL=NO", text)
+        self.assertIn("PUBLIC_HANDOFF_CONTENTS_VERIFIED=YES", text)
+        self.assertIn("Expand-Archive -LiteralPath $PublicHandoffZipPath", text)
+        self.assertIn("Public handoff ZIP changed bytes for $name.", text)
         for name in (
             "release-ed25519.json",
             "ceremony-public-evidence.json",
