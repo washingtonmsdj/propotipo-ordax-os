@@ -2,6 +2,7 @@ import { validateSurfaceSnapshot } from "../../contracts/surface-host.mjs";
 import {
   MAX_WORKSPACE_AREAS,
   validateWorkspaceRecord,
+  validateWorkspaceTarget,
 } from "../../contracts/workspace-store.mjs";
 import { getFirstPartyApp, isAppAvailable } from "../../apps/catalog.mjs";
 import {
@@ -148,6 +149,7 @@ export function createWorkspaceSnapshot(state) {
         placementOrdinal: windowState.placementOrdinal,
         positionX: windowState.positionX,
         positionY: windowState.positionY,
+        target: windowState.target,
       })),
       activeWindowId: area.activeWindowId,
       nextWindowOrdinal: area.nextWindowOrdinal,
@@ -203,9 +205,22 @@ export function reduceSurfaceState(state, action) {
     case "app.launch": {
       const app = getFirstPartyApp(action.appId);
       if (!isAppAvailable(app, state.capabilityIds)) return state;
+      const hasTarget = Object.prototype.hasOwnProperty.call(action, "target");
+      const target = hasTarget ? validateWorkspaceTarget(action.target) : undefined;
       const area = getActiveArea(state);
       const existing = area.windows.find((item) => item.appId === app.id && app.singleton);
-      if (existing) return focusWindow(state, existing.id);
+      if (existing) {
+        let nextState = state;
+        if (hasTarget && existing.target !== target) {
+          nextState = updateActiveArea(state, (current) => ({
+            ...current,
+            windows: current.windows.map((item) =>
+              item.id === existing.id ? { ...item, target } : item
+            ),
+          }));
+        }
+        return focusWindow(nextState, existing.id);
+      }
 
       const ordinal = area.nextWindowOrdinal;
       const windowId = app.singleton ? app.id : `${app.id}:${ordinal}`;
@@ -221,6 +236,7 @@ export function reduceSurfaceState(state, action) {
             placementOrdinal: ordinal,
             positionX: null,
             positionY: null,
+            target: target ?? null,
           },
         ],
         activeWindowId: windowId,
