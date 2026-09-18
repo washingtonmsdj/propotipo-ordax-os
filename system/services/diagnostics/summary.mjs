@@ -92,10 +92,10 @@ function validateReviewDocument(document) {
   if (!Array.isArray(manifest.sources) || manifest.sources.length !== SOURCE_IDS.length) {
     throw new TypeError("Diagnostic review source manifest must contain every canonical source");
   }
-  const sourceIds = new Set();
+  const sourceEntries = new Map();
   for (const entryValue of manifest.sources) {
     const entry = asObject(entryValue, "Diagnostic review source");
-    if (!SOURCE_ID_SET.has(entry.id) || sourceIds.has(entry.id)) {
+    if (!SOURCE_ID_SET.has(entry.id) || sourceEntries.has(entry.id)) {
       throw new TypeError("Diagnostic review source manifest contains an invalid or duplicate source");
     }
     if (!SOURCE_STATUS_SET.has(entry.status)) {
@@ -105,7 +105,7 @@ function validateReviewDocument(document) {
     if ((entry.status === "failed") !== (failureCode.length > 0)) {
       throw new TypeError("Diagnostic review source failureCode must match failed status");
     }
-    sourceIds.add(entry.id);
+    sourceEntries.set(entry.id, entry);
   }
 
   const observations = asObject(review.observations, "Diagnostic review observations");
@@ -122,6 +122,22 @@ function validateReviewDocument(document) {
   }
   if (report.generatedAt !== review.generatedAt) {
     throw new TypeError("Diagnostic review and report timestamps must match");
+  }
+
+  for (const [sourceId, reportField] of [
+    ["update", "update"],
+    ["metrics", "metrics"],
+    ["history", "history"],
+    ["journal", "journal"],
+  ]) {
+    const included = sourceEntries.get(sourceId).status === "included";
+    const hasReportValue = report[reportField] !== null && report[reportField] !== undefined;
+    if (included !== hasReportValue) {
+      throw new TypeError(`Diagnostic review source ${sourceId} contradicts report content`);
+    }
+  }
+  if (report.update === null && observations.updateFreshness !== null) {
+    throw new TypeError("Diagnostic update freshness requires an included update observation");
   }
 
   return review;
@@ -211,8 +227,12 @@ function journalLines(report) {
   const scope = safeCode(journal.configuredStoreScope, "configuredStoreScope", { allowEmpty: false });
   const persistence = safeCode(journal.persistenceStatus, "persistenceStatus", { allowEmpty: false });
   const errorCode = safeCode(journal.persistenceErrorCode ?? "", "persistenceErrorCode");
-  if (!Array.isArray(journal.events) || journal.events.length > retentionLimit) {
-    throw new TypeError("Diagnostic journal events must be bounded by retentionLimit");
+  if (
+    !Array.isArray(journal.events)
+    || journal.events.length > retentionLimit
+    || journal.events.length !== eventCount
+  ) {
+    throw new TypeError("Diagnostic journal events must match eventCount and retentionLimit");
   }
 
   const lines = [
