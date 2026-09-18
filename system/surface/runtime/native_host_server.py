@@ -590,10 +590,19 @@ def decode_wpa_ssid_line(line: str) -> str | None:
         return None
     raw = value[5:].strip()
     if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
-        try:
-            decoded = bytes(raw[1:-1], "utf-8").decode("unicode_escape")
-        except UnicodeError:
+        decoded_characters = []
+        escaped = False
+        for character in raw[1:-1]:
+            if escaped:
+                decoded_characters.append(character)
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            else:
+                decoded_characters.append(character)
+        if escaped:
             return None
+        decoded = "".join(decoded_characters)
         return decoded if valid_wifi_ssid(decoded) else None
     if not raw or len(raw) % 2 != 0 or any(character not in "0123456789abcdefABCDEF" for character in raw):
         return None
