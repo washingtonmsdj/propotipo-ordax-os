@@ -145,6 +145,16 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(staging["materialization_must_not_change_current_pointer"])
         self.assertTrue(staging["materialization_precedes_esp_stage"])
 
+    def test_staging_uses_only_the_persisted_verified_release_envelope(self):
+        staging = CONTRACT["staging"]
+        self.assertEqual(
+            staging["persisted_verified_envelope"],
+            "/ordax/releases/{release_sha}/release-envelope.json",
+        )
+        self.assertTrue(staging["stager_must_use_persisted_verified_envelope"])
+        self.assertFalse(staging["second_envelope_network_fetch_for_stage"])
+        self.assertTrue(staging["materialization_precedes_esp_stage"])
+
     def test_promotion_commit_and_boot_refresh_lifecycle_are_explicit(self):
         promotion = CONTRACT["promotion"]
         self.assertTrue(promotion["candidate_entry_removed_before_current_commit"])
