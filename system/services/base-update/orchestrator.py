@@ -1095,6 +1095,10 @@ def _stage_materialized_release(
     kernel_source, initramfs_source = _candidate_sources_from_minimal(repo_root)
     envelope = _release_envelope_path(physical_root, source_sha)
     active_slot = _current_base_slot()
+    if active_slot != "legacy":
+        raise OwnerError(
+            "runtime first-transition staging owner only supports the legacy base layout"
+        )
 
     esp_root, mounted_by_owner = _prepare_esp_mount()
     stage_result: dict[str, Any] | None = None
@@ -1190,12 +1194,18 @@ def _stage_materialized_release(
             raise OwnerError("post-stage filesystem sync failed")
     finally:
         if mounted_by_owner:
-            unmount = _run_busybox(
-                ["umount", str(ESP_MOUNT)],
-                MOUNT_TIMEOUT_SECONDS,
-                "ESP unmount",
-            )
-            unmounted = unmount.returncode == 0 and _mounted_at(ESP_MOUNT) is None
+            try:
+                unmount = _run_busybox(
+                    ["umount", str(ESP_MOUNT)],
+                    MOUNT_TIMEOUT_SECONDS,
+                    "ESP unmount",
+                )
+                unmounted = (
+                    unmount.returncode == 0
+                    and _mounted_at(ESP_MOUNT) is None
+                )
+            except OwnerError:
+                unmounted = False
 
     if stage_result is None:
         raise OwnerError("base candidate staging did not produce a result")
