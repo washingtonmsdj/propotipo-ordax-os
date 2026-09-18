@@ -619,7 +619,11 @@ export function mountSurface(
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     const app = getFirstPartyApp(activation.appId);
     if (!isAppAvailable(app, state.capabilityIds)) return;
-    dispatch({ type: "app.launch", appId: activation.appId });
+    dispatch({
+      type: "app.launch",
+      appId: activation.appId,
+      target: activation.target,
+    });
   });
   const unsubscribeHost = host.subscribe((snapshot) => dispatch({ type: "host.snapshot", snapshot }));
   render();
@@ -646,6 +650,11 @@ export function mountSurface(
   return Object.freeze({
     schema: SURFACE_RENDER_LIFECYCLE_SCHEMA,
     preferences,
+    getAppTarget(appId) {
+      const area = getActiveArea(state);
+      const windowState = area.windows.find((item) => item.appId === appId);
+      return windowState?.target ?? null;
+    },
     subscribeRender(listener) {
       if (typeof listener !== "function") {
         throw new TypeError("Surface render listener must be a function");
