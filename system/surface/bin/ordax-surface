@@ -8,6 +8,7 @@ PERSISTENT_USER_HOME=$STATE_ROOT/home
 SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
+POWER_REQUEST=$SESSION_DIR/power-request
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
 RUNTIME_ID=alpine-v3.22-cage-barkery-v1
@@ -15,6 +16,7 @@ RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
 RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
 GRAPHICS_PID=""
+POWER_BROKER_PID=""
 STAGING_DIR=""
 DEV_BOUND=0
 PROC_BOUND=0
@@ -56,6 +58,12 @@ remove_stale_seatd_socket() {
 }
 
 cleanup() {
+    if [ -n "$POWER_BROKER_PID" ]; then
+        kill "$POWER_BROKER_PID" >/dev/null 2>&1 || true
+        wait "$POWER_BROKER_PID" 2>/dev/null || true
+        POWER_BROKER_PID=""
+    fi
+    rm -f "$POWER_REQUEST" >/dev/null 2>&1 || true
     if [ -n "$GRAPHICS_PID" ]; then
         kill "$GRAPHICS_PID" >/dev/null 2>&1 || true
         wait "$GRAPHICS_PID" 2>/dev/null || true
@@ -273,6 +281,43 @@ bind_runtime_mounts() {
     RUN_BOUND=1
 }
 
+prepare_power_broker() {
+    rm -f "$POWER_REQUEST" >/dev/null 2>&1 || true
+    /bin/busybox mkfifo "$POWER_REQUEST" >>"$HOST_LOG" 2>&1 || return 1
+    chmod 600 "$POWER_REQUEST" >>"$HOST_LOG" 2>&1 || return 1
+
+    (
+        while :; do
+            action=""
+            if IFS= read -r action <"$POWER_REQUEST"; then
+                case "$action" in
+                    restart)
+                        echo "ordax-surface: host power broker accepted restart" >>"$HOST_LOG"
+                        /bin/busybox sleep 1
+                        if ! /bin/busybox reboot -f >>"$HOST_LOG" 2>&1; then
+                            echo "ordax-surface: host reboot command returned without rebooting" >>"$HOST_LOG"
+                        fi
+                        ;;
+                    shutdown)
+                        echo "ordax-surface: host power broker accepted shutdown" >>"$HOST_LOG"
+                        /bin/busybox sleep 1
+                        if ! /bin/busybox poweroff -f >>"$HOST_LOG" 2>&1; then
+                            echo "ordax-surface: host poweroff command returned without shutting down" >>"$HOST_LOG"
+                        fi
+                        ;;
+                    *)
+                        [ -n "$action" ] && echo "ordax-surface: rejected unknown host power request: $action" >>"$HOST_LOG"
+                        ;;
+                esac
+            else
+                /bin/busybox sleep 1
+            fi
+        done
+    ) &
+    POWER_BROKER_PID=$!
+    kill -0 "$POWER_BROKER_PID" >/dev/null 2>&1 || return 1
+}
+
 prepare_input_stack() {
     set -- /dev/input/event*
     if [ ! -e "$1" ]; then
@@ -303,6 +348,7 @@ configure_browser || fallback_with_reason "failed to configure Barkery browser r
 bind_runtime_mounts || fallback_with_reason "failed to bind host resources into graphical runtime"
 prepare_input_stack || fallback_with_reason "failed to prepare physical keyboard/touchpad input devices"
 remove_stale_seatd_socket || fallback_with_reason "failed to clear stale seatd socket before native host startup"
+prepare_power_broker || fallback_with_reason "failed to prepare host power broker"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
@@ -312,7 +358,7 @@ export ORDAX_SURFACE_MODE=native-graphical
 /bin/busybox chroot "$RUNTIME_ROOT" \
     /usr/bin/python3 /srv/ordax-system/surface/runtime/native_host_server.py \
     --bind 127.0.0.1 --port 8765 --directory /srv/ordax-system \
-    --user-root /var/lib/ordax-user \
+    --user-root /var/lib/ordax-user --power-request /run/ordax-surface/power-request \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 sleep 1
