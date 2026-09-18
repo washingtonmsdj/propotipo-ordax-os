@@ -34,6 +34,7 @@ SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
+POWER_STATUS_PATH = "/__ordax/native/power-status"
 NETWORK_STATUS_PATH = "/__ordax/native/network-status"
 NETWORK_MANAGEMENT_PATH = "/__ordax/native/network-management"
 UPDATE_HISTORY_PATH = "/__ordax/native/update-history"
@@ -539,6 +540,73 @@ def read_system_metrics(user_root: str, proc_root: str = "/proc") -> dict:
         "memoryAvailableBytes": memory_available,
         "userStorageTotalBytes": storage_total,
         "userStorageFreeBytes": storage_free,
+    }
+
+
+def read_power_status(sys_class_power_supply: str = "/sys/class/power_supply") -> dict:
+    try:
+        names = sorted(os.listdir(sys_class_power_supply))
+    except FileNotFoundError:
+        return {"battery": None, "externalPower": None}
+    except OSError as exc:
+        raise ValueError("power supply inventory is unavailable") from exc
+
+    batteries = []
+    external_online = []
+    for name in names[:64]:
+        path = os.path.join(sys_class_power_supply, name)
+        if not os.path.isdir(path):
+            continue
+        supply_type = read_small_text(os.path.join(path, "type"), 64)
+        if supply_type == "Battery":
+            raw_capacity = read_small_text(os.path.join(path, "capacity"), 16)
+            try:
+                capacity = int(raw_capacity)
+            except ValueError:
+                continue
+            if capacity < 0 or capacity > 100:
+                continue
+            raw_status = read_small_text(os.path.join(path, "status"), 64).strip().lower()
+            state = {
+                "charging": "charging",
+                "discharging": "discharging",
+                "full": "full",
+                "not charging": "not-charging",
+            }.get(raw_status, "unknown")
+            batteries.append({"percent": capacity, "state": state})
+            continue
+
+        raw_online = read_small_text(os.path.join(path, "online"), 8)
+        if raw_online == "1":
+            external_online.append(True)
+        elif raw_online == "0":
+            external_online.append(False)
+
+    if batteries:
+        percent = int(round(sum(item["percent"] for item in batteries) / len(batteries)))
+        states = {item["state"] for item in batteries}
+        if "charging" in states:
+            state = "charging"
+        elif states == {"full"}:
+            state = "full"
+        elif "discharging" in states:
+            state = "discharging"
+        elif "not-charging" in states:
+            state = "not-charging"
+        else:
+            state = "unknown"
+        battery = {"percent": percent, "state": state}
+    else:
+        battery = None
+
+    external_power = (
+        True
+        if any(external_online)
+        else (False if external_online else None)
+    )
+    return {
+        "battery": battery,
+        "externalPower": external_power,
     }
 
 
@@ -1459,7 +1527,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -1473,6 +1541,15 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, metrics)
+            return
+        if parsed_path == POWER_STATUS_PATH:
+            try:
+                power_status = read_power_status()
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not read power status: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
+                return
+            self._write_json(200, power_status)
             return
         if parsed_path == NETWORK_STATUS_PATH:
             try:
