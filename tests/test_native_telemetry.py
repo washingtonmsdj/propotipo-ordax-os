@@ -56,6 +56,9 @@ class NativeTelemetryTests(unittest.TestCase):
                 "lastError": "test-diagnostic",
                 "lastAppliedSha": sha,
                 "lastAppliedAt": "2026-09-18T03:00:00Z",
+                "stagedReleaseSha": "c" * 40,
+                "lastApplyDurationSeconds": 4,
+                "lastStageDurationSeconds": 1,
                 "rejectedSha": "",
             }), encoding="utf-8")
             (root / "healthy-sha").write_text(sha + "\n", encoding="utf-8")
@@ -72,11 +75,24 @@ class NativeTelemetryTests(unittest.TestCase):
             self.assertEqual(payload["attemptId"], "2026-09-18T03:00:00Z")
             self.assertEqual(payload["lastError"], "test-diagnostic")
             self.assertEqual(payload["healthySha"], sha)
+            self.assertEqual(payload["stagedReleaseSha"], "c" * 40)
+            self.assertEqual(payload["lastApplyDurationSeconds"], 4)
+            self.assertEqual(payload["lastStageDurationSeconds"], 1)
+            self.assertEqual(payload["relayVersion"], 2)
             self.assertEqual(payload["rescueGeneration"], 2)
             self.assertEqual(payload["rescueAction"], "retry-main")
             self.assertNotIn("email", payload)
             self.assertNotIn("name", payload)
             self.assertNotIn("user", payload)
+
+    def test_latency_metrics_are_bounded(self):
+        host = load_host()
+        self.assertEqual(host.bounded_telemetry_duration(0), 0)
+        self.assertEqual(host.bounded_telemetry_duration(5), 5)
+        self.assertEqual(host.bounded_telemetry_duration(-1), 0)
+        self.assertEqual(host.bounded_telemetry_duration(3601), 0)
+        self.assertEqual(host.bounded_telemetry_duration(True), 0)
+        self.assertEqual(host.bounded_telemetry_duration("5"), 0)
 
     def test_surface_heartbeat_is_bounded_atomic_and_sha_only(self):
         host = load_host()
