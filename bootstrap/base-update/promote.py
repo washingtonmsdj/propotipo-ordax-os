@@ -31,6 +31,7 @@ SLOTS = ("a", "b")
 CURRENT_ENTRY = Path("loader/entries/ordax.conf")
 RECOVERY_ENTRY = Path("loader/entries/ordax-recovery.conf")
 ACTIVE_RECORD_RELATIVE = Path("base/active-slot.json")
+BOOT_REFRESH_RELATIVE = Path("boot-refresh-required")
 
 
 class PromotionError(RuntimeError):
@@ -262,17 +263,29 @@ def atomic_replace_regular(root: Path, relative: Path, payload: bytes) -> None:
         raise
 
 
-def write_active_record(
+def prepare_active_record(
     state_root: Path,
     release_sha: str,
     active_slot: str,
     recovery_slot: str,
     boot_id: str,
-) -> None:
-    target = state_root / ACTIVE_RECORD_RELATIVE
+) -> tuple[Path, Path]:
+    root = state_root.resolve()
+    if not root.is_dir() or state_root.is_symlink():
+        raise PromotionError("state root must be an existing non-symlink directory")
+    target = root / ACTIVE_RECORD_RELATIVE
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.parent.is_symlink():
         raise PromotionError("active-slot state directory is unsafe")
+    try:
+        existing = target.lstat()
+    except FileNotFoundError:
+        existing = None
+    except OSError as exc:
+        raise PromotionError("cannot inspect active-slot state record") from exc
+    if existing is not None and (stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode)):
+        raise PromotionError("active-slot state record is unsafe")
+
     payload = {
         "$schema": "prototype-ordax.base-active-slot/1",
         "releaseSha": release_sha,
@@ -280,7 +293,7 @@ def write_active_record(
         "recoverySlot": recovery_slot,
         "bootId": boot_id,
     }
-    temporary = target.with_name(f".{target.name}.tmp-{os.getpid()}")
+    temporary = target.with_name(f".{target.name}.prepared-{os.getpid()}")
     try:
         with open(temporary, "x", encoding="utf-8") as handle:
             os.fchmod(handle.fileno(), 0o600)
@@ -288,14 +301,54 @@ def write_active_record(
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, target)
         fsync_directory(target.parent)
+        return temporary, target
     except Exception:
         try:
             temporary.unlink()
         except OSError:
             pass
         raise
+
+
+def discard_prepared_active_record(temporary: Path) -> None:
+    try:
+        temporary.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def finalize_active_record(temporary: Path, target: Path) -> bool:
+    try:
+        os.replace(temporary, target)
+        fsync_directory(target.parent)
+        return True
+    except OSError:
+        discard_prepared_active_record(temporary)
+        return False
+
+
+def clear_boot_refresh_marker(state_root: Path) -> str:
+    root = state_root.resolve()
+    marker = root / BOOT_REFRESH_RELATIVE
+    try:
+        metadata = marker.lstat()
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "error"
+
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        return "unsafe"
+
+    try:
+        marker.unlink()
+        fsync_directory(root)
+        return "cleared"
+    except OSError:
+        return "error"
 
 
 def promote(
@@ -326,32 +379,46 @@ def promote(
     candidate = locate_candidate_entry(root)
     validate_candidate_entry(candidate, release_sha, candidate_slot)
 
-    # Recovery is prepared first. The current/default entry remains known-good
-    # until the final replace below, which is the promotion commit point.
-    atomic_replace_regular(
-        root,
-        RECOVERY_ENTRY,
-        entry_payload("OrdaX Recovery", previous_slot, "recovery"),
-    )
-    atomic_replace_regular(
-        root,
-        CURRENT_ENTRY,
-        entry_payload("OrdaX", candidate_slot, "normal"),
-    )
-
-    write_active_record(
-        state_root.resolve(),
+    state_root_resolved = state_root.resolve()
+    active_temporary, active_target = prepare_active_record(
+        state_root,
         release_sha,
         candidate_slot,
         previous_slot,
         boot_id,
     )
 
+    committed = False
     try:
-        candidate.unlink()
-        fsync_directory(candidate.parent)
-    except OSError as exc:
-        raise PromotionError("promoted candidate entry could not be removed") from exc
+        # Every fallible cleanup required for safe future boot selection happens
+        # before CURRENT_ENTRY is replaced. Until that final replace, the
+        # previous/default slot remains authoritative.
+        atomic_replace_regular(
+            root,
+            RECOVERY_ENTRY,
+            entry_payload("OrdaX Recovery", previous_slot, "recovery"),
+        )
+        try:
+            candidate.unlink()
+            fsync_directory(candidate.parent)
+        except OSError as exc:
+            raise PromotionError("candidate entry could not be removed before promotion commit") from exc
+
+        # This is the promotion commit point. No mandatory operation after this
+        # line is allowed to turn the already-promoted boot configuration into
+        # a reported pre-commit failure.
+        atomic_replace_regular(
+            root,
+            CURRENT_ENTRY,
+            entry_payload("OrdaX", candidate_slot, "normal"),
+        )
+        committed = True
+    finally:
+        if not committed:
+            discard_prepared_active_record(active_temporary)
+
+    active_record_written = finalize_active_record(active_temporary, active_target)
+    boot_refresh_status = clear_boot_refresh_marker(state_root_resolved)
 
     return {
         "$schema": "prototype-ordax.base-update-promotion-result/1",
@@ -361,6 +428,9 @@ def promote(
         "current_entry": "/" + CURRENT_ENTRY.as_posix(),
         "recovery_entry": "/" + RECOVERY_ENTRY.as_posix(),
         "candidate_entry_removed": True,
+        "active_slot_record_written": active_record_written,
+        "boot_refresh_marker_status": boot_refresh_status,
+        "boot_refresh_marker_cleared": boot_refresh_status in {"cleared", "absent"},
         "reboot_requested": False,
         "promoted": True,
     }
