@@ -36,6 +36,7 @@ STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
 RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}
+RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-12}
 SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}
 UPDATE_TARGET_SHA=""
 UPDATE_PHASE=idle
@@ -84,6 +85,11 @@ case "$RELOAD_HEALTH_TIMEOUT" in
     ''|*[!0-9]*) RELOAD_HEALTH_TIMEOUT=8 ;;
 esac
 [ "$RELOAD_HEALTH_TIMEOUT" -ge 4 ] 2>/dev/null || RELOAD_HEALTH_TIMEOUT=8
+
+case "$RELOAD_FALLBACK_HEALTH_TIMEOUT" in
+    ''|*[!0-9]*) RELOAD_FALLBACK_HEALTH_TIMEOUT=12 ;;
+esac
+[ "$RELOAD_FALLBACK_HEALTH_TIMEOUT" -ge 6 ] 2>/dev/null || RELOAD_FALLBACK_HEALTH_TIMEOUT=12
 
 case "$SURFACE_STALE_SECONDS" in
     ''|*[!0-9]*) SURFACE_STALE_SECONDS=90 ;;
@@ -592,6 +598,9 @@ wait_for_surface_health() {
     expected_sha=$1
     seconds=${2:-12}
     while [ "$seconds" -gt 0 ]; do
+        if [ -n "$SURFACE_PID" ] && ! kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
+            return 1
+        fi
         healthy_sha=$(read_state_value "$HEALTH_FILE")
         rendered_sha=$(surface_heartbeat_sha)
         if [ "$healthy_sha" = "$expected_sha" ] && [ "$rendered_sha" = "$expected_sha" ]; then
@@ -601,6 +610,15 @@ wait_for_surface_health() {
         seconds=$((seconds - 1))
     done
     return 1
+}
+
+recover_reload_with_surface_restart() {
+    expected_sha=$1
+    log "live reload health acknowledgement timed out; restarting Surface once on $expected_sha"
+    clear_surface_health
+    stop_surface
+    start_surface || return 1
+    wait_for_surface_health "$expected_sha" "$RELOAD_FALLBACK_HEALTH_TIMEOUT"
 }
 
 terminate() {
@@ -829,14 +847,26 @@ check_for_update() {
             set_update_context health-wait "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
+            reload_healthy=0
             if wait_for_surface_health "$new_sha" "$RELOAD_HEALTH_TIMEOUT"; then
+                reload_healthy=1
+            else
+                set_update_context activating "$new_sha" "$attempt_id" "reload-health-timeout"
+                write_update_state "$new_sha" applied reload
+                if recover_reload_with_surface_restart "$new_sha"; then
+                    reload_healthy=1
+                    log "Surface restart fallback acknowledged healthy state"
+                fi
+            fi
+
+            if [ "$reload_healthy" -eq 1 ]; then
                 record_applied "$new_sha"
                 record_runtime_surface_sha "$new_sha"
                 clear_update_context
                 write_update_state "$new_sha" running reload
                 log "updated Surface acknowledged healthy state"
             else
-                rollback_update "$old_sha" "$new_sha" reload "Surface did not acknowledge healthy state"
+                rollback_update "$old_sha" "$new_sha" reload "Surface did not acknowledge healthy state after reload and one Surface restart"
             fi
             ;;
         surface-restart)
