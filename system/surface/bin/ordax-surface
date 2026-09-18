@@ -103,7 +103,6 @@ runtime_root_processes() {
         [ -L "$root_link" ] || continue
         pid=${root_link#/proc/}
         pid=${pid%/root}
-        [ "$pid" = "$" ] && continue
         root_target=$(/bin/busybox readlink "$root_link" 2>/dev/null || true)
         [ "$root_target" = "$RUNTIME_ROOT" ] || continue
         printf '%s\n' "$pid"
