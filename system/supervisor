@@ -434,18 +434,10 @@ current_sha() {
 version_number_for_sha() {
     source_sha=$1
     subject=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%s "$source_sha" 2>/dev/null || true)
-    case "$subject" in
-        "Merge pull request #"*)
-            value=${subject#Merge pull request \#}
-            value=${value%% *}
-            case "$value" in
-                ''|*[!0-9]*) printf '0' ;;
-                *) printf '%s' "$value" ;;
-            esac
-            ;;
-        *)
-            printf '0'
-            ;;
+    value=$(printf '%s\n' "$subject" | /bin/busybox sed -n 's/^Merge pull request #\([0-9][0-9]*\) .*/\1/p')
+    case "$value" in
+        ''|*[!0-9]*) printf '0' ;;
+        *) printf '%s' "$value" ;;
     esac
 }
 
@@ -765,6 +757,11 @@ rollback_update() {
     reason=$4
     set_update_context rollback "$failed_sha" "$UPDATE_ATTEMPT_ID" "$reason"
     write_update_state "$failed_sha" applied "$failed_mode"
+    attempt_started=$(read_state_value "$ATTEMPT_STARTED_EPOCH_FILE")
+    if [ -n "$attempt_started" ]; then
+        record_elapsed_seconds "$attempt_started" "$LAST_APPLY_DURATION_FILE"
+        rm -f "$ATTEMPT_STARTED_EPOCH_FILE"
+    fi
     append_application_history "$failed_sha" "$failed_mode" rolled-back "$(utc_now)"
     log "rejecting update $failed_sha: $reason; rolling back to $previous_sha"
     temporary=$REJECTED_FILE.tmp.$$
