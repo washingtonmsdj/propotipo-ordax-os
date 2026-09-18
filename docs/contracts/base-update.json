@@ -169,6 +169,12 @@
     "development_state_inside_physical_root": "<root-mount-subpath>/state/ordax",
     "state_root_derived_from_mountinfo_subpath": true,
     "physical_root_requires_release_agent_and_channel_sentinels": true,
-    "recursive_state_bind_forbidden": true
+    "recursive_state_bind_forbidden": true,
+    "mount_staging_host": "/run/ordax-base-owner",
+    "mount_staging_filesystem": "tmpfs",
+    "mount_staging_size": "1m",
+    "physical_root_host_mount": "/run/ordax-base-owner/physical",
+    "physical_root_bound_into_chroot": true,
+    "mount_tree_must_not_recurse_into_ordax_filesystem": true
   }
 }
