@@ -32,9 +32,9 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/7', contract)
+        self.assertIn('ordax.file-space/8', contract)
         self.assertIn(
-            "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), moveEntry(), and exportFile()",
+            "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), moveEntry(), exportFile(), and importFile()",
             contract,
         )
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
@@ -53,6 +53,8 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('"move-entry"', adapter)
         self.assertIn("exportFile", adapter)
         self.assertIn('/__ordax/native/file-export', adapter)
+        self.assertIn("importFile", adapter)
+        self.assertIn('/__ordax/native/file-import', adapter)
         self.assertIn("FileSpaceOperationError", adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
@@ -316,6 +318,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("data-file-copy-name", controls)
         self.assertIn("MAX_FILE_COPY_BYTES", controls)
         self.assertIn("MAX_FILE_EXPORT_BYTES", controls)
+        self.assertIn("MAX_FILE_IMPORT_BYTES", controls)
+        self.assertIn("importSelectedFile", controls)
+        self.assertIn("data-file-import-toggle", controls)
+        self.assertIn("data-file-import-picker", controls)
         self.assertIn("exportSelected", controls)
         self.assertIn("data-file-export", controls)
         self.assertIn("selectedPath", controls)
@@ -357,6 +363,7 @@ class NativeUserFilesTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn('FILE_CONTENT_PATH = "/__ordax/native/file-content"', server)
         self.assertIn('FILE_EXPORT_PATH = "/__ordax/native/file-export"', server)
+        self.assertIn('FILE_IMPORT_PATH = "/__ordax/native/file-import"', server)
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", server)
         self.assertIn("read_user_text_file", server)
         self.assertIn("FileSpaceTextTooLargeError", server)
@@ -367,6 +374,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('action == "rename-entry"', server)
         self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", server)
         self.assertIn("MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("import_user_file", server)
+        self.assertIn("FileSpaceImportTooLargeError", server)
+        self.assertIn("FileSpaceImportIncompleteError", server)
         self.assertIn("read_user_export_file", server)
         self.assertIn("FileSpaceExportTooLargeError", server)
         self.assertIn("FileSpaceExportChangedError", server)
