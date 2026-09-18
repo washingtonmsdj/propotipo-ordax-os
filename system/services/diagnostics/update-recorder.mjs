@@ -55,7 +55,7 @@ export function createUpdateDiagnosticRecorder(
   const clock = requireClock(now);
   let lastFingerprint = null;
   let disposed = false;
-  let appendQueue = Promise.resolve();
+  const pendingAppends = new Set();
 
   const observe = (value) => {
     if (disposed || value === null || value === undefined) return;
@@ -64,10 +64,9 @@ export function createUpdateDiagnosticRecorder(
     if (fingerprint === lastFingerprint) return;
     lastFingerprint = fingerprint;
 
-    const occurredAt = clock();
-    appendQueue = appendQueue
-      .then(() => journal.appendUpdate(snapshot, occurredAt))
-      .catch(() => undefined);
+    const append = journal.appendUpdate(snapshot, clock());
+    pendingAppends.add(append);
+    void append.finally(() => pendingAppends.delete(append)).catch(() => undefined);
   };
 
   observe(updates.getSnapshot());
@@ -79,8 +78,10 @@ export function createUpdateDiagnosticRecorder(
       disposed = true;
       unsubscribe();
     },
-    flush() {
-      return appendQueue;
+    async flush() {
+      const pending = [...pendingAppends];
+      if (pending.length === 0) return;
+      await Promise.allSettled(pending);
     },
   });
 }
