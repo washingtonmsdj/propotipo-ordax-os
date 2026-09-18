@@ -34,6 +34,20 @@ function readableMode(mode) {
   }
 }
 
+function readablePhase(phase) {
+  switch (phase) {
+    case "checking": return "Verificando Git";
+    case "fetching": return "Baixando versão";
+    case "validating": return "Validando sistema";
+    case "activating": return "Ativando versão";
+    case "health-wait": return "Aguardando confirmação de saúde";
+    case "rollback": return "Revertendo automaticamente";
+    case "blocked": return "Bloqueada";
+    case "error": return "Falha";
+    default: return "Em repouso";
+  }
+}
+
 function statusDescriptor(snapshot) {
   if (snapshot?.bootRefreshRequired) {
     return ["Reinício necessário", "Há uma atualização de boot/bootstrap pendente. O OrdaX não reiniciará sozinho."];
@@ -103,6 +117,17 @@ export function mountUpdateControls(root, updatePort) {
     toggle.dataset.alerting = String(alerting);
     addFact(alerting ? "!" : "✓", label, description);
     addFact("#", `Versão ${shortSha(snapshot?.sourceSha)}`, `Modo: ${readableMode(snapshot?.applyMode)}`);
+    if (snapshot?.targetSha) {
+      addFact("→", `Alvo ${shortSha(snapshot.targetSha)}`, `Fase: ${readablePhase(snapshot?.phase)}`);
+    } else if (snapshot?.phase && snapshot.phase !== "idle") {
+      addFact("…", "Fase atual", readablePhase(snapshot.phase));
+    }
+    if (snapshot?.attemptId) {
+      addFact("·", "Tentativa", snapshot.attemptId);
+    }
+    if (snapshot?.lastError) {
+      addFact("!", "Diagnóstico", snapshot.lastError);
+    }
     if (snapshot?.lastAppliedAt && snapshot.lastAppliedAt !== "unknown") {
       addFact("↻", "Última aplicação", snapshot.lastAppliedAt);
     }

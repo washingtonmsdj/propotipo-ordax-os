@@ -144,9 +144,12 @@ def build_telemetry_payload(device_id: str) -> dict:
     return {
         "deviceId": device_id,
         "sourceSha": update.get("sourceSha") if valid_commit_sha(update.get("sourceSha")) else "",
+        "targetSha": update.get("targetSha") if valid_commit_sha(update.get("targetSha")) else "",
         "remoteSha": "",
         "updateStatus": update.get("status") if isinstance(update.get("status"), str) else "",
+        "phase": update.get("phase") if isinstance(update.get("phase"), str) else "",
         "applyMode": update.get("applyMode") if isinstance(update.get("applyMode"), str) else "",
+        "attemptId": update.get("attemptId") if isinstance(update.get("attemptId"), str) else "",
         "rejectedSha": update.get("rejectedSha") if valid_commit_sha(update.get("rejectedSha")) else "",
         "healthySha": healthy_sha,
         "lastAppliedSha": update.get("lastAppliedSha") if valid_commit_sha(update.get("lastAppliedSha")) else "",
@@ -155,7 +158,7 @@ def build_telemetry_payload(device_id: str) -> dict:
         "rescueAction": rescue_action,
         "surfaceState": "running",
         "bootId": read_small_text(BOOT_ID_FILE, 256),
-        "lastError": "",
+        "lastError": update.get("lastError") if isinstance(update.get("lastError"), str) else "",
         "relayVersion": 1,
     }
 
@@ -673,13 +676,17 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             if update_state is None:
                 update_state = {
                     "sourceSha": "unavailable",
+                    "targetSha": "",
                     "status": "unavailable",
+                    "phase": "error",
                     "applyMode": "none",
+                    "attemptId": "",
                     "bootRefreshRequired": False,
                     "checkedAt": "unknown",
                     "lastAppliedSha": "",
                     "lastAppliedAt": "unknown",
                     "rejectedSha": "",
+                    "lastError": "update-state-unavailable",
                 }
                 status = 503
             else:

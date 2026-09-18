@@ -17,6 +17,10 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn('source_sha=$candidate', text)
         self.assertIn('UPDATE_STATE=/run/ordax-update/state.json', text)
         self.assertIn('RESCUE_ACTION_FILE=$STATE_DIR/rescue/last-action', text)
+        self.assertIn("targetSha", text)
+        self.assertIn("phase", text)
+        self.assertIn("attemptId", text)
+        self.assertIn("lastError", text)
         for forbidden in (
             "kill ",
             "pkill ",

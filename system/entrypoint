@@ -26,6 +26,10 @@ REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
+UPDATE_TARGET_SHA=""
+UPDATE_PHASE=idle
+UPDATE_ATTEMPT_ID=""
+UPDATE_ERROR=""
 SURFACE_PID=""
 
 log() {
@@ -127,6 +131,20 @@ current_sha() {
     "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
 }
 
+set_update_context() {
+    UPDATE_PHASE=$1
+    UPDATE_TARGET_SHA=${2:-}
+    UPDATE_ATTEMPT_ID=${3:-}
+    UPDATE_ERROR=${4:-}
+}
+
+clear_update_context() {
+    UPDATE_PHASE=idle
+    UPDATE_TARGET_SHA=""
+    UPDATE_ATTEMPT_ID=""
+    UPDATE_ERROR=""
+}
+
 write_update_state() {
     source_sha=$1
     status=$2
@@ -139,9 +157,9 @@ write_update_state() {
     rejected_sha=$(read_state_value "$REJECTED_FILE")
     [ -n "$last_applied_at" ] || last_applied_at=unknown
     temporary=$UPDATE_STATE.tmp.$$
-    printf '{"sourceSha":"%s","status":"%s","applyMode":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s"}\n' \
-        "$source_sha" "$status" "$apply_mode" "$boot_refresh" "$checked_at" \
-        "$last_applied_sha" "$last_applied_at" "$rejected_sha" >"$temporary"
+    printf '{"sourceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s"}\n' \
+        "$source_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
+        "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
 }
 
@@ -245,6 +263,8 @@ rollback_update() {
     failed_sha=$2
     failed_mode=$3
     reason=$4
+    set_update_context rollback "$failed_sha" "$UPDATE_ATTEMPT_ID" "$reason"
+    write_update_state "$failed_sha" applied "$failed_mode"
     log "rejecting update $failed_sha: $reason; rolling back to $previous_sha"
     temporary=$REJECTED_FILE.tmp.$$
     printf '%s\n' "$failed_sha" >"$temporary"
@@ -309,16 +329,19 @@ check_for_update() {
     current=$(current_sha)
 
     if [ -s "$PINNED_FILE" ]; then
+        set_update_context blocked "" "" "pinned"
         write_update_state "$current" pinned none
         return 0
     fi
     if [ ! -x "$GIT_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
+        set_update_context blocked "" "" "git-unavailable"
         write_update_state "$current" disabled none
         return 0
     fi
 
     if ! remote_output=$(run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
         log "remote check failed or timed out after ${REMOTE_TIMEOUT}s; keeping running Surface"
+        set_update_context error "" "" "remote-check-failed"
         write_update_state "$current" network-error none
         return 0
     fi
@@ -326,6 +349,7 @@ check_for_update() {
     remote_sha=${1:-}
     case "$remote_sha" in
         ''|*[!0-9a-f]*)
+            set_update_context error "" "" "invalid-remote-sha"
             write_update_state "$current" remote-error none
             return 0
             ;;
@@ -341,14 +365,17 @@ check_for_update() {
             log "cleared stale rejected state for healthy current checkout $current"
         fi
         if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ]; then
+            set_update_context blocked "$current" "" "rejected-commit"
             write_update_state "$current" rejected none
         else
+            clear_update_context
             write_update_state "$current" running none
         fi
         return 0
     fi
 
     if [ -n "$rejected_sha" ] && [ "$remote_sha" = "$rejected_sha" ]; then
+        set_update_context blocked "$remote_sha" "" "rejected-commit"
         write_update_state "$current" rejected none
         return 0
     fi
@@ -357,21 +384,27 @@ check_for_update() {
     fi
 
     old_sha=$current
+    attempt_id=$(utc_now)
+    set_update_context fetching "$remote_sha" "$attempt_id" ""
     write_update_state "$old_sha" updating none
     log "update available: $old_sha -> $remote_sha"
 
     if ! apply_remote_checkout "$old_sha" "$remote_sha"; then
         log "automatic supervisor-owned Git update failed; keeping running Surface"
+        set_update_context error "$remote_sha" "$attempt_id" "checkout-failed"
         write_update_state "$old_sha" pull-error none
         return 0
     fi
 
     new_sha=$(current_sha)
     if [ "$new_sha" = "$old_sha" ] || [ "$new_sha" = unknown ]; then
+        set_update_context error "$remote_sha" "$attempt_id" "checkout-sha-invalid"
         write_update_state "$old_sha" pull-error none
         return 0
     fi
 
+    set_update_context validating "$new_sha" "$attempt_id" ""
+    write_update_state "$new_sha" updating none
     classify_changes "$old_sha" "$new_sha"
     if ! validate_updated_tree; then
         rollback_update "$old_sha" "$new_sha" "$APPLY_MODE" "updated system tree failed preflight validation"
@@ -386,10 +419,12 @@ check_for_update() {
     case "$APPLY_MODE" in
         reload)
             rm -f "$HEALTH_FILE"
+            set_update_context health-wait "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied reload
             log "live-safe system update applied; waiting for Surface health acknowledgement"
             if wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
                 record_applied "$new_sha"
+                clear_update_context
                 write_update_state "$new_sha" running reload
                 log "updated Surface acknowledged healthy state"
             else
@@ -397,6 +432,7 @@ check_for_update() {
             fi
             ;;
         surface-restart)
+            set_update_context activating "$new_sha" "$attempt_id" ""
             write_update_state "$new_sha" applied surface-restart
             log "native host update applied; restarting Surface only"
             stop_surface
@@ -405,12 +441,14 @@ check_for_update() {
                 return 0
             fi
             record_applied "$new_sha"
+            clear_update_context
             write_update_state "$new_sha" running surface-restart
             ;;
         supervisor-restart)
             rm -f "$HEALTH_FILE"
-            temporary=$SUPERVISOR_GUARD_FILE.tmp.$$
-            printf '%s %s\n' "$old_sha" "$new_sha" >"$temporary"
+            set_update_context activating "$new_sha" "$attempt_id" ""
+            temporary=$SUPERVISOR_GUARD_FILE.tmp.$
+            printf '%s %s %s\n' "$old_sha" "$new_sha" "$attempt_id" >"$temporary"
             /bin/busybox mv -f "$temporary" "$SUPERVISOR_GUARD_FILE"
             write_update_state "$new_sha" applied supervisor-restart
             log "supervisor update applied; restarting system supervisor without reboot"
@@ -420,6 +458,7 @@ check_for_update() {
             ;;
         none)
             record_applied "$new_sha"
+            clear_update_context
             write_update_state "$new_sha" running none
             log "repository update has no running-system effect"
             ;;
@@ -432,6 +471,7 @@ trap terminate HUP INT TERM
 [ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
 
 initial_sha=$(current_sha)
+clear_update_context
 write_update_state "$initial_sha" running initial
 log "starting shared OrdaX Surface with Git hot-update supervisor"
 start_surface || fail_closed "surface entrypoint could not be started"
@@ -441,11 +481,15 @@ if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
     set -- $guard_line
     guard_previous=${1:-}
     guard_current=${2:-}
+    guard_attempt=${3:-}
     if [ -n "$guard_previous" ] && [ "$guard_current" = "$initial_sha" ]; then
+        set_update_context health-wait "$guard_current" "$guard_attempt" ""
+        write_update_state "$guard_current" applied supervisor-restart
         log "validating restarted supervisor and Surface for $guard_current"
         if surface_stays_running 4 && wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"; then
             record_applied "$guard_current"
             rm -f "$SUPERVISOR_GUARD_FILE"
+            clear_update_context
             write_update_state "$guard_current" running supervisor-restart
             log "restarted supervisor and Surface acknowledged healthy state"
         else

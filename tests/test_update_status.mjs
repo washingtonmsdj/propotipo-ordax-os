@@ -38,10 +38,42 @@ test("update status contract normalizes optional fields", () => {
     applyMode: "initial",
   });
   assert.equal(snapshot.bootRefreshRequired, false);
+  assert.equal(snapshot.targetSha, "");
+  assert.equal(snapshot.phase, "idle");
+  assert.equal(snapshot.attemptId, "");
   assert.equal(snapshot.checkedAt, "unknown");
   assert.equal(snapshot.lastAppliedSha, "");
   assert.equal(snapshot.rejectedSha, "");
+  assert.equal(snapshot.lastError, "");
   assert.equal(snapshot.healthToken, "");
+});
+
+test("update status preserves transaction context", () => {
+  const snapshot = validateUpdateStatusSnapshot({
+    sourceSha: "0123456789012345678901234567890123456789",
+    targetSha: "abcdef0123456789abcdef0123456789abcdef01",
+    status: "applied",
+    phase: "health-wait",
+    applyMode: "reload",
+    attemptId: "2026-09-18T09:10:00Z",
+    lastError: "health-check-pending",
+  });
+  assert.equal(snapshot.targetSha, "abcdef0123456789abcdef0123456789abcdef01");
+  assert.equal(snapshot.phase, "health-wait");
+  assert.equal(snapshot.attemptId, "2026-09-18T09:10:00Z");
+  assert.equal(snapshot.lastError, "health-check-pending");
+});
+
+test("update status rejects unknown transaction phase", () => {
+  assert.throws(
+    () => validateUpdateStatusSnapshot({
+      sourceSha: "0123456789012345678901234567890123456789",
+      status: "running",
+      phase: "mystery",
+      applyMode: "none",
+    }),
+    TypeError,
+  );
 });
 
 test("update status rejects missing runtime identity", () => {
