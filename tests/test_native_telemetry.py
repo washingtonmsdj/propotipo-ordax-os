@@ -134,11 +134,16 @@ class NativeTelemetryTests(unittest.TestCase):
         self.assertEqual(host.bounded_telemetry_duration(True), 0)
         self.assertEqual(host.bounded_telemetry_duration("5"), 0)
 
-    def test_surface_heartbeat_is_bounded_atomic_and_sha_only(self):
+    def test_surface_heartbeat_is_bounded_atomic_and_bound_to_current_boot(self):
         host = load_host()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             host.SURFACE_HEARTBEAT_FILE = str(root / "surface-heartbeat.json")
+            host.BOOT_ID_FILE = str(root / "boot-id")
+            (root / "boot-id").write_text(
+                "01234567-89ab-cdef-0123-456789abcdef\n",
+                encoding="utf-8",
+            )
             sha = "c" * 40
             self.assertTrue(host.valid_surface_heartbeat_payload({"sourceSha": sha}))
             self.assertFalse(host.valid_surface_heartbeat_payload({"sourceSha": "bad"}))
@@ -146,6 +151,7 @@ class NativeTelemetryTests(unittest.TestCase):
             host.record_surface_heartbeat(sha)
             payload = json.loads((root / "surface-heartbeat.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["sourceSha"], sha)
+            self.assertEqual(payload["bootId"], "01234567-89ab-cdef-0123-456789abcdef")
             self.assertIsInstance(payload["observedEpoch"], int)
             self.assertGreaterEqual(payload["observedEpoch"], 0)
             self.assertFalse(list(root.glob("*.tmp.*")))
