@@ -41,6 +41,23 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         self.assertIn("ordinal !== managementOrdinal", controls)
         self.assertIn("ordinal !== actionOrdinal", controls)
 
+    def test_quick_wifi_preserves_transient_interaction_without_persisting_credentials(self):
+        controls = self.read("network-quick-panel.mjs")
+        controller = self.read("system-tray-quick-panels.mjs")
+        self.assertIn('let passwordDraft = "";', controls)
+        self.assertIn("captureInteraction", controls)
+        self.assertIn("restoreInteraction", controls)
+        self.assertIn("panelScrollTop", controls)
+        self.assertIn("listScrollTop", controls)
+        self.assertIn("passwordSelection", controls)
+        self.assertIn('panel.addEventListener("input", onInput)', controls)
+        self.assertIn('panel.addEventListener("ordax:quick-panel-close", onClose)', controls)
+        self.assertIn('input.value = passwordDraftSsid === selected.ssid ? passwordDraft : "";', controls)
+        self.assertIn("clearPasswordDraft()", controls)
+        self.assertNotIn("localStorage", controls)
+        self.assertNotIn("sessionStorage", controls)
+        self.assertIn('new CustomEvent("ordax:quick-panel-close"', controller)
+
     def test_read_only_tray_widgets_do_not_render_after_destroy(self):
         battery_quick = self.read("battery-quick-panel.mjs")
         battery_tray = self.read("battery-tray-controls.mjs")
