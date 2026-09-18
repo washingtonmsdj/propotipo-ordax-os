@@ -110,7 +110,10 @@ class NativeSystemMetricsTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn('METRICS_PATH = "/__ordax/native/metrics"', server)
         self.assertIn("read_system_metrics(self.server.user_root)", server)
-        self.assertIn("parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH}", server)
+        self.assertRegex(
+            server,
+            r'parsed_path in \{[^}]*METRICS_PATH[^}]*\} and self\.client_address\[0\] != "127\.0\.0\.1"',
+        )
         self.assertNotIn("if self.path == METRICS_PATH", server.split("def do_POST", 1)[1])
 
 

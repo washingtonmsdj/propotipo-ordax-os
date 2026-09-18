@@ -423,7 +423,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
         self.assertIn("self._empty(415)", server)
-        self.assertIn("{SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH}", server)
+        self.assertRegex(
+            server,
+            r'parsed_path in \{[^}]*FILES_PATH[^}]*\} and self\.client_address\[0\] != "127\.0\.0\.1"',
+        )
 
     def test_user_file_space_capability_is_additive_and_native(self):
         contract = json.loads(CAPABILITIES.read_text(encoding="utf-8"))

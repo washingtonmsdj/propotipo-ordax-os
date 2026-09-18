@@ -31,6 +31,7 @@ SURFACE_HEARTBEAT_PATH = "/__ordax/native/surface-heartbeat"
 CLIENT_DIAGNOSTIC_PATH = "/__ordax/native/client-diagnostic"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
+DIAGNOSTIC_JOURNAL_PATH = "/__ordax/native/diagnostic-journal"
 FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 FILE_EXPORT_PATH = "/__ordax/native/file-export"
@@ -44,6 +45,7 @@ UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
+DIAGNOSTIC_JOURNAL_FILE = "/var/lib/ordax/diagnostic-journal.json"
 UPDATE_HISTORY_FILE = "/var/lib/ordax/update-history.tsv"
 RELEASE_HISTORY_FILE = "/var/lib/ordax/release-history.tsv"
 SURFACE_HEARTBEAT_FILE = "/var/lib/ordax/surface-heartbeat.json"
@@ -64,6 +66,8 @@ MAX_CLIENT_DIAGNOSTIC_BODY = 512
 MAX_PREFERENCE_BODY = 8192
 MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
+MAX_DIAGNOSTIC_JOURNAL_PAYLOAD = 4 * 1024 * 1024
+MAX_DIAGNOSTIC_JOURNAL_BODY = 6 * MAX_DIAGNOSTIC_JOURNAL_PAYLOAD + 1024
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
 MAX_TEXT_FILE_BYTES = 256 * 1024
@@ -482,6 +486,78 @@ def write_sync_state_payload(payload: str | None) -> None:
                 os.unlink(temporary)
             except FileNotFoundError:
                 pass
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def valid_diagnostic_journal_payload(value: object) -> bool:
+    return (
+        value is None
+        or (
+            isinstance(value, str)
+            and len(value.encode("utf-8")) <= MAX_DIAGNOSTIC_JOURNAL_PAYLOAD
+        )
+    )
+
+
+def read_diagnostic_journal_payload() -> str | None:
+    try:
+        with open(DIAGNOSTIC_JOURNAL_FILE, "rb") as handle:
+            raw = handle.read(MAX_DIAGNOSTIC_JOURNAL_PAYLOAD + 1)
+    except FileNotFoundError:
+        return None
+    if len(raw) > MAX_DIAGNOSTIC_JOURNAL_PAYLOAD:
+        raise ValueError("diagnostic journal payload exceeds maximum size")
+    return raw.decode("utf-8", errors="strict")
+
+
+def write_diagnostic_journal_payload(payload: str | None) -> None:
+    if not valid_diagnostic_journal_payload(payload):
+        raise ValueError("invalid diagnostic journal payload")
+
+    directory = os.path.dirname(DIAGNOSTIC_JOURNAL_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    if payload is None:
+        try:
+            os.unlink(DIAGNOSTIC_JOURNAL_FILE)
+        except FileNotFoundError:
+            pass
+    else:
+        encoded = payload.encode("utf-8")
+        temporary = (
+            f"{DIAGNOSTIC_JOURNAL_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+        )
+        descriptor = None
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                0o600,
+            )
+            with os.fdopen(descriptor, "wb", closefd=True) as handle:
+                descriptor = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, DIAGNOSTIC_JOURNAL_FILE)
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
     try:
         directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
@@ -1916,7 +1992,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -2080,6 +2156,19 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             return
         if self.path == SYNC_STATE_PATH:
             self._write_json(200, {"payload": read_sync_state_payload()})
+            return
+        if self.path == DIAGNOSTIC_JOURNAL_PATH:
+            try:
+                payload = read_diagnostic_journal_payload()
+            except (OSError, UnicodeError, ValueError) as exc:
+                print(
+                    f"ordax-native-host: could not read diagnostic journal: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(500)
+                return
+            self._write_json(200, {"payload": payload})
             return
         super().do_GET()
 
@@ -2256,6 +2345,31 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             except (OSError, ValueError) as exc:
                 print(f"ordax-native-host: could not persist sync state: {exc}", file=sys.stderr, flush=True)
                 self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path == DIAGNOSTIC_JOURNAL_PATH:
+            body = self._read_json_body(MAX_DIAGNOSTIC_JOURNAL_BODY)
+            if body is None or set(body) != {"payload"}:
+                self._empty(400)
+                return
+            payload = body["payload"]
+            if not valid_diagnostic_journal_payload(payload):
+                self._empty(400)
+                return
+            try:
+                write_diagnostic_journal_payload(payload)
+            except OSError as exc:
+                print(
+                    f"ordax-native-host: could not persist diagnostic journal: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(507 if exc.errno == errno.ENOSPC else 500)
+                return
+            except ValueError:
+                self._empty(400)
                 return
             self._empty(204)
             return

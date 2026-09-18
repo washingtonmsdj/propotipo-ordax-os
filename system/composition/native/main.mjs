@@ -2,6 +2,7 @@ import {
   createNativeClientDiagnostics,
   renderedSourceSha,
 } from "../../adapters/native/client-diagnostics.mjs";
+import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
@@ -19,6 +20,8 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
+import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
@@ -54,6 +57,10 @@ async function start() {
     optionalNativeProbe(
       "OrdaX native client diagnostics unavailable",
       () => createNativeClientDiagnostics(window),
+    ),
+    optionalNativeProbe(
+      "OrdaX native diagnostic journal persistence unavailable",
+      () => createNativeDiagnosticJournalStore(window),
     ),
     optionalNativeProbe(
       "OrdaX native update history unavailable",
@@ -92,6 +99,7 @@ async function start() {
   const preferenceStore = await preferenceStorePromise;
   const [
     clientDiagnostics,
+    diagnosticJournalStore,
     updateHistory,
     syncStateStore,
     powerActions,
@@ -109,6 +117,13 @@ async function start() {
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
+  const diagnosticJournal = await createDiagnosticJournalRuntime({
+    store: diagnosticJournalStore,
+  });
+  const updateDiagnosticRecorder = createUpdateDiagnosticRecorder(
+    updateWatcher,
+    diagnosticJournal,
+  );
   const reportClientDiagnostic = (stage, error) => {
     console.error(`OrdaX Surface diagnostic: ${stage}`, error);
     if (clientDiagnostics) {
@@ -267,6 +282,7 @@ async function start() {
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
+      updateDiagnosticRecorder.dispose();
       updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
