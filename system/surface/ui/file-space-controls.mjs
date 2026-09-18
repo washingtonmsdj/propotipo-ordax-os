@@ -102,9 +102,130 @@ export function mountFileSpaceControls(
   let sortDirection = "asc";
   let navigationHistory = [];
   let navigationIndex = -1;
+  let focusRequest = null;
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
+
+  const focusIdentity = (element) => {
+    if (!element || !element.dataset) return null;
+    if (element.dataset.fileSearch !== undefined) {
+      return Object.freeze({ kind: "search", value: "" });
+    }
+    if (element.dataset.fileDirectoryName !== undefined) {
+      return Object.freeze({ kind: "directory-name", value: "" });
+    }
+    if (element.dataset.fileRenameName !== undefined) {
+      return Object.freeze({ kind: "rename-name", value: renamingPath ?? "" });
+    }
+    if (element.dataset.fileCopyName !== undefined) {
+      return Object.freeze({ kind: "copy-name", value: copyingPath ?? "" });
+    }
+    if (element.dataset.fileSelectPath) {
+      return Object.freeze({ kind: "row", value: element.dataset.fileSelectPath });
+    }
+    if (element.dataset.fileSortKey) {
+      return Object.freeze({ kind: "sort", value: element.dataset.fileSortKey });
+    }
+    return null;
+  };
+
+  const findFocusTarget = (slot, identity) => {
+    if (!identity) return null;
+    for (const element of slot.querySelectorAll("button, input")) {
+      const candidate = focusIdentity(element);
+      if (
+        candidate
+        && candidate.kind === identity.kind
+        && candidate.value === identity.value
+      ) {
+        return element;
+      }
+    }
+    return null;
+  };
+
+  const captureInteractionState = (slot) => {
+    const windowBody = slot.closest(".ordax-window-body");
+    const list = slot.querySelector(".ordax-files-list");
+    const preview = slot.querySelector(".ordax-files-preview-content");
+    const activeElement = documentObject.activeElement;
+    const activeInside = activeElement && slot.contains(activeElement);
+    const identity = activeInside ? focusIdentity(activeElement) : null;
+    const selection =
+      activeInside
+      && activeElement instanceof HTMLInputElement
+      && identity
+        ? Object.freeze({
+            identity,
+            start: activeElement.selectionStart,
+            end: activeElement.selectionEnd,
+          })
+        : null;
+    return Object.freeze({
+      windowScrollTop: windowBody?.scrollTop ?? 0,
+      windowScrollLeft: windowBody?.scrollLeft ?? 0,
+      listScrollTop: list?.scrollTop ?? 0,
+      listScrollLeft: list?.scrollLeft ?? 0,
+      previewScrollTop: preview?.scrollTop ?? 0,
+      previewScrollLeft: preview?.scrollLeft ?? 0,
+      focus: identity,
+      selection,
+    });
+  };
+
+  const requestFocus = (kind, value = "") => {
+    focusRequest = Object.freeze({ kind, value });
+  };
+
+  const restoreInteractionState = (slot, snapshot) => {
+    const windowBody = slot.closest(".ordax-window-body");
+    if (windowBody && snapshot) {
+      windowBody.scrollTop = snapshot.windowScrollTop;
+      windowBody.scrollLeft = snapshot.windowScrollLeft;
+    }
+
+    const list = slot.querySelector(".ordax-files-list");
+    if (list && snapshot) {
+      list.scrollTop = snapshot.listScrollTop;
+      list.scrollLeft = snapshot.listScrollLeft;
+    }
+
+    const preview = slot.querySelector(".ordax-files-preview-content");
+    if (preview && snapshot) {
+      preview.scrollTop = snapshot.previewScrollTop;
+      preview.scrollLeft = snapshot.previewScrollLeft;
+    }
+
+    const requested = focusRequest;
+    focusRequest = null;
+    const identity = requested ?? snapshot?.focus ?? null;
+    const target = findFocusTarget(slot, identity);
+    if (!target || target.disabled) return;
+
+    target.focus({ preventScroll: true });
+    if (!(target instanceof HTMLInputElement)) return;
+
+    const savedSelection =
+      snapshot?.selection
+      && snapshot.selection.identity.kind === identity.kind
+      && snapshot.selection.identity.value === identity.value
+        ? snapshot.selection
+        : null;
+    if (savedSelection?.start !== null && savedSelection?.end !== null) {
+      const length = target.value.length;
+      target.setSelectionRange(
+        Math.min(savedSelection.start, length),
+        Math.min(savedSelection.end, length),
+      );
+      return;
+    }
+
+    if (requested) {
+      const caret = target.value.length;
+      target.setSelectionRange?.(caret, caret);
+    }
+  };
 
   const renderLocations = (container) => {
     const heading = node(documentObject, "p", "ordax-files-section-label", "Locais");
@@ -179,7 +300,6 @@ export function mountFileSpaceControls(
     cancel.disabled = pending;
     form.append(input, confirm, cancel);
     container.append(form);
-    queueMicrotask(() => input.isConnected && input.focus());
   };
 
   const selectedEntry = () => {
@@ -573,7 +693,6 @@ export function mountFileSpaceControls(
 
       form.append(input, confirm, cancel);
       container.append(form);
-      queueMicrotask(() => input.isConnected && input.focus());
     }
 
     if (renamingPath === selected.path) {
@@ -603,7 +722,6 @@ export function mountFileSpaceControls(
 
       form.append(input, confirm, cancel);
       container.append(form);
-      queueMicrotask(() => input.isConnected && input.focus());
     }
   };
 
@@ -646,7 +764,7 @@ export function mountFileSpaceControls(
     container.append(preview);
   };
 
-  const paint = (slot) => {
+  const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxFileSpaceView = "";
 
@@ -765,6 +883,7 @@ export function mountFileSpaceControls(
 
     view.append(locations, content);
     slot.append(view);
+    restoreInteractionState(slot, interaction);
   };
 
   const renderView = (force = false) => {
@@ -775,8 +894,10 @@ export function mountFileSpaceControls(
       return;
     }
     if (!force && slot === mountedSlot) return;
+    const interaction =
+      force && slot === mountedSlot ? captureInteractionState(slot) : null;
     mountedSlot = slot;
-    paint(slot);
+    paint(slot, interaction);
   };
 
   const replaceView = () => renderView(true);
@@ -1350,6 +1471,7 @@ export function mountFileSpaceControls(
           renamingPath = null;
           renameDraft = "";
           message = null;
+          requestFocus("copy-name", selected.path);
           replaceView();
         }
       }
@@ -1377,6 +1499,7 @@ export function mountFileSpaceControls(
         copyingPath = null;
         copyDraft = "";
         message = null;
+        requestFocus("rename-name", selected.path);
         replaceView();
       }
       return;
@@ -1432,8 +1555,8 @@ export function mountFileSpaceControls(
     if (clearSearch && root.contains(clearSearch)) {
       searchQuery = "";
       message = null;
+      requestFocus("search");
       replaceView();
-      queueMicrotask(() => findSlot()?.querySelector("[data-file-search]")?.focus());
       return;
     }
     const importToggle = event.target.closest("[data-file-import-toggle]");
@@ -1451,6 +1574,7 @@ export function mountFileSpaceControls(
       creatingDirectory = true;
       directoryDraft = "";
       message = null;
+      requestFocus("directory-name");
       replaceView();
       return;
     }
@@ -1489,15 +1613,7 @@ export function mountFileSpaceControls(
         textPreview = null;
       }
       message = null;
-      const caret = searchQuery.length;
       replaceView();
-      queueMicrotask(() => {
-        if (destroyed) return;
-        const input = findSlot()?.querySelector("[data-file-search]");
-        if (!input) return;
-        input.focus();
-        input.setSelectionRange?.(caret, caret);
-      });
     } else if (event.target.matches?.("[data-file-directory-name]")) {
       directoryDraft = event.target.value;
     } else if (event.target.matches?.("[data-file-rename-name]")) {
@@ -1513,8 +1629,8 @@ export function mountFileSpaceControls(
         event.preventDefault();
         searchQuery = "";
         message = null;
+        requestFocus("search");
         replaceView();
-        queueMicrotask(() => findSlot()?.querySelector("[data-file-search]")?.focus());
       }
       return;
     }
