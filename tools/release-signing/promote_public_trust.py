@@ -14,6 +14,7 @@ import base64
 import binascii
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -21,7 +22,9 @@ import re
 import stat
 import subprocess
 import sys
+import tempfile
 from typing import Any
+import zipfile
 
 TRUST_SCHEMA = "prototype-ordax.release-trust/1"
 EVIDENCE_SCHEMA = "prototype-ordax.release-trust-ceremony-evidence/1"
@@ -479,6 +482,121 @@ def validate_public_promotion_directory(
     )
 
 
+def _materialize_public_promotion_zip(
+    promotion_zip: Path,
+    output_dir: Path,
+) -> Path:
+    zip_bytes = _require_regular(
+        promotion_zip,
+        "public trust handoff zip",
+        max_bytes=8 * 1024 * 1024,
+    )
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise PromotionError(
+            "public trust handoff is not a valid ZIP archive"
+        ) from exc
+
+    with archive:
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        if (
+            len(infos) != len(PROMOTION_FILES)
+            or len(set(names)) != len(names)
+            or set(names) != PROMOTION_FILES
+        ):
+            raise PromotionError(
+                "public trust handoff ZIP must contain exactly the "
+                "four canonical public promotion files"
+            )
+
+        total_size = 0
+        for info in infos:
+            name = info.filename
+            if (
+                info.is_dir()
+                or "/" in name
+                or "\\" in name
+                or Path(name).name != name
+            ):
+                raise PromotionError(
+                    "public trust handoff ZIP contains an unsafe path"
+                )
+            if info.flag_bits & 0x1:
+                raise PromotionError(
+                    "encrypted ZIP entries are forbidden"
+                )
+            unix_mode = (info.external_attr >> 16) & 0xFFFF
+            if unix_mode and stat.S_ISLNK(unix_mode):
+                raise PromotionError(
+                    "symlink ZIP entries are forbidden"
+                )
+            if info.file_size <= 0 or info.file_size > 2 * 1024 * 1024:
+                raise PromotionError(
+                    f"public handoff entry size is invalid: {name}"
+                )
+            total_size += info.file_size
+            if total_size > 4 * 1024 * 1024:
+                raise PromotionError(
+                    "public trust handoff expands beyond the allowed size"
+                )
+            try:
+                payload = archive.read(info)
+            except (RuntimeError, zipfile.BadZipFile) as exc:
+                raise PromotionError(
+                    f"cannot read public handoff entry: {name}"
+                ) from exc
+            if len(payload) != info.file_size:
+                raise PromotionError(
+                    f"public handoff entry size changed while reading: {name}"
+                )
+            destination = output_dir / name
+            destination.write_bytes(payload)
+
+    return output_dir
+
+
+def prepare_repository_promotion_zip(
+    repo_root: Path,
+    promotion_zip: Path,
+    verifier: Path,
+) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(
+        prefix="ordax-public-trust-"
+    ) as temporary:
+        promotion_dir = Path(temporary)
+        _materialize_public_promotion_zip(
+            promotion_zip,
+            promotion_dir,
+        )
+        return prepare_repository_promotion(
+            repo_root,
+            promotion_dir,
+            verifier,
+        )
+
+
+def apply_repository_promotion_zip(
+    repo_root: Path,
+    promotion_zip: Path,
+    verifier: Path,
+) -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(
+        prefix="ordax-public-trust-"
+    ) as temporary:
+        promotion_dir = Path(temporary)
+        _materialize_public_promotion_zip(
+            promotion_zip,
+            promotion_dir,
+        )
+        return apply_repository_promotion(
+            repo_root,
+            promotion_dir,
+            verifier,
+        )
+
+
 def _load_repository_contracts(
     root: Path,
 ) -> tuple[
@@ -887,10 +1005,16 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[2],
     )
-    parser.add_argument(
+    promotion_source = parser.add_mutually_exclusive_group(
+        required=True
+    )
+    promotion_source.add_argument(
         "--promotion-dir",
         type=Path,
-        required=True,
+    )
+    promotion_source.add_argument(
+        "--promotion-zip",
+        type=Path,
     )
     parser.add_argument(
         "--verifier",
@@ -904,7 +1028,25 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        if args.mode == "check":
+        if args.promotion_zip is not None:
+            if args.mode == "check":
+                result = prepare_repository_promotion_zip(
+                    args.repo_root,
+                    args.promotion_zip,
+                    args.verifier,
+                )
+                public_result = {
+                    key: value
+                    for key, value in result.items()
+                    if key != "outputs"
+                }
+            else:
+                public_result = apply_repository_promotion_zip(
+                    args.repo_root,
+                    args.promotion_zip,
+                    args.verifier,
+                )
+        elif args.mode == "check":
             result = prepare_repository_promotion(
                 args.repo_root,
                 args.promotion_dir,
