@@ -23,6 +23,7 @@ from public_release_catalog import (
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "sites" / "public"
 PUBLICATIONS = ROOT / "platform" / "releases" / "publications.json"
+LEGAL_READINESS = ROOT / "docs" / "contracts" / "public-legal-readiness.json"
 PUBLIC_CATALOG_RELATIVE = Path("releases/catalog.json")
 MANIFEST_NAME = "public-site-manifest.json"
 SCHEMA = "prototype-ordax.public-site-bundle/1"
@@ -43,6 +44,8 @@ REQUIRED_FILES = (
     "login/index.html",
     "cadastro/index.html",
     "licencas/index.html",
+    "privacidade/index.html",
+    "termos/index.html",
     "assets/site.css",
     "assets/site.js",
     "config/public-site.json",
@@ -112,13 +115,43 @@ def validate_source(root: Path = SOURCE) -> list[Path]:
 
     identity = config.get("identity")
     downloads = config.get("downloads")
-    if not isinstance(identity, dict) or not isinstance(downloads, dict):
+    legal = config.get("legal")
+    if not isinstance(identity, dict) or not isinstance(downloads, dict) or not isinstance(legal, dict):
         raise PublicSiteError("public site runtime config sections are missing")
     for key in ("login_url", "register_url"):
         if not same_origin_path(identity.get(key)):
             raise PublicSiteError(f"identity.{key} must be null or a same-origin path")
     if not same_origin_path(downloads.get("catalog_url")):
         raise PublicSiteError("downloads.catalog_url must be null or a same-origin path")
+
+    for key in ("privacy_url", "terms_url"):
+        if not same_origin_path(legal.get(key)):
+            raise PublicSiteError(f"legal.{key} must be a same-origin path")
+    if not isinstance(legal.get("account_activation_ready"), bool):
+        raise PublicSiteError("legal.account_activation_ready must be boolean")
+
+    legal_contract = json.loads(LEGAL_READINESS.read_text(encoding="utf-8"))
+    if legal_contract.get("$schema") != "prototype-ordax.public-legal-readiness/1":
+        raise PublicSiteError("unexpected public legal-readiness schema")
+    contract_ready = legal_contract.get("account_activation_ready")
+    if legal["account_activation_ready"] is not contract_ready:
+        raise PublicSiteError("runtime legal readiness must match canonical legal-readiness contract")
+
+    if not contract_ready:
+        if identity.get("login_url") is not None or identity.get("register_url") is not None:
+            raise PublicSiteError("identity URLs must remain null until public legal readiness is complete")
+    else:
+        if legal_contract.get("status") != "ready":
+            raise PublicSiteError("ready legal contract must have status=ready")
+        documents = legal_contract.get("documents")
+        if not isinstance(documents, dict):
+            raise PublicSiteError("ready legal contract documents are missing")
+        for name in ("privacy", "terms"):
+            document = documents.get(name)
+            if not isinstance(document, dict) or document.get("final") is not True:
+                raise PublicSiteError(f"{name} document must be final before account activation")
+            if not document.get("version") or not document.get("effective_date"):
+                raise PublicSiteError(f"{name} document requires version and effective date")
 
     return files
 
@@ -165,7 +198,7 @@ def build_bundle(out_dir: Path, source_commit: str, root: Path = SOURCE) -> dict
             "build_recipe": "tools/public-site/build.py",
             "remote_runtime_dependencies": False,
             "framework_runtime_dependency": False,
-            "routes": ["/", "/download/", "/login/", "/cadastro/", "/licencas/"],
+            "routes": ["/", "/download/", "/login/", "/cadastro/", "/licencas/", "/privacidade/", "/termos/"],
             "public_release_catalog": {
                 "path": "/" + PUBLIC_CATALOG_RELATIVE.as_posix(),
                 "status": catalog["status"],
