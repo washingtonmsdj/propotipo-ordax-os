@@ -380,6 +380,20 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn(".ordax-rail", css)
         self.assertIn(".ordax-statusbar", css)
 
+    def test_windows_center_by_default_and_maximize_to_full_workspace(self):
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        css = (SURFACE / "surface.css").read_text(encoding="utf-8")
+        self.assertIn('inset: 0;\n  pointer-events: none;', css)
+        self.assertIn('top: calc(50% + var(--ordax-window-offset) / 3);', css)
+        self.assertIn('left: calc(50% + var(--ordax-window-offset) / 2);', css)
+        self.assertIn('transform: translate(-50%, -50%);', css)
+        self.assertIn('.ordax-window[data-maximized="true"] {', css)
+        self.assertIn('.ordax-window[data-maximized="true"] .ordax-window-body', css)
+        self.assertIn('height: calc(100% - 58px);', css)
+        self.assertIn('((placementOrdinal - 1) % 5) * 18', surface)
+        self.assertNotIn('inset: 8px 12px;', css)
+        self.assertNotIn('transform: translateY(4px);', css)
+
     def test_surface_baseline_is_accessible_responsive_windowed_and_themeable(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
