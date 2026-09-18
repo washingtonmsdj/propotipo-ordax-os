@@ -3,6 +3,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SURFACE = ROOT / "system" / "surface" / "ui" / "surface.mjs"
+SURFACE_CSS = ROOT / "system" / "surface" / "ui" / "surface.css"
 
 
 class SurfaceReconciliationContractTests(unittest.TestCase):
@@ -31,6 +32,17 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
         self.assertIn("placeChildAt(appLauncher, button, index)", surface)
         self.assertIn("placeChildAt(runningApps, button, index)", surface)
         self.assertIn("placeChildAt(areaSwitcher, button, index)", surface)
+
+    def test_focus_stack_is_visual_instead_of_dom_reordering(self):
+        surface = self.read_surface()
+        css = SURFACE_CSS.read_text(encoding="utf-8")
+        self.assertIn(
+            "windowNode.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized)",
+            surface,
+        )
+        self.assertIn('.ordax-window[data-active="true"]', css)
+        active_rule = css.split('.ordax-window[data-active="true"]', 1)[1].split("}", 1)[0]
+        self.assertIn("z-index:", active_rule)
 
     def test_windows_are_reconciled_by_workspace_and_window_identity(self):
         surface = self.read_surface()
