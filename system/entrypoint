@@ -302,7 +302,7 @@ classify_changes() {
             system/entrypoint)
                 supervisor_changed=1
                 ;;
-            system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint)
+            system/surface/bin/*|system/surface/runtime/*|system/surface/entrypoint|system/services/telemetry/base-agent.sh|system/services/telemetry/relay.json)
                 surface_host_changed=1
                 ;;
             system/apps/*|system/adapters/*|system/contracts/*|system/services/*|system/composition/*|system/surface/ui/*)
