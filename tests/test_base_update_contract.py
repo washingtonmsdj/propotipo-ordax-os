@@ -190,15 +190,47 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(owner["physical_root_bound_into_chroot"])
         self.assertTrue(owner["mount_tree_must_not_recurse_into_ordax_filesystem"])
         self.assertTrue(owner["state_root_derived_from_mountinfo_subpath"])
-        self.assertTrue(owner["physical_root_requires_release_channel_sentinel"])
         self.assertTrue(
             owner["physical_release_agent_may_be_absent_before_pinned_enrollment"]
+        )
+        self.assertTrue(
+            owner["physical_release_channel_may_be_absent_before_pinned_enrollment"]
+        )
+        self.assertTrue(
+            owner["bootstrap_component_sentinels_not_required_before_pinned_enrollment"]
         )
         self.assertNotIn(
             "physical_root_requires_release_agent_and_channel_sentinels",
             owner,
         )
+        self.assertNotIn(
+            "physical_root_requires_release_channel_sentinel",
+            owner,
+        )
         self.assertTrue(owner["recursive_state_bind_forbidden"])
+
+    def test_release_channel_enrollment_is_pinned_and_non_destructive(self):
+        channel = CONTRACT["release_channel_enrollment"]
+        self.assertEqual(
+            channel["source_path"],
+            "bootstrap/config/release-envelope-url",
+        )
+        self.assertEqual(
+            channel["target"],
+            "/ordax/bootstrap/config/release-envelope-url",
+        )
+        self.assertEqual(channel["authority"], "minimal-bootstrap-sha256")
+        self.assertEqual(
+            channel["expected_sha256"],
+            "ea1f3bae328a1c1e7aca1474d4930f84b2dd6da1702dcc11b08c01ed63a6ee5b",
+        )
+        self.assertEqual(channel["mode"], "0644")
+        self.assertTrue(channel["absent_channel_enrollment"])
+        self.assertEqual(channel["existing_divergent_channel"], "block")
+        self.assertTrue(channel["occurs_after_release_agent_refresh"])
+        self.assertTrue(channel["occurs_before_canonical_trust_enrollment"])
+        self.assertFalse(channel["physical_media_rewrite_required"])
+        self.assertFalse(channel["raw_device_write_allowed"])
 
     def test_candidate_entry_uses_fixed_width_single_try_counter(self):
         entry = CONTRACT["entries"]["candidate_template"]

@@ -66,6 +66,12 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         trust = self.source / "bootstrap/trust/release-ed25519.json"
         trust.parent.mkdir(parents=True, exist_ok=True)
         trust.write_text('{"public":"fixture"}\n', encoding="utf-8")
+        channel = self.source / "bootstrap/config/release-envelope-url"
+        channel.parent.mkdir(parents=True, exist_ok=True)
+        channel.write_text(
+            "https://example.invalid/release-envelope.json\n",
+            encoding="ascii",
+        )
         contracts = docs / "contracts"
         contracts.mkdir(parents=True, exist_ok=True)
         (contracts / "release-trust-policy.json").write_text(
@@ -133,6 +139,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             {
                 "/system/",
                 "/bootstrap/trust/",
+                "/bootstrap/config/release-envelope-url",
                 "/docs/contracts/release-trust-policy.json",
                 "/docs/contracts/minimal-bootstrap.json",
                 "/docs/evidence/release-trust-ceremony.json",
@@ -143,6 +150,9 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertTrue((self.worktree / "system/entrypoint").is_file())
         self.assertTrue(
             (self.worktree / "bootstrap/trust/release-ed25519.json").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/config/release-envelope-url").is_file()
         )
         self.assertTrue(
             (self.worktree / "docs/contracts/release-trust-policy.json").is_file()

@@ -178,7 +178,21 @@
     "physical_root_host_mount": "/run/ordax-base-owner/physical",
     "physical_root_bound_into_chroot": true,
     "mount_tree_must_not_recurse_into_ordax_filesystem": true,
-    "physical_root_requires_release_channel_sentinel": true,
-    "physical_release_agent_may_be_absent_before_pinned_enrollment": true
+    "physical_release_agent_may_be_absent_before_pinned_enrollment": true,
+    "physical_release_channel_may_be_absent_before_pinned_enrollment": true,
+    "bootstrap_component_sentinels_not_required_before_pinned_enrollment": true
+  },
+  "release_channel_enrollment": {
+    "source_path": "bootstrap/config/release-envelope-url",
+    "target": "/ordax/bootstrap/config/release-envelope-url",
+    "authority": "minimal-bootstrap-sha256",
+    "expected_sha256": "ea1f3bae328a1c1e7aca1474d4930f84b2dd6da1702dcc11b08c01ed63a6ee5b",
+    "mode": "0644",
+    "absent_channel_enrollment": true,
+    "existing_divergent_channel": "block",
+    "occurs_after_release_agent_refresh": true,
+    "occurs_before_canonical_trust_enrollment": true,
+    "physical_media_rewrite_required": false,
+    "raw_device_write_allowed": false
   }
 }
