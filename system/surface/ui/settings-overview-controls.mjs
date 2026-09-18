@@ -281,7 +281,7 @@ export function mountSettingsOverviewControls(
   };
 
   const renderNetwork = (view) => {
-    if (!networkPort) return;
+    if (!networkPort && !networkManagementPort) return;
 
     const section = node(documentObject, "section", "ordax-settings-section");
     section.dataset.settingsNetwork = "";
@@ -311,50 +311,51 @@ export function mountSettingsOverviewControls(
     );
     section.append(service);
 
-    if (networkReadFailed) {
-      section.append(
-        node(documentObject, "p", "ordax-settings-empty", "Não foi possível atualizar o estado de rede."),
-      );
-      view.append(section);
-      return;
-    }
-
-    if (networkSnapshot === null) {
-      section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
-      view.append(section);
-      return;
-    }
-
-    const interfaces = node(documentObject, "div", "ordax-settings-network-list");
-    if (networkSnapshot.interfaces.length === 0) {
-      interfaces.append(
-        node(documentObject, "p", "ordax-settings-empty", "Nenhuma interface de rede utilizável foi observada."),
-      );
-    } else {
-      const kindLabels = { wifi: "Wi-Fi", ethernet: "Cabo", other: "Outra interface" };
-      const stateLabels = {
-        connected: "Conectado",
-        disconnected: "Desconectado",
-        unknown: "Estado desconhecido",
-      };
-      for (const entry of networkSnapshot.interfaces) {
-        const item = node(documentObject, "div", "ordax-settings-network-item");
-        item.dataset.state = entry.state;
-        const copy = node(documentObject, "span", "ordax-settings-network-copy");
-        copy.append(
-          node(documentObject, "strong", "", kindLabels[entry.kind] ?? kindLabels.other),
+    if (networkPort) {
+      if (networkReadFailed) {
+        section.append(
           node(
             documentObject,
-            "small",
-            "",
-            `${entry.name} · ${stateLabels[entry.state] ?? stateLabels.unknown}${entry.signalDbm === null ? "" : ` · sinal ${entry.signalDbm} dBm`}`,
+            "p",
+            "ordax-settings-empty",
+            "Não foi possível atualizar os detalhes das interfaces. O gerenciamento Wi-Fi continua disponível quando suportado.",
           ),
         );
-        item.append(node(documentObject, "span", "ordax-settings-network-dot"), copy);
-        interfaces.append(item);
+      } else if (networkSnapshot === null) {
+        section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
+      } else {
+        const interfaces = node(documentObject, "div", "ordax-settings-network-list");
+        if (networkSnapshot.interfaces.length === 0) {
+          interfaces.append(
+            node(documentObject, "p", "ordax-settings-empty", "Nenhuma interface de rede utilizável foi observada."),
+          );
+        } else {
+          const kindLabels = { wifi: "Wi-Fi", ethernet: "Cabo", other: "Outra interface" };
+          const stateLabels = {
+            connected: "Conectado",
+            disconnected: "Desconectado",
+            unknown: "Estado desconhecido",
+          };
+          for (const entry of networkSnapshot.interfaces) {
+            const item = node(documentObject, "div", "ordax-settings-network-item");
+            item.dataset.state = entry.state;
+            const copy = node(documentObject, "span", "ordax-settings-network-copy");
+            copy.append(
+              node(documentObject, "strong", "", kindLabels[entry.kind] ?? kindLabels.other),
+              node(
+                documentObject,
+                "small",
+                "",
+                `${entry.name} · ${stateLabels[entry.state] ?? stateLabels.unknown}${entry.signalDbm === null ? "" : ` · sinal ${entry.signalDbm} dBm`}`,
+              ),
+            );
+            item.append(node(documentObject, "span", "ordax-settings-network-dot"), copy);
+            interfaces.append(item);
+          }
+        }
+        section.append(interfaces);
       }
     }
-    section.append(interfaces);
     renderNetworkManagement(section);
     view.append(section);
   };
