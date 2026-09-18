@@ -84,7 +84,7 @@ class NativeFileMoveTests(unittest.TestCase):
             self.assertTrue((user_root / "link.txt").is_symlink())
             self.assertFalse((user_root / "Documentos" / "link.txt").exists())
 
-    def test_cross_device_move_is_explicitly_rejected_with_origin_preserved(self):
+    def test_cross_device_regular_file_move_uses_copy_verify_remove(self):
         with tempfile.TemporaryDirectory() as temporary:
             user_root = Path(temporary) / "home"
             user_root.mkdir()
@@ -96,13 +96,103 @@ class NativeFileMoveTests(unittest.TestCase):
                 "_renameat2_noreplace_between",
                 side_effect=OSError(errno.EXDEV, "simulated cross-device move"),
             ):
+                listing = native_host.move_user_entry(
+                    str(user_root), "/", "note.txt", "/Documentos"
+                )
+
+            self.assertFalse((user_root / "note.txt").exists())
+            self.assertEqual(
+                (user_root / "Documentos" / "note.txt").read_text(encoding="utf-8"),
+                "ordax",
+            )
+            self.assertEqual(listing["path"], "/Documentos")
+
+    def test_cross_device_directory_move_is_explicitly_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            user_root = Path(temporary) / "home"
+            user_root.mkdir()
+            (user_root / "Documentos").mkdir()
+            (user_root / "folder").mkdir()
+            (user_root / "folder" / "inside.txt").write_text("keep", encoding="utf-8")
+
+            with mock.patch.object(
+                native_host,
+                "_renameat2_noreplace_between",
+                side_effect=OSError(errno.EXDEV, "simulated cross-device move"),
+            ):
                 with self.assertRaises(native_host.FileSpaceCrossDeviceMoveError):
+                    native_host.move_user_entry(
+                        str(user_root), "/", "folder", "/Documentos"
+                    )
+
+            self.assertTrue((user_root / "folder" / "inside.txt").is_file())
+            self.assertFalse((user_root / "Documentos" / "folder").exists())
+
+    def test_cross_device_file_move_preserves_origin_when_source_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            user_root = Path(temporary) / "home"
+            user_root.mkdir()
+            (user_root / "Documentos").mkdir()
+            source = user_root / "note.txt"
+            source.write_text("ordax", encoding="utf-8")
+            real_stat = native_host.os.stat
+            call_count = 0
+
+            def changed_source_stat(*args, **kwargs):
+                nonlocal call_count
+                result = real_stat(*args, **kwargs)
+                call_count += 1
+                if call_count == 2:
+                    class Changed:
+                        st_dev = result.st_dev
+                        st_ino = result.st_ino + 1
+                        st_size = result.st_size
+                        st_mtime_ns = result.st_mtime_ns
+                        st_ctime_ns = result.st_ctime_ns
+                        st_mode = result.st_mode
+                    return Changed()
+                return result
+
+            with (
+                mock.patch.object(
+                    native_host,
+                    "_renameat2_noreplace_between",
+                    side_effect=OSError(errno.EXDEV, "simulated cross-device move"),
+                ),
+                mock.patch.object(native_host.os, "stat", side_effect=changed_source_stat),
+            ):
+                with self.assertRaises(native_host.FileSpaceCopyChangedError):
                     native_host.move_user_entry(
                         str(user_root), "/", "note.txt", "/Documentos"
                     )
 
-            self.assertEqual((user_root / "note.txt").read_text(encoding="utf-8"), "ordax")
+            self.assertEqual(source.read_text(encoding="utf-8"), "ordax")
             self.assertFalse((user_root / "Documentos" / "note.txt").exists())
+
+    def test_cross_device_file_move_respects_copy_size_limit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            user_root = Path(temporary) / "home"
+            user_root.mkdir()
+            (user_root / "Documentos").mkdir()
+            source = user_root / "large.bin"
+            source.write_bytes(b"12345")
+
+            with mock.patch.object(
+                native_host,
+                "_renameat2_noreplace_between",
+                side_effect=OSError(errno.EXDEV, "simulated cross-device move"),
+            ):
+                with self.assertRaises(native_host.FileSpaceCopyTooLargeError):
+                    native_host.move_user_entry(
+                        str(user_root),
+                        "/",
+                        "large.bin",
+                        "/Documentos",
+                        max_bytes=4,
+                    )
+
+            self.assertEqual(source.read_bytes(), b"12345")
+            self.assertFalse((user_root / "Documentos" / "large.bin").exists())
 
     def test_same_directory_move_is_a_noop(self):
         with tempfile.TemporaryDirectory() as temporary:
