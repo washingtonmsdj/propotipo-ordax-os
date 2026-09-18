@@ -57,12 +57,15 @@ export function mountBatteryQuickPanel(root, powerStatus) {
     if (destroyed || pending) return;
     pending = true;
     try {
-      render(await port.read());
+      const snapshot = await port.read();
+      if (destroyed) return;
+      render(snapshot);
     } catch {
+      if (destroyed) return;
       state.textContent = "Não foi possível atualizar o estado da bateria.";
       power.textContent = "Desconhecida";
     } finally {
-      pending = false;
+      if (!destroyed) pending = false;
     }
   };
 
