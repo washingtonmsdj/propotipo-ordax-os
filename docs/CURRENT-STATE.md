@@ -53,6 +53,8 @@ On the target notebook, the owner/development USB has physically proven the Git-
 
 The Git hot-update supervisor is now part of `system/`. Ordinary Surface changes reload the browser, native-host changes restart only the Surface, supervisor changes restart the supervisor/Surface, and boot/bootstrap changes are marked as requiring a later reboot instead of rebooting automatically. The update center and health-acknowledged rollback path are implemented and CI-proven; physical rollback of an intentionally bad update is not yet claimed.
 
+A native-host update delivered through the live Git path has now also been physically validated to restart only the Surface and return to the graphical session without rebooting the notebook. The durable offline sync-state store is implemented and CI-proven; survival of a deliberately created pending mutation across a later explicit Surface restart remains a separate physical persistence exercise.
+
 These development-USB results do **not** imply that the canonical signed release-acquisition/native-disk product path is complete. `GRAPHICAL_SURFACE_COMPLETE` and `CANONICAL_SYSTEM_RUNTIME_COMPLETE` remain `NO` until their separate product gates close.
 
 ## Development USB — physically proven path
@@ -226,7 +228,7 @@ Do not reinterpret `PASS_DEVELOPMENT_USB` as canonical release/install proof. Th
 The following are intentionally left for later/final hardware validation rather than blocking current product development:
 
 ```text
-SURFACE_ONLY_NATIVE_HOST_RESTART_PHYSICAL=PENDING
+SURFACE_ONLY_NATIVE_HOST_RESTART_PHYSICAL=PASS_DEVELOPMENT_USB
 SUSPEND_RESUME=PENDING_FINAL
 AUDIO=PENDING_FINAL
 GRAPHICS_ACCELERATION_QUALITY=PENDING_FINAL
