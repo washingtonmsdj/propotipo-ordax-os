@@ -24,15 +24,16 @@ Environment wiring is intentionally outside the Surface under `system/compositio
 
 ## Stable native boundary
 
-The native verified-release handoff remains intentionally simple:
+The native verified-release handoff remains intentionally layered but small:
 
 ```text
-system/entrypoint
+system/entrypoint          # stable guardian
+ -> system/supervisor      # Git/update + Surface lifetime
  -> system/surface/entrypoint
  -> system/surface/bin/ordax-surface
 ```
 
-`system/surface/entrypoint` is the stable native launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Barkery/WebKitGTK provides the browser runtime, and a loopback-only HTTP server inside the replaceable graphical runtime gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
+`system/entrypoint` owns only the child supervisor lifetime and a local state-file heartbeat watchdog; it does not perform Git or network work. `system/supervisor` owns bounded Git update discovery/application, candidate preflight, update transaction state, health acknowledgement, rollback and Surface restart/reload decisions. `system/surface/entrypoint` remains the stable native graphical launch boundary. The owner/development USB attempts a thin native graphical host using the existing shared Web composition: Cage provides the DRM/Wayland kiosk compositor, Barkery/WebKitGTK provides the browser runtime, and a loopback-only HTTP server inside the replaceable graphical runtime gives the ES-module tree normal origin semantics. The Surface source itself is not duplicated.
 
 The graphical stack is **not** part of the fixed Git-first development base. The base stops at kernel/hardware support, network, CA trust, Git and a minimal signed-package acquisition client. `bin/ordax-surface`, which arrives through `ordax-pull`, materializes the replaceable Cage/Barkery/Mesa runtime under `/state/ordax/runtime/native-surface/` from signed Alpine packages and launches it in a chroot. Therefore ordinary Surface/host/runtime changes remain pullable and do not require rewriting the USB image.
 
@@ -45,6 +46,10 @@ The next physical attempt reached Cage/seatd and exposed three host prerequisite
 On 2026-09-17 the target notebook then successfully rendered the shared OrdaX Surface fullscreen through the complete Git-first native path. Primary input was validated in the following iterations: the runtime gained eudev/libinput classification, the temporary no-input wlroots tolerance was removed, and stale `/run/seatd.sock` state is now recovered safely before compositor startup. The subsequent physical boot confirmed both keyboard and mouse/touchpad operation inside the Surface. This closes native rendering and primary-input bring-up on this hardware. Long-run stability, suspend/resume, audio, acceleration quality, power management and broader hardware coverage remain separate physical validation gates. The detailed evidence is recorded in `docs/evidence/physical-native-surface-2026-09-17.md`.
 
 A reflash/base update is reserved for the real bootstrap boundary: kernel, initramfs, hardware/driver/firmware support, or the minimal network/Git/acquisition substrate itself.
+
+The development runtime also has two intentionally separate resilience paths outside the normal graphical lifecycle. A persistent `ordax-rescue` agent under `/state/ordax/rescue/` consumes only a closed, target-bound rescue protocol from a separate Git ref, while a persistent host-base telemetry agent under `/state/ordax/telemetry/` reports operational state to an observation-only Supabase relay. Neither mechanism changes the shared Surface source. The rescue agent has no generic remote shell; the Supabase relay has no command semantics.
+
+The guardian/supervisor split and a subsequent supervisor-only update have both been physically exercised on the target notebook. That proves the controlled supervisor refresh path can update itself without falling back to bootstrap maintenance. Candidate preflight now checks critical fetched Git objects before the live checkout is switched; the valid-candidate path is physically exercised, while intentionally broken candidate rejection remains a separate physical exercise.
 
 If DRM/KMS, network during first runtime acquisition, or another graphical host requirement is unavailable, `bin/ordax-surface` falls back to a maintenance console rather than inventing a second visual implementation. The fallback surfaces both native-host and loopback-HTTP diagnostics. Once provisioned under `/state`, the graphical runtime is reusable without downloading it on every boot.
 
