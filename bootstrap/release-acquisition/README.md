@@ -127,7 +127,7 @@ ordax-release-agent materialize \
   --expected-commit <lowercase-40-hex>
 ```
 
-This mode is used by the A/B base-update owner. It requires the signed `source_commit` to equal `--expected-commit`, writes only the immutable `/ordax/releases/<commit>` release, and leaves `/ordax/current` unchanged.
+This mode is used by the A/B base-update owner. It requires the signed `source_commit` to equal `--expected-commit`, writes only the immutable `/ordax/releases/<commit>` release, persists the exact verified signed envelope as `release-envelope.json` beside `release-manifest.json`, and leaves `/ordax/current` unchanged. Reuse of an existing release requires both persisted files to remain byte-identical to the freshly verified envelope and its signed payload.
 
 Acquire and activate a release:
 
