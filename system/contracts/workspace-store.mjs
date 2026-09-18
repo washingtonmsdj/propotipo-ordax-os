@@ -7,6 +7,20 @@ const APP_ID_RE = /^[a-z][a-z0-9-]*$/;
 const AREA_ID_RE = /^area-[1-9][0-9]*$/;
 const MAX_WINDOWS = 32;
 const MAX_COORDINATE = 1_000_000;
+const MAX_TARGET_LENGTH = 4096;
+
+export function validateWorkspaceTarget(value) {
+  if (value === null || value === undefined) return null;
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > MAX_TARGET_LENGTH
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) {
+    throw new TypeError("Workspace target must be null or a bounded string");
+  }
+  return value;
+}
 
 function optionalCoordinate(value, field) {
   if (value === null || value === undefined) return null;
@@ -44,6 +58,7 @@ function validateWindowRecord(value) {
     placementOrdinal: positiveOrdinal(value.placementOrdinal, "placementOrdinal"),
     positionX: optionalCoordinate(value.positionX, "positionX"),
     positionY: optionalCoordinate(value.positionY, "positionY"),
+    target: validateWorkspaceTarget(value.target),
   });
 }
 
