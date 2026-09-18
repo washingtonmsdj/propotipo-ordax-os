@@ -333,6 +333,19 @@ prepare_power_broker() {
     kill -0 "$POWER_BROKER_PID" >/dev/null 2>&1 || return 1
 }
 
+wait_for_native_server() {
+    remaining=${1:-10}
+    while [ "$remaining" -gt 0 ]; do
+        [ -n "$HTTP_PID" ] && kill -0 "$HTTP_PID" >/dev/null 2>&1 || return 1
+        if /bin/busybox chroot "$RUNTIME_ROOT" /usr/bin/python3 -c 'import socket; s=socket.create_connection(("127.0.0.1", 8765), 0.5); s.close()' >>"$HTTP_LOG" 2>&1; then
+            return 0
+        fi
+        /bin/busybox sleep 1
+        remaining=$((remaining - 1))
+    done
+    return 1
+}
+
 prepare_input_stack() {
     set -- /dev/input/event*
     if [ ! -e "$1" ]; then
@@ -377,8 +390,7 @@ export ORDAX_SURFACE_MODE=native-graphical
     --user-root /var/lib/ordax-user --power-request /run/ordax-surface/power-request \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
-sleep 1
-kill -0 "$HTTP_PID" >/dev/null 2>&1 || fallback_with_reason "native Surface HTTP/control server failed to start"
+wait_for_native_server 10 || fallback_with_reason "native Surface HTTP/control server failed readiness check"
 
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
@@ -388,6 +400,16 @@ printf 'OrdaX: iniciando Surface grafica...\n'
     >"$HOST_LOG" 2>&1 &
 GRAPHICS_PID=$!
 host_rc=0
+while kill -0 "$GRAPHICS_PID" >/dev/null 2>&1; do
+    if ! kill -0 "$HTTP_PID" >/dev/null 2>&1; then
+        echo "ordax-surface: native HTTP/control server exited while graphics remained active" >>"$HOST_LOG"
+        kill "$GRAPHICS_PID" >/dev/null 2>&1 || true
+        wait "$GRAPHICS_PID" 2>/dev/null || true
+        GRAPHICS_PID=""
+        exit 1
+    fi
+    /bin/busybox sleep 1
+done
 wait "$GRAPHICS_PID" 2>/dev/null || host_rc=$?
 GRAPHICS_PID=""
 
