@@ -2,6 +2,7 @@
 set -eu
 
 SYSTEM_ROOT=${ORDAX_SYSTEM_ROOT:-}
+SOURCE_SHA=unknown
 STATE_ROOT=${ORDAX_STATE_DIR:-/state/ordax}
 PERSISTENT_NATIVE_STATE=$STATE_ROOT/native-state
 PERSISTENT_USER_HOME=$STATE_ROOT/home
@@ -246,15 +247,28 @@ ensure_shared_memory() {
 }
 
 configure_browser() {
+    repo_root=${SYSTEM_ROOT%/system}
+    if [ "$repo_root" != "$SYSTEM_ROOT" ] && [ -x /usr/bin/git ]; then
+        candidate_sha=$(/usr/bin/git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unknown')
+        case "$candidate_sha" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+                SOURCE_SHA=$candidate_sha
+                ;;
+            *)
+                SOURCE_SHA=unknown
+                ;;
+        esac
+    fi
     mkdir -p "$RUNTIME_ROOT/etc/barkery" || return 1
-    cat >"$RUNTIME_ROOT/etc/barkery/barkery.conf" <<'BARKERY'
+    cat >"$RUNTIME_ROOT/etc/barkery/barkery.conf" <<BARKERY
 [browser]
-start_uri = http://127.0.0.1:8765/composition/native/index.html
+start_uri = http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA
 preferred_languages = pt-BR,en-US
 
 [mqtt]
 enabled = 0
 BARKERY
+    mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA" || return 1
 }
 
 bind_runtime_mounts() {
@@ -353,6 +367,7 @@ prepare_power_broker || fallback_with_reason "failed to prepare host power broke
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
 export GDK_BACKEND=wayland
+export XDG_CACHE_HOME=/tmp/ordax-web-cache-$SOURCE_SHA
 export ORDAX_SURFACE_MODE=native-graphical
 
 /bin/busybox chroot "$RUNTIME_ROOT" \
