@@ -32,6 +32,11 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn("surface_state=running", text)
         self.assertIn("surface_state=stopped", text)
         self.assertIn("attemptId", text)
+        self.assertIn("stagedReleaseSha", text)
+        self.assertIn("lastApplyDurationSeconds", text)
+        self.assertIn("lastStageDurationSeconds", text)
+        self.assertIn("json_number_field()", text)
+        self.assertIn('"relayVersion":2', text)
         self.assertIn("lastError", text)
         for forbidden in (
             "kill ",
