@@ -7,7 +7,7 @@ import { nativeSurfaceSourceSha } from "./surface-heartbeat.mjs";
 const UPDATE_STATE_PATH = "/__ordax/native/update";
 const UPDATE_HEALTH_PATH = "/__ordax/native/health";
 const HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token";
-const DEFAULT_INTERVAL_MS = 1500;
+const DEFAULT_INTERVAL_MS = 750;
 const MAX_RELOAD_ATTEMPTS = 4;
 
 export function buildReloadUrl(href, sourceSha, attempt = 1) {
