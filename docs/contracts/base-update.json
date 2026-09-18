@@ -85,7 +85,15 @@
     "previous_slot_preserved": true,
     "active_slot_record": "/ordax/state/base/active-slot.json",
     "current_entry_written_after_recovery_entry": true,
-    "current_entry_is_promotion_commit_point": true
+    "current_entry_is_promotion_commit_point": true,
+    "candidate_entry_removed_before_current_commit": true,
+    "post_commit_metadata_may_not_reclassify_promotion_as_precommit_failure": true,
+    "development_state_alias": "/state/ordax",
+    "boot_refresh_marker": "/ordax/state/boot-refresh-required",
+    "boot_refresh_marker_development_alias": "/state/ordax/boot-refresh-required",
+    "boot_refresh_marker_cleared_only_after_healthy_promotion": true,
+    "normal_reboot_must_not_clear_boot_refresh_marker": true,
+    "current_entry_durability_reported": true
   },
   "failure": {
     "current_entry_remains_unchanged": true,
