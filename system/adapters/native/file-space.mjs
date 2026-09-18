@@ -52,6 +52,19 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
       }
       return validateTextFile(await response.json());
     },
+    async copyFile(path, name, newName) {
+      const response = await windowRef.fetch(FILES_ENDPOINT, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "copy-file", path, name, newName }),
+      });
+      if (!response.ok) {
+        throw new Error(`Native file copy failed: ${response.status}`);
+      }
+      return validateFileListing(await response.json());
+    },
     async renameEntry(path, name, newName) {
       const response = await windowRef.fetch(FILES_ENDPOINT, {
         method: "POST",

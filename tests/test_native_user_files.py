@@ -1,9 +1,11 @@
+import errno
 import importlib.util
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
@@ -30,9 +32,13 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/3', contract)
-        self.assertIn("list(), createDirectory(), readTextFile(), and renameEntry()", contract)
+        self.assertIn('ordax.file-space/4', contract)
+        self.assertIn(
+            "list(), createDirectory(), readTextFile(), renameEntry(), and copyFile()",
+            contract,
+        )
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
+        self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", contract)
         self.assertIn("validateTextFile", contract)
         self.assertIn('/__ordax/native/files', adapter)
         self.assertIn('/__ordax/native/file-content', adapter)
@@ -41,6 +47,8 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("readTextFile", adapter)
         self.assertIn("renameEntry", adapter)
         self.assertIn('"rename-entry"', adapter)
+        self.assertIn("copyFile", adapter)
+        self.assertIn('"copy-file"', adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
 
@@ -140,6 +148,77 @@ class NativeUserFilesTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 native_host.rename_user_entry(str(user_root), "/", "beta.txt", "../escape")
 
+    def test_copy_is_bounded_no_clobber_and_cleans_partial_destination(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            user_root = base / "home"
+            outside = base / "outside"
+            user_root.mkdir()
+            outside.mkdir()
+
+            source = user_root / "source.txt"
+            source.write_text("copy me", encoding="utf-8")
+            listing = native_host.copy_user_file(
+                str(user_root),
+                "/",
+                "source.txt",
+                "copy.txt",
+            )
+            self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
+            self.assertEqual((user_root / "copy.txt").read_text(encoding="utf-8"), "copy me")
+            self.assertIn(
+                {"name": "copy.txt", "kind": "file", "size": 7},
+                listing["entries"],
+            )
+
+            (user_root / "occupied.txt").write_text("keep", encoding="utf-8")
+            with self.assertRaises(FileExistsError):
+                native_host.copy_user_file(
+                    str(user_root),
+                    "/",
+                    "source.txt",
+                    "occupied.txt",
+                )
+            self.assertEqual((user_root / "occupied.txt").read_text(encoding="utf-8"), "keep")
+            self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
+
+            (user_root / "large.bin").write_bytes(b"12345")
+            with self.assertRaises(native_host.FileSpaceCopyTooLargeError):
+                native_host.copy_user_file(
+                    str(user_root),
+                    "/",
+                    "large.bin",
+                    "large-copy.bin",
+                    max_bytes=4,
+                )
+            self.assertFalse((user_root / "large-copy.bin").exists())
+
+            (outside / "secret.txt").write_text("blocked", encoding="utf-8")
+            os.symlink(outside / "secret.txt", user_root / "copy-link.txt")
+            with self.assertRaises(OSError):
+                native_host.copy_user_file(
+                    str(user_root),
+                    "/",
+                    "copy-link.txt",
+                    "escaped.txt",
+                )
+            self.assertFalse((user_root / "escaped.txt").exists())
+
+            with mock.patch.object(
+                native_host.os,
+                "write",
+                side_effect=OSError(errno.EIO, "simulated write failure"),
+            ):
+                with self.assertRaises(OSError):
+                    native_host.copy_user_file(
+                        str(user_root),
+                        "/",
+                        "source.txt",
+                        "partial.txt",
+                    )
+            self.assertFalse((user_root / "partial.txt").exists())
+            self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
+
     def test_standard_user_directories_are_idempotent_and_symlink_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
@@ -221,6 +300,11 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("data-file-rename-confirm", controls)
         self.assertIn("data-file-rename-name", controls)
         self.assertIn("renameSelected", controls)
+        self.assertIn("copySelected", controls)
+        self.assertIn("data-file-copy-toggle", controls)
+        self.assertIn("data-file-copy-confirm", controls)
+        self.assertIn("data-file-copy-name", controls)
+        self.assertIn("MAX_FILE_COPY_BYTES", controls)
         self.assertIn("selectedPath", controls)
         self.assertIn("renderSelectionDetails", controls)
         self.assertIn("ordax-files-details", controls)
@@ -242,6 +326,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn(".ordax-files-preview-content", files_css)
         self.assertIn(".ordax-files-details", files_css)
         self.assertIn(".ordax-files-rename", files_css)
+        self.assertIn(".ordax-files-copy", files_css)
         self.assertIn('[data-selected="true"]', files_css)
         self.assertIn('kind: "extension"', files_app)
         self.assertIn('extensionId: "file-space"', files_app)
@@ -266,6 +351,12 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("_renameat2_noreplace", server)
         self.assertIn("rename_user_entry", server)
         self.assertIn('action == "rename-entry"', server)
+        self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("copy_user_file", server)
+        self.assertIn("FileSpaceCopyTooLargeError", server)
+        self.assertIn("FileSpaceCopyChangedError", server)
+        self.assertIn('action == "copy-file"', server)
+        self.assertIn("self._empty(412)", server)
         self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
         self.assertIn("self._empty(415)", server)

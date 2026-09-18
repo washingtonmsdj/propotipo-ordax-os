@@ -1,5 +1,6 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
+  MAX_FILE_COPY_BYTES,
   assertFileSpacePort,
   validateFileListing,
   validateTextFile,
@@ -24,6 +25,14 @@ function node(documentObject, tag, className, text) {
 
 function joinPath(path, name) {
   return path === "/" ? `/${name}` : `${path}/${name}`;
+}
+
+function suggestedCopyName(name) {
+  const dot = name.lastIndexOf(".");
+  if (dot > 0 && dot < name.length - 1) {
+    return `${name.slice(0, dot)} - cópia${name.slice(dot)}`;
+  }
+  return `${name} - cópia`;
 }
 
 function formatSize(bytes) {
@@ -74,6 +83,8 @@ export function mountFileSpaceControls(
   let selectedPath = null;
   let renamingPath = null;
   let renameDraft = "";
+  let copyingPath = null;
+  let copyDraft = "";
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -163,6 +174,10 @@ export function mountFileSpaceControls(
     if (renamingPath !== path) {
       renamingPath = null;
       renameDraft = "";
+    }
+    if (copyingPath !== path) {
+      copyingPath = null;
+      copyDraft = "";
     }
     message = null;
     if (textPreview?.path !== path) {
@@ -255,6 +270,13 @@ export function mountFileSpaceControls(
     );
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
+    let copy = null;
+    if (selected.kind === "file") {
+      copy = node(documentObject, "button", "ordax-files-action", "Copiar");
+      copy.type = "button";
+      copy.dataset.fileCopyToggle = "";
+      copy.disabled = pending || previewPending;
+    }
     const rename = node(documentObject, "button", "ordax-files-action", "Renomear");
     rename.type = "button";
     rename.dataset.fileRenameToggle = "";
@@ -268,10 +290,41 @@ export function mountFileSpaceControls(
     open.type = "button";
     open.dataset.fileActivateSelected = "";
     open.disabled = pending || previewPending;
+    if (copy) actions.append(copy);
     actions.append(rename, open);
 
     details.append(summary, actions);
     container.append(details);
+
+    if (copyingPath === selected.path && selected.kind === "file") {
+      const form = node(documentObject, "div", "ordax-files-copy");
+      const input = node(documentObject, "input", "ordax-files-copy-input");
+      input.type = "text";
+      input.maxLength = 255;
+      input.autocomplete = "off";
+      input.value = copyDraft;
+      input.dataset.fileCopyName = "";
+      input.setAttribute("aria-label", `Nome da cópia de ${selected.name}`);
+
+      const confirm = node(
+        documentObject,
+        "button",
+        "ordax-files-action ordax-files-action-primary",
+        "Criar cópia",
+      );
+      confirm.type = "button";
+      confirm.dataset.fileCopyConfirm = "";
+      confirm.disabled = pending;
+
+      const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+      cancel.type = "button";
+      cancel.dataset.fileCopyCancel = "";
+      cancel.disabled = pending;
+
+      form.append(input, confirm, cancel);
+      container.append(form);
+      queueMicrotask(() => input.isConnected && input.focus());
+    }
 
     if (renamingPath === selected.path) {
       const form = node(documentObject, "div", "ordax-files-rename");
@@ -431,6 +484,8 @@ export function mountFileSpaceControls(
       selectedPath = null;
       renamingPath = null;
       renameDraft = "";
+      copyingPath = null;
+      copyDraft = "";
     }
     replaceView();
     try {
@@ -489,6 +544,66 @@ export function mountFileSpaceControls(
       void load(selected.path);
     } else {
       void openTextFile(selected.path);
+    }
+  };
+
+  const copySelected = async () => {
+    const selected = selectedEntry();
+    if (!selected || !listing || selected.kind !== "file") return;
+
+    if (selected.size > MAX_FILE_COPY_BYTES) {
+      message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
+      copyingPath = null;
+      copyDraft = "";
+      replaceView();
+      return;
+    }
+
+    const newName = String(copyDraft ?? "");
+    if (!newName) {
+      message = "Digite o nome da cópia.";
+      replaceView();
+      return;
+    }
+
+    const ordinal = ++requestOrdinal;
+    const nextPath = joinPath(listing.path, newName);
+    pending = true;
+    message = null;
+    replaceView();
+    try {
+      const next = validateFileListing(
+        await port.copyFile(listing.path, selected.name, newName),
+      );
+      if (destroyed || ordinal !== requestOrdinal) return;
+      listing = next;
+      selectedPath = nextPath;
+      copyingPath = null;
+      copyDraft = "";
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+      message = `Cópia “${newName}” criada.`;
+    } catch (error) {
+      if (destroyed || ordinal !== requestOrdinal) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      if (detail.includes("409")) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (detail.includes("412")) {
+        message = "O arquivo mudou durante a cópia. Nenhuma cópia parcial foi mantida.";
+      } else if (detail.includes("413")) {
+        message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
+      } else if (detail.includes("507")) {
+        message = "Não há espaço suficiente para criar a cópia.";
+      } else {
+        message = "Não foi possível copiar este arquivo.";
+      }
+    } finally {
+      if (!destroyed && ordinal === requestOrdinal) {
+        pending = false;
+        replaceView();
+        focusSelectedRow();
+      }
     }
   };
 
@@ -585,12 +700,45 @@ export function mountFileSpaceControls(
       }
       return;
     }
+    const copyToggle = event.target.closest("[data-file-copy-toggle]");
+    if (copyToggle && root.contains(copyToggle)) {
+      const selected = selectedEntry();
+      if (selected?.kind === "file") {
+        if (selected.size > MAX_FILE_COPY_BYTES) {
+          message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
+          replaceView();
+        } else {
+          copyingPath = selected.path;
+          copyDraft = suggestedCopyName(selected.name);
+          renamingPath = null;
+          renameDraft = "";
+          message = null;
+          replaceView();
+        }
+      }
+      return;
+    }
+    const copyCancel = event.target.closest("[data-file-copy-cancel]");
+    if (copyCancel && root.contains(copyCancel)) {
+      copyingPath = null;
+      copyDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
+    const copyConfirm = event.target.closest("[data-file-copy-confirm]");
+    if (copyConfirm && root.contains(copyConfirm)) {
+      void copySelected();
+      return;
+    }
     const renameToggle = event.target.closest("[data-file-rename-toggle]");
     if (renameToggle && root.contains(renameToggle)) {
       const selected = selectedEntry();
       if (selected) {
         renamingPath = selected.path;
         renameDraft = selected.name;
+        copyingPath = null;
+        copyDraft = "";
         message = null;
         replaceView();
       }
@@ -660,10 +808,25 @@ export function mountFileSpaceControls(
       directoryDraft = event.target.value;
     } else if (event.target.matches?.("[data-file-rename-name]")) {
       renameDraft = event.target.value;
+    } else if (event.target.matches?.("[data-file-copy-name]")) {
+      copyDraft = event.target.value;
     }
   };
 
   const onKeyDown = (event) => {
+    if (event.target.matches?.("[data-file-copy-name]")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void copySelected();
+      } else if (event.key === "Escape" && !pending) {
+        copyingPath = null;
+        copyDraft = "";
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+
     if (event.target.matches?.("[data-file-rename-name]")) {
       if (event.key === "Enter") {
         event.preventDefault();

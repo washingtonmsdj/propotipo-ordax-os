@@ -50,6 +50,7 @@ MAX_SYNC_STATE_BODY = 393216
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
 MAX_TEXT_FILE_BYTES = 256 * 1024
+MAX_FILE_COPY_BYTES = 64 * 1024 * 1024
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
@@ -535,6 +536,14 @@ class FileSpaceTextEncodingError(Exception):
     pass
 
 
+class FileSpaceCopyTooLargeError(Exception):
+    pass
+
+
+class FileSpaceCopyChangedError(Exception):
+    pass
+
+
 def read_user_text_file(
     user_root: str,
     logical_path: str,
@@ -639,6 +648,107 @@ def rename_user_entry(
         _renameat2_noreplace(descriptor, name, new_name)
     finally:
         os.close(descriptor)
+    return list_user_directory(user_root, logical_path)
+
+
+def copy_user_file(
+    user_root: str,
+    logical_path: str,
+    name: str,
+    new_name: str,
+    max_bytes: int = MAX_FILE_COPY_BYTES,
+) -> dict:
+    if not valid_logical_file_path(logical_path):
+        raise ValueError("invalid copy directory path")
+    if not valid_file_name(name) or not valid_file_name(new_name):
+        raise ValueError("invalid copy name")
+    if name == new_name:
+        raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), new_name)
+
+    directory_fd = open_user_directory(user_root, logical_path)
+    source_fd = None
+    destination_fd = None
+    destination_created = False
+    try:
+        source_fd = os.open(
+            name,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=directory_fd,
+        )
+        before = os.fstat(source_fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("file copy requires a regular source file")
+        if before.st_size > max_bytes:
+            raise FileSpaceCopyTooLargeError("source file exceeds copy limit")
+
+        destination_fd = os.open(
+            new_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=directory_fd,
+        )
+        destination_created = True
+
+        copied = 0
+        while True:
+            remaining = max_bytes + 1 - copied
+            chunk = os.read(source_fd, min(65536, remaining))
+            if not chunk:
+                break
+            copied += len(chunk)
+            if copied > max_bytes:
+                raise FileSpaceCopyTooLargeError("source file exceeded copy limit during read")
+
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_fd, view)
+                if written <= 0:
+                    raise OSError(errno.EIO, "copy write made no progress")
+                view = view[written:]
+
+        after = os.fstat(source_fd)
+        before_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        after_identity = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if before_identity != after_identity or copied != after.st_size:
+            raise FileSpaceCopyChangedError("source changed while being copied")
+
+        os.fsync(destination_fd)
+        os.fsync(directory_fd)
+    except Exception:
+        if destination_fd is not None:
+            os.close(destination_fd)
+            destination_fd = None
+        if destination_created:
+            try:
+                os.unlink(new_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        if destination_fd is not None:
+            os.close(destination_fd)
+        if source_fd is not None:
+            os.close(source_fd)
+        os.close(directory_fd)
+
     return list_user_directory(user_root, logical_path)
 
 
@@ -987,9 +1097,23 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                         payload.get("newName"),
                     )
                     status = 200
+                elif action == "copy-file":
+                    listing = copy_user_file(
+                        self.server.user_root,
+                        payload.get("path"),
+                        payload.get("name"),
+                        payload.get("newName"),
+                    )
+                    status = 201
                 else:
                     self._empty(400)
                     return
+            except FileSpaceCopyTooLargeError:
+                self._empty(413)
+                return
+            except FileSpaceCopyChangedError:
+                self._empty(412)
+                return
             except ValueError:
                 self._empty(400)
                 return
@@ -1004,7 +1128,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 return
             except OSError as exc:
                 print(f"ordax-native-host: file-space mutation failed safely: {exc}", file=sys.stderr, flush=True)
-                self._empty(503)
+                self._empty(507 if exc.errno == errno.ENOSPC else 503)
                 return
             self._write_json(status, listing)
             return
