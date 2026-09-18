@@ -39,6 +39,7 @@ export function validateUpdateStatusSnapshot(value) {
   }
   return Object.freeze({
     sourceSha: value.sourceSha,
+    runtimeSurfaceSha: optionalString(value.runtimeSurfaceSha, value.sourceSha),
     targetSha: optionalString(value.targetSha, ""),
     status: value.status,
     phase,
