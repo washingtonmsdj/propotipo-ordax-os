@@ -1,4 +1,5 @@
-export const FILE_SPACE_SCHEMA = "ordax.file-space/1";
+export const FILE_SPACE_SCHEMA = "ordax.file-space/2";
+export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 
 const ENTRY_KINDS = new Set(["file", "directory"]);
 
@@ -49,12 +50,30 @@ export function validateFileListing(value) {
   return Object.freeze({ path, entries: Object.freeze(entries) });
 }
 
+export function validateTextFile(value) {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("Text-file payload must be an object");
+  }
+  const path = validatePath(value.path);
+  if (!Number.isInteger(value.size) || value.size < 0 || value.size > MAX_TEXT_FILE_BYTES) {
+    throw new TypeError("Text-file size is outside the preview boundary");
+  }
+  if (typeof value.text !== "string" || value.text.includes("\0")) {
+    throw new TypeError("Text-file content must be valid text");
+  }
+  return Object.freeze({ path, size: value.size, text: value.text });
+}
+
 export function assertFileSpacePort(port) {
   if (!port || typeof port !== "object" || port.schema !== FILE_SPACE_SCHEMA) {
     throw new TypeError("A compatible file-space port is required");
   }
-  if (typeof port.list !== "function" || typeof port.createDirectory !== "function") {
-    throw new TypeError("File-space port must implement list() and createDirectory()");
+  if (
+    typeof port.list !== "function" ||
+    typeof port.createDirectory !== "function" ||
+    typeof port.readTextFile !== "function"
+  ) {
+    throw new TypeError("File-space port must implement list(), createDirectory(), and readTextFile()");
   }
   return port;
 }

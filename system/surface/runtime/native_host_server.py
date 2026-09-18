@@ -28,6 +28,7 @@ SURFACE_HEARTBEAT_PATH = "/__ordax/native/surface-heartbeat"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
+FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
@@ -46,6 +47,7 @@ MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
+MAX_TEXT_FILE_BYTES = 256 * 1024
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
@@ -522,6 +524,67 @@ def list_user_directory(user_root: str, logical_path: str) -> dict:
         os.close(descriptor)
 
 
+class FileSpaceTextTooLargeError(Exception):
+    pass
+
+
+class FileSpaceTextEncodingError(Exception):
+    pass
+
+
+def read_user_text_file(
+    user_root: str,
+    logical_path: str,
+    max_bytes: int = MAX_TEXT_FILE_BYTES,
+) -> dict:
+    if not valid_logical_file_path(logical_path) or logical_path == "/":
+        raise ValueError("invalid text-file path")
+    parent_path, name = logical_path.rsplit("/", 1)
+    parent_path = parent_path or "/"
+    if not valid_file_name(name):
+        raise ValueError("invalid text-file name")
+
+    parent_descriptor = open_user_directory(user_root, parent_path)
+    descriptor = None
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=parent_descriptor,
+        )
+    finally:
+        os.close(parent_descriptor)
+
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("text-file preview requires a regular file")
+        if metadata.st_size > max_bytes:
+            raise FileSpaceTextTooLargeError("text file exceeds preview limit")
+
+        content = bytearray()
+        while len(content) <= max_bytes:
+            remaining = max_bytes + 1 - len(content)
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            content.extend(chunk)
+            if len(content) > max_bytes:
+                raise FileSpaceTextTooLargeError("text file exceeds preview limit")
+
+        try:
+            text = bytes(content).decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise FileSpaceTextEncodingError("text file is not valid UTF-8") from exc
+        if "\0" in text:
+            raise FileSpaceTextEncodingError("text file contains NUL bytes")
+        return {"path": logical_path, "size": len(content), "text": text}
+    finally:
+        os.close(descriptor)
+
+
 def create_user_directory(user_root: str, logical_path: str, name: str) -> dict:
     if not valid_file_name(name):
         raise ValueError("invalid directory name")
@@ -553,9 +616,9 @@ def ensure_standard_user_directories(user_root: str) -> tuple[str, ...]:
     return tuple(ready)
 
 
-def requested_file_path(request_target: str) -> str:
+def requested_file_path(request_target: str, endpoint: str = FILES_PATH) -> str:
     parsed = urlsplit(request_target)
-    if parsed.path != FILES_PATH:
+    if parsed.path != endpoint:
         raise ValueError("not a file-space request")
     query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
     if set(query) != {"path"} or len(query["path"]) != 1:
@@ -674,7 +737,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {FILES_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -688,6 +751,31 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, metrics)
+            return
+        if parsed_path == FILE_CONTENT_PATH:
+            try:
+                logical_path = requested_file_path(self.path, FILE_CONTENT_PATH)
+                payload = read_user_text_file(self.server.user_root, logical_path)
+            except FileSpaceTextTooLargeError:
+                self._empty(413)
+                return
+            except FileSpaceTextEncodingError:
+                self._empty(415)
+                return
+            except ValueError:
+                self._empty(400)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(f"ordax-native-host: could not read user text file: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._write_json(200, payload)
             return
         if parsed_path == FILES_PATH:
             try:
