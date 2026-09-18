@@ -178,6 +178,7 @@ export function mountNetworkQuickPanel(
           "O gerenciamento rápido de Wi-Fi não está disponível neste ambiente.",
         ),
       );
+      restoreInteraction(interaction);
       return;
     }
 
@@ -210,6 +211,7 @@ export function mountNetworkQuickPanel(
 
     if (managementSnapshot === null) {
       content.append(node(documentObject, "p", "ordax-quick-empty", "Lendo Wi-Fi…"));
+      restoreInteraction(interaction);
       return;
     }
 
