@@ -112,6 +112,7 @@ test("invalid accessibility values recover or reject through the shared catalog"
     recoverPreferenceSnapshot({
       "accessibility.contrast": "impossible",
       "accessibility.motion": "unknown",
+      "accessibility.text-scale": "huge",
     }),
     {
       "appearance.theme": "light",
