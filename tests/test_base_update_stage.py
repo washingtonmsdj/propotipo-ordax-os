@@ -133,5 +133,58 @@ class BaseUpdateStageTests(unittest.TestCase):
             self.assertFalse((esp / "ordax/base/b/vmlinuz").exists())
 
 
+    def test_signed_envelope_verifier_output_is_required_before_staging(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            agent = root / "ordax-release-agent"
+            envelope = root / "base-update-envelope.json"
+            trust = root / "release-ed25519.json"
+            envelope.write_text("{}\n", encoding="utf-8")
+            trust.write_text("{}\n", encoding="utf-8")
+            agent.write_text(
+                "#!/bin/sh\n"
+                "cat <<'JSON'\n"
+                '{"$schema":"prototype-ordax.base-update-verification/1","status":"verified",'
+                '"source_repository":"washingtonmsdj/prototipo-ordax-os",'
+                '"release_sha":"' + "a" * 40 + '","key_id":"ordax-prototype-release-v1",'
+                '"kernel_sha256":"' + "b" * 64 + '","kernel_size":1,'
+                '"initramfs_sha256":"' + "c" * 64 + '","initramfs_size":1}\n'
+                "JSON\n",
+                encoding="utf-8",
+            )
+            agent.chmod(0o755)
+
+            candidate = stage.verified_candidate_from_envelope(envelope, trust, agent)
+
+            self.assertEqual(
+                candidate,
+                {
+                    "release_sha": "a" * 40,
+                    "kernel_sha256": "b" * 64,
+                    "initramfs_sha256": "c" * 64,
+                },
+            )
+
+    def test_failed_signature_verifier_is_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            agent = root / "ordax-release-agent"
+            envelope = root / "base-update-envelope.json"
+            trust = root / "release-ed25519.json"
+            envelope.write_text("{}\n", encoding="utf-8")
+            trust.write_text("{}\n", encoding="utf-8")
+            agent.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            agent.chmod(0o755)
+
+            with self.assertRaises(stage.StageError):
+                stage.verified_candidate_from_envelope(envelope, trust, agent)
+
+    def test_stage_cli_has_no_unsigned_candidate_input(self):
+        text = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertNotIn('parser.add_argument("--candidate"', text)
+        self.assertIn('parser.add_argument("--envelope"', text)
+        self.assertIn('"verify-base-update-envelope"', text)
+
+
 if __name__ == "__main__":
     unittest.main()
