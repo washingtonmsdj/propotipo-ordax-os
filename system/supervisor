@@ -403,6 +403,8 @@ classify_changes() {
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         case "$path" in
+            system/*.md)
+                ;;
             boot/*|bootstrap/*)
                 LOW_LEVEL_CHANGED=1
                 ;;
