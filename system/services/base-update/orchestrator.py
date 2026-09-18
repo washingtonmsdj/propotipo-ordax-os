@@ -1149,18 +1149,15 @@ def _stage_materialized_release(
             str(kernel_source),
             "--initramfs",
             str(initramfs_source),
-            "--trust",
-            str(physical_root / PHYSICAL_TRUST_RELATIVE),
-            "--release-agent",
-            str(physical_root / RELEASE_AGENT_RELATIVE),
-            "--releases-root",
-            str(physical_root / "releases"),
             "--ensure-existing",
         ]
+        stage_environment = os.environ.copy()
+        stage_environment["ORDAX_STAGE_PHYSICAL_ROOT"] = str(physical_root)
         try:
             completed = subprocess.run(
                 command,
                 stdin=subprocess.DEVNULL,
+                env=stage_environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
