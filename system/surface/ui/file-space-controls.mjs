@@ -71,6 +71,7 @@ export function mountFileSpaceControls(
   let textPreview = null;
   let previewPending = false;
   let previewRequestOrdinal = 0;
+  let selectedPath = null;
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -130,8 +131,46 @@ export function mountFileSpaceControls(
     queueMicrotask(() => input.isConnected && input.focus());
   };
 
+  const selectedEntry = () => {
+    if (!listing || !selectedPath) return null;
+    const entry = listing.entries.find((candidate) => joinPath(listing.path, candidate.name) === selectedPath);
+    return entry ? Object.freeze({ ...entry, path: selectedPath }) : null;
+  };
+
+  const focusSelectedRow = () => {
+    if (!selectedPath) return;
+    queueMicrotask(() => {
+      if (destroyed) return;
+      const slot = findSlot();
+      const row = slot?.querySelector("[data-file-select-path]");
+      if (!row) return;
+      for (const candidate of slot.querySelectorAll("[data-file-select-path]")) {
+        if (candidate.dataset.fileSelectPath === selectedPath) {
+          candidate.focus();
+          return;
+        }
+      }
+    });
+  };
+
+  const selectPath = (path, { focus = false } = {}) => {
+    if (!listing || typeof path !== "string") return;
+    const entry = listing.entries.find((candidate) => joinPath(listing.path, candidate.name) === path);
+    if (!entry) return;
+    selectedPath = path;
+    message = null;
+    if (textPreview?.path !== path) {
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+    }
+    replaceView();
+    if (focus) focusSelectedRow();
+  };
+
   const renderEntries = (container) => {
     const list = node(documentObject, "div", "ordax-files-list");
+    list.setAttribute("aria-label", "Itens da pasta");
     const header = node(documentObject, "div", "ordax-files-list-header");
     header.append(
       node(documentObject, "span", "", "Nome"),
@@ -159,16 +198,20 @@ export function mountFileSpaceControls(
     }
 
     for (const entry of listing.entries) {
+      const path = joinPath(listing.path, entry.name);
+      const selected = selectedPath === path;
       const row = node(documentObject, "button", "ordax-file-row");
       row.type = "button";
-      if (entry.kind === "directory") {
-        row.dataset.fileOpenPath = joinPath(listing.path, entry.name);
-        row.setAttribute("aria-label", `Abrir pasta ${entry.name}`);
-      } else {
-        row.dataset.fileReadPath = joinPath(listing.path, entry.name);
-        row.setAttribute("aria-label", `Visualizar arquivo ${entry.name}`);
-      }
+      row.dataset.fileSelectPath = path;
       row.dataset.kind = entry.kind;
+      row.dataset.selected = String(selected);
+      row.setAttribute("aria-pressed", String(selected));
+      row.setAttribute(
+        "aria-label",
+        selected
+          ? `${entry.name}, ${entry.kind === "directory" ? "pasta" : "arquivo"}, selecionado`
+          : `${entry.name}, ${entry.kind === "directory" ? "pasta" : "arquivo"}`,
+      );
 
       const nameCell = node(documentObject, "span", "ordax-file-name");
       const icon = node(documentObject, "span", "ordax-file-icon");
@@ -184,6 +227,41 @@ export function mountFileSpaceControls(
       list.append(row);
     }
     container.append(list);
+  };
+
+  const renderSelectionDetails = (container) => {
+    const selected = selectedEntry();
+    if (!selected) return;
+
+    const details = node(documentObject, "section", "ordax-files-details");
+    details.setAttribute("aria-label", "Detalhes do item selecionado");
+
+    const summary = node(documentObject, "div", "ordax-files-details-summary");
+    summary.append(
+      node(documentObject, "strong", "ordax-files-details-title", selected.name),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-details-meta",
+        selected.kind === "directory" ? "Pasta" : `Arquivo · ${formatSize(selected.size)}`,
+      ),
+      node(documentObject, "span", "ordax-files-details-path", selected.path),
+    );
+
+    const actions = node(documentObject, "div", "ordax-files-details-actions");
+    const open = node(
+      documentObject,
+      "button",
+      "ordax-files-action ordax-files-action-primary",
+      selected.kind === "directory" ? "Abrir pasta" : "Visualizar texto",
+    );
+    open.type = "button";
+    open.dataset.fileActivateSelected = "";
+    open.disabled = pending || previewPending;
+    actions.append(open);
+
+    details.append(summary, actions);
+    container.append(details);
   };
 
   const renderTextPreview = (container) => {
@@ -270,6 +348,7 @@ export function mountFileSpaceControls(
     renderCreateDirectory(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
+    renderSelectionDetails(content);
     renderTextPreview(content);
     content.append(
       node(
@@ -300,6 +379,7 @@ export function mountFileSpaceControls(
 
   const load = async (path) => {
     const ordinal = ++requestOrdinal;
+    const preserveSelection = Boolean(listing && listing.path === path);
     pending = true;
     message = null;
     creatingDirectory = false;
@@ -307,11 +387,18 @@ export function mountFileSpaceControls(
     textPreview = null;
     previewPending = false;
     previewRequestOrdinal += 1;
+    if (!preserveSelection) selectedPath = null;
     replaceView();
     try {
       const next = validateFileListing(await port.list(path));
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
+      if (
+        selectedPath &&
+        !listing.entries.some((entry) => joinPath(listing.path, entry.name) === selectedPath)
+      ) {
+        selectedPath = null;
+      }
     } catch {
       if (destroyed || ordinal !== requestOrdinal) return;
       message = "Não foi possível abrir este local.";
@@ -351,6 +438,16 @@ export function mountFileSpaceControls(
     }
   };
 
+  const activateSelectedPath = () => {
+    const selected = selectedEntry();
+    if (!selected) return;
+    if (selected.kind === "directory") {
+      void load(selected.path);
+    } else {
+      void openTextFile(selected.path);
+    }
+  };
+
   const createDirectory = async (name) => {
     const trimmed = String(name ?? "").trim();
     if (!listing || !trimmed) {
@@ -381,9 +478,14 @@ export function mountFileSpaceControls(
   };
 
   const onClick = (event) => {
-    const read = event.target.closest("[data-file-read-path]");
-    if (read && root.contains(read)) {
-      void openTextFile(read.dataset.fileReadPath);
+    const selected = event.target.closest("[data-file-select-path]");
+    if (selected && root.contains(selected)) {
+      selectPath(selected.dataset.fileSelectPath);
+      return;
+    }
+    const activate = event.target.closest("[data-file-activate-selected]");
+    if (activate && root.contains(activate)) {
+      activateSelectedPath();
       return;
     }
     const previewClose = event.target.closest("[data-file-preview-close]");
@@ -427,6 +529,21 @@ export function mountFileSpaceControls(
     }
   };
 
+  const onDoubleClick = (event) => {
+    const row = event.target.closest("[data-file-select-path]");
+    if (!row || !root.contains(row)) return;
+    selectPath(row.dataset.fileSelectPath);
+    const selected = listing?.entries.find(
+      (entry) => joinPath(listing.path, entry.name) === row.dataset.fileSelectPath,
+    );
+    if (!selected) return;
+    if (selected.kind === "directory") {
+      void load(row.dataset.fileSelectPath);
+    } else {
+      void openTextFile(row.dataset.fileSelectPath);
+    }
+  };
+
   const onInput = (event) => {
     if (event.target.matches?.("[data-file-directory-name]")) {
       directoryDraft = event.target.value;
@@ -434,19 +551,60 @@ export function mountFileSpaceControls(
   };
 
   const onKeyDown = (event) => {
-    if (!event.target.matches?.("[data-file-directory-name]")) return;
+    if (event.target.matches?.("[data-file-directory-name]")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void createDirectory(directoryDraft);
+      } else if (event.key === "Escape" && !pending) {
+        creatingDirectory = false;
+        directoryDraft = "";
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+
+    const row = event.target.closest?.("[data-file-select-path]");
+    if (!row || !root.contains(row)) return;
+
+    const rows = [...findSlot().querySelectorAll("[data-file-select-path]")];
+    const index = rows.indexOf(row);
+    if (index < 0) return;
+
     if (event.key === "Enter") {
       event.preventDefault();
-      void createDirectory(directoryDraft);
-    } else if (event.key === "Escape" && !pending) {
-      creatingDirectory = false;
-      directoryDraft = "";
-      message = null;
-      replaceView();
+      selectPath(row.dataset.fileSelectPath);
+      const selected = listing?.entries.find(
+        (entry) => joinPath(listing.path, entry.name) === row.dataset.fileSelectPath,
+      );
+      if (!selected) return;
+      if (selected.kind === "directory") {
+        void load(row.dataset.fileSelectPath);
+      } else {
+        void openTextFile(row.dataset.fileSelectPath);
+      }
+      return;
     }
+
+    if (event.key === " ") {
+      event.preventDefault();
+      selectPath(row.dataset.fileSelectPath, { focus: true });
+      return;
+    }
+
+    let nextIndex = null;
+    if (event.key === "ArrowDown") nextIndex = Math.min(rows.length - 1, index + 1);
+    if (event.key === "ArrowUp") nextIndex = Math.max(0, index - 1);
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = rows.length - 1;
+    if (nextIndex === null || nextIndex === index) return;
+
+    event.preventDefault();
+    selectPath(rows[nextIndex].dataset.fileSelectPath, { focus: true });
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
@@ -465,6 +623,7 @@ export function mountFileSpaceControls(
       unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("input", onInput);
       root.removeEventListener("keydown", onKeyDown);
       const slot = findSlot();
