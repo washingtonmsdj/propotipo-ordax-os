@@ -87,6 +87,7 @@ export function mountFileSpaceControls(
   let renameDraft = "";
   let copyingPath = null;
   let copyDraft = "";
+  let movingEntry = null;
   let searchQuery = "";
   let navigationHistory = [];
   let navigationIndex = -1;
@@ -234,6 +235,82 @@ export function mountFileSpaceControls(
     );
   };
 
+  const operationStatus = (error) => {
+    if (Number.isInteger(error?.status)) return error.status;
+    const detail = error instanceof Error ? error.message : String(error);
+    const match = detail.match(/\b(4\d\d|5\d\d)\b/);
+    return match ? Number.parseInt(match[1], 10) : null;
+  };
+
+  const moveDestinationState = () => {
+    if (!movingEntry || !listing) {
+      return Object.freeze({ allowed: false, reason: "Escolha uma pasta de destino." });
+    }
+    if (listing.path === movingEntry.sourcePath) {
+      return Object.freeze({
+        allowed: false,
+        reason: "O item já está nesta pasta. Escolha outra pasta.",
+      });
+    }
+    if (
+      movingEntry.kind === "directory" &&
+      (listing.path === movingEntry.sourceFullPath ||
+        listing.path.startsWith(`${movingEntry.sourceFullPath}/`))
+    ) {
+      return Object.freeze({
+        allowed: false,
+        reason: "Uma pasta não pode ser movida para dentro dela mesma.",
+      });
+    }
+    return Object.freeze({ allowed: true, reason: "" });
+  };
+
+  const renderMoveOperation = (container) => {
+    if (!movingEntry) return;
+    const destination = moveDestinationState();
+    const panel = node(documentObject, "section", "ordax-files-move");
+    panel.setAttribute("aria-label", "Mover item");
+
+    const copy = node(documentObject, "div", "ordax-files-move-copy");
+    copy.append(
+      node(documentObject, "strong", "ordax-files-move-title", `Movendo “${movingEntry.name}”`),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-move-meta",
+        listing ? `Destino atual: ${listing.path}` : "Abrindo destino…",
+      ),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-move-guidance",
+        destination.allowed
+          ? "Confirme para mover sem substituir itens existentes."
+          : destination.reason,
+      ),
+    );
+
+    const actions = node(documentObject, "div", "ordax-files-move-actions");
+    const confirm = node(
+      documentObject,
+      "button",
+      "ordax-files-action ordax-files-action-primary",
+      "Mover para esta pasta",
+    );
+    confirm.type = "button";
+    confirm.dataset.fileMoveConfirm = "";
+    confirm.disabled = pending || !destination.allowed;
+
+    const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+    cancel.type = "button";
+    cancel.dataset.fileMoveCancel = "";
+    cancel.disabled = pending;
+
+    actions.append(confirm, cancel);
+    panel.append(copy, actions);
+    container.append(panel);
+  };
+
   const renderEntries = (container) => {
     const list = node(documentObject, "div", "ordax-files-list");
     list.setAttribute("aria-label", "Itens da pasta");
@@ -310,6 +387,7 @@ export function mountFileSpaceControls(
   };
 
   const renderSelectionDetails = (container) => {
+    if (movingEntry) return;
     const selected = selectedEntry();
     if (!selected) return;
 
@@ -336,6 +414,10 @@ export function mountFileSpaceControls(
       copy.dataset.fileCopyToggle = "";
       copy.disabled = pending || previewPending;
     }
+    const move = node(documentObject, "button", "ordax-files-action", "Mover");
+    move.type = "button";
+    move.dataset.fileMoveToggle = "";
+    move.disabled = pending || previewPending;
     const rename = node(documentObject, "button", "ordax-files-action", "Renomear");
     rename.type = "button";
     rename.dataset.fileRenameToggle = "";
@@ -350,7 +432,7 @@ export function mountFileSpaceControls(
     open.dataset.fileActivateSelected = "";
     open.disabled = pending || previewPending;
     if (copy) actions.append(copy);
-    actions.append(rename, open);
+    actions.append(move, rename, open);
 
     details.append(summary, actions);
     container.append(details);
@@ -544,6 +626,7 @@ export function mountFileSpaceControls(
     status.setAttribute("aria-live", "polite");
     content.append(status);
 
+    renderMoveOperation(content);
     renderCreateDirectory(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
@@ -652,10 +735,10 @@ export function mountFileSpaceControls(
       textPreview = next;
     } catch (error) {
       if (destroyed || ordinal !== previewRequestOrdinal) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      if (detail.includes("413")) {
+      const status = operationStatus(error);
+      if (status === 413) {
         message = "Este arquivo é grande demais para a visualização rápida (máximo 256 KB).";
-      } else if (detail.includes("415")) {
+      } else if (status === 415) {
         message = "A visualização rápida aceita apenas texto UTF-8 válido.";
       } else {
         message = "Não foi possível visualizar este arquivo.";
@@ -675,6 +758,64 @@ export function mountFileSpaceControls(
       void load(selected.path);
     } else {
       void openTextFile(selected.path);
+    }
+  };
+
+  const moveToCurrentDirectory = async () => {
+    if (!movingEntry || !listing) return;
+    const destination = moveDestinationState();
+    if (!destination.allowed) {
+      message = destination.reason;
+      replaceView();
+      return;
+    }
+
+    const source = movingEntry;
+    const destinationPath = listing.path;
+    const nextPath = joinPath(destinationPath, source.name);
+    const ordinal = ++requestOrdinal;
+    pending = true;
+    message = null;
+    replaceView();
+    try {
+      const next = validateFileListing(
+        await port.moveEntry(source.sourcePath, source.name, destinationPath),
+      );
+      if (destroyed || ordinal !== requestOrdinal) return;
+      listing = next;
+      movingEntry = null;
+      selectedPath = nextPath;
+      if (!selectionIsVisible()) selectedPath = null;
+      renamingPath = null;
+      renameDraft = "";
+      copyingPath = null;
+      copyDraft = "";
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+      message = `“${source.name}” foi movido para ${destinationPath}.`;
+    } catch (error) {
+      if (destroyed || ordinal !== requestOrdinal) return;
+      const status = operationStatus(error);
+      if (status === 409) {
+        message = "Já existe um item com esse nome no destino. Nada foi substituído.";
+      } else if (status === 422) {
+        message = "Este destino exige mover entre volumes. Essa operação segura ainda não está disponível.";
+      } else if (status === 404) {
+        message = "A origem ou o destino não existe mais. Atualize e tente novamente.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para mover este item.";
+      } else if (status === 400) {
+        message = "O destino não é válido para este movimento.";
+      } else {
+        message = "Não foi possível mover este item. A origem foi preservada.";
+      }
+    } finally {
+      if (!destroyed && ordinal === requestOrdinal) {
+        pending = false;
+        replaceView();
+        focusSelectedRow();
+      }
     }
   };
 
@@ -718,15 +859,21 @@ export function mountFileSpaceControls(
       message = `Cópia “${newName}” criada.`;
     } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      if (detail.includes("409")) {
+      const status = operationStatus(error);
+      if (status === 409) {
         message = "Já existe um item com esse nome. Nada foi substituído.";
-      } else if (detail.includes("412")) {
+      } else if (status === 412) {
         message = "O arquivo mudou durante a cópia. Nenhuma cópia parcial foi mantida.";
-      } else if (detail.includes("413")) {
+      } else if (status === 413) {
         message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
-      } else if (detail.includes("507")) {
+      } else if (status === 507) {
         message = "Não há espaço suficiente para criar a cópia.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para copiar este arquivo.";
+      } else if (status === 404) {
+        message = "O arquivo de origem não existe mais.";
+      } else if (status === 400) {
+        message = "O nome da cópia não é válido.";
       } else {
         message = "Não foi possível copiar este arquivo.";
       }
@@ -781,10 +928,18 @@ export function mountFileSpaceControls(
       message = `“${selected.name}” foi renomeado para “${newName}”.`;
     } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
-      const detail = error instanceof Error ? error.message : String(error);
-      message = detail.includes("409")
-        ? "Já existe um item com esse nome. Nada foi substituído."
-        : "Não foi possível renomear este item.";
+      const status = operationStatus(error);
+      if (status === 409) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para renomear este item.";
+      } else if (status === 404) {
+        message = "Este item não existe mais. Atualize a pasta.";
+      } else if (status === 400) {
+        message = "O novo nome não é válido.";
+      } else {
+        message = "Não foi possível renomear este item.";
+      }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
@@ -812,9 +967,20 @@ export function mountFileSpaceControls(
       creatingDirectory = false;
       directoryDraft = "";
       message = `Pasta “${trimmed}” criada.`;
-    } catch {
+    } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
-      message = "A pasta não pôde ser criada. Verifique o nome ou se ela já existe.";
+      const status = operationStatus(error);
+      if (status === 409) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para criar uma pasta aqui.";
+      } else if (status === 507) {
+        message = "Não há espaço suficiente para criar a pasta.";
+      } else if (status === 400) {
+        message = "O nome da pasta não é válido.";
+      } else {
+        message = "Não foi possível criar a pasta.";
+      }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
@@ -831,6 +997,40 @@ export function mountFileSpaceControls(
       } else {
         selectPath(selected.dataset.fileSelectPath, { focus: true });
       }
+      return;
+    }
+    const moveToggle = event.target.closest("[data-file-move-toggle]");
+    if (moveToggle && root.contains(moveToggle)) {
+      const selected = selectedEntry();
+      if (selected && listing) {
+        movingEntry = Object.freeze({
+          sourcePath: listing.path,
+          sourceFullPath: selected.path,
+          name: selected.name,
+          kind: selected.kind,
+        });
+        renamingPath = null;
+        renameDraft = "";
+        copyingPath = null;
+        copyDraft = "";
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+        message = "Navegue até a pasta de destino e escolha “Mover para esta pasta”.";
+        replaceView();
+      }
+      return;
+    }
+    const moveCancel = event.target.closest("[data-file-move-cancel]");
+    if (moveCancel && root.contains(moveCancel)) {
+      movingEntry = null;
+      message = "Movimento cancelado. Nenhum item foi alterado.";
+      replaceView();
+      return;
+    }
+    const moveConfirm = event.target.closest("[data-file-move-confirm]");
+    if (moveConfirm && root.contains(moveConfirm)) {
+      void moveToCurrentDirectory();
       return;
     }
     const copyToggle = event.target.closest("[data-file-copy-toggle]");

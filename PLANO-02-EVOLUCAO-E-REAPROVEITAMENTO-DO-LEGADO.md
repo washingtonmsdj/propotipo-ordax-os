@@ -164,10 +164,10 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 **Entrega mínima em incrementos:**
 
 1. Seleção, detalhes, navegação por teclado e leitura segura de arquivo suportado; integração “Abrir com” somente para apps realmente disponíveis. **Estado atual:** seleção única, painel de detalhes, setas/Home/End/Enter, segundo clique/ação explícita e visualização segura UTF-8 de até 256 KB estão implementados no Native; “Abrir com” continua pendente até existir app compatível real.
-2. Renomear arquivo/pasta, com validação consistente no cliente e no owner da operação. **Estado atual:** implementado no `ordax.file-space/4`, com rename atômico sem sobrescrita, rejeição de symlink/colisão, formulário contextual e regressões de preservação de origem/destino.
+2. Renomear arquivo/pasta, com validação consistente no cliente e no owner da operação. **Estado atual:** implementado no `ordax.file-space/5`, com rename atômico sem sobrescrita, rejeição de symlink/colisão, formulário contextual e regressões de preservação de origem/destino.
 3. Copiar arquivo com limite explícito, conflito de nome e resultado persistido; depois ampliar para múltiplos itens/diretórios se houver necessidade. **Estado atual:** cópia de arquivo regular na mesma pasta está implementada com limite de 64 MiB, destino no-clobber, streaming, `fsync` do conteúdo e do diretório e remoção automática de destino parcial em falha; escolha de outra pasta, diretórios e múltiplos itens continuam pendentes.
 4. Importar/exportar conforme o ambiente; transferência sem permissões de host indevidas.
-5. Mover e lixeira após definir recuperação, retenção e semântica entre volumes. Não disfarçar exclusão permanente como lixeira.
+5. Mover e lixeira após definir recuperação, retenção e semântica entre volumes. **Estado atual:** mover arquivo/pasta entre diretórios da mesma raiz autorizada está implementado no `ordax.file-space/5` com `renameat2(RENAME_NOREPLACE)`, rejeição de symlink, colisão sem sobrescrita, bloqueio de pasta para dentro de si e erro explícito para cross-device. Movimento entre volumes continua pendente até existir copy+verify antes de remover a origem. Lixeira continua pendente; não disfarçar exclusão permanente como lixeira.
 
 **Interface:** manter Arquivos como owner. Barra de ações contextual, seleção visível, breadcrumbs, progresso para operação longa, erro junto do item e acesso a detalhes. Origem/destino devem ser claros antes de sobrescrita; cancelar não pode deixar um arquivo parcial parecendo concluído.
 

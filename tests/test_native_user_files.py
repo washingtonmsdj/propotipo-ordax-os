@@ -32,9 +32,9 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/4', contract)
+        self.assertIn('ordax.file-space/5', contract)
         self.assertIn(
-            "list(), createDirectory(), readTextFile(), renameEntry(), and copyFile()",
+            "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), and moveEntry()",
             contract,
         )
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
@@ -49,6 +49,9 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('"rename-entry"', adapter)
         self.assertIn("copyFile", adapter)
         self.assertIn('"copy-file"', adapter)
+        self.assertIn("moveEntry", adapter)
+        self.assertIn('"move-entry"', adapter)
+        self.assertIn("FileSpaceOperationError", adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
 
@@ -301,6 +304,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("data-file-rename-name", controls)
         self.assertIn("renameSelected", controls)
         self.assertIn("copySelected", controls)
+        self.assertIn("moveToCurrentDirectory", controls)
+        self.assertIn("data-file-move-toggle", controls)
+        self.assertIn("data-file-move-confirm", controls)
+        self.assertIn("data-file-move-cancel", controls)
         self.assertIn("data-file-copy-toggle", controls)
         self.assertIn("data-file-copy-confirm", controls)
         self.assertIn("data-file-copy-name", controls)
@@ -356,6 +363,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("FileSpaceCopyTooLargeError", server)
         self.assertIn("FileSpaceCopyChangedError", server)
         self.assertIn('action == "copy-file"', server)
+        self.assertIn("FileSpaceCrossDeviceMoveError", server)
+        self.assertIn("move_user_entry", server)
+        self.assertIn('action == "move-entry"', server)
+        self.assertIn("self._empty(422)", server)
         self.assertIn("self._empty(412)", server)
         self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
