@@ -64,6 +64,23 @@ function validSystemSection(value) {
   return SYSTEM_SECTIONS.some((section) => section.id === value);
 }
 
+const CAPABILITY_LABELS = Object.freeze({
+  "network.https": "Rede HTTPS",
+  "network.status": "Estado local de rede",
+  "network.management": "Gerenciamento de Wi-Fi",
+  "system.boot-control": "Energia do dispositivo",
+  "filesystem.user-space": "Espaço local do usuário",
+  "system.metrics": "Métricas do dispositivo",
+  "power.status": "Estado da bateria",
+});
+
+function node(documentObject, tag, className, text) {
+  const element = documentObject.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
 function formatBytes(bytes) {
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
@@ -83,26 +100,6 @@ function formatUptime(seconds) {
   if (days > 0) return `${days}d ${hours}h ${minutes}min`;
   if (hours > 0) return `${hours}h ${minutes}min`;
   return `${minutes}min`;
-}
-
-function readableUpdateMode(mode) {
-  switch (mode) {
-    case "reload": return "Recarga rápida da Surface";
-    case "surface-restart": return "Reinício somente da Surface";
-    case "supervisor-restart": return "Reinício do supervisor";
-    case "initial": return "Inicialização";
-    default: return "Sem ação pendente";
-  }
-}
-
-function updateIsAlerting(snapshot) {
-  return Boolean(snapshot?.bootRefreshRequired) || [
-    "network-error",
-    "remote-error",
-    "pull-error",
-    "rolled-back",
-    "rejected",
-  ].includes(snapshot?.status);
 }
 
 function ratio(used, total) {
