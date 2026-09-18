@@ -1,3 +1,4 @@
+import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   assertNetworkManagementPort,
   validateNetworkManagementSnapshot,
@@ -22,17 +23,25 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 const SETTINGS_WINDOW_SELECTOR = '[data-window-id="settings"]';
 const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
 
-const CAPABILITY_LABELS = Object.freeze({
-  "network.https": "Rede HTTPS",
-  "network.status": "Estado local de rede",
-  "network.management": "Gerenciamento de Wi-Fi",
-  "filesystem.user-space": "Arquivos persistentes",
-  "system.boot-control": "Energia do dispositivo",
-  "system.metrics": "Métricas locais",
-  "power.status": "Estado da bateria",
-  "account.identity": "Identidade autenticada",
-  "sync.safe-state": "Sincronização segura",
+const SETTINGS_SECTIONS = Object.freeze([
+  Object.freeze({ id: "appearance", label: "Aparência" }),
+  Object.freeze({ id: "network", label: "Rede" }),
+]);
+
+const SECTION_COPY = Object.freeze({
+  appearance: Object.freeze({
+    title: "Aparência",
+    subtitle: "Preferências visuais da Surface, persistidas pelo owner de preferências do host.",
+  }),
+  network: Object.freeze({
+    title: "Rede",
+    subtitle: "Conectividade observada e gerenciamento Wi-Fi somente quando o host expõe essa capacidade.",
+  }),
 });
+
+function validSettingsSection(value) {
+  return SETTINGS_SECTIONS.some((section) => section.id === value);
+}
 
 function node(documentObject, tag, className, text) {
   const element = documentObject.createElement(tag);
@@ -57,6 +66,7 @@ export function mountSettingsOverviewControls(
   surfaceLifecycle = null,
   networkStatus = null,
   networkManagement = null,
+  appActivation = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Settings overview controls require a Surface root Element");
@@ -67,6 +77,7 @@ export function mountSettingsOverviewControls(
   const networkPort = networkStatus === null ? null : assertNetworkStatusPort(networkStatus);
   const networkManagementPort =
     networkManagement === null ? null : assertNetworkManagementPort(networkManagement);
+  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const documentObject = root.ownerDocument;
 
   let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
@@ -78,6 +89,7 @@ export function mountSettingsOverviewControls(
   let networkManagementPending = false;
   let networkManagementMessage = "";
   let selectedNetworkSsid = null;
+  let activeSection = "appearance";
   let destroyed = false;
   let mountedSlot = null;
 
@@ -86,17 +98,28 @@ export function mountSettingsOverviewControls(
 
   const renderHeader = (view) => {
     const header = node(documentObject, "header", "ordax-settings-header");
+    const copy = SECTION_COPY[activeSection];
     header.append(
-      node(documentObject, "span", "ordax-settings-eyebrow", "OrdaX"),
-      node(documentObject, "h3", "ordax-settings-title", "Ajustes"),
-      node(
-        documentObject,
-        "p",
-        "ordax-settings-subtitle",
-        "Preferências do produto compartilhado. O host apenas persiste ou sincroniza o estado autorizado.",
-      ),
+      node(documentObject, "span", "ordax-settings-eyebrow", "Ajustes"),
+      node(documentObject, "h3", "ordax-settings-title", copy.title),
+      node(documentObject, "p", "ordax-settings-subtitle", copy.subtitle),
     );
     view.append(header);
+  };
+
+  const renderSectionNavigation = (view) => {
+    const navigation = node(documentObject, "nav", "ordax-settings-navigation");
+    navigation.setAttribute("aria-label", "Seções de Ajustes");
+    for (const section of SETTINGS_SECTIONS) {
+      const button = node(documentObject, "button", "ordax-settings-navigation-item", section.label);
+      button.type = "button";
+      button.dataset.settingsSection = section.id;
+      const active = activeSection === section.id;
+      button.dataset.active = String(active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+      navigation.append(button);
+    }
+    view.append(navigation);
   };
 
   const renderPreferences = (view) => {
@@ -287,8 +310,6 @@ export function mountSettingsOverviewControls(
   };
 
   const renderNetwork = (view) => {
-    if (!networkPort && !networkManagementPort) return;
-
     const section = node(documentObject, "section", "ordax-settings-section");
     section.dataset.settingsNetwork = "";
     section.append(
@@ -366,61 +387,18 @@ export function mountSettingsOverviewControls(
     view.append(section);
   };
 
-  const renderHost = (view) => {
-    const section = node(documentObject, "section", "ordax-settings-section");
-    section.append(
-      node(documentObject, "span", "ordax-settings-section-kicker", "Host atual"),
-      node(documentObject, "h4", "ordax-settings-section-title", "Capacidades disponíveis"),
-      node(
-        documentObject,
-        "p",
-        "ordax-settings-section-copy",
-        "A Surface habilita recursos pelo contrato anunciado, nunca pelo nome da plataforma.",
-      ),
-    );
-
-    const list = node(documentObject, "div", "ordax-settings-capabilities");
-    if (hostSnapshot.capabilityIds.length === 0) {
-      list.append(node(documentObject, "p", "ordax-settings-empty", "Nenhuma capacidade adicional declarada."));
-    } else {
-      for (const capabilityId of hostSnapshot.capabilityIds) {
-        const item = node(documentObject, "div", "ordax-settings-capability");
-        item.append(
-          node(documentObject, "span", "ordax-settings-capability-dot"),
-          node(documentObject, "strong", "", CAPABILITY_LABELS[capabilityId] ?? capabilityId),
-          node(documentObject, "small", "", capabilityId),
-        );
-        list.append(item);
-      }
-    }
-    section.append(list);
-
-    const continuity = node(documentObject, "div", "ordax-settings-continuity");
-    const syncAvailable = hostSnapshot.capabilityIds.includes("sync.safe-state");
-    continuity.dataset.state = syncAvailable ? "available" : "local";
-    continuity.append(
-      node(documentObject, "strong", "", syncAvailable ? "Preferências sincronizáveis" : "Preferências locais"),
-      node(
-        documentObject,
-        "span",
-        "",
-        syncAvailable
-          ? "Este host declarou sincronização segura para classes de estado autorizadas."
-          : "As preferências permanecem neste host até existir uma capacidade de sync autorizada.",
-      ),
-    );
-    section.append(continuity);
-    view.append(section);
-  };
-
   const paint = (slot) => {
     slot.replaceChildren();
     slot.dataset.ordaxSettingsOverviewView = "";
+    slot.dataset.settingsSection = activeSection;
     const view = node(documentObject, "div", "ordax-settings-view");
     renderHeader(view);
-    renderPreferences(view);
-    renderNetwork(view);
-    renderHost(view);
+    renderSectionNavigation(view);
+    if (activeSection === "appearance") {
+      renderPreferences(view);
+    } else if (activeSection === "network") {
+      renderNetwork(view);
+    }
     slot.append(view);
   };
 
@@ -508,6 +486,19 @@ export function mountSettingsOverviewControls(
   };
 
   const onClick = (event) => {
+    const sectionButton = event.target.closest("[data-settings-section]");
+    if (
+      sectionButton
+      && root.contains(sectionButton)
+      && validSettingsSection(sectionButton.dataset.settingsSection)
+    ) {
+      activeSection = sectionButton.dataset.settingsSection;
+      selectedNetworkSsid = null;
+      networkManagementMessage = "";
+      replaceView();
+      return;
+    }
+
     const preferenceButton = event.target.closest("[data-settings-preference-id]");
     if (preferenceButton && root.contains(preferenceButton)) {
       preferences.set(
@@ -580,6 +571,18 @@ export function mountSettingsOverviewControls(
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
+  const unsubscribeActivation = activationPort?.subscribe((activation) => {
+    if (
+      activation.appId === "settings"
+      && activation.target !== null
+      && validSettingsSection(activation.target)
+    ) {
+      activeSection = activation.target;
+      selectedNetworkSsid = null;
+      networkManagementMessage = "";
+      replaceView();
+    }
+  });
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
     replaceView();
@@ -604,6 +607,7 @@ export function mountSettingsOverviewControls(
       if (networkManagementPoll !== null) clearInterval(networkManagementPoll);
       unsubscribePreferences?.();
       unsubscribeHost?.();
+      unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
