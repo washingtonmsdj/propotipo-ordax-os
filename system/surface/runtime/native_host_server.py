@@ -1411,6 +1411,94 @@ def import_user_file(
         os.close(directory_fd)
 
 
+def _file_identity(metadata) -> tuple[int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _remove_copy_destination(destination_directory_fd: int, name: str) -> None:
+    try:
+        os.unlink(name, dir_fd=destination_directory_fd)
+    except FileNotFoundError:
+        return
+    os.fsync(destination_directory_fd)
+
+
+def _copy_open_regular_file(
+    source_fd: int,
+    source_before,
+    destination_directory_fd: int,
+    new_name: str,
+    max_bytes: int = MAX_FILE_COPY_BYTES,
+):
+    if not stat.S_ISREG(source_before.st_mode):
+        raise ValueError("file copy requires a regular source file")
+    if source_before.st_size > max_bytes:
+        raise FileSpaceCopyTooLargeError("source file exceeds copy limit")
+
+    destination_fd = None
+    destination_created = False
+    try:
+        destination_fd = os.open(
+            new_name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=destination_directory_fd,
+        )
+        destination_created = True
+
+        copied = 0
+        while True:
+            remaining = max_bytes + 1 - copied
+            chunk = os.read(source_fd, min(65536, remaining))
+            if not chunk:
+                break
+            copied += len(chunk)
+            if copied > max_bytes:
+                raise FileSpaceCopyTooLargeError(
+                    "source file exceeded copy limit during read"
+                )
+
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_fd, view)
+                if written <= 0:
+                    raise OSError(errno.EIO, "copy write made no progress")
+                view = view[written:]
+
+        source_after = os.fstat(source_fd)
+        if (
+            _file_identity(source_before) != _file_identity(source_after)
+            or copied != source_after.st_size
+        ):
+            raise FileSpaceCopyChangedError("source changed while being copied")
+
+        os.fsync(destination_fd)
+        os.close(destination_fd)
+        destination_fd = None
+        os.fsync(destination_directory_fd)
+        return source_after
+    except Exception:
+        if destination_fd is not None:
+            os.close(destination_fd)
+            destination_fd = None
+        if destination_created:
+            _remove_copy_destination(destination_directory_fd, new_name)
+        raise
+    finally:
+        if destination_fd is not None:
+            os.close(destination_fd)
+
+
 def _renameat2_noreplace_between(
     source_directory_fd: int,
     old_name: str,
@@ -1479,6 +1567,7 @@ def move_user_entry(
     source_path: str,
     name: str,
     destination_path: str,
+    max_bytes: int = MAX_FILE_COPY_BYTES,
 ) -> dict:
     if not valid_logical_file_path(source_path):
         raise ValueError("invalid move source path")
@@ -1498,36 +1587,80 @@ def move_user_entry(
     ):
         raise ValueError("cannot move a directory into itself")
 
-    source_descriptor = open_user_directory(user_root, source_path)
-    destination_descriptor = None
+    source_directory_fd = open_user_directory(user_root, source_path)
+    destination_directory_fd = None
+    source_fd = None
     try:
-        metadata = os.stat(name, dir_fd=source_descriptor, follow_symlinks=False)
+        metadata = os.stat(name, dir_fd=source_directory_fd, follow_symlinks=False)
         if stat.S_ISLNK(metadata.st_mode):
             raise ValueError("symbolic links cannot be moved through file-space")
         if not (stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)):
             raise ValueError("unsupported file-space entry kind")
 
-        destination_descriptor = open_user_directory(user_root, destination_path)
+        source_before = None
+        if stat.S_ISREG(metadata.st_mode):
+            source_fd = os.open(
+                name,
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+                dir_fd=source_directory_fd,
+            )
+            source_before = os.fstat(source_fd)
+            if _file_identity(source_before)[:2] != _file_identity(metadata)[:2]:
+                raise FileSpaceCopyChangedError(
+                    "source changed while preparing cross-device move"
+                )
+
+        destination_directory_fd = open_user_directory(user_root, destination_path)
         try:
             _renameat2_noreplace_between(
-                source_descriptor,
+                source_directory_fd,
                 name,
-                destination_descriptor,
+                destination_directory_fd,
                 name,
             )
         except OSError as exc:
-            if exc.errno == errno.EXDEV:
+            if exc.errno != errno.EXDEV:
+                raise
+            if source_fd is None or source_before is None:
                 raise FileSpaceCrossDeviceMoveError(
-                    "cross-device move requires copy-and-verify semantics"
+                    "cross-device directory move is not supported"
                 ) from exc
-            raise
 
-        os.fsync(destination_descriptor)
-        os.fsync(source_descriptor)
+            source_after = _copy_open_regular_file(
+                source_fd,
+                source_before,
+                destination_directory_fd,
+                name,
+                max_bytes=max_bytes,
+            )
+            current = os.stat(
+                name,
+                dir_fd=source_directory_fd,
+                follow_symlinks=False,
+            )
+            if _file_identity(current) != _file_identity(source_after):
+                _remove_copy_destination(destination_directory_fd, name)
+                raise FileSpaceCopyChangedError(
+                    "source path changed before cross-device move commit"
+                )
+
+            try:
+                os.unlink(name, dir_fd=source_directory_fd)
+                os.fsync(source_directory_fd)
+            except Exception:
+                _remove_copy_destination(destination_directory_fd, name)
+                raise
+        else:
+            os.fsync(destination_directory_fd)
+            os.fsync(source_directory_fd)
     finally:
-        if destination_descriptor is not None:
-            os.close(destination_descriptor)
-        os.close(source_descriptor)
+        if source_fd is not None:
+            os.close(source_fd)
+        if destination_directory_fd is not None:
+            os.close(destination_directory_fd)
+        os.close(source_directory_fd)
 
     return list_user_directory(user_root, destination_path)
 
@@ -1552,8 +1685,6 @@ def copy_user_file(
     source_directory_fd = open_user_directory(user_root, source_path)
     destination_directory_fd = None
     source_fd = None
-    destination_fd = None
-    destination_created = False
     try:
         source_fd = os.open(
             name,
@@ -1562,76 +1693,17 @@ def copy_user_file(
             | getattr(os, "O_CLOEXEC", 0),
             dir_fd=source_directory_fd,
         )
-        before = os.fstat(source_fd)
-        if not stat.S_ISREG(before.st_mode):
-            raise ValueError("file copy requires a regular source file")
-        if before.st_size > max_bytes:
-            raise FileSpaceCopyTooLargeError("source file exceeds copy limit")
+        source_before = os.fstat(source_fd)
 
         destination_directory_fd = open_user_directory(user_root, destination_path)
-        destination_fd = os.open(
+        _copy_open_regular_file(
+            source_fd,
+            source_before,
+            destination_directory_fd,
             new_name,
-            os.O_WRONLY
-            | os.O_CREAT
-            | os.O_EXCL
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_CLOEXEC", 0),
-            0o600,
-            dir_fd=destination_directory_fd,
+            max_bytes=max_bytes,
         )
-        destination_created = True
-
-        copied = 0
-        while True:
-            remaining = max_bytes + 1 - copied
-            chunk = os.read(source_fd, min(65536, remaining))
-            if not chunk:
-                break
-            copied += len(chunk)
-            if copied > max_bytes:
-                raise FileSpaceCopyTooLargeError("source file exceeded copy limit during read")
-
-            view = memoryview(chunk)
-            while view:
-                written = os.write(destination_fd, view)
-                if written <= 0:
-                    raise OSError(errno.EIO, "copy write made no progress")
-                view = view[written:]
-
-        after = os.fstat(source_fd)
-        before_identity = (
-            before.st_dev,
-            before.st_ino,
-            before.st_size,
-            before.st_mtime_ns,
-            before.st_ctime_ns,
-        )
-        after_identity = (
-            after.st_dev,
-            after.st_ino,
-            after.st_size,
-            after.st_mtime_ns,
-            after.st_ctime_ns,
-        )
-        if before_identity != after_identity or copied != after.st_size:
-            raise FileSpaceCopyChangedError("source changed while being copied")
-
-        os.fsync(destination_fd)
-        os.fsync(destination_directory_fd)
-    except Exception:
-        if destination_fd is not None:
-            os.close(destination_fd)
-            destination_fd = None
-        if destination_created and destination_directory_fd is not None:
-            try:
-                os.unlink(new_name, dir_fd=destination_directory_fd)
-                os.fsync(destination_directory_fd)
-            except FileNotFoundError:
-                pass
-        raise
     finally:
-        if destination_fd is not None:
-            os.close(destination_fd)
         if source_fd is not None:
             os.close(source_fd)
         if destination_directory_fd is not None:
