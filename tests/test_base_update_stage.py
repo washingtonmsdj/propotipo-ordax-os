@@ -216,6 +216,271 @@ class BaseUpdateStageTests(unittest.TestCase):
             self.assertFalse((esp / "ordax/base/b/vmlinuz").exists())
 
 
+    def legacy_fixture(self, root: Path):
+        esp = root / "legacy-esp"
+        (esp / "loader" / "entries").mkdir(parents=True)
+        (esp / "ordax").mkdir(parents=True)
+        current = esp / "loader/entries/ordax.conf"
+        recovery = esp / "loader/entries/ordax-recovery.conf"
+        legacy_kernel = esp / "ordax/vmlinuz"
+        legacy_initrd = esp / "ordax/initrd.gz"
+        current.write_text(
+            "title OrdaX\n"
+            "linux /ordax/vmlinuz\n"
+            "initrd /ordax/initrd.gz\n"
+            "options console=tty0 ordax.mode=normal\n",
+            encoding="utf-8",
+        )
+        recovery.write_text(
+            "title OrdaX Recovery\n"
+            "linux /ordax/vmlinuz\n"
+            "initrd /ordax/initrd.gz\n"
+            "options console=tty0 ordax.mode=recovery\n",
+            encoding="utf-8",
+        )
+        legacy_kernel.write_bytes(b"legacy-known-good-kernel")
+        legacy_initrd.write_bytes(b"legacy-known-good-initramfs")
+
+        kernel = root / "legacy-candidate-kernel"
+        initrd = root / "legacy-candidate-initrd"
+        kernel.write_bytes(b"new-acpi-kernel")
+        initrd.write_bytes(b"new-acpi-initramfs")
+        candidate = {
+            "release_sha": "d" * 40,
+            "kernel_sha256": digest(kernel.read_bytes()),
+            "initramfs_sha256": digest(initrd.read_bytes()),
+        }
+        return (
+            esp,
+            kernel,
+            initrd,
+            candidate,
+            current,
+            recovery,
+            legacy_kernel,
+            legacy_initrd,
+        )
+
+    def test_legacy_stage_preserves_default_and_enrolls_known_good_as_slot_a(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                current,
+                recovery,
+                legacy_kernel,
+                legacy_initrd,
+            ) = self.legacy_fixture(root)
+            protected_before = {
+                "current": current.read_bytes(),
+                "recovery": recovery.read_bytes(),
+                "kernel": legacy_kernel.read_bytes(),
+                "initrd": legacy_initrd.read_bytes(),
+            }
+
+            result = stage.stage(
+                esp,
+                "legacy",
+                candidate,
+                kernel,
+                initrd,
+            )
+
+            self.assertEqual(result["active_slot"], "legacy")
+            self.assertEqual(result["previous_slot"], "a")
+            self.assertEqual(result["candidate_slot"], "b")
+            self.assertTrue(result["legacy_enrollment"])
+            self.assertTrue(result["legacy_current_entry_unchanged"])
+            self.assertFalse(result["legacy_baseline_reused"])
+            self.assertTrue(result["activation_ready"])
+            self.assertFalse(result["reboot_requested"])
+
+            self.assertEqual(current.read_bytes(), protected_before["current"])
+            self.assertEqual(recovery.read_bytes(), protected_before["recovery"])
+            self.assertEqual(legacy_kernel.read_bytes(), protected_before["kernel"])
+            self.assertEqual(legacy_initrd.read_bytes(), protected_before["initrd"])
+            self.assertEqual(
+                (esp / "ordax/base/a/vmlinuz").read_bytes(),
+                protected_before["kernel"],
+            )
+            self.assertEqual(
+                (esp / "ordax/base/a/initrd.gz").read_bytes(),
+                protected_before["initrd"],
+            )
+            self.assertEqual(
+                (esp / "ordax/base/b/vmlinuz").read_bytes(),
+                kernel.read_bytes(),
+            )
+            self.assertEqual(
+                (esp / "ordax/base/b/initrd.gz").read_bytes(),
+                initrd.read_bytes(),
+            )
+            candidate_entry = (
+                esp / "loader/entries/ordax-candidate+01-00.conf"
+            ).read_text(encoding="utf-8")
+            self.assertIn("linux /ordax/base/b/vmlinuz", candidate_entry)
+            self.assertIn("ordax.base_slot=b", candidate_entry)
+            self.assertIn(
+                "ordax.base_candidate=" + candidate["release_sha"],
+                candidate_entry,
+            )
+
+    def test_legacy_matching_slot_a_is_idempotently_reused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                _current,
+                _recovery,
+                legacy_kernel,
+                legacy_initrd,
+            ) = self.legacy_fixture(root)
+            baseline = esp / "ordax/base/a"
+            baseline.mkdir(parents=True)
+            (baseline / "vmlinuz").write_bytes(legacy_kernel.read_bytes())
+            (baseline / "initrd.gz").write_bytes(legacy_initrd.read_bytes())
+
+            result = stage.stage(
+                esp,
+                "legacy",
+                candidate,
+                kernel,
+                initrd,
+            )
+
+            self.assertTrue(result["legacy_baseline_reused"])
+            self.assertEqual(
+                (baseline / "vmlinuz").read_bytes(),
+                legacy_kernel.read_bytes(),
+            )
+            self.assertEqual(
+                (baseline / "initrd.gz").read_bytes(),
+                legacy_initrd.read_bytes(),
+            )
+
+    def test_legacy_conflicting_baseline_fails_before_any_baseline_or_candidate_write(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                _current,
+                _recovery,
+                _legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            baseline = esp / "ordax/base/a"
+            baseline.mkdir(parents=True)
+            (baseline / "initrd.gz").write_bytes(b"conflicting-old-bytes")
+
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "baseline conflicts",
+            ):
+                stage.stage(
+                    esp,
+                    "legacy",
+                    candidate,
+                    kernel,
+                    initrd,
+                )
+
+            self.assertFalse((baseline / "vmlinuz").exists())
+            self.assertEqual(
+                (baseline / "initrd.gz").read_bytes(),
+                b"conflicting-old-bytes",
+            )
+            self.assertFalse((esp / "ordax/base/b/vmlinuz").exists())
+            self.assertFalse(
+                (esp / "loader/entries/ordax-candidate+01-00.conf").exists()
+            )
+
+    def test_legacy_candidate_marker_blocks_before_slot_a_enrollment(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                _current,
+                _recovery,
+                _legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            marker = esp / "loader/entries/ordax-candidate+01-00.conf"
+            marker.write_text("stale\n", encoding="utf-8")
+
+            with self.assertRaises(stage.StageError):
+                stage.stage(
+                    esp,
+                    "legacy",
+                    candidate,
+                    kernel,
+                    initrd,
+                )
+
+            self.assertFalse((esp / "ordax/base/a/vmlinuz").exists())
+            self.assertFalse((esp / "ordax/base/b/vmlinuz").exists())
+            self.assertEqual(marker.read_text(encoding="utf-8"), "stale\n")
+
+    def test_legacy_symlink_source_and_ab_managed_current_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                current,
+                _recovery,
+                legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            target = root / "outside-kernel"
+            target.write_bytes(legacy_kernel.read_bytes())
+            legacy_kernel.unlink()
+            legacy_kernel.symlink_to(target)
+
+            with self.assertRaises(stage.StageError):
+                stage.stage(esp, "legacy", candidate, kernel, initrd)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                current,
+                _recovery,
+                _legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            current.write_text(
+                current.read_text(encoding="utf-8").replace(
+                    "ordax.mode=normal",
+                    "ordax.mode=normal ordax.base_slot=a",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "already A/B-managed",
+            ):
+                stage.stage(esp, "legacy", candidate, kernel, initrd)
+
+            self.assertFalse((esp / "ordax/base/a/vmlinuz").exists())
+
     def test_signed_release_descriptor_is_required_before_staging(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -268,6 +533,7 @@ class BaseUpdateStageTests(unittest.TestCase):
         text = MODULE_PATH.read_text(encoding="utf-8")
         self.assertNotIn('parser.add_argument("--candidate"', text)
         self.assertIn('parser.add_argument("--envelope"', text)
+        self.assertIn('choices=("a", "b", "legacy")', text)
         self.assertNotIn('parser.add_argument("--trust"', text)
         self.assertNotIn('parser.add_argument("--release-agent"', text)
         self.assertNotIn('parser.add_argument("--releases-root"', text)
