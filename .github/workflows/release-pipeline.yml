@@ -207,9 +207,29 @@ jobs:
           )
           PY
 
+          handoff="$work/OrdaX-Public-Trust-Handoff.zip"
+          python - "$public" "$handoff" <<'PY'
+          import pathlib, sys, zipfile
+          source = pathlib.Path(sys.argv[1])
+          destination = pathlib.Path(sys.argv[2])
+          names = [
+              'release-ed25519.json',
+              'ceremony-public-evidence.json',
+              'trust-proof-manifest.json',
+              'trust-proof-recovery-envelope.json',
+          ]
+          with zipfile.ZipFile(
+              destination,
+              'w',
+              compression=zipfile.ZIP_DEFLATED,
+          ) as archive:
+              for name in names:
+                  archive.write(source / name, arcname=name)
+          PY
+
           python tools/release-signing/promote_public_trust.py check \
             --repo-root "$PWD" \
-            --promotion-dir "$public" \
+            --promotion-zip "$handoff" \
             --verifier "$signer" \
             > "$work/promotion-check.json"
 
