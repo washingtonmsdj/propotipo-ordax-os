@@ -89,6 +89,8 @@ export function mountFileSpaceControls(
   let copyDraft = "";
   let movingEntry = null;
   let searchQuery = "";
+  let sortKey = "name";
+  let sortDirection = "asc";
   let navigationHistory = [];
   let navigationIndex = -1;
 
@@ -219,13 +221,75 @@ export function mountFileSpaceControls(
   const normalizedSearchQuery = () =>
     searchQuery.trim().toLocaleLowerCase(FILE_SEARCH_LOCALE);
 
+  const compareEntryNames = (left, right) =>
+    left.name.localeCompare(right.name, FILE_SEARCH_LOCALE, {
+      numeric: true,
+      sensitivity: "base",
+    });
+
   const visibleEntries = () => {
     if (!listing) return [];
     const query = normalizedSearchQuery();
-    if (!query) return listing.entries;
-    return listing.entries.filter((entry) =>
-      entry.name.toLocaleLowerCase(FILE_SEARCH_LOCALE).includes(query),
+    const filtered = query
+      ? listing.entries.filter((entry) =>
+          entry.name.toLocaleLowerCase(FILE_SEARCH_LOCALE).includes(query),
+        )
+      : [...listing.entries];
+
+    const direction = sortDirection === "desc" ? -1 : 1;
+    filtered.sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind === "directory" ? -1 : 1;
+      }
+
+      let compared = 0;
+      if (sortKey === "type") {
+        compared = left.kind.localeCompare(right.kind, "en");
+      } else if (sortKey === "size") {
+        compared = left.size - right.size;
+      } else {
+        compared = compareEntryNames(left, right);
+      }
+      if (compared === 0) compared = compareEntryNames(left, right);
+      return compared * direction;
+    });
+    return filtered;
+  };
+
+  const changeSort = (key) => {
+    if (!["name", "type", "size"].includes(key)) return;
+    if (sortKey === key) {
+      sortDirection = sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      sortKey = key;
+      sortDirection = "asc";
+    }
+    replaceView();
+  };
+
+  const sortButton = (label, key) => {
+    const button = node(documentObject, "button", "ordax-files-sort");
+    button.type = "button";
+    button.dataset.fileSortKey = key;
+    const active = sortKey === key;
+    button.dataset.active = String(active);
+    button.setAttribute("aria-pressed", String(active));
+    button.setAttribute(
+      "aria-label",
+      active
+        ? `${label}, ordenação ${sortDirection === "asc" ? "crescente" : "decrescente"}`
+        : `Ordenar por ${label.toLocaleLowerCase(FILE_SEARCH_LOCALE)}`,
     );
+    button.append(
+      node(documentObject, "span", "", label),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-sort-indicator",
+        active ? (sortDirection === "asc" ? "↑" : "↓") : "",
+      ),
+    );
+    return button;
   };
 
   const selectionIsVisible = () => {
@@ -316,9 +380,9 @@ export function mountFileSpaceControls(
     list.setAttribute("aria-label", "Itens da pasta");
     const header = node(documentObject, "div", "ordax-files-list-header");
     header.append(
-      node(documentObject, "span", "", "Nome"),
-      node(documentObject, "span", "", "Tipo"),
-      node(documentObject, "span", "", "Tamanho"),
+      sortButton("Nome", "name"),
+      sortButton("Tipo", "type"),
+      sortButton("Tamanho", "size"),
     );
     list.append(header);
 
@@ -990,6 +1054,11 @@ export function mountFileSpaceControls(
   };
 
   const onClick = (event) => {
+    const sort = event.target.closest("[data-file-sort-key]");
+    if (sort && root.contains(sort) && !pending) {
+      changeSort(sort.dataset.fileSortKey);
+      return;
+    }
     const selected = event.target.closest("[data-file-select-path]");
     if (selected && root.contains(selected)) {
       if (selectedPath === selected.dataset.fileSelectPath) {
