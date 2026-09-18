@@ -169,6 +169,15 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         }
         write_json(repo / "docs/contracts/release-trust-policy.json", policy)
 
+        fixture_kernel = b"fixture-candidate-kernel"
+        fixture_initramfs = b"fixture-candidate-initramfs"
+        kernel_path = repo / "bootstrap/kernel/vmlinuz"
+        initramfs_path = repo / "bootstrap/initramfs/initramfs.cpio.gz"
+        kernel_path.parent.mkdir(parents=True, exist_ok=True)
+        initramfs_path.parent.mkdir(parents=True, exist_ok=True)
+        kernel_path.write_bytes(fixture_kernel)
+        initramfs_path.write_bytes(fixture_initramfs)
+
         minimal = {
             "$schema": "prototype-ordax.minimal-bootstrap/4",
             "status": "canonical-bytes-resolved",
@@ -178,7 +187,26 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 {
                     "id": "kernel",
                     "resolved": True,
-                    "artifacts": [{"source_path": "bootstrap/kernel/vmlinuz"}],
+                    "artifacts": [
+                        {
+                            "source_path": "bootstrap/kernel/vmlinuz",
+                            "target_path": "/ordax/vmlinuz",
+                            "sha256": sha256(fixture_kernel),
+                            "mode": "0644",
+                        }
+                    ],
+                },
+                {
+                    "id": "initramfs",
+                    "resolved": True,
+                    "artifacts": [
+                        {
+                            "source_path": "bootstrap/initramfs/initramfs.cpio.gz",
+                            "target_path": "/ordax/initrd.gz",
+                            "sha256": sha256(fixture_initramfs),
+                            "mode": "0644",
+                        }
+                    ],
                 },
                 {
                     "id": "bootstrap-release-trust",
@@ -327,55 +355,94 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             self.assertEqual(persisted["sourceSha"], "b" * 40)
             self.assertTrue(persisted["physicalTrustEnrolled"])
 
-    def test_pending_base_update_materializes_exact_current_signed_release_without_activation(self):
+    def test_pending_base_update_materializes_then_stages_without_activation(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = "f" * 40
             repo, state, physical, _trust = self.fixture(Path(temporary))
             (state / "boot-refresh-required").write_text(source + "\n", encoding="ascii")
 
-            channel = physical / "bootstrap/config/release-envelope-url"
-            channel.parent.mkdir(parents=True, exist_ok=True)
-            channel.write_text(
-                "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json\n",
-                encoding="ascii",
-            )
             old = "a" * 40
             (physical / "releases" / old).mkdir(parents=True)
             (physical / "current").symlink_to(Path("releases") / old)
-            expected_release = physical / "releases" / source
-            expected_release.mkdir(parents=True)
-            receipt = {
-                "status": "materialized",
-                "source_commit": source,
-                "release_path": str(expected_release),
-                "artifacts": ["system.tar"],
+
+            order = []
+
+            def materialize(_physical_root, expected_source):
+                self.assertEqual(expected_source, source)
+                order.append("materialize")
+                return source, False
+
+            stage_receipt = {
+                "$schema": "prototype-ordax.base-update-stage-result/1",
+                "release_sha": source,
+                "active_slot": "legacy",
+                "previous_slot": "a",
+                "candidate_slot": "b",
+                "legacy_enrollment": True,
+                "legacy_current_entry_unchanged": True,
+                "legacy_baseline_reused": False,
+                "kernel_target": "/ordax/base/b/vmlinuz",
+                "initramfs_target": "/ordax/base/b/initrd.gz",
+                "candidate_entry": "/loader/entries/ordax-candidate+01-00.conf",
+                "activation_ready": True,
+                "efi_variable_written": False,
+                "reboot_requested": False,
                 "idempotent": False,
             }
 
-            completed = subprocess.CompletedProcess(
-                args=[],
-                returncode=0,
-                stdout=(json.dumps(receipt) + "\n").encode("utf-8"),
-                stderr=b"",
-            )
-            with mock.patch.object(owner.subprocess, "run", return_value=completed) as run:
+            def stage_only(_repo_root, _physical_root, expected_source):
+                self.assertEqual(expected_source, source)
+                order.append("stage")
+                return stage_receipt, True
+
+            with (
+                mock.patch.object(
+                    owner,
+                    "_materialize_signed_release",
+                    side_effect=materialize,
+                ),
+                mock.patch.object(
+                    owner,
+                    "_stage_materialized_release",
+                    side_effect=stage_only,
+                ),
+            ):
                 status = owner.run_once(repo, state, physical, source)
 
+            self.assertEqual(order, ["materialize", "stage"])
             self.assertEqual(status["status"], "idle")
-            self.assertEqual(status["phase"], "waiting-for-base-staging-owner")
+            self.assertEqual(
+                status["phase"],
+                "waiting-for-candidate-activation-owner",
+            )
             self.assertTrue(status["signedReleaseMaterialized"])
             self.assertEqual(status["materializedReleaseSha"], source)
             self.assertEqual(status["releaseMaterializationState"], "materialized")
-            command = run.call_args.args[0]
-            self.assertEqual(command[1], "materialize")
-            self.assertIn("--expected-commit", command)
-            self.assertEqual(command[command.index("--expected-commit") + 1], source)
-            self.assertNotIn("install", command)
-            self.assertEqual((physical / "current").readlink(), Path("releases") / old)
-            self.assertFalse(status["kernelStaged"])
+            self.assertTrue(status["kernelStaged"])
+            self.assertEqual(status["stagedCandidateSlot"], "b")
+            self.assertFalse(status["stageIdempotent"])
             self.assertFalse(status["candidateArmed"])
             self.assertFalse(status["rebootRequested"])
             self.assertFalse(status["promotionAttempted"])
+            self.assertEqual((physical / "current").readlink(), Path("releases") / old)
+
+    def test_candidate_source_paths_are_bound_to_minimal_bootstrap_hashes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, _state, _physical, _trust = self.fixture(Path(temporary))
+            kernel, initramfs = owner._candidate_sources_from_minimal(repo)
+            self.assertEqual(kernel, repo / "bootstrap/kernel/vmlinuz")
+            self.assertEqual(
+                initramfs,
+                repo / "bootstrap/initramfs/initramfs.cpio.gz",
+            )
+
+            kernel.write_bytes(b"tampered")
+            with self.assertRaisesRegex(
+                owner.OwnerError,
+                "kernel candidate differs",
+            ):
+                owner._candidate_sources_from_minimal(repo)
+
 
     def test_hash_pinned_release_agent_refresh_is_atomic_and_idempotent(self):
         class FakeResponse:
