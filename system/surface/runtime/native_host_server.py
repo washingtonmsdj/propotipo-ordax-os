@@ -10,7 +10,7 @@ import math
 import os
 import re
 import secrets
-import subprocess
+import stat
 import sys
 import threading
 from functools import partial
@@ -34,47 +34,34 @@ MAX_PREFERENCE_BODY = 8192
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
-POWER_COMMANDS = {
-    "restart": ("/bin/busybox", "reboot", "-f"),
-    "shutdown": ("/bin/busybox", "poweroff", "-f"),
-}
+POWER_ACTIONS = ("restart", "shutdown")
+DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 
 
-def busybox_applets() -> set[str]:
-    completed = subprocess.run(
-        ["/bin/busybox", "--list"],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return set()
-    return {line.strip() for line in completed.stdout.splitlines() if line.strip()}
-
-
-def supported_power_actions() -> tuple[str, ...]:
-    applets = busybox_applets()
-    actions = []
-    if "reboot" in applets:
-        actions.append("restart")
-    if "poweroff" in applets:
-        actions.append("shutdown")
-    return tuple(actions)
-
-
-def perform_power_action(action: str) -> None:
-    command = POWER_COMMANDS[action]
+def supported_power_actions(power_request_path: str) -> tuple[str, ...]:
     try:
-        completed = subprocess.run(command, check=False)
-        if completed.returncode != 0:
-            print(
-                f"ordax-native-host: power action {action} exited with status {completed.returncode}",
-                file=sys.stderr,
-                flush=True,
-            )
-    except Exception as exc:  # pragma: no cover - physical-host diagnostic path
-        print(f"ordax-native-host: power action {action} failed: {exc}", file=sys.stderr, flush=True)
+        metadata = os.stat(power_request_path)
+    except OSError:
+        return ()
+    if not stat.S_ISFIFO(metadata.st_mode) or not os.access(power_request_path, os.W_OK):
+        return ()
+    return POWER_ACTIONS
+
+
+def queue_power_action(power_request_path: str, action: str) -> None:
+    if action not in POWER_ACTIONS:
+        raise ValueError("unsupported power action")
+    descriptor = os.open(
+        power_request_path,
+        os.O_WRONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0),
+    )
+    try:
+        payload = f"{action}\n".encode("ascii")
+        written = os.write(descriptor, payload)
+        if written != len(payload):
+            raise OSError("short write to host power broker")
+    finally:
+        os.close(descriptor)
 
 
 def read_update_state() -> dict | None:
@@ -318,11 +305,12 @@ class NativeHostServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler_class, *, user_root: str):
+    def __init__(self, server_address, handler_class, *, user_root: str, power_request_path: str):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
         self.health_token = secrets.token_urlsafe(32)
-        self.supported_actions = supported_power_actions()
+        self.power_request_path = power_request_path
+        self.supported_actions = supported_power_actions(power_request_path)
         self.user_root = user_root
 
 
@@ -522,10 +510,17 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             self._empty(409)
             return
 
+        try:
+            queue_power_action(self.server.power_request_path, action)
+        except (OSError, ValueError) as exc:
+            print(
+                f"ordax-native-host: could not queue host power action {action}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            self._empty(503)
+            return
         self._write_json(202, {"accepted": True, "action": action})
-        timer = threading.Timer(0.35, perform_power_action, args=(action,))
-        timer.daemon = True
-        timer.start()
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"ordax-native-host: {self.address_string()} - {fmt % args}", file=sys.stderr, flush=True)
@@ -537,13 +532,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", default=8765, type=int)
     parser.add_argument("--directory", default="/srv/ordax-system")
     parser.add_argument("--user-root", default="/var/lib/ordax-user")
+    parser.add_argument("--power-request", default=DEFAULT_POWER_REQUEST_PATH)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     handler = partial(NativeHostHandler, directory=args.directory)
-    server = NativeHostServer((args.bind, args.port), handler, user_root=args.user_root)
+    server = NativeHostServer(
+        (args.bind, args.port),
+        handler,
+        user_root=args.user_root,
+        power_request_path=args.power_request,
+    )
     print(
         "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s"
         % (
