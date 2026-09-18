@@ -4,6 +4,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SYSTEM_ENTRYPOINT = ROOT / "system" / "entrypoint"
+SYSTEM_SUPERVISOR = ROOT / "system" / "supervisor"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 NATIVE_UPDATE_ADAPTER = ROOT / "system" / "adapters" / "native" / "update-runtime.mjs"
@@ -18,7 +19,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         subprocess.run(["python3", "-m", "py_compile", str(NATIVE_HOST_SERVER)], check=True)
 
     def test_supervisor_polls_git_without_rebooting_for_normal_updates(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}', text)
         self.assertIn('REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}', text)
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
@@ -36,7 +37,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("poweroff -f", text)
 
     def test_git_update_operations_are_bounded(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('/bin/busybox timeout -k 5 "$timeout_seconds"', text)
         self.assertIn('-c http.lowSpeedLimit=1', text)
         self.assertIn('-c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME"', text)
@@ -46,7 +47,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('write_update_state "$old_sha" pull-error none', text)
 
     def test_hot_update_checkout_is_owned_by_supervisor(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("apply_remote_checkout()", text)
         self.assertIn('fetch --no-tags origin', text)
         self.assertIn('merge-base --is-ancestor "$previous_sha" "$expected_sha"', text)
@@ -57,7 +58,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn('/usr/local/bin/ordax-pull', text)
 
     def test_live_safe_and_host_changes_have_distinct_apply_modes(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn(
             "system/apps/*|system/adapters/*|system/contracts/*|system/services/*|system/composition/*|system/surface/ui/*",
             text,
@@ -71,20 +72,20 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('exec "$SYSTEM_ENTRYPOINT"', text)
 
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("boot/*|bootstrap/*", text)
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
         self.assertIn("boot refresh is marked pending", text)
 
     def test_rollback_pin_disables_automatic_pull(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("PINNED_FILE=$STATE_DIR/pinned-commit", text)
         self.assertIn('if [ -s "$PINNED_FILE" ]', text)
         self.assertIn('write_update_state "$current" pinned none', text)
 
     def test_failed_update_is_rolled_back_and_rejected(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("REJECTED_FILE=$STATE_DIR/rejected-commit", text)
         self.assertIn("rollback_update()", text)
         self.assertIn('reset --hard "$previous_sha"', text)
@@ -94,20 +95,20 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("validate_updated_tree", text)
 
     def test_healthy_current_checkout_clears_stale_rejection(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('healthy_sha=$(read_state_value "$HEALTH_FILE")', text)
         self.assertIn('[ "$rejected_sha" = "$current" ] && [ "$healthy_sha" = "$current" ]', text)
         self.assertIn('rm -f "$REJECTED_FILE"', text)
         self.assertIn('cleared stale rejected state for healthy current checkout', text)
 
     def test_host_base_telemetry_changes_restart_surface(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("system/services/telemetry/base-agent.sh", text)
         self.assertIn("system/services/telemetry/relay.json", text)
         self.assertIn("surface_host_changed=1", text)
 
     def test_live_reload_requires_surface_health_acknowledgement(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
         self.assertIn("wait_for_surface_health", text)
         self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
@@ -153,7 +154,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("rejectedSha", controls)
 
     def test_update_state_carries_operator_visible_metadata(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('"targetSha":"%s"', text)
         self.assertIn('"phase":"%s"', text)
         self.assertIn('"attemptId":"%s"', text)
@@ -167,7 +168,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("record_applied", text)
 
     def test_update_transaction_phases_are_explicit_and_bounded(self):
-        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('set_update_context fetching "$remote_sha" "$attempt_id" ""', text)
         self.assertIn('set_update_context validating "$new_sha" "$attempt_id" ""', text)
         self.assertIn('set_update_context health-wait "$new_sha" "$attempt_id" ""', text)
@@ -183,6 +184,30 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('"Tentativa"', controls)
         self.assertIn('"Diagnóstico"', controls)
         self.assertIn("lastError", controls)
+
+    def test_guardian_owns_supervisor_lifetime_without_git_or_network(self):
+        guardian = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        supervisor = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("SUPERVISOR=$SYSTEM_ROOT/supervisor", guardian)
+        self.assertIn("ORDAX_SUPERVISOR_STALE_SECONDS:-120", guardian)
+        self.assertIn('/bin/busybox stat -c %Y "$UPDATE_STATE"', guardian)
+        self.assertIn("supervisor heartbeat stale", guardian)
+        self.assertIn('exec "$SYSTEM_ENTRYPOINT"', guardian)
+        self.assertIn("supervisor requested guardian refresh", guardian)
+        self.assertNotIn("ls-remote", guardian)
+        self.assertNotIn("fetch --no-tags", guardian)
+        self.assertNotIn("reset --hard", guardian)
+        self.assertNotIn("surface/entrypoint", guardian)
+        self.assertIn("SURFACE_ENTRYPOINT=$SYSTEM_ROOT/surface/entrypoint", supervisor)
+
+    def test_supervisor_updates_refresh_guardian_through_exit_75(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("system/entrypoint|system/supervisor)", text)
+        self.assertIn("SUPERVISOR_SCRIPT=$SYSTEM_ROOT/supervisor", text)
+        self.assertIn('/bin/sh -n "$SUPERVISOR_SCRIPT"', text)
+        self.assertIn("asking guardian to restart supervisor without reboot", text)
+        self.assertIn("exit 75", text)
+        self.assertNotIn('exec "$SYSTEM_ENTRYPOINT"', text)
 
     def test_surface_launcher_is_gracefully_restartable(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
