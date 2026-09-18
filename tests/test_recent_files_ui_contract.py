@@ -40,7 +40,7 @@ class RecentFilesUiContractTests(unittest.TestCase):
         self.assertIn("createRecentFilesRuntime", composition)
         self.assertIn("const recentFiles = fileSpace === null ? null", composition)
         self.assertIn(
-            "mountFileSpaceControls(root, fileSpace, appActivation, surface, recentFiles)",
+            "{ recentFiles, projects }",
             composition,
         )
 

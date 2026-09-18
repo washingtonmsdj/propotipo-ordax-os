@@ -11,6 +11,11 @@ import {
   assertRecentFilesPort,
   validateRecentFilesSnapshot,
 } from "../../contracts/recent-files.mjs";
+import {
+  MAX_PROJECT_NAME_LENGTH,
+  assertProjectCatalogPort,
+  validateProjectCatalogSnapshot,
+} from "../../contracts/project-catalog.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
@@ -72,7 +77,7 @@ export function mountFileSpaceControls(
   fileSpace = null,
   appActivation = null,
   surfaceLifecycle = null,
-  recentFiles = null,
+  resources = {},
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("File-space controls require a Surface root Element");
@@ -82,7 +87,10 @@ export function mountFileSpaceControls(
   if (!port) {
     return Object.freeze({ destroy() {} });
   }
+  const recentFiles = resources?.recentFiles ?? null;
+  const projects = resources?.projects ?? null;
   const recentPort = recentFiles === null ? null : assertRecentFilesPort(recentFiles);
+  const projectPort = projects === null ? null : assertProjectCatalogPort(projects);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -113,6 +121,9 @@ export function mountFileSpaceControls(
   let recentMode = false;
   let selectedRecentPath = null;
   let recentSearchQuery = "";
+  let projectSnapshot = projectPort?.getSnapshot() ?? null;
+  let creatingProject = false;
+  let projectDraft = "";
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -130,6 +141,9 @@ export function mountFileSpaceControls(
     }
     if (element.dataset.fileSearch !== undefined) {
       return Object.freeze({ kind: "search", value: "" });
+    }
+    if (element.dataset.fileProjectName !== undefined) {
+      return Object.freeze({ kind: "project-name", value: "" });
     }
     if (element.dataset.fileDirectoryName !== undefined) {
       return Object.freeze({ kind: "directory-name", value: "" });
@@ -274,6 +288,20 @@ export function mountFileSpaceControls(
         container.append(recent);
       }
     });
+
+    if (projectPort) {
+      container.append(node(documentObject, "p", "ordax-files-section-label", "Projetos"));
+      for (const project of projectSnapshot?.projects ?? []) {
+        const button = node(documentObject, "button", "ordax-files-location", project.name);
+        button.type = "button";
+        button.dataset.fileOpenProject = project.id;
+        button.title = project.path;
+        const active = Boolean(!recentMode && listing?.path === project.path);
+        button.dataset.active = String(active);
+        button.setAttribute("aria-current", active ? "page" : "false");
+        container.append(button);
+      }
+    }
   };
 
   const parentPath = (path) => {
@@ -333,6 +361,27 @@ export function mountFileSpaceControls(
     cancel.type = "button";
     cancel.dataset.fileCreateCancel = "";
     cancel.disabled = pending;
+    form.append(input, confirm, cancel);
+    container.append(form);
+  };
+
+  const renderCreateProject = (container) => {
+    if (!creatingProject || !projectPort || !listing || recentMode) return;
+    const form = node(documentObject, "div", "ordax-files-create");
+    const input = node(documentObject, "input", "ordax-files-create-input");
+    input.type = "text";
+    input.maxLength = MAX_PROJECT_NAME_LENGTH;
+    input.autocomplete = "off";
+    input.placeholder = "Nome do projeto";
+    input.value = projectDraft;
+    input.dataset.fileProjectName = "";
+    input.setAttribute("aria-label", "Nome do projeto");
+    const confirm = node(documentObject, "button", "ordax-files-action ordax-files-action-primary", "Adicionar");
+    confirm.type = "button";
+    confirm.dataset.fileProjectCreate = "";
+    const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+    cancel.type = "button";
+    cancel.dataset.fileProjectCreateCancel = "";
     form.append(input, confirm, cancel);
     container.append(form);
   };
@@ -976,6 +1025,49 @@ export function mountFileSpaceControls(
     );
   };
 
+  const createProject = () => {
+    if (!projectPort || !listing || listing.path === "/" || pending) return;
+    try {
+      projectSnapshot = projectPort.create({ name: projectDraft, path: listing.path });
+      creatingProject = false;
+      projectDraft = "";
+      message = "Projeto adicionado. A pasta e os arquivos permanecem no Meu espaço.";
+    } catch {
+      message = "Não foi possível adicionar esta pasta como projeto.";
+    }
+    replaceView();
+  };
+
+  const openProject = async (projectId) => {
+    if (!projectPort) return;
+    const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
+    if (!project) return;
+    const loaded = await load(project.path);
+    if (destroyed) return;
+    if (!loaded) {
+      message = "A pasta vinculada a este projeto não está disponível. A referência foi preservada.";
+      replaceView();
+      return;
+    }
+    try {
+      projectSnapshot = projectPort.recordOpened(projectId);
+    } catch {
+      message = "A pasta foi aberta, mas a atividade do projeto não pôde ser atualizada.";
+      replaceView();
+    }
+  };
+
+  const removeProject = (projectId) => {
+    if (!projectPort) return;
+    try {
+      projectSnapshot = projectPort.remove(projectId);
+      message = "Projeto removido do catálogo. Nenhum arquivo foi apagado.";
+    } catch {
+      message = "Não foi possível remover este projeto do catálogo.";
+    }
+    replaceView();
+  };
+
   const enterRecentMode = () => {
     if (!recentPort) return;
     requestOrdinal += 1;
@@ -985,6 +1077,8 @@ export function mountFileSpaceControls(
     message = null;
     transferEntry = null;
     creatingDirectory = false;
+    creatingProject = false;
+    projectDraft = "";
     renamingPath = null;
     copyingPath = null;
     previewRequestOrdinal += 1;
@@ -1103,11 +1197,29 @@ export function mountFileSpaceControls(
     importPicker.dataset.fileImportPicker = "";
     importPicker.setAttribute("aria-label", "Escolher arquivo para importar");
 
+    const addProject = node(documentObject, "button", "ordax-files-action", "Adicionar projeto");
+    addProject.type = "button";
+    addProject.dataset.fileProjectCreateStart = "";
+    addProject.disabled = Boolean(
+      pending
+      || !projectPort
+      || !listing
+      || listing.path === "/"
+      || projectSnapshot?.projects.some((project) => project.path === listing.path)
+    );
     const create = node(documentObject, "button", "ordax-files-action ordax-files-action-primary", "Nova pasta");
     create.type = "button";
     create.dataset.fileCreateToggle = "";
     create.disabled = pending || !listing;
-    actions.append(refresh, importFile, create, importPicker);
+    actions.append(refresh, importFile, addProject);
+    const currentProject = projectSnapshot?.projects.find((project) => project.path === listing?.path);
+    if (currentProject) {
+      const removeProject = node(documentObject, "button", "ordax-files-action", "Remover projeto");
+      removeProject.type = "button";
+      removeProject.dataset.fileProjectRemove = currentProject.id;
+      actions.append(removeProject);
+    }
+    actions.append(create, importPicker);
     toolbar.append(navigation, breadcrumb, search, actions);
     content.append(toolbar);
 
@@ -1129,6 +1241,7 @@ export function mountFileSpaceControls(
 
     renderTransferOperation(content);
     renderCreateDirectory(content);
+    renderCreateProject(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
     renderSelectionDetails(content);
@@ -1643,6 +1756,38 @@ export function mountFileSpaceControls(
   };
 
   const onClick = (event) => {
+    const projectLocation = event.target.closest("[data-file-open-project]");
+    if (projectLocation && root.contains(projectLocation) && projectPort) {
+      void openProject(projectLocation.dataset.fileOpenProject);
+      return;
+    }
+    const projectStart = event.target.closest("[data-file-project-create-start]");
+    if (projectStart && root.contains(projectStart) && projectPort && listing && listing.path !== "/") {
+      creatingProject = true;
+      projectDraft = breadcrumbParts(listing.path).at(-1) ?? "Projeto";
+      message = null;
+      requestFocus("project-name");
+      replaceView();
+      return;
+    }
+    const projectCreate = event.target.closest("[data-file-project-create]");
+    if (projectCreate && root.contains(projectCreate)) {
+      createProject();
+      return;
+    }
+    const projectCancel = event.target.closest("[data-file-project-create-cancel]");
+    if (projectCancel && root.contains(projectCancel)) {
+      creatingProject = false;
+      projectDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
+    const projectRemove = event.target.closest("[data-file-project-remove]");
+    if (projectRemove && root.contains(projectRemove) && projectPort) {
+      removeProject(projectRemove.dataset.fileProjectRemove);
+      return;
+    }
     const recentLocation = event.target.closest("[data-file-open-recent]");
     if (recentLocation && root.contains(recentLocation) && recentPort) {
       enterRecentMode();
@@ -1962,6 +2107,8 @@ export function mountFileSpaceControls(
       }
       message = null;
       replaceView();
+    } else if (event.target.matches?.("[data-file-project-name]")) {
+      projectDraft = String(event.target.value ?? "").slice(0, MAX_PROJECT_NAME_LENGTH);
     } else if (event.target.matches?.("[data-file-directory-name]")) {
       directoryDraft = event.target.value;
     } else if (event.target.matches?.("[data-file-rename-name]")) {
@@ -2052,6 +2199,20 @@ export function mountFileSpaceControls(
       return;
     }
 
+    if (event.target.matches?.("[data-file-project-name]")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        createProject();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        creatingProject = false;
+        projectDraft = "";
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+
     if (event.target.matches?.("[data-file-directory-name]")) {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -2134,6 +2295,11 @@ export function mountFileSpaceControls(
     }
     if (recentMode) replaceView();
   });
+  const unsubscribeProjects = projectPort?.subscribe((snapshot) => {
+    if (destroyed) return;
+    projectSnapshot = validateProjectCatalogSnapshot(snapshot);
+    replaceView();
+  });
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (activation.appId === "files" && activation.target) {
@@ -2150,6 +2316,7 @@ export function mountFileSpaceControls(
       previewRequestOrdinal += 1;
       unsubscribeActivation?.();
       unsubscribeRecent?.();
+      unsubscribeProjects?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.removeEventListener("change", onChange);
