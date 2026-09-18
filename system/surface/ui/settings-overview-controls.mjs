@@ -89,7 +89,9 @@ export function mountSettingsOverviewControls(
   let networkManagementPending = false;
   let networkManagementMessage = "";
   let selectedNetworkSsid = null;
-  let activeSection = "appearance";
+  let activeSection = validSettingsSection(lifecycle.getAppTarget("settings"))
+    ? lifecycle.getAppTarget("settings")
+    : "appearance";
   let destroyed = false;
   let mountedSlot = null;
 
@@ -492,10 +494,15 @@ export function mountSettingsOverviewControls(
       && root.contains(sectionButton)
       && validSettingsSection(sectionButton.dataset.settingsSection)
     ) {
-      activeSection = sectionButton.dataset.settingsSection;
+      const nextSection = sectionButton.dataset.settingsSection;
       selectedNetworkSsid = null;
       networkManagementMessage = "";
-      replaceView();
+      if (activationPort) {
+        activationPort.publish({ appId: "settings", target: nextSection });
+      } else {
+        activeSection = nextSection;
+        replaceView();
+      }
       return;
     }
 
@@ -570,7 +577,16 @@ export function mountSettingsOverviewControls(
 
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
-  const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
+  const unsubscribeRender = lifecycle.subscribeRender(() => {
+    const persistedTarget = lifecycle.getAppTarget("settings");
+    const nextSection = validSettingsSection(persistedTarget) ? persistedTarget : "appearance";
+    if (nextSection !== activeSection) {
+      selectedNetworkSsid = null;
+      networkManagementMessage = "";
+    }
+    activeSection = nextSection;
+    renderView(false);
+  });
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (
       activation.appId === "settings"
