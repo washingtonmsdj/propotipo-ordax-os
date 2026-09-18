@@ -386,6 +386,7 @@ apply_remote_checkout() {
     if ! "$GIT_BIN" -C "$WORKTREE" sparse-checkout set --no-cone \
             /system/ \
             /bootstrap/trust/ \
+            /bootstrap/config/release-envelope-url \
             /docs/contracts/release-trust-policy.json \
             /docs/contracts/minimal-bootstrap.json \
             /docs/evidence/release-trust-ceremony.json \
