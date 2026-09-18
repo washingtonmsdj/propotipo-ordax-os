@@ -498,6 +498,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("sysrq", agent)
 
     def test_agent_maps_development_root_to_real_physical_ordax_root(self):
+        subprocess.run(["sh", "-n", str(AGENT)], check=True)
         agent = AGENT.read_text(encoding="utf-8")
         self.assertIn("MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}", agent)
         self.assertIn("PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device", agent)
