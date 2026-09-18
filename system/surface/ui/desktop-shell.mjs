@@ -1,3 +1,6 @@
+const SURFACE_LOCALE = "pt-BR";
+const SURFACE_TIME_ZONE = "America/Bahia";
+
 const ICONS = Object.freeze({
   files: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v10.5a1.5 1.5 0 0 1-1.5 1.5h-14A1.5 1.5 0 0 1 3.5 19z"/><path d="M3.5 8.5v-3A1.5 1.5 0 0 1 5 4h4.3l2.2 2.5"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.5 1a8 8 0 0 0-2-1.2L14 3h-4l-.4 2.6a8 8 0 0 0-2 1.2l-2.5-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.5-1a8 8 0 0 0 2 1.2L10 21h4l.4-2.6a8 8 0 0 0 2-1.2l2.5 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>`,
@@ -116,7 +119,8 @@ export function createDesktopShellMarkup() {
 }
 
 function formatDate(date) {
-  const formatter = new Intl.DateTimeFormat("pt-BR", {
+  const formatter = new Intl.DateTimeFormat(SURFACE_LOCALE, {
+    timeZone: SURFACE_TIME_ZONE,
     weekday: "long",
     day: "2-digit",
     month: "long",
@@ -134,13 +138,15 @@ export function mountDesktopClock(root, clock = globalThis) {
 
   const render = () => {
     const now = new Date();
-    timeNode.textContent = new Intl.DateTimeFormat("pt-BR", {
+    timeNode.textContent = new Intl.DateTimeFormat(SURFACE_LOCALE, {
+      timeZone: SURFACE_TIME_ZONE,
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }).format(now);
     dateNode.textContent = formatDate(now);
     timeNode.setAttribute("datetime", now.toISOString());
+    timeNode.title = "Horário de Salvador/Bahia";
   };
 
   render();
