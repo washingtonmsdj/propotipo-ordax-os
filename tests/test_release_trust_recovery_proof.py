@@ -52,6 +52,29 @@ class ReleaseTrustRecoveryProofTests(unittest.TestCase):
         self.assertNotIn("Copy-Item -LiteralPath $PrimaryPrivateKeyPath", text)
         self.assertNotIn("Copy-Item -LiteralPath $RecoveredPrivateKeyPath", text)
 
+    def test_recovery_finalizer_emits_single_public_handoff_zip(self):
+        text = FINALIZER.read_text(encoding="utf-8")
+        self.assertIn("OrdaX-Public-Trust-Handoff.zip", text)
+        self.assertIn("Compress-Archive -LiteralPath", text)
+        self.assertIn("PUBLIC_TRUST_HANDOFF_ZIP=", text)
+        self.assertIn("PUBLIC_TRUST_HANDOFF_ZIP_SHA256=", text)
+        self.assertIn("PUBLIC_HANDOFF_SECRET_MATERIAL=NO", text)
+        for name in (
+            "release-ed25519.json",
+            "ceremony-public-evidence.json",
+            "trust-proof-manifest.json",
+            "trust-proof-recovery-envelope.json",
+        ):
+            self.assertIn(name, text)
+        for forbidden in (
+            "PromotionPrivate",
+            "Copy-Item -LiteralPath $PrimaryPrivateKeyPath",
+            "Copy-Item -LiteralPath $RecoveredPrivateKeyPath",
+        ):
+            self.assertNotIn(forbidden, text)
+        self.assertIn("(pem|key|p12|pfx|dpapi)", text)
+        self.assertIn("(private|secret|seed)", text)
+
     def test_windows_handoff_is_present_and_toolkit_ships_it(self):
         wrapper = WRAPPER.read_text(encoding="utf-8")
         workflow = TOOLKIT_WORKFLOW.read_text(encoding="utf-8")
