@@ -96,7 +96,7 @@ export function mountFileSpaceControls(
   let renameDraft = "";
   let copyingPath = null;
   let copyDraft = "";
-  let movingEntry = null;
+  let transferEntry = null;
   let searchQuery = "";
   let sortKey = "name";
   let sortDirection = "asc";
@@ -317,20 +317,24 @@ export function mountFileSpaceControls(
     return match ? Number.parseInt(match[1], 10) : null;
   };
 
-  const moveDestinationState = () => {
-    if (!movingEntry || !listing) {
+  const transferDestinationState = () => {
+    if (!transferEntry || !listing) {
       return Object.freeze({ allowed: false, reason: "Escolha uma pasta de destino." });
     }
-    if (listing.path === movingEntry.sourcePath) {
+    if (listing.path === transferEntry.sourcePath) {
       return Object.freeze({
         allowed: false,
-        reason: "O item já está nesta pasta. Escolha outra pasta.",
+        reason:
+          transferEntry.mode === "copy"
+            ? "Escolha outra pasta para copiar este arquivo."
+            : "O item já está nesta pasta. Escolha outra pasta.",
       });
     }
     if (
-      movingEntry.kind === "directory" &&
-      (listing.path === movingEntry.sourceFullPath ||
-        listing.path.startsWith(`${movingEntry.sourceFullPath}/`))
+      transferEntry.mode === "move" &&
+      transferEntry.kind === "directory" &&
+      (listing.path === transferEntry.sourceFullPath ||
+        listing.path.startsWith(`${transferEntry.sourceFullPath}/`))
     ) {
       return Object.freeze({
         allowed: false,
@@ -340,49 +344,53 @@ export function mountFileSpaceControls(
     return Object.freeze({ allowed: true, reason: "" });
   };
 
-  const renderMoveOperation = (container) => {
-    if (!movingEntry) return;
-    const destination = moveDestinationState();
-    const panel = node(documentObject, "section", "ordax-files-move");
-    panel.setAttribute("aria-label", "Mover item");
+  const renderTransferOperation = (container) => {
+    if (!transferEntry) return;
+    const destination = transferDestinationState();
+    const isCopy = transferEntry.mode === "copy";
+    const verb = isCopy ? "Copiando" : "Movendo";
+    const panel = node(documentObject, "section", "ordax-files-transfer");
+    panel.setAttribute("aria-label", isCopy ? "Copiar arquivo" : "Mover item");
 
-    const copy = node(documentObject, "div", "ordax-files-move-copy");
-    copy.append(
-      node(documentObject, "strong", "ordax-files-move-title", `Movendo “${movingEntry.name}”`),
+    const summary = node(documentObject, "div", "ordax-files-transfer-copy");
+    summary.append(
+      node(documentObject, "strong", "ordax-files-transfer-title", `${verb} “${transferEntry.name}”`),
       node(
         documentObject,
         "span",
-        "ordax-files-move-meta",
+        "ordax-files-transfer-meta",
         listing ? `Destino atual: ${listing.path}` : "Abrindo destino…",
       ),
       node(
         documentObject,
         "span",
-        "ordax-files-move-guidance",
+        "ordax-files-transfer-guidance",
         destination.allowed
-          ? "Confirme para mover sem substituir itens existentes."
+          ? isCopy
+            ? "Confirme para copiar sem substituir itens existentes."
+            : "Confirme para mover sem substituir itens existentes."
           : destination.reason,
       ),
     );
 
-    const actions = node(documentObject, "div", "ordax-files-move-actions");
+    const actions = node(documentObject, "div", "ordax-files-transfer-actions");
     const confirm = node(
       documentObject,
       "button",
       "ordax-files-action ordax-files-action-primary",
-      "Mover para esta pasta",
+      isCopy ? "Copiar para esta pasta" : "Mover para esta pasta",
     );
     confirm.type = "button";
-    confirm.dataset.fileMoveConfirm = "";
+    confirm.dataset.fileTransferConfirm = "";
     confirm.disabled = pending || !destination.allowed;
 
     const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
     cancel.type = "button";
-    cancel.dataset.fileMoveCancel = "";
+    cancel.dataset.fileTransferCancel = "";
     cancel.disabled = pending;
 
     actions.append(confirm, cancel);
-    panel.append(copy, actions);
+    panel.append(summary, actions);
     container.append(panel);
   };
 
@@ -464,7 +472,7 @@ export function mountFileSpaceControls(
   };
 
   const renderSelectionDetails = (container) => {
-    if (movingEntry) return;
+    if (transferEntry) return;
     const selected = selectedEntry();
     if (!selected) return;
 
@@ -490,13 +498,21 @@ export function mountFileSpaceControls(
     );
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
-    let copy = null;
+    let duplicate = null;
+    let copyTo = null;
     let exportFile = null;
     if (selected.kind === "file") {
-      copy = node(documentObject, "button", "ordax-files-action", "Copiar");
-      copy.type = "button";
-      copy.dataset.fileCopyToggle = "";
-      copy.disabled = pending || previewPending;
+      duplicate = node(documentObject, "button", "ordax-files-action", "Duplicar");
+      duplicate.type = "button";
+      duplicate.dataset.fileCopyToggle = "";
+      duplicate.disabled = pending || previewPending;
+      copyTo = node(documentObject, "button", "ordax-files-action", "Copiar para…");
+      copyTo.type = "button";
+      copyTo.dataset.fileCopyToToggle = "";
+      copyTo.disabled = pending || previewPending || selected.size > MAX_FILE_COPY_BYTES;
+      if (selected.size > MAX_FILE_COPY_BYTES) {
+        copyTo.title = "Cópia limitada a 64 MiB";
+      }
       exportFile = node(documentObject, "button", "ordax-files-action", "Exportar");
       exportFile.type = "button";
       exportFile.dataset.fileExport = "";
@@ -522,7 +538,8 @@ export function mountFileSpaceControls(
     open.type = "button";
     open.dataset.fileActivateSelected = "";
     open.disabled = pending || previewPending;
-    if (copy) actions.append(copy);
+    if (duplicate) actions.append(duplicate);
+    if (copyTo) actions.append(copyTo);
     if (exportFile) actions.append(exportFile);
     actions.append(move, rename, open);
 
@@ -731,7 +748,7 @@ export function mountFileSpaceControls(
     status.setAttribute("aria-live", "polite");
     content.append(status);
 
-    renderMoveOperation(content);
+    renderTransferOperation(content);
     renderCreateDirectory(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
@@ -866,16 +883,16 @@ export function mountFileSpaceControls(
     }
   };
 
-  const moveToCurrentDirectory = async () => {
-    if (!movingEntry || !listing) return;
-    const destination = moveDestinationState();
+  const transferToCurrentDirectory = async () => {
+    if (!transferEntry || !listing) return;
+    const destination = transferDestinationState();
     if (!destination.allowed) {
       message = destination.reason;
       replaceView();
       return;
     }
 
-    const source = movingEntry;
+    const source = transferEntry;
     const destinationPath = listing.path;
     const nextPath = joinPath(destinationPath, source.name);
     const ordinal = ++requestOrdinal;
@@ -883,12 +900,19 @@ export function mountFileSpaceControls(
     message = null;
     replaceView();
     try {
-      const next = validateFileListing(
-        await port.moveEntry(source.sourcePath, source.name, destinationPath),
-      );
+      const operation =
+        source.mode === "copy"
+          ? port.copyFile(
+              source.sourcePath,
+              source.name,
+              destinationPath,
+              source.name,
+            )
+          : port.moveEntry(source.sourcePath, source.name, destinationPath);
+      const next = validateFileListing(await operation);
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
-      movingEntry = null;
+      transferEntry = null;
       selectedPath = nextPath;
       if (!selectionIsVisible()) selectedPath = null;
       renamingPath = null;
@@ -898,22 +922,40 @@ export function mountFileSpaceControls(
       previewRequestOrdinal += 1;
       previewPending = false;
       textPreview = null;
-      message = `“${source.name}” foi movido para ${destinationPath}.`;
+      message =
+        source.mode === "copy"
+          ? `“${source.name}” foi copiado para ${destinationPath}.`
+          : `“${source.name}” foi movido para ${destinationPath}.`;
     } catch (error) {
       if (destroyed || ordinal !== requestOrdinal) return;
       const status = operationStatus(error);
       if (status === 409) {
         message = "Já existe um item com esse nome no destino. Nada foi substituído.";
+      } else if (status === 412) {
+        message = "O arquivo mudou durante a cópia. Nenhuma cópia parcial foi mantida.";
+      } else if (status === 413) {
+        message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
       } else if (status === 422) {
         message = "Este destino exige mover entre volumes. Essa operação segura ainda não está disponível.";
+      } else if (status === 507) {
+        message = "Não há espaço suficiente no destino.";
       } else if (status === 404) {
         message = "A origem ou o destino não existe mais. Atualize e tente novamente.";
       } else if (status === 403) {
-        message = "O OrdaX não tem permissão para mover este item.";
+        message =
+          source.mode === "copy"
+            ? "O OrdaX não tem permissão para copiar este arquivo."
+            : "O OrdaX não tem permissão para mover este item.";
       } else if (status === 400) {
-        message = "O destino não é válido para este movimento.";
+        message =
+          source.mode === "copy"
+            ? "O destino não é válido para esta cópia."
+            : "O destino não é válido para este movimento.";
       } else {
-        message = "Não foi possível mover este item. A origem foi preservada.";
+        message =
+          source.mode === "copy"
+            ? "Não foi possível copiar este arquivo. A origem foi preservada."
+            : "Não foi possível mover este item. A origem foi preservada.";
       }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
@@ -1060,7 +1102,7 @@ export function mountFileSpaceControls(
     replaceView();
     try {
       const next = validateFileListing(
-        await port.copyFile(listing.path, selected.name, newName),
+        await port.copyFile(listing.path, selected.name, listing.path, newName),
       );
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
@@ -1224,11 +1266,39 @@ export function mountFileSpaceControls(
       void exportSelected();
       return;
     }
+    const copyToToggle = event.target.closest("[data-file-copy-to-toggle]");
+    if (copyToToggle && root.contains(copyToToggle)) {
+      const selected = selectedEntry();
+      if (selected?.kind === "file" && listing) {
+        if (selected.size > MAX_FILE_COPY_BYTES) {
+          message = "Este arquivo ultrapassa o limite de cópia de 64 MiB.";
+        } else {
+          transferEntry = Object.freeze({
+            mode: "copy",
+            sourcePath: listing.path,
+            sourceFullPath: selected.path,
+            name: selected.name,
+            kind: selected.kind,
+          });
+          renamingPath = null;
+          renameDraft = "";
+          copyingPath = null;
+          copyDraft = "";
+          previewRequestOrdinal += 1;
+          previewPending = false;
+          textPreview = null;
+          message = "Navegue até a pasta de destino e escolha “Copiar para esta pasta”.";
+        }
+        replaceView();
+      }
+      return;
+    }
     const moveToggle = event.target.closest("[data-file-move-toggle]");
     if (moveToggle && root.contains(moveToggle)) {
       const selected = selectedEntry();
       if (selected && listing) {
-        movingEntry = Object.freeze({
+        transferEntry = Object.freeze({
+          mode: "move",
           sourcePath: listing.path,
           sourceFullPath: selected.path,
           name: selected.name,
@@ -1246,16 +1316,19 @@ export function mountFileSpaceControls(
       }
       return;
     }
-    const moveCancel = event.target.closest("[data-file-move-cancel]");
-    if (moveCancel && root.contains(moveCancel)) {
-      movingEntry = null;
-      message = "Movimento cancelado. Nenhum item foi alterado.";
+    const transferCancel = event.target.closest("[data-file-transfer-cancel]");
+    if (transferCancel && root.contains(transferCancel)) {
+      const wasCopy = transferEntry?.mode === "copy";
+      transferEntry = null;
+      message = wasCopy
+        ? "Cópia cancelada. Nenhum item foi alterado."
+        : "Movimento cancelado. Nenhum item foi alterado.";
       replaceView();
       return;
     }
-    const moveConfirm = event.target.closest("[data-file-move-confirm]");
-    if (moveConfirm && root.contains(moveConfirm)) {
-      void moveToCurrentDirectory();
+    const transferConfirm = event.target.closest("[data-file-transfer-confirm]");
+    if (transferConfirm && root.contains(transferConfirm)) {
+      void transferToCurrentDirectory();
       return;
     }
     const copyToggle = event.target.closest("[data-file-copy-toggle]");
