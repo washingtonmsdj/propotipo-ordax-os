@@ -1,0 +1,268 @@
+.ordax-app-extension[data-app-extension="settings-overview"] {
+  grid-column: 1 / -1;
+  min-height: 450px;
+  overflow: hidden;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-md);
+  background: var(--ordax-surface-strong);
+}
+
+.ordax-app-extension[data-app-extension="settings-overview"]:not([data-ordax-settings-overview-view]) {
+  padding: var(--ordax-space-5);
+}
+
+.ordax-settings-view {
+  display: grid;
+  color: var(--ordax-text);
+}
+
+.ordax-settings-header {
+  padding: 24px 26px 22px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-settings-eyebrow,
+.ordax-settings-section-kicker {
+  display: block;
+  color: var(--ordax-muted);
+  font-size: 0.65rem;
+  font-weight: 720;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ordax-settings-title {
+  margin: 7px 0 0;
+  font-family: var(--ordax-font-display);
+  font-size: clamp(1.8rem, 3vw, 2.55rem);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
+
+.ordax-settings-subtitle {
+  max-width: 650px;
+  margin: 8px 0 0;
+  color: var(--ordax-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.ordax-settings-section {
+  padding: 21px 26px 23px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-settings-section:last-child {
+  border-bottom: 0;
+}
+
+.ordax-settings-section-title {
+  margin: 6px 0 0;
+  font-size: 0.98rem;
+  font-weight: 650;
+}
+
+.ordax-settings-section-copy {
+  max-width: 680px;
+  margin: 7px 0 0;
+  color: var(--ordax-muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.ordax-settings-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.ordax-settings-option {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 112px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-settings-option:hover,
+.ordax-settings-option:focus-visible {
+  border-color: var(--ordax-border);
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-settings-option[data-selected="true"] {
+  border-color: var(--ordax-text);
+}
+
+.ordax-settings-theme-preview {
+  display: grid;
+  grid-template-columns: 23px 1fr;
+  width: 92px;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--ordax-border);
+  border-radius: 8px;
+  background: #f1efe8;
+}
+
+.ordax-settings-theme-preview[data-theme-preview="dark"] {
+  border-color: #53565d;
+  background: #181a1f;
+}
+
+.ordax-settings-theme-rail {
+  background: #22252a;
+}
+
+.ordax-settings-theme-preview[data-theme-preview="dark"] .ordax-settings-theme-rail {
+  background: #0f1114;
+}
+
+.ordax-settings-theme-body {
+  position: relative;
+  background:
+    linear-gradient(#ed4b25 0 0) 9px 10px / 34px 4px no-repeat,
+    linear-gradient(#2a2c31 0 0) 9px 23px / 46px 3px no-repeat,
+    linear-gradient(#9a9c9f 0 0) 9px 33px / 33px 3px no-repeat,
+    #f1efe8;
+}
+
+.ordax-settings-theme-preview[data-theme-preview="dark"] .ordax-settings-theme-body {
+  background:
+    linear-gradient(#ed4b25 0 0) 9px 10px / 34px 4px no-repeat,
+    linear-gradient(#ece9e1 0 0) 9px 23px / 46px 3px no-repeat,
+    linear-gradient(#767982 0 0) 9px 33px / 33px 3px no-repeat,
+    #181a1f;
+}
+
+.ordax-settings-option-copy {
+  min-width: 0;
+}
+
+.ordax-settings-option-copy strong,
+.ordax-settings-option-copy small {
+  display: block;
+}
+
+.ordax-settings-option-copy strong {
+  font-size: 0.9rem;
+}
+
+.ordax-settings-option-copy small {
+  margin-top: 5px;
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.ordax-settings-option-marker {
+  min-width: 38px;
+  color: var(--ordax-accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.ordax-settings-capabilities {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 15px;
+}
+
+.ordax-settings-capability {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 2px 10px;
+  min-width: 0;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+}
+
+.ordax-settings-capability-dot {
+  grid-row: 1 / 3;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ordax-accent);
+}
+
+.ordax-settings-capability strong {
+  font-size: 0.76rem;
+}
+
+.ordax-settings-capability small {
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.63rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-settings-empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  color: var(--ordax-muted);
+  font-size: 0.74rem;
+}
+
+.ordax-settings-continuity {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px 13px;
+  border-left: 3px solid var(--ordax-border);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-continuity[data-state="available"] {
+  border-left-color: var(--ordax-accent);
+}
+
+.ordax-settings-continuity strong {
+  font-size: 0.76rem;
+}
+
+.ordax-settings-continuity span {
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 760px) {
+  .ordax-settings-header,
+  .ordax-settings-section {
+    padding: 18px;
+  }
+
+  .ordax-settings-options,
+  .ordax-settings-capabilities {
+    grid-template-columns: 1fr;
+  }
+
+  .ordax-settings-option {
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+  }
+
+  .ordax-settings-theme-preview {
+    width: 76px;
+    height: 56px;
+  }
+}
