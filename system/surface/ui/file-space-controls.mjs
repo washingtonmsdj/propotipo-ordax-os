@@ -480,7 +480,11 @@ export function mountFileSpaceControls(
   const onClick = (event) => {
     const selected = event.target.closest("[data-file-select-path]");
     if (selected && root.contains(selected)) {
-      selectPath(selected.dataset.fileSelectPath);
+      if (selectedPath === selected.dataset.fileSelectPath) {
+        activateSelectedPath();
+      } else {
+        selectPath(selected.dataset.fileSelectPath, { focus: true });
+      }
       return;
     }
     const activate = event.target.closest("[data-file-activate-selected]");
@@ -526,21 +530,6 @@ export function mountFileSpaceControls(
     const create = event.target.closest("[data-file-create-directory]");
     if (create) {
       void createDirectory(directoryDraft);
-    }
-  };
-
-  const onDoubleClick = (event) => {
-    const row = event.target.closest("[data-file-select-path]");
-    if (!row || !root.contains(row)) return;
-    selectPath(row.dataset.fileSelectPath);
-    const selected = listing?.entries.find(
-      (entry) => joinPath(listing.path, entry.name) === row.dataset.fileSelectPath,
-    );
-    if (!selected) return;
-    if (selected.kind === "directory") {
-      void load(row.dataset.fileSelectPath);
-    } else {
-      void openTextFile(row.dataset.fileSelectPath);
     }
   };
 
@@ -604,7 +593,6 @@ export function mountFileSpaceControls(
   };
 
   root.addEventListener("click", onClick);
-  root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
@@ -623,7 +611,6 @@ export function mountFileSpaceControls(
       unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
-      root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("input", onInput);
       root.removeEventListener("keydown", onKeyDown);
       const slot = findSlot();
