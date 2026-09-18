@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.base-update/1",
-  "status": "postboot-health-and-promotion-proof",
+  "status": "legacy-transition-and-postboot-promotion-proof",
   "scope": "transactional-boot-kernel-initramfs-update",
   "owner": "bootstrap/base-update",
   "normal_git_hot_update_owns_this": false,
@@ -112,5 +112,26 @@
     "failed-candidate-fallback-proof",
     "successful-candidate-promotion-proof",
     "physical-notebook-proof"
-  ]
+  ],
+  "legacy_transition": {
+    "initial_layout": "single-slot-legacy",
+    "legacy_kernel": "/ordax/vmlinuz",
+    "legacy_initramfs": "/ordax/initrd.gz",
+    "legacy_current_entry": "/loader/entries/ordax.conf",
+    "legacy_recovery_entry": "/loader/entries/ordax-recovery.conf",
+    "previous_slot": "a",
+    "candidate_slot": "b",
+    "preserve_legacy_bytes_to_previous_slot_before_candidate": true,
+    "baseline_copy_requires_exact_hash_identity": true,
+    "conflicting_or_unsafe_baseline_fails_closed": true,
+    "candidate_marker_blocks_before_baseline_mutation": true,
+    "legacy_current_and_recovery_remain_unchanged_before_health": true,
+    "legacy_kernel_and_initramfs_remain_unchanged_before_health": true,
+    "failed_candidate_fallback": "unchanged-legacy-current-entry",
+    "successful_promotion": {
+      "current_slot": "b",
+      "recovery_slot": "a",
+      "legacy_source_bytes_may_remain_unreferenced": true
+    }
+  }
 }
