@@ -11,7 +11,10 @@ import {
   networkManagementFailureMessage,
   runNetworkManagementAction,
 } from "../../services/network/management-runtime.mjs";
-import { summarizeNetworkStatus } from "./network-tray-controls.mjs";
+import {
+  formatNetworkReceivedAt,
+  summarizeNetworkStatus,
+} from "./network-tray-controls.mjs";
 
 const MAX_QUICK_NETWORKS = 8;
 
@@ -48,7 +51,11 @@ export function mountNetworkQuickPanel(
 
   const documentObject = root.ownerDocument;
   let statusSnapshot = null;
+  let statusReadFailed = false;
+  let statusLastSuccessAt = null;
   let managementSnapshot = null;
+  let managementReadFailed = false;
+  let managementLastSuccessAt = null;
   let selectedSsid = null;
   let pending = false;
   let message = "";
@@ -152,18 +159,36 @@ export function mountNetworkQuickPanel(
     const summary = node(documentObject, "div", "ordax-quick-network-summary");
     if (statusSnapshot) {
       const state = summarizeNetworkStatus(statusSnapshot);
+      summary.dataset.observation = statusReadFailed ? "stale" : "current";
       summary.append(
-        node(documentObject, "strong", "", state.label),
-        node(documentObject, "span", "", state.title),
+        node(
+          documentObject,
+          "strong",
+          "",
+          statusReadFailed ? `${state.label} · dados antigos` : state.label,
+        ),
+        node(
+          documentObject,
+          "span",
+          "",
+          statusReadFailed
+            ? `${state.title} · última leitura recebida pela Surface às ${formatNetworkReceivedAt(statusLastSuccessAt)}`
+            : state.title,
+        ),
       );
     } else {
+      summary.dataset.observation = statusReadFailed ? "unavailable" : "loading";
       summary.append(
         node(documentObject, "strong", "", "Rede"),
         node(
           documentObject,
           "span",
           "",
-          statusPort ? "Lendo estado da conexão…" : "Detalhes locais de rede indisponíveis neste ambiente.",
+          statusPort
+            ? statusReadFailed
+              ? "Estado da conexão indisponível no momento."
+              : "Lendo estado da conexão…"
+            : "Detalhes locais de rede indisponíveis neste ambiente.",
         ),
       );
     }
@@ -209,8 +234,28 @@ export function mountNetworkQuickPanel(
       content.append(status);
     }
 
+    if (managementReadFailed && managementSnapshot !== null) {
+      const stale = node(
+        documentObject,
+        "p",
+        "ordax-quick-message",
+        `Redes exibidas com dados antigos · última leitura recebida pela Surface às ${formatNetworkReceivedAt(managementLastSuccessAt)}.`,
+      );
+      stale.dataset.observation = "stale";
+      content.append(stale);
+    }
+
     if (managementSnapshot === null) {
-      content.append(node(documentObject, "p", "ordax-quick-empty", "Lendo Wi-Fi…"));
+      content.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-quick-empty",
+          managementReadFailed
+            ? "O gerenciamento de Wi-Fi está indisponível no momento."
+            : "Lendo Wi-Fi…",
+        ),
+      );
       restoreInteraction(interaction);
       return;
     }
@@ -305,9 +350,11 @@ export function mountNetworkQuickPanel(
       const nextSnapshot = validateNetworkStatusSnapshot(await statusPort.read());
       if (destroyed || ordinal !== statusOrdinal) return;
       statusSnapshot = nextSnapshot;
+      statusReadFailed = false;
+      statusLastSuccessAt = Date.now();
     } catch {
       if (destroyed || ordinal !== statusOrdinal) return;
-      statusSnapshot = null;
+      statusReadFailed = true;
     }
   };
 
@@ -318,6 +365,11 @@ export function mountNetworkQuickPanel(
       const nextSnapshot = validateNetworkManagementSnapshot(await managementPort.status());
       if (destroyed || ordinal !== managementOrdinal) return;
       managementSnapshot = nextSnapshot;
+      managementReadFailed = false;
+      managementLastSuccessAt = Date.now();
+      if (message === "O gerenciamento de Wi-Fi está temporariamente indisponível.") {
+        message = "";
+      }
       if (
         selectedSsid !== null
         && !nextSnapshot.networks.some((entry) => entry.ssid === selectedSsid)
@@ -327,8 +379,10 @@ export function mountNetworkQuickPanel(
       }
     } catch {
       if (destroyed || ordinal !== managementOrdinal) return;
-      managementSnapshot = null;
-      message = "O gerenciamento de Wi-Fi está temporariamente indisponível.";
+      managementReadFailed = true;
+      if (managementSnapshot === null) {
+        message = "O gerenciamento de Wi-Fi está temporariamente indisponível.";
+      }
     }
   };
 
@@ -351,6 +405,8 @@ export function mountNetworkQuickPanel(
       );
       if (destroyed || ordinal !== actionOrdinal) return;
       managementSnapshot = nextSnapshot;
+      managementReadFailed = false;
+      managementLastSuccessAt = Date.now();
       selectedSsid = null;
       clearPasswordDraft();
       message = networkManagementActionMessage(action, 1);
@@ -447,6 +503,10 @@ export function mountNetworkQuickPanel(
       managementOrdinal += 1;
       actionOrdinal += 1;
       clearPasswordDraft();
+      statusSnapshot = null;
+      statusLastSuccessAt = null;
+      managementSnapshot = null;
+      managementLastSuccessAt = null;
       panel.removeEventListener("ordax:quick-panel-open", onOpen);
       panel.removeEventListener("ordax:quick-panel-close", onClose);
       panel.removeEventListener("click", onClick);

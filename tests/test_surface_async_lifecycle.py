@@ -58,6 +58,19 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", controls)
         self.assertIn('new CustomEvent("ordax:quick-panel-close"', controller)
 
+    def test_quick_wifi_keeps_last_valid_observation_distinct_from_unavailable(self):
+        controls = self.read("network-quick-panel.mjs")
+        self.assertIn("let statusReadFailed = false;", controls)
+        self.assertIn("let statusLastSuccessAt = null;", controls)
+        self.assertIn("let managementReadFailed = false;", controls)
+        self.assertIn("let managementLastSuccessAt = null;", controls)
+        self.assertIn("statusReadFailed = true;", controls)
+        self.assertIn("managementReadFailed = true;", controls)
+        self.assertNotIn("statusSnapshot = null;\n    } catch", controls)
+        self.assertIn("Redes exibidas com dados antigos", controls)
+        self.assertIn("última leitura recebida pela Surface", controls)
+        self.assertIn('summary.dataset.observation = statusReadFailed ? "stale" : "current"', controls)
+
     def test_read_only_tray_widgets_do_not_render_after_destroy(self):
         battery_quick = self.read("battery-quick-panel.mjs")
         battery_tray = self.read("battery-tray-controls.mjs")
