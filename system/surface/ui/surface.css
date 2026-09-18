@@ -958,9 +958,17 @@ kbd {
   align-items: center;
   gap: 6px;
   padding: 0 7px;
+  border: 0;
   border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 0.7rem;
   white-space: nowrap;
+}
+
+button.ordax-tray-item {
+  cursor: pointer;
 }
 
 .ordax-tray-icon {
@@ -995,8 +1003,11 @@ kbd {
   min-width: 36px;
 }
 
-.ordax-tray-item:hover {
+.ordax-tray-item:hover,
+button.ordax-tray-item:focus-visible {
   background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
 }
 
 .ordax-area-button:hover:not(:disabled),
