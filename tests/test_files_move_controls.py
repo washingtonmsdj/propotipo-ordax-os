@@ -42,7 +42,7 @@ class FilesMoveControlsTests(unittest.TestCase):
         self.assertIn("operationStatus", controls)
         self.assertIn("status === 409", controls)
         self.assertIn("status === 422", controls)
-        self.assertIn("movimento seguro ainda não está disponível", controls)
+        self.assertIn("operação segura ainda não está disponível", controls)
         self.assertIn("A origem foi preservada.", controls)
 
     def test_move_panel_is_responsive(self):
