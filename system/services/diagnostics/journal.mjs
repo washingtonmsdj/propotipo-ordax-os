@@ -28,13 +28,18 @@ const UPDATE_WARNING_STATUSES = new Set([
 ]);
 
 function requireTimestamp(value, field) {
-  if (typeof value !== "string" || value.length === 0 || Number.isNaN(Date.parse(value))) {
-    throw new TypeError(`Diagnostic event ${field} must be a valid timestamp string`);
+  if (
+    typeof value !== "string"
+    || value.length === 0
+    || value.length > 64
+    || Number.isNaN(Date.parse(value))
+  ) {
+    throw new TypeError(`Diagnostic event ${field} must be a bounded valid timestamp string`);
   }
   return value;
 }
 
-function requireLimit(value) {
+export function validateDiagnosticJournalLimit(value) {
   if (!Number.isSafeInteger(value) || value < 1 || value > MAX_DIAGNOSTIC_JOURNAL_LIMIT) {
     throw new TypeError(
       `Diagnostic journal limit must be an integer between 1 and ${MAX_DIAGNOSTIC_JOURNAL_LIMIT}`,
@@ -143,7 +148,7 @@ export function rotateDiagnosticEvents(
   if (!Array.isArray(values)) {
     throw new TypeError("Diagnostic journal events must be an array");
   }
-  const boundedLimit = requireLimit(limit);
+  const boundedLimit = validateDiagnosticJournalLimit(limit);
   const validated = values.map(validateDiagnosticEvent);
   return Object.freeze(validated.slice(-boundedLimit));
 }
