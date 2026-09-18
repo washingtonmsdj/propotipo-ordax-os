@@ -123,7 +123,9 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_runtime_neutral_update_does_not_materialize_a_release_slot(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn('[ "$candidate_mode" != none ] || return 0', staging)
+        self.assertIn('if [ "$candidate_mode" = none ]; then', staging)
+        self.assertIn('write_state_value "$LAST_STAGE_DURATION_FILE" "0"', staging)
+        self.assertIn("return 0", staging)
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
 
