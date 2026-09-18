@@ -44,6 +44,8 @@ Antes de planejar, implementar ou revisar a area de trabalho, a barra lateral ou
 
 O plano detalha telas, subsecoes, responsabilidades, lacunas, prioridades e criterios de aceite. Compare o inventario datado com a `main` atual antes de implementar; nao reconstrua recursos ja existentes nem trate sugestoes como capacidades prontas. Ele e uma proposta funcional: os contratos canonicos, os gates e as regras de seguranca continuam sendo a autoridade.
 
+Leia tambem a continuacao [PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md](PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md) antes de ampliar essas interfaces, planejar novas capacidades ou reaproveitar funcionalidades/ideias de `novo-ordax-os`. Ela compara os dois repositorios com SHAs registrados, distingue codigo de visao futura e detalha lacunas, dependencias, destinos de interface e criterios de aceite. Nenhuma recomendacao desse documento constitui migracao concluida: qualquer portabilidade continua exigindo registro em `docs/SOURCE-MIGRATION.md`.
+
 ## 4. Arquitetura fisica alvo
 
 O seed e o USB final preparado nao sao o mesmo artefato:

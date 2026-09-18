@@ -10,6 +10,8 @@ Clean-room experimental para validar uma arquitetura OrdaX OS simples, reproduzi
 
 O [PLANO-FUNCIONAL-SURFACE-E-APPS.md](PLANO-FUNCIONAL-SURFACE-E-APPS.md), na raiz, detalha a area de trabalho e os apps **Arquivos, Ajustes, Conta e Sistema**: cada subsecao, conteudo, comportamento, recursos existentes, lacunas e ordem de implementacao. IAs e desenvolvedores devem le-lo junto das instrucoes de `AGENTS.md` antes de trabalhar nessas interfaces. O plano e uma proposta; revalide seu inventario contra a `main` atual e preserve os contratos canonicos.
 
+A continuacao [PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md](PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md) compara o prototipo com `novo-ordax-os`: o que ja existe, o que falta recuperar e quais ideias merecem evoluir. Inclui 27 capacidades, fontes fixadas por commit, orientacoes por tela, prioridades, dependencias, criterios de aceite e prompts para implementacao. Leia as duas partes; o legado continua sendo referencia, sem copia automatica de codigo ou arquitetura.
+
 ## Um produto, cinco modos
 
 ```text

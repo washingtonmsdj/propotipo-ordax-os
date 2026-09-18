@@ -8,6 +8,8 @@
 
 **Como interpretar:** “deve” expressa o comportamento proposto para a funcionalidade quando implementada. Não significa que o recurso já existe. As marcas de estado e prioridade diferenciam implementação observada, lacuna e evolução futura. Revalidar a `main` antes de executar, pois o repositório está evoluindo rapidamente.
 
+**Continuação:** [Parte 2 — evolução do protótipo e aproveitamento seletivo do legado](PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md) compara este projeto com `novo-ordax-os`, separa funcionalidades concretas de ideias futuras e detalha o que ainda falta adicionar. Leia as duas partes antes de ampliar o produto; a parte 2 também registra avanços do protótipo posteriores ao inventário acima.
+
 ## Sumário
 
 1. [Objetivo e limites](#1-objetivo-e-limites)
