@@ -239,6 +239,183 @@
   white-space: nowrap;
 }
 
+.ordax-settings-wifi {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-settings-wifi-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.ordax-settings-wifi-heading-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ordax-settings-wifi-heading-copy strong {
+  font-size: 0.82rem;
+}
+
+.ordax-settings-wifi-heading-copy span {
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-settings-wifi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ordax-settings-network-action {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-text);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ordax-settings-network-action:hover,
+.ordax-settings-network-action:focus-visible,
+.ordax-settings-wifi-network:hover,
+.ordax-settings-wifi-network:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-settings-network-action:disabled,
+.ordax-settings-wifi-network:disabled,
+.ordax-settings-wifi-password:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ordax-settings-network-primary {
+  border-color: var(--ordax-accent);
+}
+
+.ordax-settings-network-message {
+  margin: 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--ordax-accent);
+  background: var(--ordax-subtle-bg);
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.ordax-settings-wifi-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.ordax-settings-wifi-network {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-settings-wifi-network[data-selected="true"] {
+  border-color: var(--ordax-text);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-wifi-network[data-connected="true"] .ordax-settings-network-dot {
+  background: var(--ordax-accent);
+}
+
+.ordax-settings-wifi-network-copy {
+  min-width: 0;
+}
+
+.ordax-settings-wifi-network-copy strong,
+.ordax-settings-wifi-network-copy small {
+  display: block;
+}
+
+.ordax-settings-wifi-network-copy strong {
+  overflow: hidden;
+  font-size: 0.77rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-settings-wifi-network-copy small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-settings-wifi-connect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-wifi-password-label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ordax-muted);
+  font-size: 0.69rem;
+  font-weight: 650;
+}
+
+.ordax-settings-wifi-password {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-surface-strong);
+  color: var(--ordax-text);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.ordax-settings-wifi-password:focus-visible {
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
 .ordax-settings-capabilities {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -318,7 +495,8 @@
 
   .ordax-settings-options,
   .ordax-settings-capabilities,
-  .ordax-settings-network-list {
+  .ordax-settings-network-list,
+  .ordax-settings-wifi-list {
     grid-template-columns: 1fr;
   }
 
@@ -329,5 +507,18 @@
   .ordax-settings-theme-preview {
     width: 76px;
     height: 56px;
+  }
+
+  .ordax-settings-wifi-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ordax-settings-wifi-actions {
+    justify-content: flex-start;
+  }
+
+  .ordax-settings-wifi-connect {
+    grid-template-columns: 1fr;
   }
 }
