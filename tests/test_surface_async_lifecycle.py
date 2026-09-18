@@ -107,6 +107,17 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         )
         self.assertIn("actionOrdinal += 1;", controls)
 
+    def test_power_preserves_focused_action_across_repaints(self):
+        controls = self.read("power-controls.mjs")
+        self.assertIn("captureFocusedAction", controls)
+        self.assertIn("restoreFocusedAction", controls)
+        self.assertIn('activeElement?.closest?.("[data-power-action]")', controls)
+        self.assertIn("grid.contains(button)", controls)
+        self.assertIn('grid.querySelectorAll("[data-power-action]")', controls)
+        self.assertIn("const focusedAction = captureFocusedAction();", controls)
+        self.assertIn("restoreFocusedAction(focusedAction);", controls)
+        self.assertGreaterEqual(controls.count("preventScroll: true"), 2)
+
     def test_files_preserves_focus_selection_and_scroll_across_repaints(self):
         files = self.read("file-space-controls.mjs")
         self.assertIn("captureInteractionState", files)

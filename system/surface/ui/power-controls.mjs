@@ -92,7 +92,27 @@ export function mountPowerControls(root, powerActions = null) {
   let actionOrdinal = 0;
   let destroyed = false;
 
+  const captureFocusedAction = () => {
+    if (!open) return null;
+    const activeElement = documentObject.activeElement;
+    const button = activeElement?.closest?.("[data-power-action]");
+    if (!button || !grid.contains(button)) return null;
+    return button.dataset.powerAction ?? null;
+  };
+
+  const restoreFocusedAction = (actionId) => {
+    if (!open || !actionId) return;
+    const button = Array.from(grid.querySelectorAll("[data-power-action]"))
+      .find((candidate) => candidate.dataset.powerAction === actionId) ?? null;
+    if (button && !button.disabled) {
+      button.focus({ preventScroll: true });
+      return;
+    }
+    toggle.focus({ preventScroll: true });
+  };
+
   const render = () => {
+    const focusedAction = captureFocusedAction();
     overlay.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
     grid.replaceChildren();
@@ -116,6 +136,7 @@ export function mountPowerControls(root, powerActions = null) {
     }
     status.textContent = message;
     status.hidden = message.length === 0;
+    restoreFocusedAction(focusedAction);
   };
 
   const clearResetTimer = () => {
