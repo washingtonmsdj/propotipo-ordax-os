@@ -269,7 +269,7 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 
 **Primeira entrega:** sincronizar um conjunto pequeno de preferências e metadados de workspace. Não iniciar por upload automático de todo o diretório pessoal. Conteúdo de arquivos requer seleção, quotas, integridade, progresso e regras próprias.
 
-**Conta → Sincronização:** tipos habilitados, última conclusão real, alterações locais pendentes, erro sanitizado, conflitos e ação de tentar novamente quando suportada. “Salvo neste dispositivo” e “Sincronizado com a conta” devem ser mensagens diferentes.
+**Conta → Sincronização:** tipos habilitados, última conclusão real, alterações locais pendentes, erro sanitizado, conflitos e ação de tentar novamente quando suportada. “Salvo neste dispositivo” e “Sincronizado com a conta” devem ser mensagens diferentes. **Estado atual:** Conta já separa **Visão geral** e **Sincronização** como destinos canônicos. A seção de sync mostra somente fila/metadata locais comprovados e explicita que fila vazia não prova nuvem sincronizada; nenhum transporte autenticado é inferido apenas por capability.
 
 **Conflitos:** política por tipo de dado; revisão de base e mutações idempotentes. Preferência simples pode ter regra determinística; documento com edições divergentes precisa preservar versões ou permitir resolução. Não aplicar last-write-wins universalmente. Exclusões precisam de semântica e retenção compatíveis com clientes offline.
 
