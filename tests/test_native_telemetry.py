@@ -48,8 +48,12 @@ class NativeTelemetryTests(unittest.TestCase):
             sha = "a" * 40
             (root / "state.json").write_text(json.dumps({
                 "sourceSha": sha,
+                "targetSha": "b" * 40,
                 "status": "running",
+                "phase": "activating",
                 "applyMode": "surface-restart",
+                "attemptId": "2026-09-18T03:00:00Z",
+                "lastError": "test-diagnostic",
                 "lastAppliedSha": sha,
                 "lastAppliedAt": "2026-09-18T03:00:00Z",
                 "rejectedSha": "",
@@ -63,6 +67,10 @@ class NativeTelemetryTests(unittest.TestCase):
 
             payload = host.build_telemetry_payload("ordax-" + "1" * 32)
             self.assertEqual(payload["sourceSha"], sha)
+            self.assertEqual(payload["targetSha"], "b" * 40)
+            self.assertEqual(payload["phase"], "activating")
+            self.assertEqual(payload["attemptId"], "2026-09-18T03:00:00Z")
+            self.assertEqual(payload["lastError"], "test-diagnostic")
             self.assertEqual(payload["healthySha"], sha)
             self.assertEqual(payload["rescueGeneration"], 2)
             self.assertEqual(payload["rescueAction"], "retry-main")
