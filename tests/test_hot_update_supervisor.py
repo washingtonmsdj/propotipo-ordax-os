@@ -15,6 +15,7 @@ UPDATE_CONTROLS = ROOT / "system" / "surface" / "ui" / "update-controls.mjs"
 class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_supervisor_shell_is_syntactically_valid(self):
         subprocess.run(["sh", "-n", str(SYSTEM_ENTRYPOINT)], check=True)
+        subprocess.run(["sh", "-n", str(SYSTEM_SUPERVISOR)], check=True)
         subprocess.run(["sh", "-n", str(SURFACE_RUNTIME)], check=True)
         subprocess.run(["python3", "-m", "py_compile", str(NATIVE_HOST_SERVER)], check=True)
 
@@ -69,7 +70,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         )
         self.assertIn('log "live-safe system update applied; waiting for Surface health acknowledgement"', text)
         self.assertIn('log "native host update applied; restarting Surface only"', text)
-        self.assertIn('exec "$SYSTEM_ENTRYPOINT"', text)
+        self.assertIn("exit 75", text)
 
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
