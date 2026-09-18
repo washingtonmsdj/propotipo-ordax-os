@@ -48,7 +48,7 @@ SURFACE_HEARTBEAT_FILE = "/var/lib/ordax/surface-heartbeat.json"
 CLIENT_DIAGNOSTIC_FILE = "/var/lib/ordax/client-diagnostic.json"
 TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
 RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
-BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
+BOOT_ID_FILE = "/run/ordax-update/base-boot-id"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 NETWORK_TOKEN_HEADER = "X-OrdaX-Network-Token"
 DIAGNOSTIC_TOKEN_HEADER = "X-OrdaX-Diagnostic-Token"
@@ -1453,8 +1453,8 @@ def record_surface_heartbeat(source_sha: str) -> None:
     os.makedirs(directory, mode=0o700, exist_ok=True)
     temporary = f"{SURFACE_HEARTBEAT_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
     boot_id = read_small_text(BOOT_ID_FILE, 128)
-    if not boot_id or len(boot_id) > 64 or any(
-        character not in "0123456789abcdef-" for character in boot_id
+    if len(boot_id) != 32 or any(
+        character not in "0123456789abcdef" for character in boot_id
     ):
         raise ValueError("invalid current boot id")
     payload = {
