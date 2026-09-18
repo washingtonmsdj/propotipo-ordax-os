@@ -32,6 +32,7 @@ SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
+NETWORK_STATUS_PATH = "/__ordax/native/network-status"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
@@ -53,6 +54,7 @@ MAX_TEXT_FILE_BYTES = 256 * 1024
 MAX_FILE_COPY_BYTES = 64 * 1024 * 1024
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
+NETWORK_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 SURFACE_HOST_RECOVERY_GENERATION = 1
@@ -451,6 +453,82 @@ def read_system_metrics(user_root: str, proc_root: str = "/proc") -> dict:
         "userStorageTotalBytes": storage_total,
         "userStorageFreeBytes": storage_free,
     }
+
+
+def parse_wireless_signals(text: str) -> dict[str, int]:
+    signals: dict[str, int] = {}
+    for raw_line in text.splitlines()[2:]:
+        if ":" not in raw_line:
+            continue
+        interface_name, values = raw_line.split(":", 1)
+        interface_name = interface_name.strip()
+        if not NETWORK_INTERFACE_RE.fullmatch(interface_name):
+            continue
+        fields = values.split()
+        if len(fields) < 3:
+            continue
+        try:
+            level = float(fields[2].rstrip("."))
+        except ValueError:
+            continue
+        if not math.isfinite(level):
+            continue
+        signal_dbm = int(level)
+        if -200 <= signal_dbm <= 0:
+            signals[interface_name] = signal_dbm
+    return signals
+
+
+def read_network_status(
+    sys_class_net: str = "/sys/class/net",
+    proc_net_wireless: str = "/proc/net/wireless",
+) -> dict:
+    try:
+        with open(proc_net_wireless, "r", encoding="utf-8") as handle:
+            wireless_signals = parse_wireless_signals(handle.read(65536))
+    except (OSError, UnicodeError):
+        wireless_signals = {}
+
+    interfaces = []
+    try:
+        names = sorted(os.listdir(sys_class_net))
+    except OSError as exc:
+        raise ValueError("network interface inventory is unavailable") from exc
+
+    for name in names[:64]:
+        if name == "lo" or not NETWORK_INTERFACE_RE.fullmatch(name):
+            continue
+        interface_path = os.path.join(sys_class_net, name)
+        if not os.path.isdir(interface_path):
+            continue
+
+        is_wifi = os.path.isdir(os.path.join(interface_path, "wireless"))
+        interface_type = read_small_text(os.path.join(interface_path, "type"), 32)
+        kind = "wifi" if is_wifi else ("ethernet" if interface_type == "1" else "other")
+
+        carrier = read_small_text(os.path.join(interface_path, "carrier"), 8)
+        operstate = read_small_text(os.path.join(interface_path, "operstate"), 32)
+        if carrier == "1":
+            link_state = "connected"
+        elif carrier == "0":
+            link_state = "disconnected"
+        elif operstate == "up":
+            link_state = "connected"
+        elif operstate in {"down", "dormant", "notpresent", "lowerlayerdown"}:
+            link_state = "disconnected"
+        else:
+            link_state = "unknown"
+
+        interfaces.append(
+            {
+                "name": name,
+                "kind": kind,
+                "state": link_state,
+                "signalDbm": wireless_signals.get(name) if is_wifi else None,
+            }
+        )
+
+    return {"interfaces": interfaces}
 
 
 def valid_logical_file_path(value: object) -> bool:
@@ -904,7 +982,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -918,6 +996,15 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, metrics)
+            return
+        if parsed_path == NETWORK_STATUS_PATH:
+            try:
+                network_status = read_network_status()
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not read network status: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
+                return
+            self._write_json(200, network_status)
             return
         if parsed_path == FILE_CONTENT_PATH:
             try:

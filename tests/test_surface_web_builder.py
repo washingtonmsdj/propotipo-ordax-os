@@ -43,6 +43,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/surface/ui/settings-overview-controls.mjs",
             "system/surface/ui/settings.css",
             "system/contracts/preference-runtime.mjs",
+            "system/contracts/network-status.mjs",
         ):
             self.assertIn(expected, graph)
 

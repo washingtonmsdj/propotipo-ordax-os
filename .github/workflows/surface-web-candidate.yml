@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/network-status.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/sync-runtime.mjs'
@@ -37,11 +38,13 @@ on:
       - 'tests/test_power_actions.mjs'
       - 'tests/test_update_status.mjs'
       - 'tests/test_account_runtime.mjs'
+      - 'tests/test_network_status.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/network-status.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/sync-runtime.mjs'
@@ -74,6 +77,7 @@ on:
       - 'tests/test_power_actions.mjs'
       - 'tests/test_update_status.mjs'
       - 'tests/test_account_runtime.mjs'
+      - 'tests/test_network_status.mjs'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   workflow_dispatch:
@@ -128,6 +132,7 @@ jobs:
           node --test tests/test_power_actions.mjs
           node --test tests/test_update_status.mjs
           node --test tests/test_account_runtime.mjs
+          node --test tests/test_network_status.mjs
           node --test tests/test_sync_*.mjs
 
       - name: Run Surface and Web bundle regressions

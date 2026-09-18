@@ -1,5 +1,9 @@
 import { assertPreferenceRuntimePort } from "../../contracts/preference-runtime.mjs";
 import {
+  assertNetworkStatusPort,
+  validateNetworkStatusSnapshot,
+} from "../../contracts/network-status.mjs";
+import {
   assertSurfaceHost,
   validateSurfaceSnapshot,
 } from "../../contracts/surface-host.mjs";
@@ -11,6 +15,7 @@ const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
 
 const CAPABILITY_LABELS = Object.freeze({
   "network.https": "Rede HTTPS",
+  "network.status": "Estado local de rede",
   "filesystem.user-space": "Arquivos persistentes",
   "system.boot-control": "Energia do dispositivo",
   "system.metrics": "Métricas locais",
@@ -39,6 +44,7 @@ export function mountSettingsOverviewControls(
   host,
   preferenceRuntime,
   surfaceLifecycle = null,
+  networkStatus = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Settings overview controls require a Surface root Element");
@@ -46,10 +52,13 @@ export function mountSettingsOverviewControls(
   const hostPort = assertSurfaceHost(host);
   const preferences = assertPreferenceRuntimePort(preferenceRuntime);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+  const networkPort = networkStatus === null ? null : assertNetworkStatusPort(networkStatus);
   const documentObject = root.ownerDocument;
 
   let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
   let preferenceSnapshot = preferences.getSnapshot();
+  let networkSnapshot = null;
+  let networkReadFailed = false;
   let destroyed = false;
   let mountedSlot = null;
 
@@ -113,6 +122,82 @@ export function mountSettingsOverviewControls(
     }
   };
 
+  const renderNetwork = (view) => {
+    if (!networkPort) return;
+
+    const section = node(documentObject, "section", "ordax-settings-section");
+    section.dataset.settingsNetwork = "";
+    section.append(
+      node(documentObject, "span", "ordax-settings-section-kicker", "Rede"),
+      node(documentObject, "h4", "ordax-settings-section-title", "Rede e conexões"),
+      node(
+        documentObject,
+        "p",
+        "ordax-settings-section-copy",
+        "Estado real observado no host nativo. Somente leitura nesta etapa; conexão, troca e esquecimento de Wi-Fi entram no próximo incremento.",
+      ),
+    );
+
+    const service = node(documentObject, "div", "ordax-settings-network-service");
+    service.dataset.state = hostSnapshot.connectivity;
+    const serviceLabels = {
+      online: "Conectividade do host disponível",
+      offline: "Host sem conectividade",
+      unknown: "Conectividade do host desconhecida",
+    };
+    service.append(
+      node(documentObject, "span", "ordax-settings-network-dot"),
+      node(documentObject, "strong", "", serviceLabels[hostSnapshot.connectivity] ?? serviceLabels.unknown),
+    );
+    section.append(service);
+
+    if (networkReadFailed) {
+      section.append(
+        node(documentObject, "p", "ordax-settings-empty", "Não foi possível atualizar o estado de rede."),
+      );
+      view.append(section);
+      return;
+    }
+
+    if (networkSnapshot === null) {
+      section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
+      view.append(section);
+      return;
+    }
+
+    const interfaces = node(documentObject, "div", "ordax-settings-network-list");
+    if (networkSnapshot.interfaces.length === 0) {
+      interfaces.append(
+        node(documentObject, "p", "ordax-settings-empty", "Nenhuma interface de rede utilizável foi observada."),
+      );
+    } else {
+      const kindLabels = { wifi: "Wi-Fi", ethernet: "Cabo", other: "Outra interface" };
+      const stateLabels = {
+        connected: "Conectado",
+        disconnected: "Desconectado",
+        unknown: "Estado desconhecido",
+      };
+      for (const entry of networkSnapshot.interfaces) {
+        const item = node(documentObject, "div", "ordax-settings-network-item");
+        item.dataset.state = entry.state;
+        const copy = node(documentObject, "span", "ordax-settings-network-copy");
+        copy.append(
+          node(documentObject, "strong", "", kindLabels[entry.kind] ?? kindLabels.other),
+          node(
+            documentObject,
+            "small",
+            "",
+            `${entry.name} · ${stateLabels[entry.state] ?? stateLabels.unknown}${entry.signalDbm === null ? "" : ` · sinal ${entry.signalDbm} dBm`}`,
+          ),
+        );
+        item.append(node(documentObject, "span", "ordax-settings-network-dot"), copy);
+        interfaces.append(item);
+      }
+    }
+    section.append(interfaces);
+    view.append(section);
+  };
+
   const renderHost = (view) => {
     const section = node(documentObject, "section", "ordax-settings-section");
     section.append(
@@ -166,6 +251,7 @@ export function mountSettingsOverviewControls(
     const view = node(documentObject, "div", "ordax-settings-view");
     renderHeader(view);
     renderPreferences(view);
+    renderNetwork(view);
     renderHost(view);
     slot.append(view);
   };
@@ -183,6 +269,23 @@ export function mountSettingsOverviewControls(
   };
 
   const replaceView = () => renderView(true);
+
+  const refreshNetwork = async () => {
+    if (!networkPort || destroyed) return;
+    let changed = false;
+    try {
+      const nextSnapshot = validateNetworkStatusSnapshot(await networkPort.read());
+      changed =
+        networkReadFailed ||
+        JSON.stringify(nextSnapshot) !== JSON.stringify(networkSnapshot);
+      networkSnapshot = nextSnapshot;
+      networkReadFailed = false;
+    } catch {
+      changed = !networkReadFailed;
+      networkReadFailed = true;
+    }
+    if (changed && !destroyed) replaceView();
+  };
 
   const onClick = (event) => {
     const button = event.target.closest("[data-settings-preference-id]");
@@ -203,10 +306,15 @@ export function mountSettingsOverviewControls(
     preferenceSnapshot = snapshot;
     replaceView();
   });
+  const networkPoll = networkPort
+    ? setInterval(() => void refreshNetwork(), 5000)
+    : null;
+  if (networkPort) void refreshNetwork();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
+      if (networkPoll !== null) clearInterval(networkPoll);
       unsubscribePreferences?.();
       unsubscribeHost?.();
       unsubscribeRender();
