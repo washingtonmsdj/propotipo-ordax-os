@@ -233,14 +233,23 @@ export function mountNetworkQuickPanel(
     render();
 
     try {
-      const next =
-        action === "scan"
-          ? await managementPort.scan()
-          : action === "connect"
-            ? await managementPort.connect(credentials)
-            : action === "disconnect"
-              ? await managementPort.disconnect()
-              : await managementPort.reconnect();
+      let next;
+      switch (action) {
+        case "scan":
+          next = await managementPort.scan();
+          break;
+        case "connect":
+          next = await managementPort.connect(credentials);
+          break;
+        case "disconnect":
+          next = await managementPort.disconnect();
+          break;
+        case "reconnect":
+          next = await managementPort.reconnect();
+          break;
+        default:
+          throw new TypeError("Ação rápida de Wi-Fi inválida");
+      }
       managementSnapshot = validateNetworkManagementSnapshot(next);
       selectedSsid = null;
       message = {
