@@ -565,10 +565,11 @@ export function mountSettingsOverviewControls(
 
     if (action === "connect") {
       const ssid = actionButton.dataset.settingsWifiSsid;
-      const input = root.querySelector(
-        `[data-settings-wifi-password-for="${CSS.escape(ssid ?? "")}"]`,
-      );
-      if (!(input instanceof HTMLInputElement)) return;
+      const input = root.querySelector("[data-settings-wifi-password]");
+      if (
+        !(input instanceof HTMLInputElement)
+        || input.dataset.settingsWifiPasswordFor !== ssid
+      ) return;
       let password = input.value;
       input.value = "";
       if (!password) {
@@ -586,7 +587,28 @@ export function mountSettingsOverviewControls(
     void runNetworkAction(action);
   };
 
+  const onKeyDown = (event) => {
+    const input = event.target.closest("[data-settings-wifi-password]");
+    if (!input || !root.contains(input)) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const connect = root.querySelector(
+        '[data-settings-network-action="connect"]',
+      );
+      connect?.click();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      input.value = "";
+      selectedNetworkSsid = null;
+      networkManagementMessage = "";
+      replaceView();
+    }
+  };
+
   root.addEventListener("click", onClick);
+  root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
@@ -614,6 +636,7 @@ export function mountSettingsOverviewControls(
       unsubscribeHost?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("keydown", onKeyDown);
       const slot = findSlot();
       if (slot?.dataset.ordaxSettingsOverviewView !== undefined) {
         slot.replaceChildren();
