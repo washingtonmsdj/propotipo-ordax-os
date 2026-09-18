@@ -26,7 +26,7 @@ class NativeUpdateHistoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             releases = native_host.read_release_history(str(path))
-            self.assertEqual([entry["versionNumber"] for entry in releases], [124, 123])
+            self.assertEqual([entry["deliveryNumber"] for entry in releases], [124, 123])
             self.assertEqual(releases[0]["title"], "Versão e histórico")
 
     def test_application_history_is_newest_first_and_ignores_malformed_records(self):
@@ -39,7 +39,7 @@ class NativeUpdateHistoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             applications = native_host.read_application_history(str(path))
-            self.assertEqual([entry["versionNumber"] for entry in applications], [124, 123])
+            self.assertEqual([entry["deliveryNumber"] for entry in applications], [124, 123])
             self.assertEqual(applications[0]["applyDurationSeconds"], 31)
             self.assertEqual(applications[0]["stageDurationSeconds"], 1)
 
@@ -64,11 +64,12 @@ class NativeUpdateHistoryTests(unittest.TestCase):
                 snapshot = native_host.read_update_history()
                 self.assertEqual(
                     set(snapshot["releases"][0]),
-                    {"versionNumber", "sourceSha", "releasedAt", "title"},
+                    {"deliveryNumber", "versionNumber", "sourceSha", "releasedAt", "title"},
                 )
                 self.assertEqual(
                     set(snapshot["applications"][0]),
                     {
+                        "deliveryNumber",
                         "versionNumber",
                         "sourceSha",
                         "appliedAt",

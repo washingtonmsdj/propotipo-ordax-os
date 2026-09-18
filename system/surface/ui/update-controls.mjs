@@ -3,16 +3,16 @@
 // Staged-slot latency probe: no behavior change; exercises the live reload path.
 // Fast-path probe: this UI file is intentionally safe for live Surface reloads.
 const STATUS_COPY = Object.freeze({
-  running: ["Atualizado", "A Surface está executando a versão sincronizada."],
-  applied: ["Aplicando atualização", "Uma nova versão foi recebida e está sendo ativada."],
-  updating: ["Atualizando…", "O OrdaX está recebendo uma nova versão pelo Git."],
-  "network-error": ["Sem conexão", "A versão atual continua funcionando e uma nova tentativa será feita automaticamente."],
-  "remote-error": ["Git remoto indisponível", "A versão atual foi preservada."],
-  "pull-error": ["Falha ao atualizar", "A versão atual foi preservada e o OrdaX tentará novamente."],
-  "rolled-back": ["Atualização revertida", "A nova versão não ficou saudável e o OrdaX voltou automaticamente para a versão anterior."],
-  rejected: ["Versão bloqueada", "Uma atualização com falha foi bloqueada até a main avançar novamente."],
-  pinned: ["Versão fixada", "As atualizações automáticas estão pausadas por uma versão fixada."],
-  disabled: ["Atualização indisponível", "Este ambiente não possui o fluxo Git automático ativo."],
+  running: ["Atualizado", "A Surface está executando a entrega sincronizada."],
+  applied: ["Aplicando atualização", "Uma nova entrega foi recebida e está sendo ativada."],
+  updating: ["Atualizando…", "O OrdaX está recebendo uma nova entrega."],
+  "network-error": ["Sem conexão", "A entrega atual continua funcionando e uma nova tentativa será feita automaticamente."],
+  "remote-error": ["Fonte de atualização indisponível", "A entrega atual foi preservada."],
+  "pull-error": ["Falha ao atualizar", "A entrega atual foi preservada e o OrdaX tentará novamente."],
+  "rolled-back": ["Atualização revertida", "A nova entrega não ficou saudável e o OrdaX voltou automaticamente para a entrega anterior."],
+  rejected: ["Entrega bloqueada", "Uma atualização com falha foi bloqueada até existir uma nova entrega candidata."],
+  pinned: ["Entrega fixada", "As atualizações automáticas estão pausadas por uma entrega fixada."],
+  disabled: ["Atualização indisponível", "Este ambiente não possui o fluxo automático de entregas ativo."],
   unavailable: ["Estado indisponível", "O host ainda não publicou o estado do atualizador."],
 });
 
@@ -28,8 +28,8 @@ function shortSha(value) {
   return value.slice(0, 8);
 }
 
-function versionLabel(value) {
-  return Number.isSafeInteger(value) && value > 0 ? `v${value}` : "versão técnica";
+function deliveryLabel(value) {
+  return Number.isSafeInteger(value) && value > 0 ? `Entrega ${value}` : "Entrega sem número";
 }
 
 function formatTimestamp(value) {
@@ -59,10 +59,10 @@ function readableMode(mode) {
 
 function readablePhase(phase) {
   switch (phase) {
-    case "checking": return "Verificando Git";
-    case "fetching": return "Baixando versão";
+    case "checking": return "Verificando atualizações";
+    case "fetching": return "Baixando entrega";
     case "validating": return "Validando sistema";
-    case "activating": return "Ativando versão";
+    case "activating": return "Ativando entrega";
     case "health-wait": return "Aguardando confirmação de saúde";
     case "rollback": return "Revertendo automaticamente";
     case "blocked": return "Bloqueada";
@@ -109,7 +109,7 @@ export function mountUpdateControls(root, updatePort) {
   const heading = node(documentObject, "div", "ordax-launcher-heading");
   heading.append(
     node(documentObject, "span", "", "Atualizações"),
-    node(documentObject, "small", "", "Git automático e recuperação"),
+    node(documentObject, "small", "", "Entrega automática e recuperação"),
   );
   const grid = node(documentObject, "div", "ordax-launcher-grid");
   const detail = node(documentObject, "p", "ordax-empty", "");
@@ -139,13 +139,13 @@ export function mountUpdateControls(root, updatePort) {
     toggle.textContent = alerting ? "Atualizações •" : "Atualizações";
     toggle.dataset.alerting = String(alerting);
     addFact(alerting ? "!" : "✓", label, description);
-    addFact("#", `OrdaX ${versionLabel(snapshot?.versionNumber)}`, `SHA ${shortSha(snapshot?.sourceSha)} · ${readableMode(snapshot?.applyMode)}`);
+    addFact("#", deliveryLabel(snapshot?.deliveryNumber), `SHA técnico ${shortSha(snapshot?.sourceSha)} · ${readableMode(snapshot?.applyMode)}`);
     if (snapshot?.runtimeSurfaceSha) {
       addFact(
         "◇",
         `Surface ${shortSha(snapshot.runtimeSurfaceSha)}`,
         snapshot.runtimeSurfaceSha === snapshot.sourceSha
-          ? "Runtime alinhado com a versão Git."
+          ? "Runtime alinhado com a entrega observada."
           : "Runtime mantido no último commit com efeito na Surface.",
       );
     }
@@ -168,7 +168,7 @@ export function mountUpdateControls(root, updatePort) {
       );
     }
     if (snapshot?.rejectedSha) {
-      addFact("×", `Bloqueada ${shortSha(snapshot.rejectedSha)}`, "O OrdaX não tentará este commit novamente enquanto a main não avançar.");
+      addFact("×", `Bloqueada ${shortSha(snapshot.rejectedSha)}`, "O OrdaX não tentará este commit novamente enquanto não existir uma nova entrega candidata.");
     }
     detail.textContent = snapshot?.checkedAt && snapshot.checkedAt !== "unknown"
       ? `Última verificação automática: ${formatTimestamp(snapshot.checkedAt)}`

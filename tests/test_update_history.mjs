@@ -12,11 +12,11 @@ const sha = "a".repeat(40);
 test("update history validates releases and local applications", () => {
   const snapshot = validateUpdateHistorySnapshot({
     releases: [
-      { versionNumber: 123, sourceSha: sha, releasedAt: "2026-09-18T11:34:15Z", title: "Rede nativa somente leitura" },
+      { deliveryNumber: 123, sourceSha: sha, releasedAt: "2026-09-18T11:34:15Z", title: "Rede nativa somente leitura" },
     ],
     applications: [
       {
-        versionNumber: 123,
+        deliveryNumber: 123,
         sourceSha: sha,
         appliedAt: "2026-09-18T11:34:47Z",
         applyMode: "surface-restart",
@@ -26,6 +26,7 @@ test("update history validates releases and local applications", () => {
       },
     ],
   });
+  assert.equal(snapshot.releases[0].deliveryNumber, 123);
   assert.equal(snapshot.releases[0].versionNumber, 123);
   assert.equal(snapshot.applications[0].applyDurationSeconds, 27);
   assert.ok(Object.isFrozen(snapshot));
@@ -33,7 +34,7 @@ test("update history validates releases and local applications", () => {
 
 test("update history rejects unsafe or unbounded records", () => {
   assert.throws(() => validateUpdateHistorySnapshot({
-    releases: [{ versionNumber: 0, sourceSha: sha, releasedAt: "x", title: "bad" }],
+    releases: [{ deliveryNumber: 0, sourceSha: sha, releasedAt: "x", title: "bad" }],
     applications: [],
   }));
   assert.throws(() => validateUpdateHistorySnapshot({

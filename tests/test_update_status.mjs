@@ -39,6 +39,7 @@ test("update status contract normalizes optional fields", () => {
     applyMode: "initial",
   });
   assert.equal(snapshot.bootRefreshRequired, false);
+  assert.equal(snapshot.deliveryNumber, 0);
   assert.equal(snapshot.versionNumber, 0);
   assert.equal(snapshot.lastApplyDurationSeconds, 0);
   assert.equal(snapshot.lastStageDurationSeconds, 0);
@@ -67,12 +68,13 @@ test("update status preserves runtime-effective Surface identity separately from
 test("update status preserves human version and bounded durations", () => {
   const snapshot = validateUpdateStatusSnapshot({
     sourceSha: "0123456789012345678901234567890123456789",
-    versionNumber: 124,
+    deliveryNumber: 124,
     status: "running",
     applyMode: "reload",
     lastApplyDurationSeconds: 5,
     lastStageDurationSeconds: 0,
   });
+  assert.equal(snapshot.deliveryNumber, 124);
   assert.equal(snapshot.versionNumber, 124);
   assert.equal(snapshot.lastApplyDurationSeconds, 5);
   assert.equal(snapshot.lastStageDurationSeconds, 0);

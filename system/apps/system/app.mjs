@@ -3,7 +3,7 @@ import { defineFirstPartyApp } from "../app-contract.mjs";
 export const systemApp = defineFirstPartyApp({
   id: "system",
   title: "Sistema",
-  description: "Versão, atualizações, conectividade e recursos desta execução do OrdaX.",
+  description: "Entrega, atualizações, conectividade e recursos desta execução do OrdaX.",
   monogram: "SI",
   singleton: true,
   requiredCapabilities: [],

@@ -276,3 +276,17 @@ boot -> rede -> adquirir release assinada -> verificar -> ativar -> boot offline
 ```
 
 Todo componente extra deve justificar sua existencia antes de entrar no bootstrap.
+
+
+### Entregas, atualizações e PRs
+
+Antes de alterar versionamento, histórico ou a UI de atualizações, leia `docs/UPDATE-NOMENCLATURE.md` e `docs/contracts/update-nomenclature.json`.
+
+- número de PR é identificador interno de desenvolvimento e nunca é a identidade da atualização no notebook;
+- SHA Git permanece a identidade técnica exata;
+- `Entrega N` é a sequência humana de mudanças aplicáveis ao dispositivo;
+- `Atualização` é o evento/estado de aplicação no dispositivo;
+- versão comercial do OrdaX não é inferida de PR ou de Entrega;
+- componentes não recebem número próprio enquanto não tiverem empacotamento e ciclo de release independentes.
+
+Não reintroduzir derivação de versão/entrega a partir de `Merge pull request #N`.

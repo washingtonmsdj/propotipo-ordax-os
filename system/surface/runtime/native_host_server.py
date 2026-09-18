@@ -1039,6 +1039,7 @@ def read_release_history(path: str = RELEASE_HISTORY_FILE) -> list[dict]:
             continue
         releases.append(
             {
+                "deliveryNumber": version,
                 "versionNumber": version,
                 "sourceSha": source_sha,
                 "releasedAt": released_at,
@@ -1075,6 +1076,7 @@ def read_application_history(path: str = UPDATE_HISTORY_FILE) -> list[dict]:
             continue
         applications.append(
             {
+                "deliveryNumber": version,
                 "versionNumber": version,
                 "sourceSha": source_sha,
                 "appliedAt": applied_at,

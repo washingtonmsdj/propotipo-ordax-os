@@ -6,9 +6,9 @@ const RESULTS = new Set(["applied", "rolled-back"]);
 const MAX_RELEASES = 80;
 const MAX_APPLICATIONS = 200;
 
-function versionNumber(value) {
+function deliveryNumber(value) {
   if (!Number.isSafeInteger(value) || value < 1 || value > 1_000_000) {
-    throw new TypeError("Update history versionNumber must be a positive safe integer");
+    throw new TypeError("Update history deliveryNumber must be a positive safe integer");
   }
   return value;
 }
@@ -39,7 +39,8 @@ function validateRelease(value) {
     throw new TypeError("Update history release must be an object");
   }
   return Object.freeze({
-    versionNumber: versionNumber(value.versionNumber),
+    deliveryNumber: deliveryNumber(value.deliveryNumber ?? value.versionNumber),
+    versionNumber: deliveryNumber(value.deliveryNumber ?? value.versionNumber),
     sourceSha: sha(value.sourceSha),
     releasedAt: boundedText(value.releasedAt, "releasedAt", 64),
     title: boundedText(value.title, "title", 200),
@@ -57,7 +58,8 @@ function validateApplication(value) {
     throw new TypeError("Update history result is invalid");
   }
   return Object.freeze({
-    versionNumber: versionNumber(value.versionNumber),
+    deliveryNumber: deliveryNumber(value.deliveryNumber ?? value.versionNumber),
+    versionNumber: deliveryNumber(value.deliveryNumber ?? value.versionNumber),
     sourceSha: sha(value.sourceSha),
     appliedAt: boundedText(value.appliedAt, "appliedAt", 64),
     applyMode: value.applyMode,

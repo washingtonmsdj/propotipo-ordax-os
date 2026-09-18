@@ -431,10 +431,10 @@ current_sha() {
     "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
 }
 
-version_number_for_sha() {
+delivery_number_for_sha() {
     source_sha=$1
-    subject=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%s "$source_sha" 2>/dev/null || true)
-    value=$(printf '%s\n' "$subject" | /bin/busybox sed -n 's/^Merge pull request #\([0-9][0-9]*\) .*/\1/p')
+    value=$("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --count "$source_sha" -- \
+        system boot bootstrap ':(exclude)system/*.md' 2>/dev/null || true)
     case "$value" in
         ''|*[!0-9]*) printf '0' ;;
         *) printf '%s' "$value" ;;
@@ -454,13 +454,14 @@ release_title_for_sha() {
 refresh_release_history() {
     temporary=$RELEASE_HISTORY_FILE.tmp.$
     : >"$temporary"
-    for release_sha in $("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --max-count="$RELEASE_HISTORY_MAX_ENTRIES" HEAD 2>/dev/null || true); do
-        release_version=$(version_number_for_sha "$release_sha")
-        [ "$release_version" -gt 0 ] 2>/dev/null || continue
+    for release_sha in $("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --max-count="$RELEASE_HISTORY_MAX_ENTRIES" HEAD -- \
+        system boot bootstrap ':(exclude)system/*.md' 2>/dev/null || true); do
+        release_delivery=$(delivery_number_for_sha "$release_sha")
+        [ "$release_delivery" -gt 0 ] 2>/dev/null || continue
         released_at=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%cI "$release_sha" 2>/dev/null || true)
         [ -n "$released_at" ] || released_at=unknown
         release_title=$(release_title_for_sha "$release_sha")
-        printf '%s\t%s\t%s\t%s\n' "$release_version" "$released_at" "$release_sha" "$release_title" >>"$temporary"
+        printf '%s\t%s\t%s\t%s\n' "$release_delivery" "$released_at" "$release_sha" "$release_title" >>"$temporary"
     done
     /bin/busybox mv -f "$temporary" "$RELEASE_HISTORY_FILE"
 }
@@ -470,8 +471,8 @@ append_application_history() {
     apply_mode=$2
     result=$3
     applied_at=$4
-    version_number=$(version_number_for_sha "$source_sha")
-    [ "$version_number" -gt 0 ] 2>/dev/null || return 0
+    delivery_number=$(delivery_number_for_sha "$source_sha")
+    [ "$delivery_number" -gt 0 ] 2>/dev/null || return 0
 
     apply_duration=$(read_state_value "$LAST_APPLY_DURATION_FILE")
     stage_duration=$(read_state_value "$LAST_STAGE_DURATION_FILE")
@@ -487,7 +488,7 @@ append_application_history() {
         : >"$temporary"
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$version_number" "$applied_at" "$source_sha" "$apply_mode" "$result" "$apply_duration" "$stage_duration" >>"$temporary"
+        "$delivery_number" "$applied_at" "$source_sha" "$apply_mode" "$result" "$apply_duration" "$stage_duration" >>"$temporary"
     /bin/busybox tail -n "$UPDATE_HISTORY_MAX_ENTRIES" "$temporary" >"$temporary.trimmed"
     /bin/busybox mv -f "$temporary.trimmed" "$UPDATE_HISTORY_FILE"
     rm -f "$temporary"
@@ -525,10 +526,10 @@ write_update_state() {
     [ -n "$runtime_surface_sha" ] || runtime_surface_sha=$source_sha
     case "$last_apply_duration" in ''|*[!0-9]*) last_apply_duration=0 ;; esac
     case "$last_stage_duration" in ''|*[!0-9]*) last_stage_duration=0 ;; esac
-    version_number=$(version_number_for_sha "$source_sha")
+    delivery_number=$(delivery_number_for_sha "$source_sha")
     temporary=$UPDATE_STATE.tmp.$
-    printf '{"sourceSha":"%s","versionNumber":%s,"runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rejectedSha":"%s","lastError":"%s"}\n' \
-        "$source_sha" "$version_number" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
+    printf '{"sourceSha":"%s","deliveryNumber":%s,"versionNumber":%s,"runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rejectedSha":"%s","lastError":"%s"}\n' \
+        "$source_sha" "$delivery_number" "$delivery_number" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
         "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
 }
@@ -974,10 +975,17 @@ check_for_update() {
             exit 75
             ;;
         none)
-            record_applied "$new_sha" "$APPLY_MODE"
+            rm -f "$ATTEMPT_STARTED_EPOCH_FILE"
+            write_state_value "$LAST_APPLY_DURATION_FILE" "0"
+            write_state_value "$LAST_STAGE_DURATION_FILE" "0"
+            refresh_release_history
             clear_update_context
             write_update_state "$new_sha" running none
-            log "repository update has no running-system effect"
+            if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
+                log "low-level delivery observed; application remains pending boot refresh"
+            else
+                log "repository update has no device delivery effect"
+            fi
             ;;
     esac
 }
