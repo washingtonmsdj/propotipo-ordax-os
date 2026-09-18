@@ -95,6 +95,24 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         )
         self.assertIn("actionOrdinal += 1;", controls)
 
+    def test_files_preserves_focus_selection_and_scroll_across_repaints(self):
+        files = self.read("file-space-controls.mjs")
+        self.assertIn("captureInteractionState", files)
+        self.assertIn("restoreInteractionState", files)
+        self.assertIn("windowScrollTop", files)
+        self.assertIn("listScrollTop", files)
+        self.assertIn("previewScrollTop", files)
+        self.assertIn("selectionStart", files)
+        self.assertIn("selectionEnd", files)
+        self.assertIn("preventScroll: true", files)
+        self.assertIn('requestFocus("directory-name")', files)
+        self.assertIn('requestFocus("rename-name", selected.path)', files)
+        self.assertIn('requestFocus("copy-name", selected.path)', files)
+        self.assertIn('requestFocus("search")', files)
+        self.assertIn("snapshot.path === (listing?.path ?? \"\")", files)
+        self.assertIn("slot.dataset.fileSpacePath = listing?.path ?? \"\"", files)
+        self.assertNotIn("queueMicrotask(() => input.isConnected && input.focus())", files)
+
     def test_existing_file_and_system_async_owners_keep_ordinal_guards(self):
         files = self.read("file-space-controls.mjs")
         system = self.read("system-overview-controls.mjs")
