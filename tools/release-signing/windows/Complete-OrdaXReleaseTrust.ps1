@@ -66,6 +66,7 @@ $PromotionTrustPath = Join-Path $PublicPromotionDirectory 'release-ed25519.json'
 $PromotionEvidencePath = Join-Path $PublicPromotionDirectory 'ceremony-public-evidence.json'
 $PromotionProofManifestPath = Join-Path $PublicPromotionDirectory 'trust-proof-manifest.json'
 $PromotionRecoveryEnvelopePath = Join-Path $PublicPromotionDirectory 'trust-proof-recovery-envelope.json'
+$PublicHandoffZipPath = Join-Path $ReviewDirectory 'OrdaX-Public-Trust-Handoff.zip'
 
 foreach ($path in @($TrustPath, $PrimaryDerivedPath, $ProofManifestPath, $InitialResultPath)) {
     Assert-RegularFile $path 'required trust ceremony file'
@@ -85,7 +86,8 @@ foreach ($path in @(
     $PromotionTrustPath,
     $PromotionEvidencePath,
     $PromotionProofManifestPath,
-    $PromotionRecoveryEnvelopePath
+    $PromotionRecoveryEnvelopePath,
+    $PublicHandoffZipPath
 )) {
     if (Test-Path -LiteralPath $path) {
         throw "Refusing to replace an existing recovery proof output: $path"
@@ -178,6 +180,82 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath $PromotionTrustPath).Hash.ToLow
     throw 'Public promotion trust copy changed after verification.'
 }
 
+$ExpectedPromotionNames = @(
+    'release-ed25519.json',
+    'ceremony-public-evidence.json',
+    'trust-proof-manifest.json',
+    'trust-proof-recovery-envelope.json'
+)
+$ActualPromotionNames = @(
+    Get-ChildItem -LiteralPath $PublicPromotionDirectory -Force |
+        ForEach-Object { $_.Name } |
+        Sort-Object
+)
+$ExpectedSortedNames = @($ExpectedPromotionNames | Sort-Object)
+if ($ActualPromotionNames.Count -ne $ExpectedSortedNames.Count) {
+    throw 'Public promotion directory contains an unexpected number of files.'
+}
+for ($i = 0; $i -lt $ExpectedSortedNames.Count; $i++) {
+    if ($ActualPromotionNames[$i] -ne $ExpectedSortedNames[$i]) {
+        throw 'Public promotion directory contains unexpected files.'
+    }
+}
+
+$ForbiddenSecretNames = @(
+    Get-ChildItem -LiteralPath $PublicPromotionDirectory -Force -File |
+        Where-Object {
+            $_.Extension -match '^\.(pem|key|p12|pfx|dpapi)$' -or
+            $_.Name -match '(?i)(private|secret|seed)'
+        }
+)
+if ($ForbiddenSecretNames.Count -ne 0) {
+    throw 'Refusing public handoff because secret-looking material is present.'
+}
+
+Compress-Archive -LiteralPath @(
+    $PromotionTrustPath,
+    $PromotionEvidencePath,
+    $PromotionProofManifestPath,
+    $PromotionRecoveryEnvelopePath
+) -DestinationPath $PublicHandoffZipPath -CompressionLevel Optimal
+
+Assert-RegularFile $PublicHandoffZipPath 'public trust handoff zip'
+$PublicHandoffZipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PublicHandoffZipPath).Hash.ToLowerInvariant()
+
+$HandoffVerifyDirectory = Join-Path $ReviewDirectory ('.handoff-verify-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $HandoffVerifyDirectory | Out-Null
+try {
+    Expand-Archive -LiteralPath $PublicHandoffZipPath -DestinationPath $HandoffVerifyDirectory
+
+    $ExpandedNames = @(
+        Get-ChildItem -LiteralPath $HandoffVerifyDirectory -Force |
+            ForEach-Object { $_.Name } |
+            Sort-Object
+    )
+    if ($ExpandedNames.Count -ne $ExpectedSortedNames.Count) {
+        throw 'Public handoff ZIP contains an unexpected number of entries.'
+    }
+    for ($i = 0; $i -lt $ExpectedSortedNames.Count; $i++) {
+        if ($ExpandedNames[$i] -ne $ExpectedSortedNames[$i]) {
+            throw 'Public handoff ZIP contains unexpected entries.'
+        }
+    }
+
+    foreach ($name in $ExpectedPromotionNames) {
+        $source = Join-Path $PublicPromotionDirectory $name
+        $expanded = Join-Path $HandoffVerifyDirectory $name
+        Assert-RegularFile $expanded 'expanded public handoff file'
+        $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+        $expandedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $expanded).Hash.ToLowerInvariant()
+        if ($sourceHash -ne $expandedHash) {
+            throw "Public handoff ZIP changed bytes for $name."
+        }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $HandoffVerifyDirectory -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host ''
 Write-Host 'OFFLINE_RECOVERY_VERIFIED=YES'
 Write-Host 'PRIMARY_PUBLIC_DERIVATION_MATCH=YES'
@@ -188,5 +266,9 @@ Write-Host 'RECOVERED_ENVELOPE_VERIFIED=YES'
 Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
 Write-Host 'PRIVATE_KEY_PRINTED=NO'
 Write-Host 'PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO'
+Write-Host 'PUBLIC_HANDOFF_SECRET_MATERIAL=NO'
+Write-Host 'PUBLIC_HANDOFF_CONTENTS_VERIFIED=YES'
 Write-Host 'READY_TO_PIN_PUBLIC_ANCHOR=YES'
 Write-Host "PUBLIC_PROMOTION_DIRECTORY=$PublicPromotionDirectory"
+Write-Host "PUBLIC_TRUST_HANDOFF_ZIP=$PublicHandoffZipPath"
+Write-Host "PUBLIC_TRUST_HANDOFF_ZIP_SHA256=$PublicHandoffZipHash"

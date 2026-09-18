@@ -157,6 +157,14 @@ trust-proof-manifest.json
 trust-proof-recovery-envelope.json
 ```
 
+The finalizer also creates a single public handoff archive next to that directory:
+
+```text
+trust-review/OrdaX-Public-Trust-Handoff.zip
+```
+
+That ZIP contains exactly the four public files above. It is the only ceremony artifact that needs to leave the developer machine for repository promotion. It must never contain a PEM, private key, secret, seed, recovery password or encrypted private-key backup. The finalizer emits the ZIP SHA-256 for transport checking.
+
 The recovered-signing envelope is re-verified with `ordax-release-signing verify-envelope` before the finalizer reports readiness. The public-promotion set therefore carries both the ceremony assertions and the cryptographic proof needed to revalidate them later without any private key.
 
 The restored private PEM should be removed from the temporary recovery location after verification according to the operator's backup procedure. The repository does not prescribe the backup encryption product or password handling; it proves that the recovered material is cryptographically the same release identity.
@@ -183,7 +191,7 @@ Then run the repository promoter with the exact reviewed signer binary:
 
 ```text
 python tools/release-signing/promote_public_trust.py check \
-  --promotion-dir <trust-review>\public-promotion \
+  --promotion-zip <trust-review>\OrdaX-Public-Trust-Handoff.zip \
   --verifier <toolkit>\ordax-release-signing.exe
 
 python tools/release-signing/promote_public_trust.py apply \
