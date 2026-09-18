@@ -11,6 +11,13 @@ RESCUE_DIR=$STATE_ROOT/rescue
 RESCUE_AGENT=$RESCUE_DIR/agent.sh
 RESCUE_LOG=$RESCUE_DIR/launcher.log
 RESCUE_PID_FILE=$RESCUE_DIR/agent.pid
+BASE_TELEMETRY_SOURCE=$SYSTEM_ROOT/services/telemetry/base-agent.sh
+BASE_TELEMETRY_CONFIG_SOURCE=$SYSTEM_ROOT/services/telemetry/relay.json
+BASE_TELEMETRY_DIR=$STATE_ROOT/telemetry
+BASE_TELEMETRY_AGENT=$BASE_TELEMETRY_DIR/agent.sh
+BASE_TELEMETRY_CONFIG=$BASE_TELEMETRY_DIR/relay.json
+BASE_TELEMETRY_LOG=$BASE_TELEMETRY_DIR/launcher.log
+BASE_TELEMETRY_PID_FILE=$BASE_TELEMETRY_DIR/agent.pid
 SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
@@ -33,10 +40,56 @@ STATE_BOUND=0
 USER_HOME_BOUND=0
 UDEV_ACTIVE=0
 
-mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR"
-chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR"
+mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR"
+chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR"
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
+
+base_telemetry_agent_running() {
+    pid=""
+    [ -s "$BASE_TELEMETRY_PID_FILE" ] && IFS= read -r pid <"$BASE_TELEMETRY_PID_FILE" || true
+    case "$pid" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$pid" -gt 1 ] 2>/dev/null || return 1
+    kill -0 "$pid" >/dev/null 2>&1
+}
+
+ensure_base_telemetry_agent() {
+    [ -f "$BASE_TELEMETRY_SOURCE" ] || {
+        echo "ordax-surface: base telemetry source unavailable: $BASE_TELEMETRY_SOURCE" >>"$BASE_TELEMETRY_LOG"
+        return 0
+    }
+    [ -f "$BASE_TELEMETRY_CONFIG_SOURCE" ] || {
+        echo "ordax-surface: base telemetry config unavailable: $BASE_TELEMETRY_CONFIG_SOURCE" >>"$BASE_TELEMETRY_LOG"
+        return 0
+    }
+
+    temporary=$BASE_TELEMETRY_AGENT.tmp
+    cp "$BASE_TELEMETRY_SOURCE" "$temporary" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+    chmod 700 "$temporary" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+    /bin/busybox mv -f "$temporary" "$BASE_TELEMETRY_AGENT" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+
+    temporary=$BASE_TELEMETRY_CONFIG.tmp
+    cp "$BASE_TELEMETRY_CONFIG_SOURCE" "$temporary" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+    chmod 600 "$temporary" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+    /bin/busybox mv -f "$temporary" "$BASE_TELEMETRY_CONFIG" >>"$BASE_TELEMETRY_LOG" 2>&1 || return 1
+
+    base_telemetry_agent_running && return 0
+
+    if [ -x /bin/setsid ]; then
+        /bin/setsid "$BASE_TELEMETRY_AGENT" >>"$BASE_TELEMETRY_LOG" 2>&1 </dev/null &
+    else
+        "$BASE_TELEMETRY_AGENT" >>"$BASE_TELEMETRY_LOG" 2>&1 </dev/null &
+    fi
+    /bin/busybox sleep 1
+    base_telemetry_agent_running || {
+        echo "ordax-surface: base telemetry agent did not remain running" >>"$BASE_TELEMETRY_LOG"
+        return 1
+    }
+    echo "ordax-surface: persistent base telemetry agent is running" >>"$BASE_TELEMETRY_LOG"
+    return 0
+}
 
 rescue_agent_running() {
     pid=""
@@ -481,6 +534,7 @@ prepare_input_stack() {
 }
 
 [ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
+ensure_base_telemetry_agent || echo "ordax-surface: base telemetry bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 [ -f "$SYSTEM_ROOT/composition/native/index.html" ] || fallback_with_reason "native Surface composition is missing: $SYSTEM_ROOT/composition/native/index.html"
 [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
