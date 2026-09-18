@@ -6,6 +6,7 @@ import {
   assertNetworkStatusPort,
   validateNetworkStatusSnapshot,
 } from "../system/contracts/network-status.mjs";
+import { summarizeNetworkStatus } from "../system/surface/ui/network-tray-controls.mjs";
 
 test("network status validates bounded interface observability", () => {
   const snapshot = validateNetworkStatusSnapshot({
@@ -59,6 +60,50 @@ test("network status rejects invalid signals, names, duplicates, and non-wifi si
         { name: "wlan0", kind: "wifi", state: "connected", signalDbm: -42 },
       ],
     }),
+  );
+});
+
+test("network tray prefers connected Wi-Fi and maps signal strength", () => {
+  assert.deepEqual(
+    summarizeNetworkStatus({
+      interfaces: [
+        { name: "eth0", kind: "ethernet", state: "connected", signalDbm: null },
+        { name: "wlan0", kind: "wifi", state: "connected", signalDbm: -47 },
+      ],
+    }),
+    {
+      kind: "wifi",
+      state: "connected",
+      signalLevel: 4,
+      label: "Wi-Fi",
+      title: "Wi-Fi conectado · sinal forte",
+    },
+  );
+});
+
+test("network tray falls back to cable and never invents connection", () => {
+  assert.deepEqual(
+    summarizeNetworkStatus({
+      interfaces: [
+        { name: "eth0", kind: "ethernet", state: "connected", signalDbm: null },
+        { name: "wlan0", kind: "wifi", state: "disconnected", signalDbm: null },
+      ],
+    }),
+    {
+      kind: "ethernet",
+      state: "connected",
+      signalLevel: 0,
+      label: "Cabo",
+      title: "Rede por cabo conectada",
+    },
+  );
+  assert.equal(
+    summarizeNetworkStatus({
+      interfaces: [
+        { name: "wlan0", kind: "wifi", state: "disconnected", signalDbm: null },
+      ],
+    }).label,
+    "Wi-Fi desconectado",
   );
 });
 

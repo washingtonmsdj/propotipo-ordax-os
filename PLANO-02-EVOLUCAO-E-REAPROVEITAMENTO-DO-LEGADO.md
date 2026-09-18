@@ -624,7 +624,7 @@ F3, a observabilidade local de F9 e as provas de F8 podem avançar em trilhas in
 
 ### 8.2 O próximo lote recomendado
 
-F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. F3 agora possui observabilidade nativa, owner mutável de Wi-Fi no host e jornada compartilhada em Ajustes para scan/seleção/conexão/desconexão/esquecimento/reconexão via `ordax.network-management/1`. Credenciais continuam fora de preferências, workspace, logs e telemetria. A próxima revalidação de F3 deve ampliar somente capacidades demonstradas no hardware-alvo (por exemplo redes abertas/WPA3/portal cativo), sem inflar a UI com opções fictícias.
+F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. F3 agora possui observabilidade nativa, owner mutável de Wi-Fi no host, jornada compartilhada em Ajustes para scan/seleção/conexão/desconexão/esquecimento/reconexão via `ordax.network-management/1` e bandeja persistente que deriva Wi‑Fi/cabo/sinal exclusivamente da porta read-only `ordax.network-status/1`. Credenciais, SSID e identificadores de hardware continuam fora dessa bandeja e da telemetria. A próxima revalidação de F3 deve ampliar somente capacidades demonstradas no hardware-alvo (por exemplo redes abertas/WPA3/portal cativo), sem inflar a UI com opções fictícias.
 
 Não abrir simultaneamente Store, grafo de objetos, federação, IA e um package manager. A entrega de arquivos, rede e retomada já recupera valor concreto que o legado perseguia, mantendo a estrutura limpa.
 

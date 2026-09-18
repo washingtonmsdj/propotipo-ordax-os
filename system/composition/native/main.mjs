@@ -22,6 +22,7 @@ import { createPreferenceSyncRuntime } from "../../services/sync/preference-runt
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
+import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -140,6 +141,14 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  let networkTrayControls = null;
+  if (networkStatus) {
+    try {
+      networkTrayControls = mountNetworkTrayControls(root, networkStatus);
+    } catch (error) {
+      reportClientDiagnostic("network-tray-status", error);
+    }
+  }
   let syncMutationOrdinal = 0;
   const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
     syncStateStore,
@@ -207,6 +216,7 @@ async function start() {
       updateControls.destroy();
       systemOverviewControls.destroy();
       settingsOverviewControls.destroy();
+      networkTrayControls?.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();

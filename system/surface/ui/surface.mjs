@@ -325,9 +325,15 @@ export function mountSurface(
     launcherToggle.setAttribute("aria-expanded", String(state.launcherOpen));
 
     const connectivityLabel = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
-    root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
-    root.querySelector("[data-connectivity-icon]").dataset.state = state.connectivity;
-    root.querySelector("[data-connectivity-tray]").title = `Rede: ${connectivityLabel}`;
+    const connectivityTray = root.querySelector("[data-connectivity-tray]");
+    if (connectivityTray.dataset.networkDetailOwner !== "true") {
+      root.querySelector("[data-connectivity-label]").textContent = connectivityLabel;
+      const connectivityIcon = root.querySelector("[data-connectivity-icon]");
+      connectivityIcon.dataset.state = state.connectivity;
+      connectivityIcon.dataset.networkKind = "unknown";
+      connectivityIcon.dataset.signalLevel = "0";
+      connectivityTray.title = `Rede: ${connectivityLabel}`;
+    }
 
     for (const targetButton of root.querySelectorAll("[data-requires-capability]")) {
       const capabilityId = targetButton.dataset.requiresCapability;
