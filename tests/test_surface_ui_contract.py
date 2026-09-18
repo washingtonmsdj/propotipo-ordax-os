@@ -17,6 +17,9 @@ APPEARANCE = PREFERENCES / "appearance.mjs"
 PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
 PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
 SYNC_RUNTIME_CONTRACT = ROOT / "system" / "contracts" / "sync-runtime.mjs"
+SYNC_STATE_STORE_CONTRACT = ROOT / "system" / "contracts" / "sync-state-store.mjs"
+WEB_SYNC_STATE_ADAPTER = ROOT / "system" / "adapters" / "web" / "sync-state.mjs"
+NATIVE_SYNC_STATE_ADAPTER = ROOT / "system" / "adapters" / "native" / "sync-state.mjs"
 PREFERENCE_SYNC_SERVICE = ROOT / "system" / "services" / "sync" / "preference-runtime.mjs"
 IDENTITY_SESSION_CONTRACT = ROOT / "system" / "contracts" / "identity-session.mjs"
 IDENTITY_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "identity-actions.mjs"
@@ -66,7 +69,10 @@ class SurfaceUiContractTests(unittest.TestCase):
             PREFERENCE_CATALOG,
             PREFERENCE_STORE_CONTRACT,
             SYNC_RUNTIME_CONTRACT,
+            SYNC_STATE_STORE_CONTRACT,
             PREFERENCE_SYNC_SERVICE,
+            WEB_SYNC_STATE_ADAPTER,
+            NATIVE_SYNC_STATE_ADAPTER,
             IDENTITY_SESSION_CONTRACT,
             IDENTITY_ACTIONS_CONTRACT,
             POWER_ACTIONS_CONTRACT,
@@ -202,6 +208,10 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("createPreferenceSyncRuntime", native_main)
         self.assertIn("preferenceSync", web_main)
         self.assertIn("preferenceSync", native_main)
+        self.assertIn("createWebSyncStateStore", web_main)
+        self.assertIn("createNativeSyncStateStore", native_main)
+        self.assertIn("syncStateStore", web_main)
+        self.assertIn("syncStateStore", native_main)
         self.assertNotIn("localStorage", overview)
         self.assertNotIn("/__ordax/native/preferences", overview)
 
@@ -225,6 +235,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("contracts/sync-runtime.mjs", overview)
         self.assertIn("assertSyncRuntimePort", overview)
         self.assertIn("pendingMutationCount", overview)
+        self.assertIn("queuePersistence", overview)
+        self.assertIn("sobrevive a reload/reinício", overview)
         self.assertIn("nada foi enviado para a nuvem", overview)
         self.assertIn("ordax.identity-session/1", session_contract)
         self.assertIn("ordax.identity-actions/1", actions_contract)
@@ -441,6 +453,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-store.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/preference-runtime.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/sync-runtime.mjs'"), 2)
+        self.assertGreaterEqual(workflow.count("'system/contracts/sync-state-store.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-session.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/identity-actions.mjs'"), 2)
         self.assertGreaterEqual(workflow.count("'system/contracts/power-actions.mjs'"), 2)
