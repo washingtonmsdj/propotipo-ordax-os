@@ -16,6 +16,43 @@
   color: var(--ordax-text);
 }
 
+.ordax-settings-navigation {
+  display: flex;
+  gap: 4px;
+  padding: 8px 18px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ordax-border-soft);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-navigation-item {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.ordax-settings-navigation-item:hover,
+.ordax-settings-navigation-item:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-settings-navigation-item[data-active="true"] {
+  background: var(--ordax-window-bg);
+  color: var(--ordax-text);
+  box-shadow: inset 0 -2px 0 var(--ordax-accent);
+}
+
 .ordax-settings-header {
   padding: 24px 26px 22px;
   border-bottom: 1px solid var(--ordax-border-soft);
@@ -416,45 +453,6 @@
   outline-offset: 1px;
 }
 
-.ordax-settings-capabilities {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-  margin-top: 15px;
-}
-
-.ordax-settings-capability {
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr);
-  gap: 2px 10px;
-  min-width: 0;
-  align-items: center;
-  padding: 10px 11px;
-  border: 1px solid var(--ordax-border-soft);
-  border-radius: var(--ordax-radius-sm);
-}
-
-.ordax-settings-capability-dot {
-  grid-row: 1 / 3;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--ordax-accent);
-}
-
-.ordax-settings-capability strong {
-  font-size: 0.76rem;
-}
-
-.ordax-settings-capability small {
-  overflow: hidden;
-  color: var(--ordax-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.63rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .ordax-settings-empty {
   margin: 0;
   padding: 12px;
@@ -464,37 +462,17 @@
   font-size: 0.74rem;
 }
 
-.ordax-settings-continuity {
-  display: grid;
-  gap: 4px;
-  margin-top: 10px;
-  padding: 12px 13px;
-  border-left: 3px solid var(--ordax-border);
-  background: var(--ordax-subtle-bg);
-}
-
-.ordax-settings-continuity[data-state="available"] {
-  border-left-color: var(--ordax-accent);
-}
-
-.ordax-settings-continuity strong {
-  font-size: 0.76rem;
-}
-
-.ordax-settings-continuity span {
-  color: var(--ordax-muted);
-  font-size: 0.7rem;
-  line-height: 1.4;
-}
-
 @media (max-width: 760px) {
+  .ordax-settings-navigation {
+    padding: 7px 10px;
+  }
+
   .ordax-settings-header,
   .ordax-settings-section {
     padding: 18px;
   }
 
   .ordax-settings-options,
-  .ordax-settings-capabilities,
   .ordax-settings-network-list,
   .ordax-settings-wifi-list {
     grid-template-columns: 1fr;
