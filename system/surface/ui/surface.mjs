@@ -433,7 +433,7 @@ export function mountSurface(
       add.setAttribute("aria-label", "Criar nova área de trabalho");
       areaSwitcher.append(add);
     }
-    areaKicker.textContent = `${areaLabel(activeArea)} · Surface compartilhada • recuperação ao vivo`;
+    areaKicker.textContent = `${areaLabel(activeArea)} · Surface compartilhada • recuperação ao vivo · entrega 68`;
   };
 
   const render = () => {
