@@ -1,6 +1,6 @@
 # Current State
 
-Status date: 2026-09-17
+Status date: 2026-09-18
 
 This is the canonical handoff snapshot. Architecture/contracts win if another document conflicts with it. Detailed historical evidence remains under `docs/evidence/`; this file records the current boundary without treating CI proof, development-hardware proof and product-release authorization as interchangeable.
 
@@ -39,21 +39,29 @@ NATIVE_PRIMARY_INPUT=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_POWER_RESTART=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_POWER_SHUTDOWN=PASS_PHYSICAL_DEVELOPMENT_USB
 NATIVE_GIT_HOT_UPDATE=PASS_PHYSICAL_DEVELOPMENT_USB
-NATIVE_UPDATE_SELF_HEALING=IMPLEMENTED_CI_PROVEN
+NATIVE_UPDATE_SELF_HEALING=PASS_PHYSICAL_DEVELOPMENT_USB
+NATIVE_GUARDIAN_SUPERVISOR=PASS_PHYSICAL_DEVELOPMENT_USB
+NATIVE_RESCUE_CHANNEL=PASS_PHYSICAL_DEVELOPMENT_USB
+NATIVE_TELEMETRY_RELAY=PASS_PHYSICAL_DEVELOPMENT_USB
+NATIVE_CANDIDATE_PREFLIGHT_SUCCESS_PATH=PASS_PHYSICAL_DEVELOPMENT_USB
 REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
 GRAPHICAL_SURFACE_COMPLETE=NO
 CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 ```
 
-`system/` is the shared product source. The native development path is physically proven through `system/entrypoint -> system/surface/entrypoint -> system/surface/bin/ordax-surface`; repository CI also proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
+`system/` is the shared product source. The native development path is physically proven through `system/entrypoint (guardian) -> system/supervisor -> system/surface/entrypoint -> system/surface/bin/ordax-surface`; repository CI also proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
 
 The shared graphical source remains under `system/surface/ui/` with platform-neutral contracts, workspace/window lifecycle and capability-driven app availability. Platform-specific behavior belongs in adapters/compositions, not in forks of the shared Surface.
 
 On the target notebook, the owner/development USB has physically proven the Git-first native host: Cage/Wayland + Barkery/WebKitGTK renders the shared Surface fullscreen; keyboard and mouse/touchpad work; authenticated native restart and shutdown work; and Git changes can be pulled and applied with a Surface reload while the notebook remains running. The temporary live-update marker appeared and then disappeared automatically in the same running session, proving the rebootless update round trip.
 
-The Git hot-update supervisor is now part of `system/`. Ordinary Surface changes reload the browser, native-host changes restart only the Surface, supervisor changes restart the supervisor/Surface, and boot/bootstrap changes are marked as requiring a later reboot instead of rebooting automatically. The update center and health-acknowledged rollback path are implemented and CI-proven; physical rollback of an intentionally bad update is not yet claimed.
+The Git-first update path is now split between a stable `system/entrypoint` guardian and a child `system/supervisor`. Ordinary Surface changes reload the browser, native-host changes restart only the Surface, supervisor/guardian changes use a controlled supervisor restart, and boot/bootstrap changes are marked as requiring a later reboot instead of rebooting automatically. The guardian monitors the supervisor's state-file heartbeat and can restart a stalled supervisor child without returning to the Development Base maintenance shell. The controlled `exit 75 -> guardian refresh -> supervisor restart` path has been physically exercised on the target notebook.
 
-A native-host update delivered through the live Git path has now also been physically validated to restart only the Surface and return to the graphical session without rebooting the notebook. The durable offline sync-state store is implemented and CI-proven; survival of a deliberately created pending mutation across a later explicit Surface restart remains a separate physical persistence exercise.
+Recovery no longer depends on that supervisor alone. A persistent, bounded `ordax-rescue` agent lives under `/state/ordax/rescue/` and consumes only target-bound, monotonic commands from the separate Git rescue ref. The physical notebook has acknowledged multiple rescue generations, including no-op generations while healthy. The rescue protocol does not provide remote shell, arbitrary commands, reboot, poweroff or arbitrary Git reset.
+
+Operational observability is also physically active through the temporary Supabase relay. A host-base telemetry agent starts before the graphical runtime and reports checkout SHA, updater state, health state, rescue generation/action and a supervisor state-file heartbeat. Supabase is observation-only and has no command semantics. This allowed the recovery from the stale `d071477a` graphical session to be diagnosed and verified without relying on the visible screen.
+
+A native-host update delivered through the live Git path has been physically validated to restart only the Surface and return to the graphical session without rebooting the notebook. Candidate Git objects are now preflighted before switching the live checkout, and the valid-candidate success path has been physically exercised; rejection/rollback of an intentionally broken candidate remains a separate physical exercise. The durable offline sync-state store is implemented and CI-proven; survival of a deliberately created pending mutation across a later explicit Surface restart remains a separate physical persistence exercise.
 
 These development-USB results do **not** imply that the canonical signed release-acquisition/native-disk product path is complete. `GRAPHICAL_SURFACE_COMPLETE` and `CANONICAL_SYSTEM_RUNTIME_COMPLETE` remain `NO` until their separate product gates close.
 
@@ -73,6 +81,10 @@ NATIVE_SHUTDOWN=PASS
 RETURN_BOOT_AFTER_SHUTDOWN=PASS
 GIT_HOT_UPDATE_RELOAD=PASS
 GIT_HOT_UPDATE_ROUND_TRIP=PASS
+GUARDIAN_SUPERVISOR_RESTART=PASS
+INDEPENDENT_GIT_RESCUE=PASS
+HOST_BASE_REMOTE_TELEMETRY=PASS
+CANDIDATE_PREFLIGHT_VALID_PATH=PASS
 USB_REFLASH_REQUIRED_FOR_NORMAL_SYSTEM_CHANGES=NO
 SSH_REQUIRED=NO
 REMOTE_CONTROL_PLANE_REQUIRED=NO
@@ -214,6 +226,9 @@ PHYSICAL_PRIMARY_INPUT=PASS_DEVELOPMENT_USB
 PHYSICAL_NATIVE_RESTART=PASS_DEVELOPMENT_USB
 PHYSICAL_NATIVE_SHUTDOWN=PASS_DEVELOPMENT_USB
 PHYSICAL_LIVE_UPDATE=PASS_DEVELOPMENT_USB
+PHYSICAL_GUARDIAN_SUPERVISOR=PASS_DEVELOPMENT_USB
+PHYSICAL_RESCUE_CHANNEL=PASS_DEVELOPMENT_USB
+PHYSICAL_TELEMETRY_RELAY=PASS_DEVELOPMENT_USB
 CANONICAL_SIGNED_RELEASE_BOOT_PROVEN=NO
 CANONICAL_NATIVE_DISK_INSTALL_PROVEN=NO
 CREATOR_PUBLIC_PHYSICAL_APPLY_IMPLEMENTED=NO
@@ -241,11 +256,27 @@ BROADER_HARDWARE_COVERAGE=PENDING_FINAL
 
 1. continue the shared Surface and native adapter work without platform forks, exposing only capabilities that are actually implemented/proven by the adapter;
 2. expand first-party apps through neutral contracts, including useful native `Sistema`/`Arquivos` behavior instead of static placeholders;
-3. harden the Git-first development update path with visible status, health checks and automatic rollback while keeping normal changes rebootless;
-4. add account/cloud preference continuity and equivalent preference-store adapters where appropriate;
+3. continue hardening staged/transactional Git-first activation beyond the now-proven guardian, rescue, telemetry and candidate-preflight layers, while keeping normal changes rebootless and avoiding an unnecessary bootstrap dependency;
+4. continue account/cloud preference and workspace continuity through neutral contracts without claiming remote transport before an authenticated provider exists;
 5. in parallel, when the repository owner is ready for the separate trust ceremony, generate the canonical Ed25519 prototype release key outside Git, make the required encrypted offline backup and commit only the matching public trust anchor;
 6. after canonical trust and byte-complete canonical media proof close, keep the tagged native raw writer gated until an explicit public apply boundary and exact-target authorization are deliberately introduced;
 7. leave suspend/resume, audio, acceleration-quality, long-run and broader-hardware exercises for the final physical-validation phase unless a feature specifically depends on them sooner.
+
+## Autonomous recovery and observation boundary
+
+```text
+NORMAL_UPDATE_CONTROL=GIT_MAIN
+BOUNDED_RECOVERY_CONTROL=GIT_ORDAX_RESCUE
+OBSERVABILITY=SUPABASE_ORDAX_OS_RELAY
+REMOTE_SHELL=NO
+SUPABASE_COMMAND_CHANNEL=NO
+GUARDIAN_NETWORK_ACCESS=NO
+SUPERVISOR_GIT_ACCESS=YES
+INTENTIONALLY_BAD_UPDATE_ROLLBACK_PHYSICAL_PROOF=PENDING
+FULL_A_B_RUNTIME_ACTIVATION=NO
+```
+
+The temporary Supabase project is an operational relay, not product authority. It may be migrated later without changing the device identity or telemetry contract. Git `main` remains product source authority; `ordax-rescue` remains a separate, deliberately narrow recovery path.
 
 ## Handoff rule
 
