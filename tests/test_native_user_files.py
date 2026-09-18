@@ -32,9 +32,9 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/6', contract)
+        self.assertIn('ordax.file-space/7', contract)
         self.assertIn(
-            "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), and moveEntry()",
+            "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), moveEntry(), and exportFile()",
             contract,
         )
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
@@ -51,6 +51,8 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('"copy-file"', adapter)
         self.assertIn("moveEntry", adapter)
         self.assertIn('"move-entry"', adapter)
+        self.assertIn("exportFile", adapter)
+        self.assertIn('/__ordax/native/file-export', adapter)
         self.assertIn("FileSpaceOperationError", adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
@@ -313,6 +315,9 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("data-file-copy-confirm", controls)
         self.assertIn("data-file-copy-name", controls)
         self.assertIn("MAX_FILE_COPY_BYTES", controls)
+        self.assertIn("MAX_FILE_EXPORT_BYTES", controls)
+        self.assertIn("exportSelected", controls)
+        self.assertIn("data-file-export", controls)
         self.assertIn("selectedPath", controls)
         self.assertIn("renderSelectionDetails", controls)
         self.assertIn("ordax-files-details", controls)
@@ -351,6 +356,7 @@ class NativeUserFilesTests(unittest.TestCase):
 
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn('FILE_CONTENT_PATH = "/__ordax/native/file-content"', server)
+        self.assertIn('FILE_EXPORT_PATH = "/__ordax/native/file-export"', server)
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", server)
         self.assertIn("read_user_text_file", server)
         self.assertIn("FileSpaceTextTooLargeError", server)
@@ -360,6 +366,11 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("rename_user_entry", server)
         self.assertIn('action == "rename-entry"', server)
         self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("read_user_export_file", server)
+        self.assertIn("FileSpaceExportTooLargeError", server)
+        self.assertIn("FileSpaceExportChangedError", server)
+        self.assertIn("_write_download", server)
         self.assertIn("copy_user_file", server)
         self.assertIn("FileSpaceCopyTooLargeError", server)
         self.assertIn("FileSpaceCopyChangedError", server)
@@ -372,7 +383,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
         self.assertIn("self._empty(415)", server)
-        self.assertIn("{SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH}", server)
+        self.assertIn("{SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH}", server)
 
     def test_user_file_space_capability_is_additive_and_native(self):
         contract = json.loads(CAPABILITIES.read_text(encoding="utf-8"))
