@@ -32,7 +32,7 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/5', contract)
+        self.assertIn('ordax.file-space/6', contract)
         self.assertIn(
             "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), and moveEntry()",
             contract,
@@ -63,17 +63,18 @@ class NativeUserFilesTests(unittest.TestCase):
 
             listing = native_host.list_user_directory(str(user_root), "/")
             self.assertEqual(listing["path"], "/")
-            self.assertIn(
-                {"name": "notes.txt", "kind": "file", "size": 5},
-                listing["entries"],
-            )
+            note = next(entry for entry in listing["entries"] if entry["name"] == "notes.txt")
+            self.assertEqual(note["kind"], "file")
+            self.assertEqual(note["size"], 5)
+            self.assertIsInstance(note["modifiedAt"], int)
+            self.assertGreaterEqual(note["modifiedAt"], 0)
 
             created = native_host.create_user_directory(str(user_root), "/", "Documentos")
             self.assertTrue((user_root / "Documentos").is_dir())
-            self.assertIn(
-                {"name": "Documentos", "kind": "directory", "size": 0},
-                created["entries"],
-            )
+            documents = next(entry for entry in created["entries"] if entry["name"] == "Documentos")
+            self.assertEqual(documents["kind"], "directory")
+            self.assertEqual(documents["size"], 0)
+            self.assertIsInstance(documents["modifiedAt"], int)
 
     def test_text_preview_reads_only_bounded_utf8_regular_files(self):
         with tempfile.TemporaryDirectory() as temporary:
