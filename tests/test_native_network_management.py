@@ -189,7 +189,39 @@ class NativeNetworkManagementTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", controls)
         self.assertNotIn("/__ordax/native/network-management", controls)
         self.assertNotIn("networkPassword", controls)
+        self.assertIn("captureInteractionState", controls)
+        self.assertIn("restoreInteractionState", controls)
+        self.assertIn('slot.closest(".ordax-window-body")', controls)
+        self.assertIn("passwordInput.value", controls)
+        self.assertIn("passwordInput.setSelectionRange", controls)
+        self.assertIn("focusTarget.focus({ preventScroll: true })", controls)
+        self.assertNotIn("passwordSnapshot", controls)
         self.assertIn("networkManagement,", composition)
+
+    def test_settings_live_refresh_preserves_only_transient_interaction_state(self):
+        controls = SETTINGS_CONTROLS.read_text(encoding="utf-8")
+        capture = controls.split("const captureInteractionState = (slot) => {", 1)[1].split(
+            "\n  };", 1
+        )[0]
+        restore = controls.split("const restoreInteractionState = (slot, snapshot) => {", 1)[1].split(
+            "\n  };", 1
+        )[0]
+
+        self.assertIn("documentObject.activeElement", capture)
+        self.assertIn("scrollTop", capture)
+        self.assertIn("scrollLeft", capture)
+        self.assertIn("passwordInput.value", capture)
+        self.assertIn("selectionStart", capture)
+        self.assertIn("selectionEnd", capture)
+        self.assertIn("snapshot.password?.ssid", restore)
+        self.assertIn("passwordInput.value = snapshot.password.value", restore)
+        self.assertIn("focusTarget.focus({ preventScroll: true })", restore)
+
+        combined = capture + restore
+        for forbidden in ("localStorage", "sessionStorage", "fetch(", "preferences.set"):
+            self.assertNotIn(forbidden, combined)
+        self.assertNotIn("networkManagementMessage =", capture)
+        self.assertNotIn("selectedNetworkSsid =", capture)
 
     def test_quick_wifi_panel_reuses_neutral_owner_and_keeps_password_ephemeral(self):
         controls = QUICK_CONTROLS.read_text(encoding="utf-8")
