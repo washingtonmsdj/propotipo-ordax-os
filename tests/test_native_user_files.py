@@ -30,8 +30,8 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/2', contract)
-        self.assertIn("list(), createDirectory(), and readTextFile()", contract)
+        self.assertIn('ordax.file-space/3', contract)
+        self.assertIn("list(), createDirectory(), readTextFile(), and renameEntry()", contract)
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
         self.assertIn("validateTextFile", contract)
         self.assertIn('/__ordax/native/files', adapter)
@@ -39,6 +39,8 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("validateFileListing", adapter)
         self.assertIn("validateTextFile", adapter)
         self.assertIn("readTextFile", adapter)
+        self.assertIn("renameEntry", adapter)
+        self.assertIn('"rename-entry"', adapter)
         self.assertNotIn("surface/ui", adapter)
         self.assertNotIn("innerHTML", adapter)
 
@@ -89,6 +91,54 @@ class NativeUserFilesTests(unittest.TestCase):
             (user_root / "folder").mkdir()
             with self.assertRaises(ValueError):
                 native_host.read_user_text_file(str(user_root), "/folder")
+
+    def test_rename_is_atomic_no_clobber_and_symlink_safe(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            user_root = base / "home"
+            outside = base / "outside"
+            user_root.mkdir()
+            outside.mkdir()
+
+            (user_root / "alpha.txt").write_text("alpha", encoding="utf-8")
+            renamed = native_host.rename_user_entry(
+                str(user_root),
+                "/",
+                "alpha.txt",
+                "beta.txt",
+            )
+            self.assertFalse((user_root / "alpha.txt").exists())
+            self.assertEqual((user_root / "beta.txt").read_text(encoding="utf-8"), "alpha")
+            self.assertIn(
+                {"name": "beta.txt", "kind": "file", "size": 5},
+                renamed["entries"],
+            )
+
+            (user_root / "folder-a").mkdir()
+            native_host.rename_user_entry(str(user_root), "/", "folder-a", "folder-b")
+            self.assertTrue((user_root / "folder-b").is_dir())
+
+            (user_root / "source.txt").write_text("source", encoding="utf-8")
+            (user_root / "occupied.txt").write_text("keep", encoding="utf-8")
+            with self.assertRaises(FileExistsError):
+                native_host.rename_user_entry(
+                    str(user_root),
+                    "/",
+                    "source.txt",
+                    "occupied.txt",
+                )
+            self.assertEqual((user_root / "source.txt").read_text(encoding="utf-8"), "source")
+            self.assertEqual((user_root / "occupied.txt").read_text(encoding="utf-8"), "keep")
+
+            (outside / "secret.txt").write_text("blocked", encoding="utf-8")
+            os.symlink(outside / "secret.txt", user_root / "link.txt")
+            with self.assertRaises(ValueError):
+                native_host.rename_user_entry(str(user_root), "/", "link.txt", "moved.txt")
+            self.assertTrue((user_root / "link.txt").is_symlink())
+            self.assertFalse((user_root / "moved.txt").exists())
+
+            with self.assertRaises(ValueError):
+                native_host.rename_user_entry(str(user_root), "/", "beta.txt", "../escape")
 
     def test_standard_user_directories_are_idempotent_and_symlink_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -167,6 +217,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("readTextFile", controls)
         self.assertIn("data-file-select-path", controls)
         self.assertIn("data-file-activate-selected", controls)
+        self.assertIn("data-file-rename-toggle", controls)
+        self.assertIn("data-file-rename-confirm", controls)
+        self.assertIn("data-file-rename-name", controls)
+        self.assertIn("renameSelected", controls)
         self.assertIn("selectedPath", controls)
         self.assertIn("renderSelectionDetails", controls)
         self.assertIn("ordax-files-details", controls)
@@ -187,6 +241,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn(".ordax-files-preview", files_css)
         self.assertIn(".ordax-files-preview-content", files_css)
         self.assertIn(".ordax-files-details", files_css)
+        self.assertIn(".ordax-files-rename", files_css)
         self.assertIn('[data-selected="true"]', files_css)
         self.assertIn('kind: "extension"', files_app)
         self.assertIn('extensionId: "file-space"', files_app)
@@ -207,6 +262,11 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("read_user_text_file", server)
         self.assertIn("FileSpaceTextTooLargeError", server)
         self.assertIn("FileSpaceTextEncodingError", server)
+        self.assertIn("RENAME_NOREPLACE = 1", server)
+        self.assertIn("_renameat2_noreplace", server)
+        self.assertIn("rename_user_entry", server)
+        self.assertIn('action == "rename-entry"', server)
+        self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
         self.assertIn("self._empty(415)", server)
         self.assertIn("{FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH}", server)

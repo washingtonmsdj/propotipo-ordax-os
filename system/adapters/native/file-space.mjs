@@ -52,6 +52,19 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
       }
       return validateTextFile(await response.json());
     },
+    async renameEntry(path, name, newName) {
+      const response = await windowRef.fetch(FILES_ENDPOINT, {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rename-entry", path, name, newName }),
+      });
+      if (!response.ok) {
+        throw new Error(`Native entry rename failed: ${response.status}`);
+      }
+      return validateFileListing(await response.json());
+    },
     async createDirectory(path, name) {
       const response = await windowRef.fetch(FILES_ENDPOINT, {
         method: "POST",

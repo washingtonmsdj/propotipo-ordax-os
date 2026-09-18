@@ -72,6 +72,8 @@ export function mountFileSpaceControls(
   let previewPending = false;
   let previewRequestOrdinal = 0;
   let selectedPath = null;
+  let renamingPath = null;
+  let renameDraft = "";
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -158,6 +160,10 @@ export function mountFileSpaceControls(
     const entry = listing.entries.find((candidate) => joinPath(listing.path, candidate.name) === path);
     if (!entry) return;
     selectedPath = path;
+    if (renamingPath !== path) {
+      renamingPath = null;
+      renameDraft = "";
+    }
     message = null;
     if (textPreview?.path !== path) {
       previewRequestOrdinal += 1;
@@ -249,6 +255,10 @@ export function mountFileSpaceControls(
     );
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
+    const rename = node(documentObject, "button", "ordax-files-action", "Renomear");
+    rename.type = "button";
+    rename.dataset.fileRenameToggle = "";
+    rename.disabled = pending || previewPending;
     const open = node(
       documentObject,
       "button",
@@ -258,10 +268,40 @@ export function mountFileSpaceControls(
     open.type = "button";
     open.dataset.fileActivateSelected = "";
     open.disabled = pending || previewPending;
-    actions.append(open);
+    actions.append(rename, open);
 
     details.append(summary, actions);
     container.append(details);
+
+    if (renamingPath === selected.path) {
+      const form = node(documentObject, "div", "ordax-files-rename");
+      const input = node(documentObject, "input", "ordax-files-rename-input");
+      input.type = "text";
+      input.maxLength = 255;
+      input.autocomplete = "off";
+      input.value = renameDraft;
+      input.dataset.fileRenameName = "";
+      input.setAttribute("aria-label", `Novo nome para ${selected.name}`);
+
+      const confirm = node(
+        documentObject,
+        "button",
+        "ordax-files-action ordax-files-action-primary",
+        "Salvar nome",
+      );
+      confirm.type = "button";
+      confirm.dataset.fileRenameConfirm = "";
+      confirm.disabled = pending;
+
+      const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+      cancel.type = "button";
+      cancel.dataset.fileRenameCancel = "";
+      cancel.disabled = pending;
+
+      form.append(input, confirm, cancel);
+      container.append(form);
+      queueMicrotask(() => input.isConnected && input.focus());
+    }
   };
 
   const renderTextPreview = (container) => {
@@ -387,7 +427,11 @@ export function mountFileSpaceControls(
     textPreview = null;
     previewPending = false;
     previewRequestOrdinal += 1;
-    if (!preserveSelection) selectedPath = null;
+    if (!preserveSelection) {
+      selectedPath = null;
+      renamingPath = null;
+      renameDraft = "";
+    }
     replaceView();
     try {
       const next = validateFileListing(await port.list(path));
@@ -448,6 +492,60 @@ export function mountFileSpaceControls(
     }
   };
 
+  const renameSelected = async () => {
+    const selected = selectedEntry();
+    if (!selected || !listing) return;
+
+    const newName = String(renameDraft ?? "");
+    if (!newName) {
+      message = "Digite o novo nome.";
+      replaceView();
+      return;
+    }
+    if (newName === selected.name) {
+      renamingPath = null;
+      renameDraft = "";
+      message = "O nome não foi alterado.";
+      replaceView();
+      return;
+    }
+
+    const ordinal = ++requestOrdinal;
+    const previousPath = selected.path;
+    const nextPath = joinPath(listing.path, newName);
+    pending = true;
+    message = null;
+    replaceView();
+    try {
+      const next = validateFileListing(
+        await port.renameEntry(listing.path, selected.name, newName),
+      );
+      if (destroyed || ordinal !== requestOrdinal) return;
+      listing = next;
+      selectedPath = nextPath;
+      renamingPath = null;
+      renameDraft = "";
+      if (textPreview?.path === previousPath) {
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+      }
+      message = `“${selected.name}” foi renomeado para “${newName}”.`;
+    } catch (error) {
+      if (destroyed || ordinal !== requestOrdinal) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      message = detail.includes("409")
+        ? "Já existe um item com esse nome. Nada foi substituído."
+        : "Não foi possível renomear este item.";
+    } finally {
+      if (!destroyed && ordinal === requestOrdinal) {
+        pending = false;
+        replaceView();
+        focusSelectedRow();
+      }
+    }
+  };
+
   const createDirectory = async (name) => {
     const trimmed = String(name ?? "").trim();
     if (!listing || !trimmed) {
@@ -485,6 +583,30 @@ export function mountFileSpaceControls(
       } else {
         selectPath(selected.dataset.fileSelectPath, { focus: true });
       }
+      return;
+    }
+    const renameToggle = event.target.closest("[data-file-rename-toggle]");
+    if (renameToggle && root.contains(renameToggle)) {
+      const selected = selectedEntry();
+      if (selected) {
+        renamingPath = selected.path;
+        renameDraft = selected.name;
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+    const renameCancel = event.target.closest("[data-file-rename-cancel]");
+    if (renameCancel && root.contains(renameCancel)) {
+      renamingPath = null;
+      renameDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
+    const renameConfirm = event.target.closest("[data-file-rename-confirm]");
+    if (renameConfirm && root.contains(renameConfirm)) {
+      void renameSelected();
       return;
     }
     const activate = event.target.closest("[data-file-activate-selected]");
@@ -536,10 +658,25 @@ export function mountFileSpaceControls(
   const onInput = (event) => {
     if (event.target.matches?.("[data-file-directory-name]")) {
       directoryDraft = event.target.value;
+    } else if (event.target.matches?.("[data-file-rename-name]")) {
+      renameDraft = event.target.value;
     }
   };
 
   const onKeyDown = (event) => {
+    if (event.target.matches?.("[data-file-rename-name]")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void renameSelected();
+      } else if (event.key === "Escape" && !pending) {
+        renamingPath = null;
+        renameDraft = "";
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+
     if (event.target.matches?.("[data-file-directory-name]")) {
       if (event.key === "Enter") {
         event.preventDefault();
