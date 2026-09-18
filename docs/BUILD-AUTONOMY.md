@@ -90,6 +90,7 @@ kernel
 initramfs
 minimal-bootstrap
 shared-system-bundle
+public-site
 web-client
 mobile-client
 desktop-client
@@ -98,7 +99,7 @@ creator
 manifests
 ```
 
-The shared product source may feed several delivery modes, but those delivery artifacts remain independently selectable. A shared Surface change may legitimately rebuild all applicable product modes; it must not rebuild the kernel. A mobile-adapter-only change must not rebuild unrelated Web/Desktop/native targets. A kernel change may rebuild the dependent bootstrap, but not client modes.
+The shared product source may feed several delivery modes, but those delivery artifacts remain independently selectable. The public product portal is also a separate artifact: a change under `sites/public/` must not rebuild the kernel, bootstrap, shared system bundle or product clients. A shared Surface change may legitimately rebuild all applicable product modes; it must not rebuild the kernel. A mobile-adapter-only change must not rebuild unrelated Web/Desktop/native targets. A kernel change may rebuild the dependent bootstrap, but not client modes.
 
 `docs/contracts/build-autonomy.json` version 2 records the dependency relationships and the following scaling rules:
 
@@ -111,7 +112,7 @@ The shared product source may feed several delivery modes, but those delivery ar
 - new artifact classes require a provenance owner;
 - caches may accelerate a verified build but may not replace verification.
 
-This lets future targets and features be added without turning every commit into a kernel/full-product rebuild.
+This lets future targets and features be added without turning every commit into a kernel/full-product rebuild. The `public-site` artifact is owned by `tools/public-site/build.py` and its contract in `docs/contracts/public-site.json`; it is intentionally distinct from the `web-client` product mode.
 
 ## Release provenance
 

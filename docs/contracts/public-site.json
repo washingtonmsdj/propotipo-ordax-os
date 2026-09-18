@@ -1,0 +1,39 @@
+{
+  "$schema": "prototype-ordax.public-site/1",
+  "status": "foundation-not-deployed",
+  "artifact_class": "public-site",
+  "source_root": "sites/public",
+  "build_recipe": "tools/public-site/build.py",
+  "separate_from_product_web_mode": true,
+  "routes": {
+    "landing": "/",
+    "download": "/download/",
+    "login": "/login/",
+    "register": "/cadastro/"
+  },
+  "runtime_dependencies": {
+    "remote_javascript": false,
+    "remote_css": false,
+    "remote_fonts": false,
+    "framework": false
+  },
+  "identity": {
+    "provider_implemented_here": false,
+    "client_stores_passwords": false,
+    "client_stores_service_secrets": false,
+    "unconfigured_behavior": "fail-closed-with-unavailable-state",
+    "configured_target_policy": "same-origin"
+  },
+  "downloads": {
+    "hard_coded_latest_allowed": false,
+    "catalog_required_for_download_links": true,
+    "catalog_target_policy": "same-origin",
+    "public_release_authorization_required": true,
+    "sha256_owned_by_release_pipeline": true
+  },
+  "security": {
+    "secrets_in_site_source_allowed": false,
+    "telemetry_as_identity_api_allowed": false,
+    "telemetry_as_release_control_allowed": false
+  }
+}

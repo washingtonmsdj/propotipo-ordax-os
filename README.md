@@ -24,6 +24,21 @@ OrdaX Web
 
 Todos usam uma identidade OrdaX, a mesma Surface/app source onde aplicavel e sincronizacao segura de estado suportado. Diferencas de ambiente ficam atras de adapters de capacidade, nao em forks de produto.
 
+## Site publico
+
+O portal publico fica em `sites/public/` e e um artefato separado do **OrdaX Web**. O portal apresenta o produto, hospeda a entrada de login/cadastro e lista downloads somente a partir de um catalogo de releases publicas autorizado. Ele nao importa a Surface, nao cria uma segunda identidade e nao inventa releases.
+
+```text
+sites/public/
+ -> landing page
+ -> download
+ -> login
+ -> cadastro
+```
+
+Enquanto identidade e catalogo de releases nao estiverem configurados, essas integracoes falham fechado e mostram estado indisponivel sem formularios ou downloads ficticios. Ver `docs/PUBLIC-SITE.md` e `docs/contracts/public-site.json`.
+
+
 ## Principios
 
 - `main` e a source authority.
@@ -84,6 +99,8 @@ platform/
   releases/
   state/
   home/
+sites/
+  public/
 tools/
   creator/
     core/
@@ -91,6 +108,7 @@ tools/
     platform/
   dev/
   verify/
+  public-site/
 tests/
 docs/
 ```

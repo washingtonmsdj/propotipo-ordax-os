@@ -1,0 +1,74 @@
+name: Public Site Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sites/public/**'
+      - 'tools/public-site/**'
+      - 'docs/PUBLIC-SITE.md'
+      - 'docs/contracts/public-site.json'
+      - 'docs/contracts/build-autonomy.json'
+      - 'docs/BUILD-AUTONOMY.md'
+      - 'tests/test_public_site_contract.py'
+      - '.github/workflows/public-site-candidate.yml'
+  pull_request:
+    paths:
+      - 'sites/public/**'
+      - 'tools/public-site/**'
+      - 'docs/PUBLIC-SITE.md'
+      - 'docs/contracts/public-site.json'
+      - 'docs/contracts/build-autonomy.json'
+      - 'docs/BUILD-AUTONOMY.md'
+      - 'tests/test_public_site_contract.py'
+      - '.github/workflows/public-site-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Validate public site source and contracts
+        run: |
+          set -euo pipefail
+          python tools/public-site/build.py check
+          python -m unittest tests.test_public_site_contract -v
+
+      - name: Build and verify deterministic public site
+        run: |
+          set -euo pipefail
+          python tools/public-site/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir out/public-site
+          python tools/public-site/build.py verify --out-dir out/public-site
+          python tools/public-site/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir "$RUNNER_TEMP/public-site-repeat"
+          python tools/public-site/build.py verify --out-dir "$RUNNER_TEMP/public-site-repeat"
+          diff -qr out/public-site "$RUNNER_TEMP/public-site-repeat"
+          echo 'PUBLIC_SITE_REPEATABILITY=PASS'
+          echo 'KERNEL_REBUILD_REQUIRED=NO'
+          echo 'SHARED_SYSTEM_REBUILD_REQUIRED=NO'
+
+      - name: Upload public site candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-public-site-${{ github.sha }}
+          path: out/public-site/
+          if-no-files-found: error
+          retention-days: 14
