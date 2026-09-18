@@ -19,6 +19,7 @@ import {
 } from "../../services/network/management-runtime.mjs";
 import { listPreferenceDefinitions } from "../../services/preferences/catalog.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { repaintPreservingInteraction } from "./view-interaction.mjs";
 
 const SETTINGS_WINDOW_SELECTOR = '[data-window-id="settings"]';
 const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
@@ -416,7 +417,7 @@ export function mountSettingsOverviewControls(
     }
     if (!force && slot === mountedSlot) return;
     mountedSlot = slot;
-    paint(slot);
+    repaintPreservingInteraction(slot, () => paint(slot));
   };
 
   const replaceView = () => renderView(true);
