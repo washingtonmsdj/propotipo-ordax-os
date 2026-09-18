@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -325,6 +326,24 @@ func TestMaterializeDoesNotActivateCurrent(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(target, "system", "entrypoint")); err != nil {
 		t.Fatalf("verified release was not materialized: %v", err)
 	}
+	storedEnvelope, err := os.ReadFile(filepath.Join(target, "release-envelope.json"))
+	if err != nil {
+		t.Fatalf("verified release envelope was not persisted: %v", err)
+	}
+	if !bytes.Equal(storedEnvelope, envelope) {
+		t.Fatal("persisted release envelope differs from verified signed bytes")
+	}
+	storedManifest, err := os.ReadFile(filepath.Join(target, "release-manifest.json"))
+	if err != nil {
+		t.Fatalf("verified release manifest was not persisted: %v", err)
+	}
+	var decoded Envelope
+	if err := json.Unmarshal(envelope, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(storedManifest, decoded.Payload) {
+		t.Fatal("persisted manifest differs from signed envelope payload")
+	}
 
 	second, err := materialize(
 		server.Client(),
@@ -380,6 +399,54 @@ func TestMaterializeRejectsUnexpectedCommitBeforeRootMutation(t *testing.T) {
 	}
 	if _, err := os.Lstat(root); !os.IsNotExist(err) {
 		t.Fatal("commit mismatch mutated the OrdaX root")
+	}
+}
+
+func TestExistingReleaseRejectsPersistedEnvelopeTampering(t *testing.T) {
+	trust, pub, priv := testKeys(t)
+	artifact := validSystemTar(t)
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	m := manifestFor(server.URL+"/system.tar", artifact)
+	envelope := signedEnvelope(t, m, trust.KeyID, priv)
+	mux.HandleFunc("/release.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(envelope)
+	})
+	mux.HandleFunc("/system.tar", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(artifact)
+	})
+	root := t.TempDir()
+	if _, err := materialize(
+		server.Client(),
+		server.URL+"/release.json",
+		root,
+		trust,
+		pub,
+		defaultRepo,
+		testCommit,
+	); err != nil {
+		t.Fatal(err)
+	}
+	envelopePath := filepath.Join(root, "releases", testCommit, "release-envelope.json")
+	persisted, err := os.ReadFile(envelopePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted[len(persisted)/2] ^= 0x01
+	if err := os.WriteFile(envelopePath, persisted, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := materialize(
+		server.Client(),
+		server.URL+"/release.json",
+		root,
+		trust,
+		pub,
+		defaultRepo,
+		testCommit,
+	); err == nil || !strings.Contains(err.Error(), "release envelope differs") {
+		t.Fatalf("tampered persisted envelope was accepted: %v", err)
 	}
 }
 

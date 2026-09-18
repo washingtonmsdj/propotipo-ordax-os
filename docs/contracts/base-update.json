@@ -64,7 +64,10 @@
     "materialize_expected_commit_required": true,
     "materialize_only_when_boot_refresh_pending": true,
     "materialization_must_not_change_current_pointer": true,
-    "materialization_precedes_esp_stage": true
+    "materialization_precedes_esp_stage": true,
+    "persisted_verified_envelope": "/ordax/releases/{release_sha}/release-envelope.json",
+    "stager_must_use_persisted_verified_envelope": true,
+    "second_envelope_network_fetch_for_stage": false
   },
   "health": {
     "candidate_cmdline_identity_required": true,
@@ -147,9 +150,10 @@
     "channel": "github-release-hash-addressed",
     "initial_supported_migration": {
       "from_sha256": [
-        "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4"
+        "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4",
+        "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0"
       ],
-      "to_sha256": "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0"
+      "to_sha256": "74a03bd9901c33b7281d529fb0d379a735d20b5ef7495e0af2f73ca2ff40c90e"
     },
     "unknown_installed_hash": "block",
     "replacement": "same-directory-temp-fsync-atomic-replace",
@@ -159,7 +163,8 @@
     "generic_bootstrap_updater_created": false,
     "absent_agent_enrollment": true,
     "absent_agent_enrollment_requires_explicit_descriptor_gate": true,
-    "existing_unknown_hash_still_blocks": true
+    "existing_unknown_hash_still_blocks": true,
+    "target_persists_verified_envelope": true
   },
   "runtime_owner": {
     "development_host_state_root": "/state/ordax",
