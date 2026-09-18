@@ -522,7 +522,8 @@ button.ordax-file-row:focus-visible {
   }
 }
 
-.ordax-files-rename {
+.ordax-files-rename,
+.ordax-files-copy {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 6px;
@@ -533,7 +534,8 @@ button.ordax-file-row:focus-visible {
   background: var(--ordax-subtle-bg);
 }
 
-.ordax-files-rename-input {
+.ordax-files-rename-input,
+.ordax-files-copy-input {
   min-width: 0;
   min-height: 34px;
   padding: 0 10px;
@@ -545,17 +547,20 @@ button.ordax-file-row:focus-visible {
   font: inherit;
 }
 
-.ordax-files-rename-input:focus {
+.ordax-files-rename-input:focus,
+.ordax-files-copy-input:focus {
   border-color: var(--ordax-focus);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ordax-focus) 32%, transparent);
 }
 
 @media (max-width: 560px) {
-  .ordax-files-rename {
+  .ordax-files-rename,
+  .ordax-files-copy {
     grid-template-columns: 1fr 1fr;
   }
 
-  .ordax-files-rename-input {
+  .ordax-files-rename-input,
+  .ordax-files-copy-input {
     grid-column: 1 / -1;
   }
 }
