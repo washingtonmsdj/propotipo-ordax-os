@@ -101,3 +101,20 @@ export function createDiagnosticReport({
     history: summarizeHistory(history),
   });
 }
+
+function reportFileStamp(generatedAt) {
+  return generatedAt
+    .replace(/[^0-9A-Za-z-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export function createDiagnosticReportDocument(input) {
+  const report = createDiagnosticReport(input);
+  return Object.freeze({
+    report,
+    fileName: `ordax-diagnostico-${reportFileStamp(report.generatedAt)}.json`,
+    mediaType: "application/json",
+    text: `${JSON.stringify(report, null, 2)}\n`,
+  });
+}
