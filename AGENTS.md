@@ -38,6 +38,12 @@ Antes de alterar codigo, contratos ou midia:
 
 Quando um snapshot de estado conflitar com texto historico, `docs/CURRENT-STATE.md` e os contratos arquiteturais canonicos vencem. Para numero/geometria de particoes, os dois contratos fisicos acima sao a autoridade final porque descrevem artefatos diferentes.
 
+### Plano funcional da Surface e dos aplicativos
+
+Antes de planejar, implementar ou revisar a area de trabalho, a barra lateral ou os apps Arquivos, Ajustes, Conta e Sistema, leia e analise tambem [PLANO-FUNCIONAL-SURFACE-E-APPS.md](PLANO-FUNCIONAL-SURFACE-E-APPS.md), na raiz do repositorio, depois da leitura canonica acima.
+
+O plano detalha telas, subsecoes, responsabilidades, lacunas, prioridades e criterios de aceite. Compare o inventario datado com a `main` atual antes de implementar; nao reconstrua recursos ja existentes nem trate sugestoes como capacidades prontas. Ele e uma proposta funcional: os contratos canonicos, os gates e as regras de seguranca continuam sendo a autoridade.
+
 ## 4. Arquitetura fisica alvo
 
 O seed e o USB final preparado nao sao o mesmo artefato:
