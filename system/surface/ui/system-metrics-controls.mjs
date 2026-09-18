@@ -3,6 +3,7 @@ import {
   validateSystemMetricsSnapshot,
 } from "../../contracts/system-metrics.mjs";
 
+import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 
 function node(documentObject, tag, className, text) {
@@ -33,15 +34,15 @@ function formatUptime(seconds) {
   return `${minutes}min`;
 }
 
-export function mountSystemMetricsControls(root, systemMetrics = null) {
+export function mountSystemMetricsControls(root, systemMetrics = null, surfaceLifecycle = null) {
   if (!(root instanceof Element)) {
     throw new TypeError("System metrics controls require a Surface root Element");
   }
   const port = systemMetrics === null ? null : assertSystemMetricsPort(systemMetrics);
   if (!port) return Object.freeze({ destroy() {} });
+  const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
 
   const documentObject = root.ownerDocument;
-  const Observer = documentObject.defaultView?.MutationObserver ?? globalThis.MutationObserver;
   let snapshot = null;
   let pending = false;
   let message = null;
@@ -138,16 +139,15 @@ export function mountSystemMetricsControls(root, systemMetrics = null) {
     if (button && root.contains(button)) void refresh();
   };
 
-  const observer = new Observer(() => renderPanel());
-  observer.observe(root, { childList: true, subtree: true });
   root.addEventListener("click", onClick);
+  const unsubscribeRender = lifecycle.subscribeRender(renderPanel);
   void refresh();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
       readOrdinal += 1;
-      observer.disconnect();
+      unsubscribeRender();
       root.removeEventListener("click", onClick);
       root.querySelector(`${SYSTEM_WINDOW_SELECTOR} [data-ordax-system-metrics-panel]`)?.remove();
     },
