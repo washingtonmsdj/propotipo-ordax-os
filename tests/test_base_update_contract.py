@@ -145,6 +145,39 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(staging["materialization_must_not_change_current_pointer"])
         self.assertTrue(staging["materialization_precedes_esp_stage"])
 
+    def test_runtime_owner_stage_only_boundary_is_explicit(self):
+        owner = CONTRACT["runtime_staging_owner"]
+        self.assertEqual(
+            owner["scope"],
+            "first-legacy-to-ab-stage-only",
+        )
+        self.assertTrue(owner["requires_canonical_trust"])
+        self.assertTrue(owner["requires_exact_signed_release_materialized"])
+        self.assertFalse(owner["second_envelope_network_fetch"])
+        self.assertEqual(owner["supported_active_layouts"], ["legacy"])
+        self.assertFalse(owner["post_transition_ab_cycle_enabled"])
+        self.assertEqual(owner["esp_device"], "/dev/disk/by-label/ORDAX-ESP")
+        self.assertEqual(owner["esp_mount"], "/run/ordax-base-update/esp")
+        self.assertTrue(owner["esp_mount_private_to_owner"])
+        self.assertTrue(owner["esp_identity_verified_by_block_major_minor"])
+        self.assertIn("--ensure-existing", owner["stage_cli"])
+        self.assertTrue(owner["candidate_entry_may_be_written"])
+        self.assertFalse(owner["candidate_entry_selected"])
+        self.assertFalse(owner["loader_entry_one_shot_written"])
+        self.assertFalse(owner["efi_variables_written"])
+        self.assertFalse(owner["reboot_requested"])
+        self.assertTrue(owner["activation_owner_separate"])
+        self.assertTrue(owner["esp_unmount_required_before_stage_success"])
+        self.assertEqual(
+            set(owner["sparse_runtime_inputs"]),
+            {
+                "bootstrap/base-update/stage.py",
+                "bootstrap/base-update/planner.py",
+                "bootstrap/kernel/vmlinuz-6.6.52",
+                "bootstrap/initramfs/initramfs.cpio.gz",
+            },
+        )
+
     def test_promotion_commit_and_boot_refresh_lifecycle_are_explicit(self):
         promotion = CONTRACT["promotion"]
         self.assertTrue(promotion["candidate_entry_removed_before_current_commit"])
