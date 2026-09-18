@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "bootstrap" / "base-update" / "promote.py"
@@ -51,6 +52,7 @@ class BaseUpdatePromotionTests(unittest.TestCase):
         entries = esp / "loader" / "entries"
         entries.mkdir(parents=True)
         state.mkdir()
+        (state / "boot-refresh-required").write_text(self.RELEASE + "\n", encoding="utf-8")
         for slot in ("a", "b"):
             base = esp / "ordax" / "base" / slot
             base.mkdir(parents=True)
@@ -132,6 +134,12 @@ class BaseUpdatePromotionTests(unittest.TestCase):
             self.assertEqual(result["active_slot"], "b")
             self.assertEqual(result["recovery_slot"], "a")
             self.assertFalse(candidate.exists())
+            self.assertTrue(result["candidate_entry_removed"])
+            self.assertTrue(result["current_entry_durable"])
+            self.assertTrue(result["active_slot_record_written"])
+            self.assertEqual(result["boot_refresh_marker_status"], "cleared")
+            self.assertTrue(result["boot_refresh_marker_cleared"])
+            self.assertFalse((state / "boot-refresh-required").exists())
             current_text = current.read_text(encoding="utf-8")
             recovery_text = recovery.read_text(encoding="utf-8")
             self.assertIn("linux /ordax/base/b/vmlinuz", current_text)
@@ -183,6 +191,44 @@ class BaseUpdatePromotionTests(unittest.TestCase):
             with self.assertRaises((promote.PromotionError, promote._activate.ActivateError)):
                 promote.promote(esp_root=esp, state_root=state, health=health)
             self.assertEqual((current.read_bytes(), recovery.read_bytes()), before)
+
+    def test_current_commit_reports_durability_uncertainty_after_replace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            esp, _state, current, _recovery, _candidate = self.fixture(root)
+            payload = promote.entry_payload("OrdaX", "b", "normal")
+
+            with mock.patch.object(promote, "fsync_directory", side_effect=OSError("fsync unavailable")):
+                durable = promote.commit_current_entry(esp, payload)
+
+            self.assertFalse(durable)
+            self.assertEqual(current.read_bytes(), payload)
+
+    def test_unsafe_boot_refresh_marker_is_never_followed_or_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            esp, state, _current, _recovery, _candidate = self.fixture(root)
+            marker = state / "boot-refresh-required"
+            outside = root / "outside-marker"
+            outside.write_text("do-not-touch\n", encoding="utf-8")
+            marker.unlink()
+            marker.symlink_to(outside)
+            health = promote.evaluate_health(**self.evidence())
+
+            result = promote.promote(esp_root=esp, state_root=state, health=health)
+
+            self.assertTrue(result["promoted"])
+            self.assertEqual(result["boot_refresh_marker_status"], "unsafe")
+            self.assertFalse(result["boot_refresh_marker_cleared"])
+            self.assertTrue(marker.is_symlink())
+            self.assertEqual(outside.read_text(encoding="utf-8"), "do-not-touch\n")
+
+    def test_candidate_cleanup_precedes_current_commit_point(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        block = source.split("def promote(", 1)[1].split("\n\ndef main()", 1)[0]
+        self.assertLess(block.index("candidate.unlink()"), block.index("commit_current_entry("))
+        self.assertLess(block.index("prepare_active_record("), block.index("candidate.unlink()"))
+        self.assertGreater(block.index("clear_boot_refresh_marker("), block.index("commit_current_entry("))
 
     def test_symlinked_protected_or_candidate_entries_are_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
