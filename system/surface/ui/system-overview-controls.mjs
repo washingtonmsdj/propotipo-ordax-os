@@ -29,6 +29,7 @@ import {
   updateSummaryLabel,
 } from "../../services/update/presentation.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { repaintPreservingInteraction } from "./view-interaction.mjs";
 
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 const SYSTEM_EXTENSION_SELECTOR = '[data-app-extension="system-overview"]';
@@ -631,7 +632,7 @@ export function mountSystemOverviewControls(
     }
     if (!force && mountedSlot === slot) return;
     mountedSlot = slot;
-    paint(slot);
+    repaintPreservingInteraction(slot, () => paint(slot));
   };
 
   const replaceView = () => renderView(true);
