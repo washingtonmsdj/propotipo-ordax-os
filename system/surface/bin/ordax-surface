@@ -18,6 +18,11 @@ BASE_TELEMETRY_AGENT=$BASE_TELEMETRY_DIR/agent.sh
 BASE_TELEMETRY_CONFIG=$BASE_TELEMETRY_DIR/relay.json
 BASE_TELEMETRY_LOG=$BASE_TELEMETRY_DIR/launcher.log
 BASE_TELEMETRY_PID_FILE=$BASE_TELEMETRY_DIR/agent.pid
+BASE_UPDATE_SOURCE=$SYSTEM_ROOT/services/base-update/agent.sh
+BASE_UPDATE_DIR=$STATE_ROOT/base-update
+BASE_UPDATE_AGENT=$BASE_UPDATE_DIR/agent.sh
+BASE_UPDATE_LOG=$BASE_UPDATE_DIR/agent.log
+BASE_UPDATE_PID_FILE=$BASE_UPDATE_DIR/agent.pid
 SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
@@ -49,12 +54,14 @@ PROC_BOUND=0
 SYS_BOUND=0
 RUN_BOUND=0
 SYSTEM_BOUND=0
+REPO_BOUND=0
+ORDAX_BOUND=0
 STATE_BOUND=0
 USER_HOME_BOUND=0
 UDEV_ACTIVE=0
 
-mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$POWER_STATE_DIR"
-chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$POWER_STATE_DIR"
+mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$BASE_UPDATE_DIR" "$POWER_STATE_DIR"
+chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$BASE_UPDATE_DIR" "$POWER_STATE_DIR"
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
 : > "$TIME_SYNC_LOG"
@@ -129,6 +136,66 @@ ensure_base_telemetry_agent() {
         return 1
     }
     echo "ordax-surface: persistent base telemetry agent is running" >>"$BASE_TELEMETRY_LOG"
+    return 0
+}
+
+base_update_agent_running() {
+    pid=""
+    [ -s "$BASE_UPDATE_PID_FILE" ] && IFS= read -r pid <"$BASE_UPDATE_PID_FILE" || true
+    persistent_agent_pid_matches "$pid" "$BASE_UPDATE_AGENT"
+}
+
+ensure_base_update_agent() {
+    [ -f "$BASE_UPDATE_SOURCE" ] || {
+        echo "ordax-surface: base update owner source unavailable: $BASE_UPDATE_SOURCE" >>"$BASE_UPDATE_LOG"
+        return 0
+    }
+
+    repo_root=${SYSTEM_ROOT%/system}
+    if [ -z "$repo_root" ] || [ "$repo_root" = "$SYSTEM_ROOT" ] || [ ! -d "$repo_root/.git" ]; then
+        echo "ordax-surface: repository root unavailable for base update owner" >>"$BASE_UPDATE_LOG"
+        return 0
+    fi
+
+    owner_changed=1
+    if [ -f "$BASE_UPDATE_AGENT" ] && /bin/busybox cmp "$BASE_UPDATE_SOURCE" "$BASE_UPDATE_AGENT" >/dev/null 2>&1; then
+        owner_changed=0
+    fi
+
+    temporary=$BASE_UPDATE_AGENT.tmp.$
+    cp "$BASE_UPDATE_SOURCE" "$temporary" >>"$BASE_UPDATE_LOG" 2>&1 || return 1
+    chmod 700 "$temporary" >>"$BASE_UPDATE_LOG" 2>&1 || return 1
+    /bin/busybox mv -f "$temporary" "$BASE_UPDATE_AGENT" >>"$BASE_UPDATE_LOG" 2>&1 || return 1
+
+    if [ "$owner_changed" -eq 1 ] && base_update_agent_running; then
+        pid=""
+        IFS= read -r pid <"$BASE_UPDATE_PID_FILE" || true
+        terminate_child "$pid" "base update owner"
+        rm -f "$BASE_UPDATE_PID_FILE"
+        echo "ordax-surface: refreshed persistent base update owner" >>"$BASE_UPDATE_LOG"
+    fi
+
+    base_update_agent_running && return 0
+
+    if [ -x /bin/setsid ]; then
+        ORDAX_BASE_RUNTIME_ROOT="$RUNTIME_ROOT" \
+        ORDAX_BASE_HOST_REPO_ROOT="$repo_root" \
+            /bin/setsid "$BASE_UPDATE_AGENT" >>"$BASE_UPDATE_LOG" 2>&1 </dev/null &
+    else
+        ORDAX_BASE_RUNTIME_ROOT="$RUNTIME_ROOT" \
+        ORDAX_BASE_HOST_REPO_ROOT="$repo_root" \
+            "$BASE_UPDATE_AGENT" >>"$BASE_UPDATE_LOG" 2>&1 </dev/null &
+    fi
+    owner_pid=$!
+    printf '%s\n' "$owner_pid" >"$BASE_UPDATE_PID_FILE"
+    chmod 600 "$BASE_UPDATE_PID_FILE" >/dev/null 2>&1 || true
+    /bin/busybox sleep 1
+    base_update_agent_running || {
+        echo "ordax-surface: base update owner did not remain running" >>"$BASE_UPDATE_LOG"
+        rm -f "$BASE_UPDATE_PID_FILE"
+        return 1
+    }
+    echo "ordax-surface: persistent base update owner is running" >>"$BASE_UPDATE_LOG"
     return 0
 }
 
@@ -244,6 +311,8 @@ clear_stale_runtime_mounts() {
     for target in \
         "$RUNTIME_ROOT/var/lib/ordax-user" \
         "$RUNTIME_ROOT/var/lib/ordax" \
+        "$RUNTIME_ROOT/ordax" \
+        "$RUNTIME_ROOT/srv/ordax-repo" \
         "$RUNTIME_ROOT/srv/ordax-system" \
         "$RUNTIME_ROOT/run" \
         "$RUNTIME_ROOT/sys" \
@@ -309,6 +378,14 @@ cleanup() {
     fi
     if [ -S "$SEATD_SOCKET" ] && ! seatd_process_running; then
         rm -f "$SEATD_SOCKET" >/dev/null 2>&1 || true
+    fi
+    if [ "$ORDAX_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/ordax" >/dev/null 2>&1 || true
+        ORDAX_BOUND=0
+    fi
+    if [ "$REPO_BOUND" -eq 1 ]; then
+        /bin/busybox umount "$RUNTIME_ROOT/srv/ordax-repo" >/dev/null 2>&1 || true
+        REPO_BOUND=0
     fi
     if [ "$SYSTEM_BOUND" -eq 1 ]; then
         /bin/busybox umount "$RUNTIME_ROOT/srv/ordax-system" >/dev/null 2>&1 || true
@@ -427,7 +504,7 @@ REPOSITORIES
         return 1
     fi
 
-    for directory in dev proc sys run tmp root srv/ordax-system var/lib/ordax var/lib/ordax-user; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
+    for directory in dev proc sys run tmp root ordax srv/ordax-system srv/ordax-repo var/lib/ordax var/lib/ordax-user; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
@@ -500,8 +577,13 @@ BARKERY
 }
 
 bind_runtime_mounts() {
+    repo_root=${SYSTEM_ROOT%/system}
+    [ -n "$repo_root" ] && [ "$repo_root" != "$SYSTEM_ROOT" ] && [ -d "$repo_root" ] || return 1
+    [ -d /ordax ] || return 1
     mkdir -p \
         "$RUNTIME_ROOT/srv/ordax-system" \
+        "$RUNTIME_ROOT/srv/ordax-repo" \
+        "$RUNTIME_ROOT/ordax" \
         "$RUNTIME_ROOT/var/lib/ordax" \
         "$RUNTIME_ROOT/var/lib/ordax-user" \
         "$PERSISTENT_NATIVE_STATE" \
@@ -509,6 +591,10 @@ bind_runtime_mounts() {
     chmod 700 "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" || return 1
     /bin/busybox mount -o bind "$SYSTEM_ROOT" "$RUNTIME_ROOT/srv/ordax-system" >>"$HOST_LOG" 2>&1 || return 1
     SYSTEM_BOUND=1
+    /bin/busybox mount -o bind "$repo_root" "$RUNTIME_ROOT/srv/ordax-repo" >>"$HOST_LOG" 2>&1 || return 1
+    REPO_BOUND=1
+    /bin/busybox mount -o bind /ordax "$RUNTIME_ROOT/ordax" >>"$HOST_LOG" 2>&1 || return 1
+    ORDAX_BOUND=1
     /bin/busybox mount -o bind "$PERSISTENT_NATIVE_STATE" "$RUNTIME_ROOT/var/lib/ordax" >>"$HOST_LOG" 2>&1 || return 1
     STATE_BOUND=1
     /bin/busybox mount -o bind "$PERSISTENT_USER_HOME" "$RUNTIME_ROOT/var/lib/ordax-user" >>"$HOST_LOG" 2>&1 || return 1
@@ -697,6 +783,7 @@ bind_runtime_mounts || fallback_with_reason "failed to bind host resources into 
 prepare_input_stack || fallback_with_reason "failed to prepare physical keyboard/touchpad input devices"
 remove_stale_seatd_socket || fallback_with_reason "failed to clear stale seatd socket before native host startup"
 prepare_power_broker || fallback_with_reason "failed to prepare host power broker"
+ensure_base_update_agent || echo "ordax-surface: base update owner unavailable; continuing Surface startup" >>"$HOST_LOG"
 
 export XDG_RUNTIME_DIR="$SESSION_DIR"
 export HOME=/root
