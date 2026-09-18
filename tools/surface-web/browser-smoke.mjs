@@ -8,11 +8,17 @@ import { createServer } from 'node:net';
 
 const STATIC_IMPORT_RE = /\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?["']([^"']+)["']/g;
 const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
-const ROOT_MODULE = 'system/surface/ui/surface.mjs';
+const SURFACE_ROOT_MODULE = 'system/surface/ui/surface.mjs';
+const WEB_COMPOSITION_ROOT_MODULE = 'system/composition/web/main.mjs';
+const ROOT_MODULES = [SURFACE_ROOT_MODULE, WEB_COMPOSITION_ROOT_MODULE];
 const CSS_FILES = [
   'system/surface/ui/tokens.css',
   'system/surface/ui/surface.css',
   'system/surface/ui/workspace-areas.css',
+  'system/surface/ui/files.css',
+  'system/surface/ui/system.css',
+  'system/surface/ui/account.css',
+  'system/surface/ui/settings.css',
 ];
 
 function parseArgs(argv) {
@@ -56,14 +62,14 @@ function moduleSpecifiers(source) {
   return [...values];
 }
 
-function moduleKey(path) {
-  return `ordax-module/${path.split('/').map(encodeURIComponent).join('/')}`;
+function moduleKey(path, namespace = 'shell') {
+  return `ordax-module/${namespace}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-function rewriteModule(source, sourcePath, bundleDir) {
+function rewriteModule(source, sourcePath, bundleDir, namespace = 'shell') {
   const rewrite = (full, specifier) => {
     const dependency = resolveModule(bundleDir, sourcePath, specifier);
-    return full.replace(specifier, moduleKey(dependency));
+    return full.replace(specifier, moduleKey(dependency, namespace));
   };
   return source
     .replace(STATIC_IMPORT_RE, rewrite)
@@ -71,7 +77,7 @@ function rewriteModule(source, sourcePath, bundleDir) {
 }
 
 async function collectModules(bundleDir) {
-  const pending = [ROOT_MODULE];
+  const pending = [...ROOT_MODULES];
   const sources = new Map();
   while (pending.length > 0) {
     const path = pending.pop();
@@ -240,10 +246,13 @@ class CdpClient {
 }
 
 function buildProofExpression(moduleSources, styles) {
+  const namespace = 'shell';
   const rewritten = Object.fromEntries(
-    [...moduleSources.entries()].map(([path, source]) => [path, rewriteModule(source, path, bundleDirGlobal)]),
+    [...moduleSources.entries()].map(([path, source]) => [path, rewriteModule(source, path, bundleDirGlobal, namespace)]),
   );
-  const moduleKeys = Object.fromEntries([...moduleSources.keys()].map((path) => [path, moduleKey(path)]));
+  const moduleKeys = Object.fromEntries(
+    [...moduleSources.keys()].map((path) => [path, moduleKey(path, namespace)]),
+  );
   return `(async () => {
     const sources = ${JSON.stringify(rewritten)};
     const keys = ${JSON.stringify(moduleKeys)};
@@ -265,7 +274,7 @@ function buildProofExpression(moduleSources, styles) {
     importMap.textContent = JSON.stringify({ imports });
     document.head.append(importMap);
 
-    const { mountSurface } = await import(urls[${JSON.stringify(ROOT_MODULE)}]);
+    const { mountSurface } = await import(urls[${JSON.stringify('system/surface/ui/surface.mjs')}]);
     let snapshot = { capabilityIds: [], connectivity: 'offline' };
     const listeners = new Set();
     const host = {
@@ -390,6 +399,241 @@ function buildProofExpression(moduleSources, styles) {
   })()`;
 }
 
+function buildCompositionProofExpression(moduleSources, styles) {
+  const namespaces = ['composition-first', 'composition-remount'];
+  const namespaceSources = Object.fromEntries(
+    namespaces.map((namespace) => [
+      namespace,
+      Object.fromEntries(
+        [...moduleSources.entries()].map(([path, source]) => [
+          path,
+          rewriteModule(source, path, bundleDirGlobal, namespace),
+        ]),
+      ),
+    ]),
+  );
+  const namespaceKeys = Object.fromEntries(
+    namespaces.map((namespace) => [
+      namespace,
+      Object.fromEntries(
+        [...moduleSources.keys()].map((path) => [path, moduleKey(path, namespace)]),
+      ),
+    ]),
+  );
+
+  return `(async () => {
+    const namespaceSources = ${JSON.stringify(namespaceSources)};
+    const namespaceKeys = ${JSON.stringify(namespaceKeys)};
+    const rootModule = ${JSON.stringify(WEB_COMPOSITION_ROOT_MODULE)};
+    const storageRecords = new Map();
+    const storage = {
+      get length() { return storageRecords.size; },
+      clear() { storageRecords.clear(); },
+      getItem(key) { return storageRecords.has(String(key)) ? storageRecords.get(String(key)) : null; },
+      key(index) { return [...storageRecords.keys()][index] ?? null; },
+      removeItem(key) { storageRecords.delete(String(key)); },
+      setItem(key, value) { storageRecords.set(String(key), String(value)); },
+    };
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      enumerable: true,
+      value: storage,
+    });
+
+    document.open();
+    document.write('<!doctype html><html><head></head><body><div id="ordax-root"></div></body></html>');
+    document.close();
+    const style = document.createElement('style');
+    style.textContent = ${JSON.stringify(styles)};
+    document.head.append(style);
+
+    const namespaceUrls = Object.create(null);
+    const imports = Object.create(null);
+    for (const [namespace, sources] of Object.entries(namespaceSources)) {
+      const urls = Object.create(null);
+      namespaceUrls[namespace] = urls;
+      for (const [path, source] of Object.entries(sources)) {
+        urls[path] = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      }
+      for (const [path, key] of Object.entries(namespaceKeys[namespace])) {
+        imports[key] = urls[path];
+      }
+    }
+    const importMap = document.createElement('script');
+    importMap.type = 'importmap';
+    importMap.textContent = JSON.stringify({ imports });
+    document.head.append(importMap);
+
+    const result = {};
+    const parsedStorage = (key) => {
+      const raw = storage.getItem(key);
+      return raw === null ? null : JSON.parse(raw);
+    };
+    const launch = async (appId) => {
+      const root = document.querySelector('#ordax-root');
+      const launcher = root.querySelector('[data-launcher]');
+      if (launcher?.hidden !== false) root.querySelector('[data-launcher-toggle]').click();
+      const button = root.querySelector('[data-launch-app="' + appId + '"]');
+      if (!button) throw new Error('composition smoke could not find launcher app: ' + appId);
+      button.click();
+      await Promise.resolve();
+    };
+
+    await import(namespaceUrls['composition-first'][rootModule]);
+    await Promise.resolve();
+    let root = document.querySelector('#ordax-root');
+    result.compositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+
+    await launch('settings');
+    let settingsWindow = root.querySelector('[data-window-id="settings"]');
+    let settingsSlot = settingsWindow?.querySelector('[data-app-extension="settings-overview"]');
+    result.settingsWindowMounted = Boolean(settingsWindow);
+    result.settingsOwnerMounted = Boolean(settingsSlot?.dataset.ordaxSettingsOverviewView !== undefined);
+    result.settingsStartsAppearance = settingsSlot?.dataset.settingsActiveSection === 'appearance';
+
+    const darkButton = settingsSlot?.querySelector(
+      '[data-settings-preference-id="appearance.theme"][data-settings-preference-value="dark"]',
+    );
+    result.darkActionPresent = Boolean(darkButton);
+    darkButton?.click();
+    await Promise.resolve();
+    result.darkThemeApplied = root.dataset.ordaxTheme === 'dark';
+    result.darkThemePersisted = parsedStorage('ordax.preferences.v1')?.['appearance.theme'] === 'dark';
+
+    const accessibilityButton = settingsSlot?.querySelector('[data-settings-section="accessibility"]');
+    result.accessibilityNavigationPresent = Boolean(accessibilityButton);
+    accessibilityButton?.click();
+    await Promise.resolve();
+    settingsWindow = root.querySelector('[data-window-id="settings"]');
+    settingsSlot = settingsWindow?.querySelector('[data-app-extension="settings-overview"]');
+    result.accessibilityTargetApplied = settingsSlot?.dataset.settingsActiveSection === 'accessibility';
+
+    const extraLargeButton = settingsSlot?.querySelector(
+      '[data-settings-preference-id="accessibility.text-scale"][data-settings-preference-value="extra-large"]',
+    );
+    result.extraLargeActionPresent = Boolean(extraLargeButton);
+    extraLargeButton?.click();
+    await Promise.resolve();
+    result.textScaleApplied = document.documentElement.dataset.ordaxTextScale === 'extra-large';
+    const preferences = parsedStorage('ordax.preferences.v1');
+    result.textScalePersisted = preferences?.['accessibility.text-scale'] === 'extra-large';
+
+    const workspace = parsedStorage('ordax.workspace.v2');
+    const firstArea = workspace?.areas?.find((area) => area.id === workspace.activeAreaId) ?? workspace?.areas?.[0];
+    const storedSettings = firstArea?.windows?.find((item) => item.appId === 'settings');
+    result.workspaceTargetPersisted = storedSettings?.target === 'accessibility';
+
+    await launch('account');
+    const accountSlot = root.querySelector(
+      '[data-window-id="account"] [data-app-extension="account-overview"]',
+    );
+    result.accountOwnerMounted = Boolean(accountSlot?.dataset.ordaxAccountOverviewView !== undefined);
+    result.accountUnavailable = accountSlot?.querySelector('.ordax-account-status')?.dataset.state === 'unavailable';
+    result.accountNoFakeIdentityAction = accountSlot?.querySelector('[data-account-identity-action]') === null;
+
+    await launch('system');
+    const systemSlot = root.querySelector(
+      '[data-window-id="system"] [data-app-extension="system-overview"]',
+    );
+    result.systemOwnerMounted = Boolean(systemSlot?.dataset.ordaxSystemOverviewView !== undefined);
+    result.systemOverviewDefault = systemSlot?.dataset.systemActiveSection === 'overview';
+    result.systemNavigationComplete = systemSlot?.querySelectorAll('[data-system-section]').length === 5;
+
+    window.dispatchEvent(new Event('pagehide'));
+    await Promise.resolve();
+    result.firstMountDestroyed = root.childElementCount === 0;
+    result.textScaleClearedOnDestroy = document.documentElement.dataset.ordaxTextScale === undefined;
+
+    document.body.replaceChildren();
+    const remountRoot = document.createElement('div');
+    remountRoot.id = 'ordax-root';
+    document.body.append(remountRoot);
+    await import(namespaceUrls['composition-remount'][rootModule]);
+    await Promise.resolve();
+    root = document.querySelector('#ordax-root');
+    result.remountCompositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    result.themeRestored = root?.dataset.ordaxTheme === 'dark';
+    result.textScaleRestored = document.documentElement.dataset.ordaxTextScale === 'extra-large';
+
+    const restoredSettingsSlot = root?.querySelector(
+      '[data-window-id="settings"] [data-app-extension="settings-overview"]',
+    );
+    result.settingsWindowRestored = Boolean(restoredSettingsSlot);
+    result.settingsTargetRestored = restoredSettingsSlot?.dataset.settingsActiveSection === 'accessibility';
+
+    const restoredAccountSlot = root?.querySelector(
+      '[data-window-id="account"] [data-app-extension="account-overview"]',
+    );
+    result.accountWindowRestored = Boolean(restoredAccountSlot);
+    result.accountOwnerRestored = Boolean(restoredAccountSlot?.dataset.ordaxAccountOverviewView !== undefined);
+    result.accountStillUnavailable = restoredAccountSlot?.querySelector('.ordax-account-status')?.dataset.state === 'unavailable';
+    result.accountStillHasNoFakeIdentityAction = restoredAccountSlot?.querySelector('[data-account-identity-action]') === null;
+
+    const restoredSystemSlot = root?.querySelector(
+      '[data-window-id="system"] [data-app-extension="system-overview"]',
+    );
+    result.systemWindowRestored = Boolean(restoredSystemSlot);
+    result.systemOwnerRestored = Boolean(restoredSystemSlot?.dataset.ordaxSystemOverviewView !== undefined);
+    result.systemOverviewRestored = restoredSystemSlot?.dataset.systemActiveSection === 'overview';
+
+    const required = [
+      'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
+      'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
+      'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
+      'workspaceTargetPersisted', 'accountOwnerMounted', 'accountUnavailable',
+      'accountNoFakeIdentityAction', 'systemOwnerMounted', 'systemOverviewDefault',
+      'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
+      'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
+      'settingsTargetRestored', 'accountWindowRestored', 'accountOwnerRestored',
+      'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
+      'systemOwnerRestored', 'systemOverviewRestored',
+    ];
+    result.requiredAssertions = Object.fromEntries(required.map((name) => [name, Boolean(result[name])]));
+    result.allCoreAssertions = Object.values(result.requiredAssertions).every(Boolean);
+
+    window.dispatchEvent(new Event('pagehide'));
+    for (const urls of Object.values(namespaceUrls)) {
+      for (const url of Object.values(urls)) URL.revokeObjectURL(url);
+    }
+    return result;
+  })()`;
+}
+
+async function waitForPageReady(client, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const evaluation = await client.send('Runtime.evaluate', {
+        expression: 'document.readyState',
+        returnByValue: true,
+      });
+      if (evaluation.result?.value === 'complete') return;
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(25);
+  }
+  throw new Error(`timed out waiting for blank browser document: ${lastError?.message ?? 'not ready'}`);
+}
+
+async function evaluateProof(client, expression, label) {
+  const evaluation = await client.send('Runtime.evaluate', {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+    userGesture: true,
+  });
+  if (evaluation.exceptionDetails) {
+    throw new Error(`${label} browser proof threw: ${evaluation.exceptionDetails.text ?? 'unknown exception'}`);
+  }
+  const result = evaluation.result?.value;
+  if (!result || result.allCoreAssertions !== true) {
+    throw new Error(`${label} browser assertions failed: ${JSON.stringify(result, null, 2)}`);
+  }
+  return result;
+}
+
 let bundleDirGlobal = null;
 
 async function main() {
@@ -453,20 +697,18 @@ async function main() {
     await client.send('Runtime.enable');
     await client.send('Page.enable');
     await client.send('Log.enable');
-    const expression = buildProofExpression(modules, styles);
-    const evaluation = await client.send('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true,
-      userGesture: true,
-    });
-    if (evaluation.exceptionDetails) {
-      throw new Error(`browser proof threw: ${evaluation.exceptionDetails.text ?? 'unknown exception'}`);
-    }
-    const result = evaluation.result?.value;
-    if (!result || result.allCoreAssertions !== true) {
-      throw new Error(`browser smoke assertions failed: ${JSON.stringify(result, null, 2)}`);
-    }
+    const shellResult = await evaluateProof(
+      client,
+      buildProofExpression(modules, styles),
+      'Surface shell',
+    );
+    await client.send('Page.navigate', { url: 'about:blank' });
+    await waitForPageReady(client);
+    const compositionResult = await evaluateProof(
+      client,
+      buildCompositionProofExpression(modules, styles),
+      'Web composition',
+    );
     const runtimeErrors = client.events.filter((event) => event.method === 'Runtime.exceptionThrown');
     const logErrors = client.events.filter((event) => event.method === 'Log.entryAdded' && event.params?.entry?.level === 'error');
     if (runtimeErrors.length || logErrors.length) {
@@ -476,7 +718,11 @@ async function main() {
     console.log('SURFACE_BROWSER_SMOKE=PASS');
     console.log(`SURFACE_BROWSER_MODULE_COUNT=${modules.size}`);
     console.log(`SURFACE_BROWSER_EXECUTABLE=${browser}`);
-    console.log(`SURFACE_BROWSER_ASSERTIONS=${Object.keys(result.requiredAssertions).length}`);
+    const shellAssertions = Object.keys(shellResult.requiredAssertions).length;
+    const compositionAssertions = Object.keys(compositionResult.requiredAssertions).length;
+    console.log(`SURFACE_BROWSER_SHELL_ASSERTIONS=${shellAssertions}`);
+    console.log(`SURFACE_BROWSER_COMPOSITION_ASSERTIONS=${compositionAssertions}`);
+    console.log(`SURFACE_BROWSER_ASSERTIONS=${shellAssertions + compositionAssertions}`);
   } finally {
     client?.close();
     if (child.exitCode === null) {
