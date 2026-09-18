@@ -73,3 +73,20 @@
   --ordax-concrete-mid: #55534e;
   --ordax-concrete-dark: #090909;
 }
+
+
+[data-ordax-theme="light"][data-ordax-contrast="high"] {
+  --ordax-muted: #4e4941;
+  --ordax-faint: #686158;
+  --ordax-border: rgba(20, 18, 15, 0.42);
+  --ordax-border-soft: rgba(20, 18, 15, 0.24);
+  --ordax-focus: rgba(216, 62, 26, 0.82);
+}
+
+[data-ordax-theme="dark"][data-ordax-contrast="high"] {
+  --ordax-muted: #d0c8bb;
+  --ordax-faint: #aaa195;
+  --ordax-border: rgba(255, 248, 239, 0.42);
+  --ordax-border-soft: rgba(255, 248, 239, 0.25);
+  --ordax-focus: rgba(255, 103, 64, 0.88);
+}
