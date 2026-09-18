@@ -22,13 +22,13 @@ function reviewDocument(overrides = {}) {
       sources: [
         { id: "surface", status: "included", failureCode: "" },
         { id: "update", status: "included", failureCode: "" },
-        { id: "metrics", status: "failed", failureCode: "metrics-read-failed" },
-        { id: "history", status: "included", failureCode: "" },
+        { id: "metrics", status: "included", failureCode: "" },
+        { id: "history", status: "failed", failureCode: "history-read-failed" },
         { id: "journal", status: "included", failureCode: "" },
       ],
-      includedSourceIds: ["surface", "update", "history", "journal"],
+      includedSourceIds: ["surface", "update", "metrics", "journal"],
       unavailableSourceIds: [],
-      failedSourceIds: ["metrics"],
+      failedSourceIds: ["history"],
       hasFailures: true,
     },
     observations: {
@@ -70,12 +70,7 @@ function reviewDocument(overrides = {}) {
         userStorageTotalBytes: 128 * 1024 * 1024 * 1024,
         userStorageFreeBytes: 80 * 1024 * 1024 * 1024,
       },
-      history: {
-        releaseCount: 5,
-        applicationCount: 2,
-        recentReleases: [],
-        recentApplications: [],
-      },
+      history: null,
       journal: {
         eventCount: 1,
         retentionLimit: 64,
@@ -120,7 +115,8 @@ test("builds a bounded human-readable summary without using serialized document 
   assert.equal(summary.schema, DIAGNOSTIC_SUMMARY_SCHEMA);
   assert.equal(summary.mediaType, "text/plain;charset=utf-8");
   assert.match(summary.text, /OrdaX — resumo sanitizado de diagnóstico/);
-  assert.match(summary.text, /Métricas: falha na leitura \(metrics-read-failed\)/);
+  assert.match(summary.text, /Histórico: falha na leitura \(history-read-failed\)/);
+  assert.match(summary.text, /Memória: 5 GB em uso de 8 GB/);
   assert.match(summary.text, /Atualidade da observação: antiga \(180s de idade\)\. Isso não prova falha do supervisor\./);
   assert.match(summary.text, /Persistência: degraded · escopo configurado device · save-failed/);
   assert.match(summary.text, /Bearer \[redacted\]/);
@@ -143,6 +139,17 @@ test("builds a bounded human-readable summary without using serialized document 
   ]) {
     assert.equal(summary.text.includes(secret), false, `summary leaked ${secret}`);
   }
+});
+
+test("rejects a manifest that contradicts the structured report", () => {
+  const document = reviewDocument();
+  document.review.manifest.sources = document.review.manifest.sources.map((entry) =>
+    entry.id === "journal"
+      ? { id: "journal", status: "unavailable", failureCode: "" }
+      : entry,
+  );
+
+  assert.throws(() => createDiagnosticReviewSummary(document), TypeError);
 });
 
 test("does not convert an unavailable journal into a healthy verdict", () => {
