@@ -9,6 +9,7 @@ SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 CONTRACT = ROOT / "system" / "contracts" / "network-status.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "network-status.mjs"
 CONTROLS = ROOT / "system" / "surface" / "ui" / "settings-overview-controls.mjs"
+TRAY_CONTROLS = ROOT / "system" / "surface" / "ui" / "network-tray-controls.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
@@ -78,6 +79,7 @@ class NativeNetworkStatusTests(unittest.TestCase):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
         controls = CONTROLS.read_text(encoding="utf-8")
+        tray_controls = TRAY_CONTROLS.read_text(encoding="utf-8")
         composition = COMPOSITION.read_text(encoding="utf-8")
         runtime = RUNTIME.read_text(encoding="utf-8")
 
@@ -92,7 +94,15 @@ class NativeNetworkStatusTests(unittest.TestCase):
         self.assertNotIn("adapters/native", controls)
         self.assertNotIn("/__ordax/native/", controls)
         self.assertIn("createNativeNetworkStatus", composition)
+        self.assertIn("mountNetworkTrayControls", composition)
+        self.assertIn('reportClientDiagnostic("network-tray-status", error)', composition)
+        self.assertIn("networkTrayControls?.destroy()", composition)
         self.assertIn("networkStatusAvailable", composition)
+        self.assertIn("assertNetworkStatusPort", tray_controls)
+        self.assertIn("summarizeNetworkStatus", tray_controls)
+        self.assertNotIn("ssid", tray_controls.lower())
+        self.assertNotIn("password", tray_controls.lower())
+        self.assertNotIn("/__ordax/native/", tray_controls)
         self.assertIn('"network.status"', runtime)
 
     def test_capability_is_native_only_and_read_only(self):
