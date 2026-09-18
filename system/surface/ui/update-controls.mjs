@@ -28,6 +28,25 @@ function shortSha(value) {
   return value.slice(0, 8);
 }
 
+function versionLabel(value) {
+  return Number.isSafeInteger(value) && value > 0 ? `v${value}` : "versão técnica";
+}
+
+function formatTimestamp(value) {
+  if (typeof value !== "string" || !value || value === "unknown") return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Bahia",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function readableMode(mode) {
   switch (mode) {
     case "reload": return "Recarga rápida da Surface";
@@ -120,7 +139,7 @@ export function mountUpdateControls(root, updatePort) {
     toggle.textContent = alerting ? "Atualizações •" : "Atualizações";
     toggle.dataset.alerting = String(alerting);
     addFact(alerting ? "!" : "✓", label, description);
-    addFact("#", `Versão ${shortSha(snapshot?.sourceSha)}`, `Modo: ${readableMode(snapshot?.applyMode)}`);
+    addFact("#", `OrdaX ${versionLabel(snapshot?.versionNumber)}`, `SHA ${shortSha(snapshot?.sourceSha)} · ${readableMode(snapshot?.applyMode)}`);
     if (snapshot?.runtimeSurfaceSha) {
       addFact(
         "◇",
@@ -136,19 +155,23 @@ export function mountUpdateControls(root, updatePort) {
       addFact("…", "Fase atual", readablePhase(snapshot.phase));
     }
     if (snapshot?.attemptId) {
-      addFact("·", "Tentativa", snapshot.attemptId);
+      addFact("·", "Tentativa", formatTimestamp(snapshot.attemptId));
     }
     if (snapshot?.lastError) {
       addFact("!", "Diagnóstico", snapshot.lastError);
     }
     if (snapshot?.lastAppliedAt && snapshot.lastAppliedAt !== "unknown") {
-      addFact("↻", "Última aplicação", snapshot.lastAppliedAt);
+      addFact(
+        "↻",
+        "Última aplicação",
+        `${formatTimestamp(snapshot.lastAppliedAt)} · ${snapshot.lastApplyDurationSeconds ?? 0}s (preparação ${snapshot.lastStageDurationSeconds ?? 0}s)`,
+      );
     }
     if (snapshot?.rejectedSha) {
       addFact("×", `Bloqueada ${shortSha(snapshot.rejectedSha)}`, "O OrdaX não tentará este commit novamente enquanto a main não avançar.");
     }
     detail.textContent = snapshot?.checkedAt && snapshot.checkedAt !== "unknown"
-      ? `Última verificação automática: ${snapshot.checkedAt}`
+      ? `Última verificação automática: ${formatTimestamp(snapshot.checkedAt)}`
       : "A verificação automática ocorre em segundo plano.";
   };
 
