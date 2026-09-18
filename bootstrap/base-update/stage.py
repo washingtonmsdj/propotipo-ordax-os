@@ -383,16 +383,14 @@ def main() -> int:
     parser.add_argument("--esp-root", type=Path, required=True)
     parser.add_argument("--active-slot", choices=("a", "b"), required=True)
     parser.add_argument("--envelope", type=Path, required=True)
-    parser.add_argument("--trust", type=Path, default=DEFAULT_TRUST)
-    parser.add_argument("--release-agent", type=Path, default=DEFAULT_RELEASE_AGENT)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
     args = parser.parse_args()
     try:
         candidate = verified_candidate_from_envelope(
             args.envelope,
-            args.trust,
-            args.release_agent,
+            DEFAULT_TRUST,
+            DEFAULT_RELEASE_AGENT,
         )
         result = stage(
             args.esp_root,
