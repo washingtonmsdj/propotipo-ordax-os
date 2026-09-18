@@ -8,11 +8,13 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/RELEASE-COMPLIANCE.md'
+      - 'docs/PUBLIC-LEGAL-READINESS.md'
       - 'docs/contracts/public-site.json'
       - 'docs/contracts/public-site-deployment.json'
       - 'docs/contracts/public-identity.json'
       - 'docs/contracts/public-release-catalog.json'
       - 'docs/contracts/release-compliance.json'
+      - 'docs/contracts/public-legal-readiness.json'
       - 'services/public-identity/**'
       - 'infra/supabase/identity/**'
       - 'platform/releases/publications.json'
@@ -23,6 +25,7 @@ on:
       - 'tests/test_public_identity_backend_prep.py'
       - 'tests/test_public_identity_gateway.py'
       - 'tests/test_public_site_runtime_smoke.py'
+      - 'tests/test_public_legal_readiness.py'
       - '.github/workflows/public-site-candidate.yml'
   pull_request:
     paths:
@@ -30,11 +33,13 @@ on:
       - 'tools/public-site/**'
       - 'docs/PUBLIC-SITE.md'
       - 'docs/RELEASE-COMPLIANCE.md'
+      - 'docs/PUBLIC-LEGAL-READINESS.md'
       - 'docs/contracts/public-site.json'
       - 'docs/contracts/public-site-deployment.json'
       - 'docs/contracts/public-identity.json'
       - 'docs/contracts/public-release-catalog.json'
       - 'docs/contracts/release-compliance.json'
+      - 'docs/contracts/public-legal-readiness.json'
       - 'services/public-identity/**'
       - 'infra/supabase/identity/**'
       - 'platform/releases/publications.json'
@@ -45,6 +50,7 @@ on:
       - 'tests/test_public_identity_backend_prep.py'
       - 'tests/test_public_identity_gateway.py'
       - 'tests/test_public_site_runtime_smoke.py'
+      - 'tests/test_public_legal_readiness.py'
       - '.github/workflows/public-site-candidate.yml'
   workflow_dispatch:
 
@@ -76,6 +82,7 @@ jobs:
           python -m unittest tests.test_public_identity_backend_prep -v
           python -m unittest tests.test_public_identity_gateway -v
           python -m unittest tests.test_public_site_runtime_smoke -v
+          python -m unittest tests.test_public_legal_readiness -v
 
       - name: Build and verify deterministic public site
         run: |
