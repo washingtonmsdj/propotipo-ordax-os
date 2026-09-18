@@ -392,10 +392,10 @@ apply_remote_checkout() {
             /docs/evidence/release-trust-ceremony.json \
             /docs/evidence/release-trust-proof-manifest.json \
             /docs/evidence/release-trust-recovery-envelope.json \
-        /bootstrap/base-update/stage.py \
-        /bootstrap/base-update/planner.py \
-        /bootstrap/kernel/vmlinuz-6.6.52 \
-        /bootstrap/initramfs/initramfs.cpio.gz >>"$UPDATE_LOG" 2>&1; then
+            /bootstrap/base-update/stage.py \
+            /bootstrap/base-update/planner.py \
+            /bootstrap/kernel/vmlinuz-6.6.52 \
+            /bootstrap/initramfs/initramfs.cpio.gz >>"$UPDATE_LOG" 2>&1; then
         CHECKOUT_ERROR=sparse-checkout-failed
         return 1
     fi
