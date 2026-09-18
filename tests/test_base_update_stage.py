@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Disposable-directory regressions for OrdaX base candidate staging."""
 
+import base64
 import hashlib
 import importlib.util
+import io
+import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 
@@ -17,6 +21,85 @@ spec.loader.exec_module(stage)
 
 def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def make_signed_release_fixture(root: Path):
+    commit = "a" * 40
+    kernel_sha = "b" * 64
+    initramfs_sha = "c" * 64
+    releases_root = root / "releases"
+    release_root = releases_root / commit
+    artifact_root = release_root / "artifacts"
+    artifact_root.mkdir(parents=True)
+
+    descriptor = json.dumps(
+        {
+            "$schema": "prototype-ordax.base-update-candidate/1",
+            "kernel_sha256": kernel_sha,
+            "initramfs_sha256": initramfs_sha,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    archive_path = artifact_root / "system.tar"
+    with tarfile.open(archive_path, mode="w") as archive:
+        info = tarfile.TarInfo("system/base-update/candidate.json")
+        info.size = len(descriptor)
+        info.mode = 0o644
+        archive.addfile(info, io.BytesIO(descriptor))
+
+    manifest = {
+        "$schema": "prototype-ordax.release-manifest/1",
+        "source_repository": "washingtonmsdj/prototipo-ordax-os",
+        "source_commit": commit,
+        "release_id": commit,
+        "created_from_ci_recipe": "release/native/1",
+        "artifacts": [
+            {
+                "name": "system.tar",
+                "role": "system",
+                "url": "https://example.invalid/system.tar",
+                "sha256": digest(archive_path.read_bytes()),
+                "size": archive_path.stat().st_size,
+            }
+        ],
+    }
+    manifest_bytes = json.dumps(manifest, separators=(",", ":")).encode("utf-8")
+    (release_root / "release-manifest.json").write_bytes(manifest_bytes)
+
+    envelope = root / "release-envelope.json"
+    envelope.write_text(
+        json.dumps(
+            {
+                "$schema": "prototype-ordax.release-envelope/1",
+                "payload": base64.b64encode(manifest_bytes).decode("ascii"),
+                "signature": base64.b64encode(b"0" * 64).decode("ascii"),
+                "key_id": "ordax-prototype-release-v1",
+            },
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    trust = root / "release-ed25519.json"
+    trust.write_text("{}\n", encoding="utf-8")
+    agent = root / "ordax-release-agent"
+    agent.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' "
+        + json.dumps(
+            json.dumps(
+                {
+                    "status": "verified",
+                    "source_commit": commit,
+                    "artifact_count": 1,
+                },
+                separators=(",", ":"),
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    agent.chmod(0o755)
+    return agent, envelope, trust, releases_root, archive_path, commit, kernel_sha, initramfs_sha
 
 
 class BaseUpdateStageTests(unittest.TestCase):
@@ -133,61 +216,66 @@ class BaseUpdateStageTests(unittest.TestCase):
             self.assertFalse((esp / "ordax/base/b/vmlinuz").exists())
 
 
-    def test_signed_envelope_verifier_output_is_required_before_staging(self):
+    def test_signed_release_descriptor_is_required_before_staging(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            agent = root / "ordax-release-agent"
-            envelope = root / "base-update-envelope.json"
-            trust = root / "release-ed25519.json"
-            envelope.write_text("{}\n", encoding="utf-8")
-            trust.write_text("{}\n", encoding="utf-8")
-            agent.write_text(
-                "#!/bin/sh\n"
-                "cat <<'JSON'\n"
-                '{"$schema":"prototype-ordax.base-update-verification/1","status":"verified",'
-                '"source_repository":"washingtonmsdj/prototipo-ordax-os",'
-                '"release_sha":"' + "a" * 40 + '","key_id":"ordax-prototype-release-v1",'
-                '"kernel_sha256":"' + "b" * 64 + '","kernel_size":1,'
-                '"initramfs_sha256":"' + "c" * 64 + '","initramfs_size":1}\n'
-                "JSON\n",
-                encoding="utf-8",
+            agent, envelope, trust, releases, _archive, commit, kernel_sha, initramfs_sha = (
+                make_signed_release_fixture(root)
             )
-            agent.chmod(0o755)
 
-            candidate = stage.verified_candidate_from_envelope(envelope, trust, agent)
+            candidate = stage.verified_candidate_from_release(
+                envelope,
+                trust,
+                agent,
+                releases,
+            )
 
             self.assertEqual(
                 candidate,
                 {
-                    "release_sha": "a" * 40,
-                    "kernel_sha256": "b" * 64,
-                    "initramfs_sha256": "c" * 64,
+                    "release_sha": commit,
+                    "kernel_sha256": kernel_sha,
+                    "initramfs_sha256": initramfs_sha,
                 },
             )
 
-    def test_failed_signature_verifier_is_fail_closed(self):
+    def test_failed_canonical_release_verifier_is_fail_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            agent = root / "ordax-release-agent"
-            envelope = root / "base-update-envelope.json"
-            trust = root / "release-ed25519.json"
-            envelope.write_text("{}\n", encoding="utf-8")
-            trust.write_text("{}\n", encoding="utf-8")
+            agent, envelope, trust, releases, _archive, _commit, _kernel, _initramfs = (
+                make_signed_release_fixture(root)
+            )
             agent.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
             agent.chmod(0o755)
 
             with self.assertRaises(stage.StageError):
-                stage.verified_candidate_from_envelope(envelope, trust, agent)
+                stage.verified_candidate_from_release(envelope, trust, agent, releases)
 
-    def test_stage_cli_has_no_unsigned_candidate_input(self):
+    def test_signed_system_archive_tampering_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            agent, envelope, trust, releases, archive, _commit, _kernel, _initramfs = (
+                make_signed_release_fixture(root)
+            )
+            payload = bytearray(archive.read_bytes())
+            payload[0] ^= 1
+            archive.write_bytes(payload)
+
+            with self.assertRaises(stage.StageError):
+                stage.verified_candidate_from_release(envelope, trust, agent, releases)
+
+    def test_stage_cli_has_no_unsigned_or_alternate_trust_input(self):
         text = MODULE_PATH.read_text(encoding="utf-8")
         self.assertNotIn('parser.add_argument("--candidate"', text)
         self.assertIn('parser.add_argument("--envelope"', text)
         self.assertNotIn('parser.add_argument("--trust"', text)
         self.assertNotIn('parser.add_argument("--release-agent"', text)
+        self.assertNotIn('parser.add_argument("--releases-root"', text)
         self.assertIn("DEFAULT_TRUST", text)
         self.assertIn("DEFAULT_RELEASE_AGENT", text)
-        self.assertIn('"verify-base-update-envelope"', text)
+        self.assertIn("DEFAULT_RELEASES_ROOT", text)
+        self.assertIn('"verify-envelope"', text)
+        self.assertNotIn('"verify-base-update-envelope"', text)
 
 
 if __name__ == "__main__":
