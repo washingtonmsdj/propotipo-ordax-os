@@ -9,6 +9,7 @@ function validatePath(path) {
   if (path !== "/" && path.endsWith("/")) {
     throw new TypeError("File-space path must not have a trailing slash");
   }
+  if (path === "/") return path;
   const parts = path.split("/").slice(1);
   if (parts.some((part) => !part || part === "." || part === ".." || part.includes("\0"))) {
     throw new TypeError("File-space path contains an invalid segment");
