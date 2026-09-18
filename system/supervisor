@@ -264,6 +264,13 @@ stage_candidate_release() {
         return 0
     fi
 
+    if [ "$candidate_mode" = reload ]; then
+        write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"
+        write_state_value "$LAST_STAGE_DURATION_FILE" "0"
+        log "live-safe candidate staged in fetched Git objects: $candidate_sha"
+        return 0
+    fi
+
     stage_started=$(epoch_now)
     release_slot=$RELEASES_DIR/$candidate_sha
     if [ -f "$release_slot/.ready" ] && [ -d "$release_slot/system" ]; then
