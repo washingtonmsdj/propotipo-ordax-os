@@ -243,7 +243,7 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 
 **MVP observacional:** em **Sistema → Hardware**, listar componentes detectados, estado, identificador técnico quando útil, driver ativo e limitações conhecidas. Em **Ajustes**, oferecer configurações efetivas de Tela, Áudio, Entrada e Rede conforme adapters disponíveis. Inventário não é autorização para instalar driver.
 
-**Próximos controles:** estado de bateria já possui incremento read-only via `ordax.power-status/1`, alimentado por `sysfs` e exposto apenas quando há bateria válida. Permanecem volume/mudo/saída, resolução/escala quando suportada, layout de teclado e ponteiro. Suspensão, Bluetooth, impressoras e múltiplas telas exigem integrações e provas próprias; não incluir toggles vazios para “completar” a tela.
+**Próximos controles:** estado de bateria já possui incremento read-only via `ordax.power-status/1`, alimentado por `sysfs` e exposto apenas quando há bateria válida. A base canônica fixa os drivers ACPI/power-supply e aceita `capacity` ou contadores `energy/charge` para compatibilidade de hardware. Permanecem volume/mudo/saída, resolução/escala quando suportada, layout de teclado e ponteiro. Suspensão, Bluetooth, impressoras e múltiplas telas exigem integrações e provas próprias; não incluir toggles vazios para “completar” a tela.
 
 **Suporte distribuído:** pacote de driver/firmware tem origem, licença, compatibilidade com kernel/arquitetura, hash, política de instalação e retorno ao estado anterior. A escolha deve ser verificável e não depender de IA. Drivers não sincronizam com a conta do usuário.
 
