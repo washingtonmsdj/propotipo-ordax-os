@@ -26,10 +26,10 @@ test("Web preference store survives a new adapter instance", () => {
   const windowRef = { localStorage: storage };
   const first = createWebPreferenceStore(windowRef);
   assert.deepEqual(first.load(), {});
-  assert.equal(first.save(createPreferenceSnapshot({ "appearance.theme": "light" })), true);
+  assert.equal(first.save(createPreferenceSnapshot({ "appearance.theme": "dark" })), true);
 
   const second = createWebPreferenceStore(windowRef);
-  assert.deepEqual(second.load(), { "appearance.theme": "light" });
+  assert.deepEqual(second.load(), { "appearance.theme": "dark" });
 });
 
 test("corrupt browser storage falls back without inventing preferences", () => {
@@ -47,15 +47,15 @@ test("denied browser storage degrades to session memory", () => {
     },
   });
   const store = createWebPreferenceStore(windowRef);
-  const snapshot = createPreferenceSnapshot({ "appearance.theme": "light" });
+  const snapshot = createPreferenceSnapshot({ "appearance.theme": "dark" });
   assert.equal(store.save(snapshot), false);
-  assert.deepEqual(store.load(), { "appearance.theme": "light" });
+  assert.deepEqual(store.load(), { "appearance.theme": "dark" });
 });
 
 test("persisted invalid known values recover to safe defaults", () => {
   assert.deepEqual(
     recoverPreferenceSnapshot({ "appearance.theme": "sepia" }),
-    { "appearance.theme": "dark" },
+    { "appearance.theme": "light" },
   );
 });
 
