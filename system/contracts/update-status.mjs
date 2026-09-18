@@ -12,6 +12,14 @@ const UPDATE_PHASES = new Set([
   "error",
 ]);
 
+function optionalNonNegativeInteger(value, fallback = 0, maximum = Number.MAX_SAFE_INTEGER) {
+  if (value === undefined || value === null) return fallback;
+  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
+    throw new TypeError("Update status numeric fields must be bounded non-negative integers");
+  }
+  return value;
+}
+
 function optionalString(value, fallback) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value !== "string") {
@@ -39,6 +47,7 @@ export function validateUpdateStatusSnapshot(value) {
   }
   return Object.freeze({
     sourceSha: value.sourceSha,
+    versionNumber: optionalNonNegativeInteger(value.versionNumber, 0, 1_000_000),
     runtimeSurfaceSha: optionalString(value.runtimeSurfaceSha, value.sourceSha),
     targetSha: optionalString(value.targetSha, ""),
     status: value.status,
@@ -49,6 +58,8 @@ export function validateUpdateStatusSnapshot(value) {
     checkedAt: optionalString(value.checkedAt, "unknown"),
     lastAppliedSha: optionalString(value.lastAppliedSha, ""),
     lastAppliedAt: optionalString(value.lastAppliedAt, "unknown"),
+    lastApplyDurationSeconds: optionalNonNegativeInteger(value.lastApplyDurationSeconds, 0, 3600),
+    lastStageDurationSeconds: optionalNonNegativeInteger(value.lastStageDurationSeconds, 0, 3600),
     rejectedSha: optionalString(value.rejectedSha, ""),
     lastError: optionalString(value.lastError, ""),
     healthToken: optionalString(value.healthToken, ""),

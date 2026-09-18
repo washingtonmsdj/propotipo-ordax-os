@@ -4,6 +4,7 @@ import { createNativePowerActions } from "../../adapters/native/power-actions.mj
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
 import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
+import { createNativeUpdateHistory } from "../../adapters/native/update-history.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs";
 import { createNativeSyncStateStore } from "../../adapters/native/sync-state.mjs";
@@ -36,6 +37,12 @@ async function start() {
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
+  let updateHistory = null;
+  try {
+    updateHistory = await createNativeUpdateHistory(window);
+  } catch (error) {
+    console.warn("OrdaX native update history unavailable", error);
+  }
 
   let syncStateStore = null;
   try {
@@ -130,6 +137,7 @@ async function start() {
     updateWatcher,
     systemMetrics,
     surface,
+    updateHistory,
   );
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);

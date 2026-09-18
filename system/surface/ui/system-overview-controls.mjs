@@ -7,6 +7,10 @@ import {
   validateSystemMetricsSnapshot,
 } from "../../contracts/system-metrics.mjs";
 import {
+  assertUpdateHistoryPort,
+  validateUpdateHistorySnapshot,
+} from "../../contracts/update-history.mjs";
+import {
   assertUpdateStatusPort,
   validateUpdateStatusSnapshot,
 } from "../../contracts/update-status.mjs";
@@ -31,6 +35,7 @@ const UPDATE_LABELS = Object.freeze({
 
 const CAPABILITY_LABELS = Object.freeze({
   "network.https": "Rede HTTPS",
+  "network.status": "Estado local de rede",
   "system.boot-control": "Energia do dispositivo",
   "filesystem.user-space": "Espaço local do usuário",
   "system.metrics": "Métricas do dispositivo",
@@ -46,6 +51,25 @@ function node(documentObject, tag, className, text) {
 function shortSha(value) {
   if (typeof value !== "string" || value.length < 8 || value === "unavailable") return "—";
   return value.slice(0, 8);
+}
+
+function versionLabel(value) {
+  return Number.isSafeInteger(value) && value > 0 ? `v${value}` : "Sem versão humana";
+}
+
+function formatTimestamp(value) {
+  if (typeof value !== "string" || !value || value === "unknown") return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Bahia",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function formatBytes(bytes) {
@@ -119,6 +143,7 @@ export function mountSystemOverviewControls(
   updateStatusPort = null,
   systemMetrics = null,
   surfaceLifecycle = null,
+  updateHistory = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("System overview controls require a Surface root Element");
@@ -127,6 +152,7 @@ export function mountSystemOverviewControls(
   const hostPort = assertSurfaceHost(host);
   const updatePort = updateStatusPort === null ? null : assertUpdateStatusPort(updateStatusPort);
   const metricsPort = systemMetrics === null ? null : assertSystemMetricsPort(systemMetrics);
+  const historyPort = updateHistory === null ? null : assertUpdateHistoryPort(updateHistory);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -139,6 +165,9 @@ export function mountSystemOverviewControls(
   let metricsPending = false;
   let metricsMessage = "";
   let metricsOrdinal = 0;
+  let historySnapshot = null;
+  let historyMessage = "";
+  let historyOrdinal = 0;
   let destroyed = false;
   let mountedSlot = null;
 
@@ -183,9 +212,9 @@ export function mountSystemOverviewControls(
 
     appendMetricCard(documentObject, grid, {
       label: "Versão em execução",
-      value: updateSnapshot ? shortSha(updateSnapshot.sourceSha) : "—",
+      value: updateSnapshot ? versionLabel(updateSnapshot.versionNumber) : "—",
       detail: updateSnapshot
-        ? `Aplicação: ${readableMode(updateSnapshot.applyMode)}`
+        ? `SHA ${shortSha(updateSnapshot.sourceSha)} · ${readableMode(updateSnapshot.applyMode)}`
         : "Gerenciamento de versão não exposto neste host",
     });
 
@@ -322,10 +351,12 @@ export function mountSystemOverviewControls(
       facts.append(item);
     };
 
-    addFact("Commit", shortSha(updateSnapshot.sourceSha));
+    addFact("Versão", versionLabel(updateSnapshot.versionNumber));
+    addFact("Commit técnico", shortSha(updateSnapshot.sourceSha));
     addFact("Aplicação", readableMode(updateSnapshot.applyMode));
     if (updateSnapshot.lastAppliedAt !== "unknown") {
-      addFact("Última aplicação", updateSnapshot.lastAppliedAt);
+      addFact("Última aplicação", formatTimestamp(updateSnapshot.lastAppliedAt));
+      addFact("Duração", `${updateSnapshot.lastApplyDurationSeconds}s · preparação ${updateSnapshot.lastStageDurationSeconds}s`);
     }
     if (updateSnapshot.rejectedSha) {
       addFact("Commit bloqueado", shortSha(updateSnapshot.rejectedSha));
@@ -350,6 +381,113 @@ export function mountSystemOverviewControls(
       section.append(warning);
     }
 
+    view.append(section);
+  };
+
+  const renderComponentVersions = (view) => {
+    if (!updateSnapshot?.versionNumber) return;
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Versões"),
+      node(documentObject, "h4", "ordax-system-section-title", "Componentes integrados"),
+    );
+    heading.append(headingCopy);
+    section.append(heading);
+    section.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-system-section-copy",
+        "Enquanto estes componentes são distribuídos juntos, eles herdam a versão da entrega do OrdaX. Versões independentes só serão usadas quando houver empacotamento independente real.",
+      ),
+    );
+
+    const list = node(documentObject, "div", "ordax-system-version-grid");
+    for (const label of ["Surface", "Arquivos", "Ajustes", "Conta", "Sistema", "Rede", "Atualizador"]) {
+      const item = node(documentObject, "div", "ordax-system-version-item");
+      item.append(
+        node(documentObject, "strong", "", label),
+        node(documentObject, "span", "", versionLabel(updateSnapshot.versionNumber)),
+      );
+      list.append(item);
+    }
+    section.append(list);
+    view.append(section);
+  };
+
+  const renderHistory = (view) => {
+    if (!historyPort) return;
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Registro"),
+      node(documentObject, "h4", "ordax-system-section-title", "Histórico de atualizações"),
+    );
+    const refresh = node(documentObject, "button", "ordax-system-action", "Atualizar histórico");
+    refresh.type = "button";
+    refresh.dataset.systemHistoryRefresh = "";
+    heading.append(headingCopy, refresh);
+    section.append(heading);
+
+    if (!historySnapshot) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          historyMessage || "Lendo histórico persistente deste dispositivo…",
+        ),
+      );
+      view.append(section);
+      return;
+    }
+
+    const applications = node(documentObject, "div", "ordax-system-history");
+    applications.append(node(documentObject, "h5", "ordax-system-history-title", "Aplicações neste notebook"));
+    if (historySnapshot.applications.length === 0) {
+      applications.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          "O registro local começa nesta geração do atualizador. Versões anteriores continuam listadas no histórico de entregas.",
+        ),
+      );
+    } else {
+      for (const entry of historySnapshot.applications.slice(0, 10)) {
+        const item = node(documentObject, "article", "ordax-system-history-item");
+        const result = entry.result === "applied" ? "Aplicada" : "Revertida";
+        item.append(
+          node(documentObject, "strong", "", `${versionLabel(entry.versionNumber)} · ${result}`),
+          node(documentObject, "span", "", formatTimestamp(entry.appliedAt)),
+          node(
+            documentObject,
+            "small",
+            "",
+            `SHA ${shortSha(entry.sourceSha)} · ${readableMode(entry.applyMode)} · ${entry.applyDurationSeconds}s (preparação ${entry.stageDurationSeconds}s)`,
+          ),
+        );
+        applications.append(item);
+      }
+    }
+
+    const releases = node(documentObject, "div", "ordax-system-history");
+    releases.append(node(documentObject, "h5", "ordax-system-history-title", "Entregas do OrdaX"));
+    for (const entry of historySnapshot.releases.slice(0, 12)) {
+      const item = node(documentObject, "article", "ordax-system-history-item");
+      item.append(
+        node(documentObject, "strong", "", `${versionLabel(entry.versionNumber)} · ${entry.title}`),
+        node(documentObject, "span", "", formatTimestamp(entry.releasedAt)),
+        node(documentObject, "small", "", `SHA ${shortSha(entry.sourceSha)}`),
+      );
+      releases.append(item);
+    }
+
+    section.append(applications, releases);
+    if (historyMessage) section.append(node(documentObject, "p", "ordax-system-message", historyMessage));
     view.append(section);
   };
 
@@ -391,6 +529,8 @@ export function mountSystemOverviewControls(
     renderSummary(view);
     renderResources(view);
     renderUpdateDetails(view);
+    renderComponentVersions(view);
+    renderHistory(view);
     renderCapabilities(view);
     slot.append(view);
   };
@@ -430,9 +570,30 @@ export function mountSystemOverviewControls(
     }
   };
 
+  const refreshHistory = async () => {
+    if (!historyPort) return;
+    const ordinal = ++historyOrdinal;
+    historyMessage = "";
+    try {
+      const next = validateUpdateHistorySnapshot(await historyPort.list());
+      if (destroyed || ordinal !== historyOrdinal) return;
+      historySnapshot = next;
+    } catch {
+      if (destroyed || ordinal !== historyOrdinal) return;
+      historyMessage = "Não foi possível atualizar o histórico local.";
+    } finally {
+      if (!destroyed && ordinal === historyOrdinal) replaceView();
+    }
+  };
+
   const onClick = (event) => {
     const refresh = event.target.closest("[data-system-overview-refresh]");
-    if (refresh && root.contains(refresh)) void refreshMetrics();
+    if (refresh && root.contains(refresh)) {
+      void refreshMetrics();
+      return;
+    }
+    const historyRefresh = event.target.closest("[data-system-history-refresh]");
+    if (historyRefresh && root.contains(historyRefresh)) void refreshHistory();
   };
 
   root.addEventListener("click", onClick);
@@ -442,16 +603,22 @@ export function mountSystemOverviewControls(
     replaceView();
   });
   const unsubscribeUpdate = updatePort?.subscribe((snapshot) => {
+    const previousAppliedSha = updateSnapshot?.lastAppliedSha ?? "";
     updateSnapshot = validateUpdateStatusSnapshot(snapshot);
     replaceView();
+    if (historyPort && updateSnapshot.lastAppliedSha !== previousAppliedSha) {
+      void refreshHistory();
+    }
   });
 
   if (metricsPort) void refreshMetrics();
+  if (historyPort) void refreshHistory();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
       metricsOrdinal += 1;
+      historyOrdinal += 1;
       unsubscribeUpdate?.();
       unsubscribeHost?.();
       unsubscribeRender();

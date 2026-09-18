@@ -15,6 +15,7 @@ on:
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
       - 'system/contracts/update-status.mjs'
+      - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
@@ -37,6 +38,7 @@ on:
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
       - 'tests/test_update_status.mjs'
+      - 'tests/test_update_history.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_sync_*.mjs'
@@ -54,6 +56,7 @@ on:
       - 'system/contracts/identity-actions.mjs'
       - 'system/contracts/power-actions.mjs'
       - 'system/contracts/update-status.mjs'
+      - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
@@ -76,6 +79,7 @@ on:
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
       - 'tests/test_update_status.mjs'
+      - 'tests/test_update_history.mjs'
       - 'tests/test_account_runtime.mjs'
       - 'tests/test_network_status.mjs'
       - 'tests/test_sync_*.mjs'
@@ -131,6 +135,7 @@ jobs:
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
           node --test tests/test_update_status.mjs
+          node --test tests/test_update_history.mjs
           node --test tests/test_account_runtime.mjs
           node --test tests/test_network_status.mjs
           node --test tests/test_sync_*.mjs

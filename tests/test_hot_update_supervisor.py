@@ -155,6 +155,36 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('"lastStageDurationSeconds":%s', text)
         self.assertIn('"stagedReleaseSha":"%s"', text)
 
+    def test_human_versions_and_update_history_are_persistent_and_bounded(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        host = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        self.assertIn("version_number_for_sha()", text)
+        self.assertIn("Merge pull request #", text)
+        self.assertIn("UPDATE_HISTORY_FILE=$STATE_DIR/native-state/update-history.tsv", text)
+        self.assertIn("RELEASE_HISTORY_FILE=$STATE_DIR/native-state/release-history.tsv", text)
+        self.assertIn("UPDATE_HISTORY_MAX_ENTRIES=200", text)
+        self.assertIn("RELEASE_HISTORY_MAX_ENTRIES=80", text)
+        self.assertIn("refresh_release_history()", text)
+        self.assertIn("append_application_history()", text)
+        self.assertIn('/bin/busybox tail -n "$UPDATE_HISTORY_MAX_ENTRIES"', text)
+        self.assertIn('"versionNumber":%s', text)
+        self.assertIn('record_applied "$guard_current" supervisor-restart', text)
+        self.assertIn("rolled-back", text)
+        self.assertIn('UPDATE_HISTORY_PATH = "/__ordax/native/update-history"', host)
+        self.assertIn("versionLabel(snapshot?.versionNumber)", controls)
+
+    def test_surface_runs_continuous_fail_soft_ntp_sync(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("start_time_sync_agent()", text)
+        self.assertIn("/bin/busybox ntpd -n", text)
+        self.assertIn("-p time.cloudflare.com", text)
+        self.assertIn("-p time.google.com", text)
+        self.assertIn("-p pool.ntp.org", text)
+        self.assertIn("TIME_SYNC_PID=$!", text)
+        self.assertIn('terminate_child "$TIME_SYNC_PID" "time sync agent"', text)
+        self.assertIn("automatic time synchronization unavailable; continuing Surface startup", text)
+
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         markdown = text.index("system/*.md)")

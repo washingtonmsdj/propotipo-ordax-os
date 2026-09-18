@@ -21,6 +21,10 @@ RELEASES_DIR=${ORDAX_RELEASES_DIR:-$STATE_DIR/releases}
 STAGED_RELEASE_FILE=$STATE_DIR/staged-release-sha
 LAST_APPLY_DURATION_FILE=$STATE_DIR/last-apply-duration-seconds
 LAST_STAGE_DURATION_FILE=$STATE_DIR/last-stage-duration-seconds
+UPDATE_HISTORY_FILE=$STATE_DIR/native-state/update-history.tsv
+RELEASE_HISTORY_FILE=$STATE_DIR/native-state/release-history.tsv
+UPDATE_HISTORY_MAX_ENTRIES=200
+RELEASE_HISTORY_MAX_ENTRIES=80
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 ATTEMPT_STARTED_EPOCH_FILE=$UPDATE_RUN_DIR/attempt-started-epoch
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
@@ -386,8 +390,8 @@ apply_remote_checkout() {
     return 0
 }
 
-/bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR" "$RELEASES_DIR"
-chmod 700 "$UPDATE_RUN_DIR" "$RELEASES_DIR"
+/bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR" "$RELEASES_DIR" "$STATE_DIR/native-state"
+chmod 700 "$UPDATE_RUN_DIR" "$RELEASES_DIR" "$STATE_DIR/native-state"
 : >"$UPDATE_LOG"
 
 utc_now() {
@@ -427,6 +431,68 @@ current_sha() {
     "$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown\n'
 }
 
+version_number_for_sha() {
+    source_sha=$1
+    subject=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%s "$source_sha" 2>/dev/null || true)
+    value=$(printf '%s\n' "$subject" | /bin/busybox sed -n 's/^Merge pull request #\([0-9][0-9]*\) .*/\1/p')
+    case "$value" in
+        ''|*[!0-9]*) printf '0' ;;
+        *) printf '%s' "$value" ;;
+    esac
+}
+
+release_title_for_sha() {
+    source_sha=$1
+    title=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%B "$source_sha" 2>/dev/null |
+        /bin/busybox sed -n '3p' |
+        /bin/busybox tr '\t\r\n' '   ' |
+        /bin/busybox cut -c 1-160 || true)
+    [ -n "$title" ] || title="Atualização OrdaX"
+    printf '%s' "$title"
+}
+
+refresh_release_history() {
+    temporary=$RELEASE_HISTORY_FILE.tmp.$
+    : >"$temporary"
+    for release_sha in $("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --max-count="$RELEASE_HISTORY_MAX_ENTRIES" HEAD 2>/dev/null || true); do
+        release_version=$(version_number_for_sha "$release_sha")
+        [ "$release_version" -gt 0 ] 2>/dev/null || continue
+        released_at=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%cI "$release_sha" 2>/dev/null || true)
+        [ -n "$released_at" ] || released_at=unknown
+        release_title=$(release_title_for_sha "$release_sha")
+        printf '%s\t%s\t%s\t%s\n' "$release_version" "$released_at" "$release_sha" "$release_title" >>"$temporary"
+    done
+    /bin/busybox mv -f "$temporary" "$RELEASE_HISTORY_FILE"
+}
+
+append_application_history() {
+    source_sha=$1
+    apply_mode=$2
+    result=$3
+    applied_at=$4
+    version_number=$(version_number_for_sha "$source_sha")
+    [ "$version_number" -gt 0 ] 2>/dev/null || return 0
+
+    apply_duration=$(read_state_value "$LAST_APPLY_DURATION_FILE")
+    stage_duration=$(read_state_value "$LAST_STAGE_DURATION_FILE")
+    case "$apply_duration" in ''|*[!0-9]*) apply_duration=0 ;; esac
+    case "$stage_duration" in ''|*[!0-9]*) stage_duration=0 ;; esac
+    [ "$apply_duration" -le 3600 ] 2>/dev/null || apply_duration=0
+    [ "$stage_duration" -le 3600 ] 2>/dev/null || stage_duration=0
+
+    temporary=$UPDATE_HISTORY_FILE.tmp.$
+    if [ -f "$UPDATE_HISTORY_FILE" ]; then
+        /bin/busybox cat "$UPDATE_HISTORY_FILE" >"$temporary"
+    else
+        : >"$temporary"
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$version_number" "$applied_at" "$source_sha" "$apply_mode" "$result" "$apply_duration" "$stage_duration" >>"$temporary"
+    /bin/busybox tail -n "$UPDATE_HISTORY_MAX_ENTRIES" "$temporary" >"$temporary.trimmed"
+    /bin/busybox mv -f "$temporary.trimmed" "$UPDATE_HISTORY_FILE"
+    rm -f "$temporary"
+}
+
 set_update_context() {
     UPDATE_PHASE=$1
     UPDATE_TARGET_SHA=${2:-}
@@ -459,15 +525,17 @@ write_update_state() {
     [ -n "$runtime_surface_sha" ] || runtime_surface_sha=$source_sha
     case "$last_apply_duration" in ''|*[!0-9]*) last_apply_duration=0 ;; esac
     case "$last_stage_duration" in ''|*[!0-9]*) last_stage_duration=0 ;; esac
+    version_number=$(version_number_for_sha "$source_sha")
     temporary=$UPDATE_STATE.tmp.$
-    printf '{"sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rejectedSha":"%s","lastError":"%s"}\n' \
-        "$source_sha" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
+    printf '{"sourceSha":"%s","versionNumber":%s,"runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rejectedSha":"%s","lastError":"%s"}\n' \
+        "$source_sha" "$version_number" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
         "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
 }
 
 record_applied() {
     source_sha=$1
+    apply_mode=$2
     attempt_started=$(read_state_value "$ATTEMPT_STARTED_EPOCH_FILE")
     if [ -n "$attempt_started" ]; then
         record_elapsed_seconds "$attempt_started" "$LAST_APPLY_DURATION_FILE"
@@ -479,6 +547,9 @@ record_applied() {
     temporary=$LAST_APPLIED_AT_FILE.tmp.$
     utc_now >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_APPLIED_AT_FILE"
+    applied_at=$(read_state_value "$LAST_APPLIED_AT_FILE")
+    refresh_release_history
+    append_application_history "$source_sha" "$apply_mode" applied "$applied_at"
 }
 
 record_runtime_surface_sha() {
@@ -686,6 +757,12 @@ rollback_update() {
     reason=$4
     set_update_context rollback "$failed_sha" "$UPDATE_ATTEMPT_ID" "$reason"
     write_update_state "$failed_sha" applied "$failed_mode"
+    attempt_started=$(read_state_value "$ATTEMPT_STARTED_EPOCH_FILE")
+    if [ -n "$attempt_started" ]; then
+        record_elapsed_seconds "$attempt_started" "$LAST_APPLY_DURATION_FILE"
+        rm -f "$ATTEMPT_STARTED_EPOCH_FILE"
+    fi
+    append_application_history "$failed_sha" "$failed_mode" rolled-back "$(utc_now)"
     log "rejecting update $failed_sha: $reason; rolling back to $previous_sha"
     temporary=$REJECTED_FILE.tmp.$$
     printf '%s\n' "$failed_sha" >"$temporary"
@@ -860,7 +937,7 @@ check_for_update() {
             fi
 
             if [ "$reload_healthy" -eq 1 ]; then
-                record_applied "$new_sha"
+                record_applied "$new_sha" "$APPLY_MODE"
                 record_runtime_surface_sha "$new_sha"
                 clear_update_context
                 write_update_state "$new_sha" running reload
@@ -879,7 +956,7 @@ check_for_update() {
                 rollback_update "$old_sha" "$new_sha" surface-restart "updated native Surface host did not render and acknowledge healthy state"
                 return 0
             fi
-            record_applied "$new_sha"
+            record_applied "$new_sha" "$APPLY_MODE"
             record_runtime_surface_sha "$new_sha"
             clear_update_context
             write_update_state "$new_sha" running surface-restart
@@ -897,7 +974,7 @@ check_for_update() {
             exit 75
             ;;
         none)
-            record_applied "$new_sha"
+            record_applied "$new_sha" "$APPLY_MODE"
             clear_update_context
             write_update_state "$new_sha" running none
             log "repository update has no running-system effect"
@@ -911,6 +988,7 @@ trap terminate HUP INT TERM
 [ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
 
 initial_sha=$(current_sha)
+refresh_release_history
 if [ ! -s "$RUNTIME_SURFACE_SHA_FILE" ]; then
     record_runtime_surface_sha "$initial_sha"
 fi
@@ -930,7 +1008,7 @@ if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
         write_update_state "$guard_current" applied supervisor-restart
         log "validating restarted supervisor and Surface for $guard_current"
         if surface_stays_running 4 && wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"; then
-            record_applied "$guard_current"
+            record_applied "$guard_current" supervisor-restart
             record_runtime_surface_sha "$guard_current"
             rm -f "$SUPERVISOR_GUARD_FILE"
             clear_update_context
