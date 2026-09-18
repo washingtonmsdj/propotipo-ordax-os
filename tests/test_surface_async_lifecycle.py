@@ -16,6 +16,18 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         self.assertIn("if (destroyed || ordinal !== actionOrdinal) return;", controls)
         self.assertIn("actionOrdinal += 1;", controls)
 
+    def test_account_preserves_read_only_interaction_across_repaints(self):
+        controls = self.read("account-overview-controls.mjs")
+        self.assertIn("captureInteractionState", controls)
+        self.assertIn("restoreInteractionState", controls)
+        self.assertIn("windowScrollTop", controls)
+        self.assertIn("windowScrollLeft", controls)
+        self.assertIn("snapshot.section === activeSection", controls)
+        self.assertIn('kind: "section"', controls)
+        self.assertIn('kind: "identity-action"', controls)
+        self.assertIn("preventScroll: true", controls)
+        self.assertIn("force && slot === mountedSlot ? captureInteractionState(slot) : null", controls)
+
     def test_settings_discards_stale_poll_and_action_results(self):
         controls = self.read("settings-overview-controls.mjs")
         for ordinal in (
