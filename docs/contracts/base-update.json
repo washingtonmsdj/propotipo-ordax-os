@@ -138,5 +138,24 @@
       "recovery_slot": "a",
       "legacy_source_bytes_may_remain_unreferenced": true
     }
+  },
+  "release_agent_refresh": {
+    "schema": "prototype-ordax.release-agent-refresh/1",
+    "descriptor": "system/services/base-update/release-agent-refresh.json",
+    "target": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+    "authority": "git-checkout-pinned-sha256-and-size",
+    "channel": "github-release-hash-addressed",
+    "initial_supported_migration": {
+      "from_sha256": [
+        "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4"
+      ],
+      "to_sha256": "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0"
+    },
+    "unknown_installed_hash": "block",
+    "replacement": "same-directory-temp-fsync-atomic-replace",
+    "occurs_before_canonical_trust_enrollment": true,
+    "physical_media_rewrite_required": false,
+    "raw_device_write_allowed": false,
+    "generic_bootstrap_updater_created": false
   }
 }

@@ -4,6 +4,7 @@
 import base64
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
@@ -41,6 +42,35 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         repo.mkdir()
         state.mkdir()
         (physical / "bootstrap").mkdir(parents=True)
+
+        fixture_agent_bytes = b"fixture-current-materialize-agent"
+        fixture_agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+        fixture_agent.parent.mkdir(parents=True)
+        fixture_agent.write_bytes(fixture_agent_bytes)
+        fixture_agent.chmod(0o755)
+        fixture_agent_sha = sha256(fixture_agent_bytes)
+        write_json(
+            repo / "system/services/base-update/release-agent-refresh.json",
+            {
+                "$schema": "prototype-ordax.release-agent-refresh/1",
+                "status": "development-git-migration",
+                "component": "bootstrap-release-acquisition",
+                "artifact": "ordax-release-agent",
+                "allowed_from_sha256": [sha256(b"fixture-legacy-agent")],
+                "target_sha256": fixture_agent_sha,
+                "target_size": len(fixture_agent_bytes),
+                "download_url": (
+                    "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/"
+                    f"ordax-release-agent-{fixture_agent_sha}/ordax-release-agent"
+                ),
+                "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+                "mode": "0755",
+                "physical_media_rewrite_required": False,
+                "raw_device_write_allowed": False,
+                "unknown_installed_hash_policy": "block",
+                "replacement": "same-directory-temp-fsync-atomic-replace",
+            },
+        )
 
         if not promoted:
             policy = {
@@ -153,6 +183,8 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
 
             self.assertEqual(status["status"], "blocked")
             self.assertEqual(status["blocker"], "canonical-trust-not-pinned")
+            self.assertEqual(status["releaseAgentRefreshState"], "already-current")
+            self.assertTrue(status["releaseAgentSha256"])
             self.assertFalse(status["canonicalTrustPinned"])
             self.assertFalse(status["physicalTrustEnrolled"])
             self.assertFalse(status["kernelStaged"])
@@ -197,11 +229,6 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json\n",
                 encoding="ascii",
             )
-            release_agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
-            release_agent.parent.mkdir(parents=True, exist_ok=True)
-            release_agent.write_bytes(b"test-release-agent")
-            release_agent.chmod(0o755)
-
             old = "a" * 40
             (physical / "releases" / old).mkdir(parents=True)
             (physical / "current").symlink_to(Path("releases") / old)
@@ -240,35 +267,169 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             self.assertFalse(status["rebootRequested"])
             self.assertFalse(status["promotionAttempted"])
 
-    def test_old_physical_release_agent_blocks_without_falling_back_to_install(self):
+    def test_hash_pinned_release_agent_refresh_is_atomic_and_idempotent(self):
+        class FakeResponse:
+            status = 200
+
+            def __init__(self, payload):
+                self._stream = io.BytesIO(payload)
+                self.headers = {"Content-Length": str(len(payload))}
+
+            def read(self, size=-1):
+                return self._stream.read(size)
+
+            def geturl(self):
+                return "https://objects.githubusercontent.com/ordax/agent"
+
+            def close(self):
+                self._stream.close()
+
         with tempfile.TemporaryDirectory() as temporary:
-            source = "e" * 40
-            repo, state, physical, _trust = self.fixture(Path(temporary))
-            (state / "boot-refresh-required").write_text(source + "\n", encoding="ascii")
-
-            channel = physical / "bootstrap/config/release-envelope-url"
-            channel.parent.mkdir(parents=True, exist_ok=True)
-            channel.write_text("https://example.invalid/release-envelope.json\n", encoding="ascii")
-            release_agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
-            release_agent.parent.mkdir(parents=True, exist_ok=True)
-            release_agent.write_bytes(b"old-test-release-agent")
-            release_agent.chmod(0o755)
-
-            completed = subprocess.CompletedProcess(
-                args=[],
-                returncode=2,
-                stdout=b"",
-                stderr=b"usage: ordax-release-agent <verify-envelope|install> [options]\n",
+            root = Path(temporary)
+            repo, state, physical, _trust = self.fixture(root, promoted=False)
+            legacy = b"fixture-legacy-agent"
+            target = b"fixture-upgraded-materialize-agent"
+            agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            agent.write_bytes(legacy)
+            agent.chmod(0o755)
+            target_sha = sha256(target)
+            write_json(
+                repo / "system/services/base-update/release-agent-refresh.json",
+                {
+                    "$schema": "prototype-ordax.release-agent-refresh/1",
+                    "status": "development-git-migration",
+                    "component": "bootstrap-release-acquisition",
+                    "artifact": "ordax-release-agent",
+                    "allowed_from_sha256": [sha256(legacy)],
+                    "target_sha256": target_sha,
+                    "target_size": len(target),
+                    "download_url": (
+                        "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/"
+                        f"ordax-release-agent-{target_sha}/ordax-release-agent"
+                    ),
+                    "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+                    "mode": "0755",
+                    "physical_media_rewrite_required": False,
+                    "raw_device_write_allowed": False,
+                    "unknown_installed_hash_policy": "block",
+                    "replacement": "same-directory-temp-fsync-atomic-replace",
+                },
             )
-            with mock.patch.object(owner.subprocess, "run", return_value=completed) as run:
-                status = owner.run_once(repo, state, physical, source)
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                return_value=FakeResponse(target),
+            ) as download:
+                first = owner.run_once(repo, state, physical, "e" * 40)
+
+            self.assertEqual(first["blocker"], "canonical-trust-not-pinned")
+            self.assertEqual(first["releaseAgentRefreshState"], "refreshed")
+            self.assertEqual(first["releaseAgentSha256"], target_sha)
+            self.assertEqual(agent.read_bytes(), target)
+            self.assertEqual(agent.stat().st_mode & 0o777, 0o755)
+            download.assert_called_once()
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                side_effect=AssertionError("already-current refresh must not redownload"),
+            ):
+                second = owner.run_once(repo, state, physical, "e" * 40)
+            self.assertEqual(second["releaseAgentRefreshState"], "already-current")
+            self.assertEqual(agent.read_bytes(), target)
+
+    def test_unknown_release_agent_hash_blocks_without_download_or_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, state, physical, _trust = self.fixture(root, promoted=False)
+            agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            unknown = b"unexpected-local-agent"
+            agent.write_bytes(unknown)
+            agent.chmod(0o755)
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                side_effect=AssertionError("unknown installed bytes must never trigger download"),
+            ):
+                status = owner.run_once(repo, state, physical, "e" * 40)
 
             self.assertEqual(status["status"], "blocked")
-            self.assertEqual(status["blocker"], "release-agent-materialize-unsupported")
-            self.assertFalse(status["signedReleaseMaterialized"])
-            command = run.call_args.args[0]
-            self.assertEqual(command[1], "materialize")
-            self.assertNotIn("install", command)
+            self.assertEqual(
+                status["blocker"],
+                "release-agent-installed-hash-unrecognized",
+            )
+            self.assertEqual(agent.read_bytes(), unknown)
+            self.assertFalse(status["canonicalTrustPinned"])
+
+    def test_bad_refresh_download_preserves_known_legacy_agent(self):
+        class FakeResponse:
+            status = 200
+
+            def __init__(self, payload):
+                self._stream = io.BytesIO(payload)
+                self.headers = {"Content-Length": str(len(payload))}
+
+            def read(self, size=-1):
+                return self._stream.read(size)
+
+            def geturl(self):
+                return "https://objects.githubusercontent.com/ordax/agent"
+
+            def close(self):
+                self._stream.close()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, state, physical, _trust = self.fixture(root, promoted=False)
+            legacy = b"fixture-legacy-agent"
+            target = b"fixture-upgraded-materialize-agent"
+            corrupt = b"fixture-corrupt-materialize-agent!"
+            agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            agent.write_bytes(legacy)
+            agent.chmod(0o755)
+            target_sha = sha256(target)
+            write_json(
+                repo / "system/services/base-update/release-agent-refresh.json",
+                {
+                    "$schema": "prototype-ordax.release-agent-refresh/1",
+                    "status": "development-git-migration",
+                    "component": "bootstrap-release-acquisition",
+                    "artifact": "ordax-release-agent",
+                    "allowed_from_sha256": [sha256(legacy)],
+                    "target_sha256": target_sha,
+                    "target_size": len(corrupt),
+                    "download_url": (
+                        "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/"
+                        f"ordax-release-agent-{target_sha}/ordax-release-agent"
+                    ),
+                    "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+                    "mode": "0755",
+                    "physical_media_rewrite_required": False,
+                    "raw_device_write_allowed": False,
+                    "unknown_installed_hash_policy": "block",
+                    "replacement": "same-directory-temp-fsync-atomic-replace",
+                },
+            )
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                return_value=FakeResponse(corrupt),
+            ):
+                status = owner.run_once(repo, state, physical, "e" * 40)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(
+                status["blocker"],
+                "release-agent-refresh-validation-failed",
+            )
+            self.assertEqual(agent.read_bytes(), legacy)
+            self.assertEqual(
+                list(agent.parent.glob(".ordax-release-agent.ordax-refresh-*")),
+                [],
+            )
 
     def test_existing_different_physical_trust_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -324,6 +485,9 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         agent = AGENT.read_text(encoding="utf-8")
         self.assertIn('"materialize",', orchestrator)
         self.assertNotIn('"install",', orchestrator)
+        self.assertIn("release-agent-refresh.json", orchestrator)
+        self.assertIn("unknown_installed_hash_policy", orchestrator)
+        self.assertIn("os.replace(temporary, target)", orchestrator)
         self.assertNotIn("stage.py", orchestrator)
         self.assertNotIn("activate.py", orchestrator)
         self.assertNotIn("promote.py", orchestrator)
