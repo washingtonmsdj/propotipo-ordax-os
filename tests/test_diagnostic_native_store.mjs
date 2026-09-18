@@ -47,14 +47,16 @@ function fakeWindow({ initialPayload = null, failLoad = false, failSave = false 
   };
 }
 
-test("Native diagnostic journal uses a dedicated bounded same-origin endpoint", async () => {
+test("Native diagnostic journal uses a dedicated same-origin device store without constructor I/O", async () => {
   assert.equal(NATIVE_DIAGNOSTIC_JOURNAL_ENDPOINT, "/__ordax/native/diagnostic-journal");
   assert.notEqual(NATIVE_DIAGNOSTIC_JOURNAL_ENDPOINT, "/__ordax/native/sync-state");
 
   const windowRef = fakeWindow();
-  const store = await createNativeDiagnosticJournalStore(windowRef);
+  const store = createNativeDiagnosticJournalStore(windowRef);
   assert.equal(store.scope, "device");
-  assert.equal(windowRef.calls.length, 1);
+  assert.equal(windowRef.calls.length, 0);
+
+  assert.equal(await store.load(), null);
   assert.deepEqual(windowRef.calls[0], {
     url: NATIVE_DIAGNOSTIC_JOURNAL_ENDPOINT,
     options: {
@@ -65,21 +67,24 @@ test("Native diagnostic journal uses a dedicated bounded same-origin endpoint", 
   });
 });
 
-test("Native adapter validates load payload before claiming device persistence", async () => {
-  await assert.rejects(
-    () => createNativeDiagnosticJournalStore(fakeWindow({ initialPayload: {} })),
-    TypeError,
-  );
-  await assert.rejects(
-    () => createNativeDiagnosticJournalStore(fakeWindow({ failLoad: true })),
-    /load failed: 503/,
-  );
+test("Native load failures are surfaced to the shared runtime as degraded device persistence", async () => {
+  for (const windowRef of [
+    fakeWindow({ initialPayload: {} }),
+    fakeWindow({ failLoad: true }),
+  ]) {
+    const store = createNativeDiagnosticJournalStore(windowRef);
+    const runtime = await createDiagnosticJournalRuntime({ store });
+    assert.equal(runtime.getSnapshot().configuredStoreScope, "device");
+    assert.equal(runtime.getSnapshot().persistenceStatus, "degraded");
+    assert.equal(runtime.getSnapshot().persistenceErrorCode, "load-failed");
+    assert.deepEqual(runtime.getSnapshot().events, []);
+  }
 });
 
 test("Native adapter validates payload before POST and commits memory only after success", async () => {
   const windowRef = fakeWindow({ initialPayload: "old" });
-  const store = await createNativeDiagnosticJournalStore(windowRef);
-  assert.equal(store.load(), "old");
+  const store = createNativeDiagnosticJournalStore(windowRef);
+  assert.equal(await store.load(), "old");
 
   await assert.rejects(
     () => store.save("x".repeat(MAX_DIAGNOSTIC_JOURNAL_PAYLOAD_BYTES + 1)),
@@ -88,7 +93,6 @@ test("Native adapter validates payload before POST and commits memory only after
   assert.equal(windowRef.calls.length, 1);
 
   await store.save("new");
-  assert.equal(store.load(), "new");
   assert.equal(windowRef.payload(), "new");
   const post = windowRef.calls.at(-1);
   assert.equal(post.options.method, "POST");
@@ -98,9 +102,9 @@ test("Native adapter validates payload before POST and commits memory only after
   assert.deepEqual(JSON.parse(post.options.body), { payload: "new" });
 });
 
-test("Native save failure propagates to shared runtime degraded state without lying about memory", async () => {
+test("Native save failure propagates to shared runtime degraded state without losing the event", async () => {
   const windowRef = fakeWindow({ failSave: true });
-  const store = await createNativeDiagnosticJournalStore(windowRef);
+  const store = createNativeDiagnosticJournalStore(windowRef);
   const runtime = await createDiagnosticJournalRuntime({ store });
 
   await runtime.appendUpdate({
@@ -117,5 +121,5 @@ test("Native save failure propagates to shared runtime degraded state without ly
   assert.equal(runtime.getSnapshot().configuredStoreScope, "device");
   assert.equal(runtime.getSnapshot().persistenceStatus, "degraded");
   assert.equal(runtime.getSnapshot().persistenceErrorCode, "save-failed");
-  assert.equal(store.load(), null);
+  assert.equal(windowRef.payload(), null);
 });
