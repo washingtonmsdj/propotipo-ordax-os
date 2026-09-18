@@ -42,6 +42,11 @@
       "security_boundary": "standard-secure-transport"
     },
     {
+      "id": "network.status",
+      "owner": "system/adapters/native",
+      "security_boundary": "read-only-local-network-observability"
+    },
+    {
       "id": "storage.secure-device",
       "owner": "system/adapters",
       "security_boundary": "device-local-secret-storage"
@@ -174,6 +179,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "network.status",
         "filesystem.user-space",
         "system.metrics",
         "system.release-activation",
@@ -191,6 +197,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "network.status",
         "filesystem.user-space",
         "system.metrics",
         "system.release-activation",
