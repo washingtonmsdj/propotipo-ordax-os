@@ -117,6 +117,15 @@ export function mountUpdateControls(root, updatePort) {
     toggle.dataset.alerting = String(alerting);
     addFact(alerting ? "!" : "✓", label, description);
     addFact("#", `Versão ${shortSha(snapshot?.sourceSha)}`, `Modo: ${readableMode(snapshot?.applyMode)}`);
+    if (snapshot?.runtimeSurfaceSha) {
+      addFact(
+        "◇",
+        `Surface ${shortSha(snapshot.runtimeSurfaceSha)}`,
+        snapshot.runtimeSurfaceSha === snapshot.sourceSha
+          ? "Runtime alinhado com a versão Git."
+          : "Runtime mantido no último commit com efeito na Surface.",
+      );
+    }
     if (snapshot?.targetSha) {
       addFact("→", `Alvo ${shortSha(snapshot.targetSha)}`, `Fase: ${readablePhase(snapshot?.phase)}`);
     } else if (snapshot?.phase && snapshot.phase !== "idle") {
