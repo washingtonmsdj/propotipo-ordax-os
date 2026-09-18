@@ -88,7 +88,7 @@ def plan(active_slot: str, candidate: dict) -> dict:
         },
         "activation": {
             "selector": contract["activation"]["selector"],
-            "entry_id": "ordax-candidate",
+            "entry_id": "ordax-candidate.conf",
             "tries": contract["activation"]["candidate_tries_left"],
             "default_entry_changes_before_health": False,
         },
