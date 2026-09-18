@@ -4,6 +4,18 @@ import {
 } from "../../contracts/network-status.mjs";
 
 const POLL_INTERVAL_MS = 5000;
+const NETWORK_TIME_ZONE = "America/Bahia";
+
+function formatReceivedAt(value) {
+  if (!Number.isFinite(value)) return "horário desconhecido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: NETWORK_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
 
 function signalLevel(signalDbm) {
   if (!Number.isInteger(signalDbm)) return 0;
@@ -104,16 +116,35 @@ export function mountNetworkTrayControls(
 
   let destroyed = false;
   let polling = false;
+  let lastSnapshot = null;
+  let lastSuccessAt = null;
 
-  const render = (snapshot) => {
+  const render = (snapshot, { stale = false } = {}) => {
     const next = summarizeNetworkStatus(snapshot);
     tray.dataset.networkKind = next.kind;
     tray.dataset.networkState = next.state;
-    tray.title = next.title;
-    label.textContent = next.label;
-    icon.dataset.state = next.state === "connected" ? "online" : "offline";
+    tray.dataset.networkObservation = stale ? "stale" : "current";
+    tray.title = stale
+      ? `Dados antigos · ${next.title} · última leitura recebida pela Surface às ${formatReceivedAt(lastSuccessAt)}`
+      : next.title;
+    label.textContent = stale ? `${next.label} · antigo` : next.label;
+    icon.dataset.state = stale
+      ? "unknown"
+      : next.state === "connected" ? "online" : "offline";
     icon.dataset.networkKind = next.kind;
     icon.dataset.signalLevel = String(next.signalLevel);
+    tray.dataset.networkDetailOwner = "true";
+  };
+
+  const renderUnavailable = () => {
+    tray.dataset.networkKind = "unknown";
+    tray.dataset.networkState = "unknown";
+    tray.dataset.networkObservation = "unavailable";
+    tray.title = "Estado detalhado da rede indisponível";
+    label.textContent = "Rede";
+    icon.dataset.state = "unknown";
+    icon.dataset.networkKind = "unknown";
+    icon.dataset.signalLevel = "0";
     tray.dataset.networkDetailOwner = "true";
   };
 
@@ -123,17 +154,16 @@ export function mountNetworkTrayControls(
     try {
       const snapshot = validateNetworkStatusSnapshot(await port.read());
       if (destroyed) return;
+      lastSnapshot = snapshot;
+      lastSuccessAt = Date.now();
       render(snapshot);
     } catch {
       if (destroyed) return;
-      tray.dataset.networkKind = "unknown";
-      tray.dataset.networkState = "unknown";
-      tray.title = "Estado detalhado da rede indisponível";
-      label.textContent = "Rede";
-      icon.dataset.state = "unknown";
-      icon.dataset.networkKind = "unknown";
-      icon.dataset.signalLevel = "0";
-      tray.dataset.networkDetailOwner = "true";
+      if (lastSnapshot) {
+        render(lastSnapshot, { stale: true });
+      } else {
+        renderUnavailable();
+      }
     } finally {
       if (!destroyed) polling = false;
     }
@@ -147,6 +177,9 @@ export function mountNetworkTrayControls(
     destroy() {
       destroyed = true;
       clearInterval(timer);
+      lastSnapshot = null;
+      lastSuccessAt = null;
+      delete tray.dataset.networkObservation;
       delete tray.dataset.networkDetailOwner;
     },
   });
