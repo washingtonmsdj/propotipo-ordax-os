@@ -263,6 +263,55 @@ def atomic_replace_regular(root: Path, relative: Path, payload: bytes) -> None:
         raise
 
 
+def commit_current_entry(root: Path, payload: bytes) -> bool:
+    target = root / CURRENT_ENTRY
+    try:
+        existing = target.lstat()
+    except OSError as exc:
+        raise PromotionError("protected current boot entry is missing") from exc
+    if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
+        raise PromotionError("protected current boot entry is unsafe")
+
+    temporary = target.with_name(f".{target.name}.ordax-commit-{os.getpid()}")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    replaced = False
+    try:
+        descriptor = os.open(temporary, flags, 0o644)
+        try:
+            offset = 0
+            while offset < len(payload):
+                written = os.write(descriptor, payload[offset:])
+                if written <= 0:
+                    raise PromotionError("short write while preparing current boot entry")
+                offset += written
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+        os.replace(temporary, target)
+        replaced = True
+        try:
+            fsync_directory(target.parent)
+            return True
+        except OSError:
+            # The atomic replace already committed the new default entry. Report
+            # durability uncertainty without pretending promotion did not occur.
+            return False
+    except Exception:
+        if not replaced:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+        raise
+
+
 def prepare_active_record(
     state_root: Path,
     release_sha: str,
@@ -407,9 +456,8 @@ def promote(
         # This is the promotion commit point. No mandatory operation after this
         # line is allowed to turn the already-promoted boot configuration into
         # a reported pre-commit failure.
-        atomic_replace_regular(
+        current_entry_durable = commit_current_entry(
             root,
-            CURRENT_ENTRY,
             entry_payload("OrdaX", candidate_slot, "normal"),
         )
         committed = True
@@ -427,6 +475,7 @@ def promote(
         "recovery_slot": previous_slot,
         "current_entry": "/" + CURRENT_ENTRY.as_posix(),
         "recovery_entry": "/" + RECOVERY_ENTRY.as_posix(),
+        "current_entry_durable": current_entry_durable,
         "candidate_entry_removed": True,
         "active_slot_record_written": active_record_written,
         "boot_refresh_marker_status": boot_refresh_status,
