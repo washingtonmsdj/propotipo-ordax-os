@@ -80,6 +80,14 @@ type Receipt struct {
 	Idempotent   bool     `json:"idempotent"`
 }
 
+type MaterializeReceipt struct {
+	Status       string   `json:"status"`
+	SourceCommit string   `json:"source_commit"`
+	ReleasePath  string   `json:"release_path"`
+	Artifacts    []string `json:"artifacts"`
+	Idempotent   bool     `json:"idempotent"`
+}
+
 func strictDecode(data []byte, max int, out any) error {
 	if len(data) == 0 || len(data) > max {
 		return fmt.Errorf("document size outside allowed range: %d", len(data))
@@ -614,21 +622,33 @@ func activate(root, commit string) error {
 	return syncDir(root)
 }
 
-func install(client *http.Client, envelopeURL, root string, trust TrustAnchor, key ed25519.PublicKey, expectedRepo string) (Receipt, error) {
+func materialize(client *http.Client, envelopeURL, root string, trust TrustAnchor, key ed25519.PublicKey, expectedRepo, expectedCommit string) (MaterializeReceipt, error) {
 	envelope, err := fetchBytes(client, envelopeURL, maxEnvelope)
 	if err != nil {
-		return Receipt{}, fmt.Errorf("fetch envelope: %w", err)
+		return MaterializeReceipt{}, fmt.Errorf("fetch envelope: %w", err)
 	}
 	manifest, payload, err := verifyEnvelope(envelope, trust, key, expectedRepo)
 	if err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
+	}
+	if expectedCommit != "" {
+		if !commitPattern.MatchString(expectedCommit) {
+			return MaterializeReceipt{}, errors.New("expected_commit must be lowercase 40-hex")
+		}
+		if manifest.SourceCommit != expectedCommit {
+			return MaterializeReceipt{}, fmt.Errorf(
+				"signed release source_commit does not match expected commit: got=%s expected=%s",
+				manifest.SourceCommit,
+				expectedCommit,
+			)
+		}
 	}
 	if err := ensureDir(root, 0o755); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	releases := filepath.Join(root, "releases")
 	if err := ensureDir(releases, 0o755); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	target := filepath.Join(releases, manifest.SourceCommit)
 	artifactNames := make([]string, 0, len(manifest.Artifacts))
@@ -637,21 +657,19 @@ func install(client *http.Client, envelopeURL, root string, trust TrustAnchor, k
 	}
 	if info, err := os.Lstat(target); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return Receipt{}, errors.New("release target exists but is not a safe directory")
+			return MaterializeReceipt{}, errors.New("release target exists but is not a safe directory")
 		}
 		if err := verifyExistingRelease(target, manifest, payload); err != nil {
-			return Receipt{}, err
+			return MaterializeReceipt{}, err
 		}
-		if err := activate(root, manifest.SourceCommit); err != nil {
-			return Receipt{}, err
-		}
-		return Receipt{"activated", manifest.SourceCommit, target, filepath.Join(root, "current"), artifactNames, true}, nil
+		return MaterializeReceipt{"materialized", manifest.SourceCommit, target, artifactNames, true}, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
+
 	stage, err := os.MkdirTemp(releases, ".staging-"+manifest.SourceCommit+"-")
 	if err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	keepStage := false
 	defer func() {
@@ -661,37 +679,60 @@ func install(client *http.Client, envelopeURL, root string, trust TrustAnchor, k
 	}()
 	artifactRoot := filepath.Join(stage, "artifacts")
 	if err := os.Mkdir(artifactRoot, 0o755); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	for _, a := range manifest.Artifacts {
 		archivePath := filepath.Join(artifactRoot, a.Name)
 		if err := downloadArtifact(client, a, archivePath); err != nil {
-			return Receipt{}, err
+			return MaterializeReceipt{}, err
 		}
 		if err := extractSystemArchive(archivePath, stage); err != nil {
-			return Receipt{}, fmt.Errorf("materialize %s: %w", a.Name, err)
+			return MaterializeReceipt{}, fmt.Errorf("materialize %s: %w", a.Name, err)
 		}
 	}
 	if err := writeSynced(filepath.Join(stage, "release-manifest.json"), payload, 0o644); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	if err := verifyExistingRelease(stage, manifest, payload); err != nil {
-		return Receipt{}, fmt.Errorf("verify staged release: %w", err)
+		return MaterializeReceipt{}, fmt.Errorf("verify staged release: %w", err)
 	}
 	if err := syncDir(stage); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	if err := os.Rename(stage, target); err != nil {
-		return Receipt{}, err
+		return MaterializeReceipt{}, err
 	}
 	keepStage = true
 	if err := syncDir(releases); err != nil {
+		return MaterializeReceipt{}, err
+	}
+	return MaterializeReceipt{"materialized", manifest.SourceCommit, target, artifactNames, false}, nil
+}
+
+func install(client *http.Client, envelopeURL, root string, trust TrustAnchor, key ed25519.PublicKey, expectedRepo string) (Receipt, error) {
+	materialized, err := materialize(
+		client,
+		envelopeURL,
+		root,
+		trust,
+		key,
+		expectedRepo,
+		"",
+	)
+	if err != nil {
 		return Receipt{}, err
 	}
-	if err := activate(root, manifest.SourceCommit); err != nil {
+	if err := activate(root, materialized.SourceCommit); err != nil {
 		return Receipt{}, err
 	}
-	return Receipt{"activated", manifest.SourceCommit, target, filepath.Join(root, "current"), artifactNames, false}, nil
+	return Receipt{
+		"activated",
+		materialized.SourceCommit,
+		materialized.ReleasePath,
+		filepath.Join(root, "current"),
+		materialized.Artifacts,
+		materialized.Idempotent,
+	}, nil
 }
 
 func printJSON(v any) error {
@@ -748,9 +789,44 @@ func installCommand(args []string) error {
 	}
 	return printJSON(receipt)
 }
+func materializeCommand(args []string) error {
+	fs := flag.NewFlagSet("materialize", flag.ContinueOnError)
+	envelopeURL := fs.String("envelope-url", "", "HTTPS URL for signed release envelope")
+	trustPath := fs.String("trust", "", "release trust anchor file")
+	root := fs.String("root", "/ordax", "OrdaX root")
+	repository := fs.String("repository", defaultRepo, "expected source repository")
+	expectedCommit := fs.String("expected-commit", "", "required exact source commit")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *envelopeURL == "" || *trustPath == "" || *expectedCommit == "" || fs.NArg() != 0 {
+		return errors.New("materialize requires --envelope-url, --trust and --expected-commit")
+	}
+	if !commitPattern.MatchString(*expectedCommit) {
+		return errors.New("expected_commit must be lowercase 40-hex")
+	}
+	trust, key, err := loadTrust(*trustPath)
+	if err != nil {
+		return err
+	}
+	receipt, err := materialize(
+		secureClient(),
+		*envelopeURL,
+		*root,
+		trust,
+		key,
+		*repository,
+		*expectedCommit,
+	)
+	if err != nil {
+		return err
+	}
+	return printJSON(receipt)
+}
+
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|install> [options]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|materialize|install> [options]")
 }
 
 func main() {
@@ -762,6 +838,8 @@ func main() {
 	switch os.Args[1] {
 	case "verify-envelope":
 		err = verifyCommand(os.Args[2:])
+	case "materialize":
+		err = materializeCommand(os.Args[2:])
 	case "install":
 		err = installCommand(os.Args[2:])
 	default:
