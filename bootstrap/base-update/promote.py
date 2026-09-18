@@ -26,7 +26,7 @@ assert _ACTIVATE_SPEC.loader is not None
 _ACTIVATE_SPEC.loader.exec_module(_activate)
 
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
-BOOT_ID_RE = re.compile(r"^[0-9a-f-]{8,64}$")
+BOOT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SLOTS = ("a", "b")
 CURRENT_ENTRY = Path("loader/entries/ordax.conf")
 RECOVERY_ENTRY = Path("loader/entries/ordax-recovery.conf")
