@@ -65,6 +65,19 @@ function updateActiveArea(state, updater, extra = {}) {
 }
 
 function focusWindow(state, windowId) {
+  const area = getActiveArea(state);
+  const index = area.windows.findIndex((item) => item.id === windowId);
+  if (index < 0) return state;
+  const current = area.windows[index];
+  if (
+    area.activeWindowId === windowId &&
+    !current.minimized &&
+    index === area.windows.length - 1 &&
+    !state.launcherOpen
+  ) {
+    return state;
+  }
+
   return updateActiveArea(state, (area) => {
     const index = area.windows.findIndex((item) => item.id === windowId);
     if (index < 0) return area;
