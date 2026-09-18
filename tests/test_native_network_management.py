@@ -14,6 +14,7 @@ ADAPTER = ROOT / "system" / "adapters" / "native" / "network-management.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
 SETTINGS_CONTROLS = ROOT / "system" / "surface" / "ui" / "settings-overview-controls.mjs"
+QUICK_CONTROLS = ROOT / "system" / "surface" / "ui" / "network-quick-panel.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
 
 spec = importlib.util.spec_from_file_location("ordax_native_network_management_test", SERVER)
@@ -187,6 +188,25 @@ class NativeNetworkManagementTests(unittest.TestCase):
         self.assertNotIn("/__ordax/native/network-management", controls)
         self.assertNotIn("networkPassword", controls)
         self.assertIn("networkManagement,", composition)
+
+    def test_quick_wifi_panel_reuses_neutral_owner_and_keeps_password_ephemeral(self):
+        controls = QUICK_CONTROLS.read_text(encoding="utf-8")
+        composition = COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn("contracts/network-management.mjs", controls)
+        self.assertIn("contracts/network-status.mjs", controls)
+        self.assertIn("assertNetworkManagementPort", controls)
+        self.assertIn("assertNetworkStatusPort", controls)
+        for action in ("scan", "connect", "disconnect", "reconnect"):
+            self.assertIn(f'case "{action}"', controls)
+        self.assertNotIn('case "forget"', controls)
+        self.assertIn('input.type = "password"', controls)
+        self.assertIn('input.autocomplete = "off"', controls)
+        self.assertIn('input.value = ""', controls)
+        self.assertNotIn("localStorage", controls)
+        self.assertNotIn("sessionStorage", controls)
+        self.assertNotIn("/__ordax/native/", controls)
+        self.assertIn("mountNetworkQuickPanel(root, networkStatus, networkManagement)", composition)
+        self.assertIn('reportClientDiagnostic("network-quick-panel", error)', composition)
 
     def test_native_composition_recovers_if_optional_wifi_settings_mount_fails(self):
         composition = COMPOSITION.read_text(encoding="utf-8")
