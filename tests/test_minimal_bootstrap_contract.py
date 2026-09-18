@@ -46,18 +46,18 @@ class MinimalBootstrapContractTest(unittest.TestCase):
         )
         self.assertEqual(self.manifest["current_pointer_initial_state"], "unset")
 
-    def test_unresolved_manifest_fails_closed(self):
-        if not self.manifest["all_artifacts_resolved"]:
-            self.assertFalse(self.manifest["physical_write_allowed"])
+    def test_payload_manifest_never_carries_destructive_authorization(self):
+        self.assertFalse(self.manifest["physical_write_allowed"])
+        self.assertTrue(
+            self.manifest["write_gate"]["requires_explicit_destructive_authorization"]
+        )
 
-    def test_write_permission_requires_complete_hashed_artifacts(self):
-        if not self.manifest["physical_write_allowed"]:
-            return
-
-        self.assertTrue(self.manifest["all_artifacts_resolved"])
+    def test_fully_resolved_payload_still_requires_separate_authorization(self):
         required = set(self.manifest["resolution_requirements_per_artifact"])
         for group in self.manifest["artifact_groups"]:
-            self.assertTrue(group["resolved"], group["id"])
+            if not group["resolved"]:
+                self.assertEqual(group["artifacts"], [])
+                continue
             self.assertTrue(group["artifacts"], group["id"])
             for artifact in group["artifacts"]:
                 self.assertTrue(required.issubset(artifact), artifact)
