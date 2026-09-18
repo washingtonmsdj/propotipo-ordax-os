@@ -127,23 +127,23 @@ LOOP="$(sudo losetup --find --show "$IMAGE")"
 sudo mkfs.vfat -F 32 -n ORDAX-ESP "$LOOP" >/dev/null
 sudo mount -t vfat -o rw,umask=0022 "$LOOP" "$MOUNT"
 
-sudo mkdir -p "$MOUNT/loader/entries" "$MOUNT/ordax/base/a"
-printf 'title OrdaX Current\nlinux /ordax/base/a/vmlinuz\ninitrd /ordax/base/a/initrd.gz\noptions console=tty0 ordax.mode=normal ordax.base_slot=a\n' \
+sudo mkdir -p "$MOUNT/loader/entries" "$MOUNT/ordax"
+printf 'title OrdaX\nlinux /ordax/vmlinuz\ninitrd /ordax/initrd.gz\noptions console=tty0 ordax.mode=normal\n' \
   | sudo tee "$MOUNT/loader/entries/ordax.conf" >/dev/null
-printf 'title OrdaX Recovery\nlinux /ordax/base/a/vmlinuz\ninitrd /ordax/base/a/initrd.gz\noptions console=tty0 ordax.mode=recovery ordax.base_slot=a\n' \
+printf 'title OrdaX Recovery\nlinux /ordax/vmlinuz\ninitrd /ordax/initrd.gz\noptions console=tty0 ordax.mode=recovery\n' \
   | sudo tee "$MOUNT/loader/entries/ordax-recovery.conf" >/dev/null
-printf 'known-good-kernel\n' | sudo tee "$MOUNT/ordax/base/a/vmlinuz" >/dev/null
-printf 'known-good-initramfs\n' | sudo tee "$MOUNT/ordax/base/a/initrd.gz" >/dev/null
+printf 'known-good-kernel\n' | sudo tee "$MOUNT/ordax/vmlinuz" >/dev/null
+printf 'known-good-initramfs\n' | sudo tee "$MOUNT/ordax/initrd.gz" >/dev/null
 sync
 
 CURRENT_BEFORE="$(sudo sha256sum "$MOUNT/loader/entries/ordax.conf" | awk '{print $1}')"
 RECOVERY_BEFORE="$(sudo sha256sum "$MOUNT/loader/entries/ordax-recovery.conf" | awk '{print $1}')"
-ACTIVE_KERNEL_BEFORE="$(sudo sha256sum "$MOUNT/ordax/base/a/vmlinuz" | awk '{print $1}')"
-ACTIVE_INITRAMFS_BEFORE="$(sudo sha256sum "$MOUNT/ordax/base/a/initrd.gz" | awk '{print $1}')"
+LEGACY_KERNEL_BEFORE="$(sudo sha256sum "$MOUNT/ordax/vmlinuz" | awk '{print $1}')"
+LEGACY_INITRAMFS_BEFORE="$(sudo sha256sum "$MOUNT/ordax/initrd.gz" | awk '{print $1}')"
 
 sudo python3 "$ROOT/bootstrap/base-update/stage.py" \
   --esp-root "$MOUNT" \
-  --active-slot a \
+  --active-slot legacy \
   --envelope "$ENVELOPE" \
   --kernel "$KERNEL" \
   --initramfs "$INITRAMFS" \
@@ -156,8 +156,11 @@ import sys
 result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 assert result["$schema"] == "prototype-ordax.base-update-stage-result/1"
 assert result["release_sha"] == sys.argv[2]
-assert result["active_slot"] == "a"
+assert result["active_slot"] == "legacy"
+assert result["previous_slot"] == "a"
 assert result["candidate_slot"] == "b"
+assert result["legacy_enrollment"] is True
+assert result["legacy_current_entry_unchanged"] is True
 assert result["activation_ready"] is True
 assert result["efi_variable_written"] is False
 assert result["reboot_requested"] is False
@@ -165,8 +168,10 @@ PY
 
 test "$(sudo sha256sum "$MOUNT/loader/entries/ordax.conf" | awk '{print $1}')" = "$CURRENT_BEFORE"
 test "$(sudo sha256sum "$MOUNT/loader/entries/ordax-recovery.conf" | awk '{print $1}')" = "$RECOVERY_BEFORE"
-test "$(sudo sha256sum "$MOUNT/ordax/base/a/vmlinuz" | awk '{print $1}')" = "$ACTIVE_KERNEL_BEFORE"
-test "$(sudo sha256sum "$MOUNT/ordax/base/a/initrd.gz" | awk '{print $1}')" = "$ACTIVE_INITRAMFS_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/vmlinuz" | awk '{print $1}')" = "$LEGACY_KERNEL_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/initrd.gz" | awk '{print $1}')" = "$LEGACY_INITRAMFS_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/base/a/vmlinuz" | awk '{print $1}')" = "$LEGACY_KERNEL_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/base/a/initrd.gz" | awk '{print $1}')" = "$LEGACY_INITRAMFS_BEFORE"
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/vmlinuz" | awk '{print $1}')" = "$KERNEL_SHA"
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/initrd.gz" | awk '{print $1}')" = "$INITRAMFS_SHA"
 sudo grep -Fq 'ordax.base_slot=b' "$MOUNT/loader/entries/ordax-candidate+01-00.conf"
@@ -175,6 +180,10 @@ sudo grep -Fq "ordax.base_candidate=$RELEASE_SHA" "$MOUNT/loader/entries/ordax-c
 sudo umount "$MOUNT"
 sudo fsck.vfat -n "$LOOP" >"$FSCK_RESULT"
 sudo mount -t vfat -o ro,umask=0022 "$LOOP" "$MOUNT"
+test "$(sudo sha256sum "$MOUNT/ordax/vmlinuz" | awk '{print $1}')" = "$LEGACY_KERNEL_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/initrd.gz" | awk '{print $1}')" = "$LEGACY_INITRAMFS_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/base/a/vmlinuz" | awk '{print $1}')" = "$LEGACY_KERNEL_BEFORE"
+test "$(sudo sha256sum "$MOUNT/ordax/base/a/initrd.gz" | awk '{print $1}')" = "$LEGACY_INITRAMFS_BEFORE"
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/vmlinuz" | awk '{print $1}')" = "$KERNEL_SHA"
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/initrd.gz" | awk '{print $1}')" = "$INITRAMFS_SHA"
 sudo umount "$MOUNT"
@@ -197,7 +206,8 @@ proof = {
     "filesystem": "fat32",
     "filesystem_label": "ORDAX-ESP",
     "image_sha256": image_sha,
-    "active_slot": "a",
+    "active_slot": "legacy",
+    "previous_slot": "a",
     "candidate_slot": "b",
     "kernel_sha256": kernel_sha,
     "initramfs_sha256": initramfs_sha,
@@ -207,6 +217,8 @@ proof = {
         "signed_system_artifact_bound": True,
         "signed_candidate_descriptor_consumed": True,
         "known_good_entries_preserved": True,
+        "legacy_default_preserved": True,
+        "legacy_known_good_enrolled_as_slot_a": True,
         "active_slot_preserved": True,
         "candidate_hashes_verified": True,
         "filesystem_passes_read_only_fsck": True,
@@ -223,7 +235,7 @@ proof = {
         "real_hardware_touched": False,
         "physical_hardware_proven": False,
     },
-    "promotion_effect": "evidence-only; proves the signed release verification path reaches FAT32 A/B staging with a disposable CI key, but does not promote canonical trust, activate a candidate, authorize physical writes or prove notebook boot",
+    "promotion_effect": "evidence-only; proves a signed release can migrate legacy single-slot bytes into preserved slot A while staging candidate slot B without changing the legacy default; it does not promote canonical trust, activate a candidate, authorize physical writes or prove notebook boot",
 }
 pathlib.Path(proof_path).write_text(
     json.dumps(proof, indent=2, sort_keys=True) + "\n",
