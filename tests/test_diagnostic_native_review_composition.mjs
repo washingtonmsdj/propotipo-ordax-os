@@ -83,23 +83,38 @@ function fileSpace(onImport) {
   });
 }
 
-test("Native composition connects explicit review to confirmed Downloads persistence", async () => {
+test("Native composition connects review to sanitized copy and confirmed Downloads persistence", async () => {
   let persisted = null;
+  const copied = [];
   const controller = createNativeDiagnosticReviewComposition({
     host: host(),
     updateStatus: updateStatus(),
     fileSpace: fileSpace((value) => {
       persisted = value;
     }),
+    clipboard: {
+      async writeText(value) {
+        copied.push(value);
+      },
+    },
     updateMaxAgeSeconds: 90,
     clock: () => GENERATED_AT,
   });
 
   const prepared = await controller.prepare();
   assert.equal(prepared.status, "ready");
+  assert.equal(controller.getSnapshot().copyAvailable, true);
+  assert.equal(controller.getSnapshot().exportAvailable, true);
   assert.equal(prepared.document.review.report.update.status, "running");
   assert.equal(prepared.document.review.observations.updateFreshness.state, "stale");
   assert.equal(prepared.document.review.observations.updateFreshness.ageSeconds, 300);
+
+  const copiedResult = await controller.copyPreparedSummary();
+  assert.equal(copiedResult.status, "copied");
+  assert.equal(copied.length, 1);
+  assert.match(copied[0], /OrdaX — resumo sanitizado de diagnóstico/);
+  assert.equal(copied[0].includes(prepared.document.text), false);
+  assert.equal(controller.getSnapshot().document, prepared.document);
 
   const exported = await controller.exportPrepared();
   assert.equal(exported.status, "saved");
@@ -108,15 +123,23 @@ test("Native composition connects explicit review to confirmed Downloads persist
   assert.equal(new TextDecoder().decode(persisted.bytes), prepared.document.text);
 });
 
-test("Native composition without file-space remains reviewable but export-unavailable", async () => {
+test("Native composition without file-space or clipboard remains reviewable with outputs unavailable", async () => {
   const controller = createNativeDiagnosticReviewComposition({
     host: host(),
     fileSpace: null,
+    clipboard: null,
     clock: () => GENERATED_AT,
   });
 
   const prepared = await controller.prepare();
   assert.equal(prepared.status, "ready");
+  assert.equal(controller.getSnapshot().copyAvailable, false);
+  assert.equal(controller.getSnapshot().exportAvailable, false);
+  assert.deepEqual(await controller.copyPreparedSummary(), {
+    schema: "ordax.diagnostic-review-controller-result/1",
+    status: "failed",
+    code: "copy-unavailable",
+  });
   assert.deepEqual(await controller.exportPrepared(), {
     schema: "ordax.diagnostic-review-controller-result/1",
     status: "failed",
@@ -124,11 +147,18 @@ test("Native composition without file-space remains reviewable but export-unavai
   });
 });
 
-test("Native composition fails closed when an incompatible file-space is supplied", () => {
+test("Native composition fails closed when incompatible output capabilities are supplied", () => {
   assert.throws(
     () => createNativeDiagnosticReviewComposition({
       host: host(),
       fileSpace: { schema: "wrong" },
+    }),
+    TypeError,
+  );
+  assert.throws(
+    () => createNativeDiagnosticReviewComposition({
+      host: host(),
+      clipboard: {},
     }),
     TypeError,
   );
