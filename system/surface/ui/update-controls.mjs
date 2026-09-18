@@ -51,18 +51,17 @@ export function mountUpdateControls(root, updatePort) {
 
   const documentObject = root.ownerDocument;
   const shell = root.querySelector("[data-ordax-shell]");
-  const dock = root.querySelector(".ordax-dock");
-  const runningApps = root.querySelector("[data-running-apps]");
-  if (!shell || !dock || !runningApps) {
-    throw new Error("Surface update controls require the shared shell and dock");
+  const slot = root.querySelector("[data-update-slot]");
+  if (!shell || !slot) {
+    throw new Error("Surface update controls require the shared shell update slot");
   }
 
-  const toggle = node(documentObject, "button", "ordax-dock-button", "Atualizações");
+  const toggle = node(documentObject, "button", "ordax-status-action", "Atualizações");
   toggle.type = "button";
   toggle.dataset.updateToggle = "";
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-label", "Abrir estado das atualizações");
-  dock.insertBefore(toggle, runningApps);
+  slot.append(toggle);
 
   const overlay = node(documentObject, "div", "ordax-launcher ordax-update-menu");
   overlay.dataset.updateMenu = "";
@@ -101,6 +100,7 @@ export function mountUpdateControls(root, updatePort) {
     const [label, description] = statusDescriptor(snapshot);
     const alerting = Boolean(snapshot?.bootRefreshRequired) || ["network-error", "remote-error", "pull-error", "rolled-back", "rejected"].includes(snapshot?.status);
     toggle.textContent = alerting ? "Atualizações •" : "Atualizações";
+    toggle.dataset.alerting = String(alerting);
     addFact(alerting ? "!" : "✓", label, description);
     addFact("#", `Versão ${shortSha(snapshot?.sourceSha)}`, `Modo: ${readableMode(snapshot?.applyMode)}`);
     if (snapshot?.lastAppliedAt && snapshot.lastAppliedAt !== "unknown") {
