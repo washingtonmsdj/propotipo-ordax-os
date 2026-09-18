@@ -360,7 +360,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("self._empty(409)", server)
         self.assertIn("self._empty(413)", server)
         self.assertIn("self._empty(415)", server)
-        self.assertIn("{FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH}", server)
+        self.assertIn("{FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH}", server)
 
     def test_user_file_space_capability_is_additive_and_native(self):
         contract = json.loads(CAPABILITIES.read_text(encoding="utf-8"))
