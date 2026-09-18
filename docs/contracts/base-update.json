@@ -63,10 +63,11 @@
       "base_heartbeat": "/state/ordax/base-update/base-heartbeat.json",
       "surface_health": "/run/ordax-update/healthy-sha",
       "surface_heartbeat": "/state/ordax/native-state/surface-heartbeat.json",
-      "boot_id": "/proc/sys/kernel/random/boot_id",
+      "boot_id": "/run/ordax-update/base-boot-id",
       "cmdline": "/proc/cmdline"
     },
-    "boot_id_must_match_across_base_and_surface": true
+    "boot_id_must_match_across_base_and_surface": true,
+    "boot_id_source": "guardian-generated-random-session-id-in-tmpfs"
   },
   "promotion": {
     "current_entry_retargeted_to_candidate_slot": true,
