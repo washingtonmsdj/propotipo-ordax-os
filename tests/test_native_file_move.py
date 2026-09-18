@@ -136,21 +136,26 @@ class NativeFileMoveTests(unittest.TestCase):
             source = user_root / "note.txt"
             source.write_text("ordax", encoding="utf-8")
             real_stat = native_host.os.stat
-            call_count = 0
+            source_stat_calls = 0
 
-            def changed_source_stat(*args, **kwargs):
-                nonlocal call_count
-                result = real_stat(*args, **kwargs)
-                call_count += 1
-                if call_count == 2:
-                    class Changed:
-                        st_dev = result.st_dev
-                        st_ino = result.st_ino + 1
-                        st_size = result.st_size
-                        st_mtime_ns = result.st_mtime_ns
-                        st_ctime_ns = result.st_ctime_ns
-                        st_mode = result.st_mode
-                    return Changed()
+            def changed_source_stat(path, *args, **kwargs):
+                nonlocal source_stat_calls
+                result = real_stat(path, *args, **kwargs)
+                if (
+                    path == "note.txt"
+                    and kwargs.get("dir_fd") is not None
+                    and kwargs.get("follow_symlinks") is False
+                ):
+                    source_stat_calls += 1
+                    if source_stat_calls == 2:
+                        class Changed:
+                            st_dev = result.st_dev
+                            st_ino = result.st_ino + 1
+                            st_size = result.st_size
+                            st_mtime_ns = result.st_mtime_ns
+                            st_ctime_ns = result.st_ctime_ns
+                            st_mode = result.st_mode
+                        return Changed()
                 return result
 
             with (
