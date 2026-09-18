@@ -309,6 +309,14 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("http://", adapter)
         self.assertNotIn("https://", adapter)
 
+    def test_update_center_distinguishes_git_head_from_surface_runtime(self):
+        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        contract = (ROOT / "system" / "contracts" / "update-status.mjs").read_text(encoding="utf-8")
+        self.assertIn("runtimeSurfaceSha", contract)
+        self.assertIn("snapshot.runtimeSurfaceSha", controls)
+        self.assertIn("Runtime alinhado com a versão Git.", controls)
+        self.assertIn("Runtime mantido no último commit com efeito na Surface.", controls)
+
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
             APPEARANCE,
