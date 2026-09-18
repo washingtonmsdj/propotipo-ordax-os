@@ -9,6 +9,7 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
@@ -74,6 +75,13 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  const accountOverviewControls = mountAccountOverviewControls(
+    root,
+    host,
+    identitySession,
+    identityActions,
+    surface,
+  );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
   const systemOverviewControls = mountSystemOverviewControls(
     root,
@@ -97,6 +105,7 @@ async function start() {
       updateControls.destroy();
       systemOverviewControls.destroy();
       fileSpaceControls.destroy();
+      accountOverviewControls.destroy();
       updateWatcher.dispose();
       surface.destroy();
       identityActions.dispose();
