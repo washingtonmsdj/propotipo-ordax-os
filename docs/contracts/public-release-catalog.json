@@ -1,0 +1,28 @@
+{
+  "$schema": "prototype-ordax.public-release-catalog-contract/1",
+  "status": "canonical-prototype-contract",
+  "source_of_publication_truth": "platform/releases/publications.json",
+  "generated_catalog_path": "/releases/catalog.json",
+  "catalog_schema": "prototype-ordax.public-release-catalog/1",
+  "publication_schema": "prototype-ordax.public-release-publications/1",
+  "rules": {
+    "public_authorization_required_per_release": true,
+    "public_download_authorization_required_per_target": true,
+    "hard_coded_latest_forbidden": true,
+    "artifact_sha256_required": true,
+    "artifact_size_required": true,
+    "source_commit_required": true,
+    "same_origin_download_path_required": true,
+    "unknown_fields_rejected": true,
+    "duplicate_release_id_rejected": true,
+    "duplicate_target_id_per_release_rejected": true,
+    "empty_catalog_allowed": true
+  },
+  "security": {
+    "private_release_storage_urls_exposed": false,
+    "signing_keys_in_catalog_allowed": false,
+    "service_secrets_in_catalog_allowed": false,
+    "page_may_generate_artifact_hashes": false,
+    "catalog_is_release_authority": false
+  }
+}
