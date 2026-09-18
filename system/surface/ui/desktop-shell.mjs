@@ -16,9 +16,16 @@ function railButton(appId, label, icon) {
     </button>`;
 }
 
-function spaceLink(label) {
+function spaceLink(label, target) {
   return `
-    <button type="button" class="ordax-space-link" data-launch-app="files" aria-label="Abrir ${label} em Arquivos">
+    <button
+      type="button"
+      class="ordax-space-link"
+      data-launch-app="files"
+      data-app-target="${target}"
+      data-requires-capability="filesystem.user-space"
+      aria-label="Abrir ${label} em Arquivos"
+    >
       <span class="ordax-space-icon">${ICONS.folder}</span>
       <span>${label}</span>
       <span class="ordax-space-arrow">${ICONS.arrow}</span>
@@ -64,9 +71,9 @@ export function createDesktopShellMarkup() {
 
             <section class="ordax-space" aria-labelledby="ordax-space-title">
               <p id="ordax-space-title" class="ordax-section-kicker">Seu espaço</p>
-              ${spaceLink("Documentos")}
-              ${spaceLink("Imagens")}
-              ${spaceLink("Downloads")}
+              ${spaceLink("Documentos", "/Documentos")}
+              ${spaceLink("Imagens", "/Imagens")}
+              ${spaceLink("Downloads", "/Downloads")}
             </section>
           </div>
 
