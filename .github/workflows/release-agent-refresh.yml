@@ -1,0 +1,146 @@
+name: Release Agent Refresh Asset
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/release-acquisition/**'
+      - 'system/services/base-update/release-agent-refresh.json'
+      - '.github/workflows/release-agent-refresh.yml'
+  pull_request:
+    paths:
+      - 'bootstrap/release-acquisition/**'
+      - 'system/services/base-update/release-agent-refresh.json'
+      - '.github/workflows/release-agent-refresh.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Build and bind exact refresh bytes
+        run: |
+          set -euo pipefail
+          mkdir -p out/release-agent-refresh
+          (
+            cd bootstrap/release-acquisition
+            go test -count=1 ./...
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-agent-refresh/ordax-release-agent .
+          )
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          descriptor = json.loads(pathlib.Path(
+              'system/services/base-update/release-agent-refresh.json'
+          ).read_text(encoding='utf-8'))
+          artifact = pathlib.Path('out/release-agent-refresh/ordax-release-agent')
+          data = artifact.read_bytes()
+          digest = hashlib.sha256(data).hexdigest()
+          size = len(data)
+          expected_url = (
+              'https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/'
+              f'ordax-release-agent-{digest}/ordax-release-agent'
+          )
+          assert descriptor['$schema'] == 'prototype-ordax.release-agent-refresh/1'
+          assert descriptor['status'] == 'development-git-migration'
+          assert descriptor['target_sha256'] == digest, (descriptor['target_sha256'], digest)
+          assert descriptor['target_size'] == size, (descriptor['target_size'], size)
+          assert descriptor['download_url'] == expected_url
+          assert descriptor['target_path'] == '/ordax/bootstrap/release-acquisition/ordax-release-agent'
+          assert descriptor['raw_device_write_allowed'] is False
+          assert descriptor['physical_media_rewrite_required'] is False
+          assert descriptor['unknown_installed_hash_policy'] == 'block'
+          print('RELEASE_AGENT_REFRESH_SHA256=' + digest)
+          print('RELEASE_AGENT_REFRESH_SIZE=' + str(size))
+          PY
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Rebuild exact immutable asset
+        run: |
+          set -euo pipefail
+          mkdir -p out/release-agent-refresh
+          (
+            cd bootstrap/release-acquisition
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/release-agent-refresh/ordax-release-agent .
+          )
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          descriptor = json.loads(pathlib.Path(
+              'system/services/base-update/release-agent-refresh.json'
+          ).read_text(encoding='utf-8'))
+          artifact = pathlib.Path('out/release-agent-refresh/ordax-release-agent')
+          digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+          if digest != descriptor['target_sha256']:
+              raise SystemExit('rebuilt release-agent does not match pinned refresh hash')
+          if artifact.stat().st_size != descriptor['target_size']:
+              raise SystemExit('rebuilt release-agent size does not match refresh descriptor')
+          PY
+
+      - name: Publish immutable hash-addressed asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='washingtonmsdj/prototipo-ordax-os'
+          descriptor='system/services/base-update/release-agent-refresh.json'
+          digest="$(python3 -c "import json; print(json.load(open('$descriptor'))['target_sha256'])")"
+          tag="ordax-release-agent-$digest"
+          artifact='out/release-agent-refresh/ordax-release-agent'
+          expected="$(sha256sum "$artifact" | awk '{print $1}')"
+          test "$expected" = "$digest"
+
+          if ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$repo" --target "$GITHUB_SHA" \
+              --title "OrdaX Release Agent $digest" --prerelease \
+              --notes 'Hash-addressed bootstrap component migration asset. Authenticity for the live development owner is the source-controlled SHA-256 binding.'
+          fi
+
+          if gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' \
+              | grep -Fxq 'ordax-release-agent'; then
+            tmp="$(mktemp -d)"
+            gh release download "$tag" --repo "$repo" \
+              --pattern 'ordax-release-agent' --dir "$tmp"
+            published="$(sha256sum "$tmp/ordax-release-agent" | awk '{print $1}')"
+            test "$published" = "$digest"
+            rm -rf "$tmp"
+          else
+            gh release upload "$tag" "$artifact#ordax-release-agent" --repo "$repo"
+          fi
+
+          echo "RELEASE_AGENT_REFRESH_TAG=$tag"
+          echo "RELEASE_AGENT_REFRESH_MUTABLE_OVERWRITE=NO"
