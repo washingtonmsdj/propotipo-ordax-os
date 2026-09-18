@@ -403,6 +403,8 @@ O protótipo já definiu o [limite Desktop](system/adapters/desktop/README.md): 
 
 **Experiência:** versão em execução, disponível/alvo, tentativa, fase, resultado e ação requerida. Diferenciar recarregar UI, reiniciar Surface, reiniciar supervisor e manutenção de boot. Um status com SHA novo não permite anunciar atualização aplicada se a UI ainda executa o antigo.
 
+**Identidade e histórico da entrega:** expor uma versão humana monotônica da entrega (`vN`, hoje derivada do número do PR de merge) ao lado do SHA técnico, sem substituir o SHA como identidade exata. Manter dois históricos: catálogo de entregas reconstruível pelo primeiro-parent do Git e aplicações efetivas do dispositivo persistidas localmente com horário, modo, resultado e durações. Limitar retenção; não fabricar aplicação histórica que nunca foi registrada.
+
 **Confiabilidade:** candidato rejeitado não substitui o conhecido; mudança incompatível de estado tem política de migração/rollback; restart não perde intenção pendente; atualização não apaga arquivos. Retry deve ser limitado, identificável e seguro.
 
 **Lacunas a fechar:** a prova física de candidato deliberadamente inválido e os gates de release canônica ainda precisam de suas evidências. A existência de preflight e guardian não equivale a ativação A/B integral. Não inventar percentual de conclusão.
