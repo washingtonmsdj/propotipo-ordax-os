@@ -2,6 +2,7 @@ import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   MAX_FILE_COPY_BYTES,
   MAX_FILE_EXPORT_BYTES,
+  MAX_FILE_IMPORT_BYTES,
   assertFileSpacePort,
   validateFileListing,
   validateTextFile,
@@ -693,11 +694,24 @@ export function mountFileSpaceControls(
     refresh.type = "button";
     refresh.dataset.fileRefresh = "";
     refresh.disabled = pending;
+
+    const importFile = node(documentObject, "button", "ordax-files-action", "Importar");
+    importFile.type = "button";
+    importFile.dataset.fileImportToggle = "";
+    importFile.disabled = pending || !listing;
+
+    const importPicker = node(documentObject, "input", "ordax-files-import-picker");
+    importPicker.type = "file";
+    importPicker.multiple = false;
+    importPicker.hidden = true;
+    importPicker.dataset.fileImportPicker = "";
+    importPicker.setAttribute("aria-label", "Escolher arquivo para importar");
+
     const create = node(documentObject, "button", "ordax-files-action ordax-files-action-primary", "Nova pasta");
     create.type = "button";
     create.dataset.fileCreateToggle = "";
     create.disabled = pending || !listing;
-    actions.append(refresh, create);
+    actions.append(refresh, importFile, create, importPicker);
     toolbar.append(navigation, breadcrumb, search, actions);
     content.append(toolbar);
 
@@ -900,6 +914,74 @@ export function mountFileSpaceControls(
         message = "O destino não é válido para este movimento.";
       } else {
         message = "Não foi possível mover este item. A origem foi preservada.";
+      }
+    } finally {
+      if (!destroyed && ordinal === requestOrdinal) {
+        pending = false;
+        replaceView();
+        focusSelectedRow();
+      }
+    }
+  };
+
+  const importSelectedFile = async (file) => {
+    if (!listing || !file) return;
+    if (!Number.isSafeInteger(file.size) || file.size < 0) {
+      message = "O arquivo selecionado tem tamanho inválido.";
+      replaceView();
+      return;
+    }
+    if (file.size > MAX_FILE_IMPORT_BYTES) {
+      message = "Este arquivo ultrapassa o limite de importação de 64 MiB.";
+      replaceView();
+      return;
+    }
+    if (typeof file.name !== "string" || file.name.length === 0 || file.name.length > 255) {
+      message = "O nome do arquivo selecionado não é válido.";
+      replaceView();
+      return;
+    }
+
+    const targetPath = listing.path;
+    const targetName = file.name;
+    const ordinal = ++requestOrdinal;
+    pending = true;
+    message = null;
+    replaceView();
+    try {
+      const buffer = await file.arrayBuffer();
+      if (destroyed || ordinal !== requestOrdinal) return;
+      if (buffer.byteLength !== file.size) {
+        throw new TypeError("Selected file size changed while reading");
+      }
+      const next = validateFileListing(
+        await port.importFile(targetPath, targetName, new Uint8Array(buffer)),
+      );
+      if (destroyed || ordinal !== requestOrdinal) return;
+      listing = next;
+      selectedPath = joinPath(targetPath, targetName);
+      if (!selectionIsVisible()) selectedPath = null;
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+      message = `“${targetName}” foi importado para ${targetPath}.`;
+    } catch (error) {
+      if (destroyed || ordinal !== requestOrdinal) return;
+      const status = operationStatus(error);
+      if (status === 409) {
+        message = "Já existe um item com esse nome. Nada foi substituído.";
+      } else if (status === 413) {
+        message = "Este arquivo ultrapassa o limite de importação de 64 MiB.";
+      } else if (status === 403) {
+        message = "O OrdaX não tem permissão para importar nesta pasta.";
+      } else if (status === 404) {
+        message = "A pasta de destino não existe mais. Atualize e tente novamente.";
+      } else if (status === 507) {
+        message = "Não há espaço suficiente para importar este arquivo.";
+      } else if (status === 400) {
+        message = "O arquivo ou o destino não é válido para importação.";
+      } else {
+        message = "Não foi possível importar este arquivo. Nenhum arquivo parcial foi mantido.";
       }
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
@@ -1275,6 +1357,11 @@ export function mountFileSpaceControls(
       queueMicrotask(() => findSlot()?.querySelector("[data-file-search]")?.focus());
       return;
     }
+    const importToggle = event.target.closest("[data-file-import-toggle]");
+    if (importToggle && root.contains(importToggle) && !pending && listing) {
+      findSlot()?.querySelector("[data-file-import-picker]")?.click();
+      return;
+    }
     const refresh = event.target.closest("[data-file-refresh]");
     if (refresh && listing) {
       void load(listing.path, { recordHistory: false });
@@ -1300,6 +1387,13 @@ export function mountFileSpaceControls(
     if (create) {
       void createDirectory(directoryDraft);
     }
+  };
+
+  const onChange = (event) => {
+    if (!event.target.matches?.("[data-file-import-picker]")) return;
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (file) void importSelectedFile(file);
   };
 
   const onInput = (event) => {
@@ -1425,6 +1519,7 @@ export function mountFileSpaceControls(
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("change", onChange);
   root.addEventListener("input", onInput);
   root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
@@ -1443,6 +1538,7 @@ export function mountFileSpaceControls(
       unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("change", onChange);
       root.removeEventListener("input", onInput);
       root.removeEventListener("keydown", onKeyDown);
       const slot = findSlot();
