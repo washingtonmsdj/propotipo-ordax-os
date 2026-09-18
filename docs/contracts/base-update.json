@@ -156,7 +156,10 @@
     "occurs_before_canonical_trust_enrollment": true,
     "physical_media_rewrite_required": false,
     "raw_device_write_allowed": false,
-    "generic_bootstrap_updater_created": false
+    "generic_bootstrap_updater_created": false,
+    "absent_agent_enrollment": true,
+    "absent_agent_enrollment_requires_explicit_descriptor_gate": true,
+    "existing_unknown_hash_still_blocks": true
   },
   "runtime_owner": {
     "development_host_state_root": "/state/ordax",
@@ -168,13 +171,14 @@
     "physical_root_chroot_mount": "/mnt/ordax-device",
     "development_state_inside_physical_root": "<root-mount-subpath>/state/ordax",
     "state_root_derived_from_mountinfo_subpath": true,
-    "physical_root_requires_release_agent_and_channel_sentinels": true,
     "recursive_state_bind_forbidden": true,
     "mount_staging_host": "/run/ordax-base-owner",
     "mount_staging_filesystem": "tmpfs",
     "mount_staging_size": "1m",
     "physical_root_host_mount": "/run/ordax-base-owner/physical",
     "physical_root_bound_into_chroot": true,
-    "mount_tree_must_not_recurse_into_ordax_filesystem": true
+    "mount_tree_must_not_recurse_into_ordax_filesystem": true,
+    "physical_root_requires_release_channel_sentinel": true,
+    "physical_release_agent_may_be_absent_before_pinned_enrollment": true
   }
 }
