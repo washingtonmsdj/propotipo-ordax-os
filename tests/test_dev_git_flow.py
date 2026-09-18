@@ -62,7 +62,33 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         entrypoint.write_text(f"#!/bin/sh\nprintf '%s\\n' '{marker}'\n", encoding="utf-8")
         entrypoint.chmod(entrypoint.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         (docs / "not-runtime.txt").write_text(marker + "\n", encoding="utf-8")
-        self._run(["git", "-C", str(self.source), "add", "system", "docs"])
+
+        trust = self.source / "bootstrap/trust/release-ed25519.json"
+        trust.parent.mkdir(parents=True, exist_ok=True)
+        trust.write_text('{"public":"fixture"}\n', encoding="utf-8")
+        contracts = docs / "contracts"
+        contracts.mkdir(parents=True, exist_ok=True)
+        (contracts / "release-trust-policy.json").write_text(
+            '{"policy":"fixture"}\n',
+            encoding="utf-8",
+        )
+        (contracts / "minimal-bootstrap.json").write_text(
+            '{"bootstrap":"fixture"}\n',
+            encoding="utf-8",
+        )
+        evidence = docs / "evidence"
+        evidence.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "release-trust-ceremony.json",
+            "release-trust-proof-manifest.json",
+            "release-trust-recovery-envelope.json",
+        ):
+            (evidence / name).write_text(
+                '{"evidence":"fixture"}\n',
+                encoding="utf-8",
+            )
+
+        self._run(["git", "-C", str(self.source), "add", "system", "docs", "bootstrap"])
         self._run(["git", "-C", str(self.source), "commit", "-m", marker])
         self._run(["git", "-C", str(self.source), "push", "origin", "main"])
         return self._run(
@@ -97,12 +123,37 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
             self.commit_v1,
         )
+        sparse_paths = set(
+            self._run(
+                ["git", "-C", str(self.worktree), "sparse-checkout", "list"]
+            ).stdout.splitlines()
+        )
         self.assertEqual(
-            self._run(["git", "-C", str(self.worktree), "sparse-checkout", "list"]).stdout.strip(),
-            "/system/",
+            sparse_paths,
+            {
+                "/system/",
+                "/bootstrap/trust/",
+                "/docs/contracts/release-trust-policy.json",
+                "/docs/contracts/minimal-bootstrap.json",
+                "/docs/evidence/release-trust-ceremony.json",
+                "/docs/evidence/release-trust-proof-manifest.json",
+                "/docs/evidence/release-trust-recovery-envelope.json",
+            },
         )
         self.assertTrue((self.worktree / "system/entrypoint").is_file())
-        self.assertFalse((self.worktree / "docs").exists())
+        self.assertTrue(
+            (self.worktree / "bootstrap/trust/release-ed25519.json").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "docs/contracts/release-trust-policy.json").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "docs/contracts/minimal-bootstrap.json").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "docs/evidence/release-trust-ceremony.json").is_file()
+        )
+        self.assertFalse((self.worktree / "docs/not-runtime.txt").exists())
         self.assertEqual((self.state / "current-commit").read_text().strip(), self.commit_v1)
         self.assertFalse((self.state / "previous-commit").exists())
         self.assertFalse((self.state / "pinned-commit").exists())
