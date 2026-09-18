@@ -7,11 +7,76 @@ import {
   appendDiagnosticEvent,
   createUpdateDiagnosticEvent,
   rotateDiagnosticEvents,
+  validateDiagnosticEvent,
   validateDiagnosticJournalLimit,
 } from "./journal.mjs";
 
 export const DIAGNOSTIC_JOURNAL_RUNTIME_SCHEMA = "ordax.diagnostic-journal-runtime/1";
 export const DIAGNOSTIC_JOURNAL_STATE_SCHEMA = "ordax.diagnostic-journal-state/1";
+
+const STORE_SCOPES = new Set(["device", "session"]);
+const PERSISTENCE_STATUSES = new Set(["device", "session", "degraded"]);
+const PERSISTENCE_ERROR_CODES = new Set(["", "load-failed", "save-failed"]);
+
+function requireStoreScope(value) {
+  if (!STORE_SCOPES.has(value)) {
+    throw new TypeError("Diagnostic journal configuredStoreScope must be device or session");
+  }
+  return value;
+}
+
+function requirePersistenceStatus(value) {
+  if (!PERSISTENCE_STATUSES.has(value)) {
+    throw new TypeError("Diagnostic journal persistenceStatus is invalid");
+  }
+  return value;
+}
+
+function requirePersistenceErrorCode(value) {
+  if (!PERSISTENCE_ERROR_CODES.has(value)) {
+    throw new TypeError("Diagnostic journal persistenceErrorCode is invalid");
+  }
+  return value;
+}
+
+export function validateDiagnosticJournalRuntimeSnapshot(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Diagnostic journal runtime snapshot must be an object");
+  }
+
+  const retentionLimit = validateDiagnosticJournalLimit(value.retentionLimit);
+  if (!Array.isArray(value.events)) {
+    throw new TypeError("Diagnostic journal runtime events must be an array");
+  }
+  if (value.events.length > retentionLimit) {
+    throw new TypeError("Diagnostic journal runtime exceeds its retention limit");
+  }
+
+  const configuredStoreScope = requireStoreScope(value.configuredStoreScope);
+  const persistenceStatus = requirePersistenceStatus(value.persistenceStatus);
+  const persistenceErrorCode = requirePersistenceErrorCode(value.persistenceErrorCode);
+
+  if (persistenceStatus === "degraded") {
+    if (persistenceErrorCode === "") {
+      throw new TypeError("Degraded diagnostic persistence requires an error code");
+    }
+  } else {
+    if (persistenceStatus !== configuredStoreScope) {
+      throw new TypeError("Healthy diagnostic persistence must match configured store scope");
+    }
+    if (persistenceErrorCode !== "") {
+      throw new TypeError("Healthy diagnostic persistence cannot expose an error code");
+    }
+  }
+
+  return Object.freeze({
+    events: Object.freeze(value.events.map(validateDiagnosticEvent)),
+    retentionLimit,
+    configuredStoreScope,
+    persistenceStatus,
+    persistenceErrorCode,
+  });
+}
 
 function deserializeState(payload, retentionLimit) {
   const validatedPayload = validateDiagnosticJournalPayload(payload);
@@ -91,8 +156,8 @@ export async function createDiagnosticJournalRuntime({
     return persistenceQueue;
   };
 
-  const snapshot = () => Object.freeze({
-    events: Object.freeze([...events]),
+  const snapshot = () => validateDiagnosticJournalRuntimeSnapshot({
+    events,
     retentionLimit: limit,
     configuredStoreScope: journalStore?.scope ?? "session",
     persistenceStatus,

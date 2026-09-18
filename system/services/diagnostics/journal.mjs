@@ -1,5 +1,5 @@
 import { validateUpdateStatusSnapshot } from "../../contracts/update-status.mjs";
-import { redactDiagnosticText } from "./report.mjs";
+import { redactDiagnosticText } from "./redaction.mjs";
 
 export const DIAGNOSTIC_EVENT_SCHEMA = "ordax.diagnostic-event/2";
 export const UPDATE_STATE_EVENT_CODE = "system.update.state";
