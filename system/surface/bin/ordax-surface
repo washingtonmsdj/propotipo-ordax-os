@@ -383,7 +383,6 @@ printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
 /bin/busybox chroot "$RUNTIME_ROOT" \
-    /usr/bin/env XDG_CACHE_HOME="$XDG_CACHE_HOME" \
     /usr/bin/seatd-launch -- /usr/bin/cage -s -- /usr/bin/barkery \
     >"$HOST_LOG" 2>&1 &
 GRAPHICS_PID=$!
