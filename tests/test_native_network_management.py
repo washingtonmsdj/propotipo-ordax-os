@@ -13,6 +13,7 @@ CONTRACT = ROOT / "system" / "contracts" / "network-management.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "network-management.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
+SETTINGS_CONTROLS = ROOT / "system" / "surface" / "ui" / "settings-overview-controls.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
 
 spec = importlib.util.spec_from_file_location("ordax_native_network_management_test", SERVER)
@@ -166,6 +167,26 @@ class NativeNetworkManagementTests(unittest.TestCase):
         self.assertIn("networkManagement = null", composition)
         self.assertIn("networkManagementAvailable", composition)
         self.assertIn('"network.management"', runtime)
+
+    def test_settings_ui_consumes_neutral_port_and_keeps_password_ephemeral(self):
+        controls = SETTINGS_CONTROLS.read_text(encoding="utf-8")
+        composition = COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn("contracts/network-management.mjs", controls)
+        self.assertIn("assertNetworkManagementPort", controls)
+        self.assertIn('"Procurar redes"', controls)
+        self.assertIn('"Conectar"', controls)
+        self.assertIn('"Desconectar"', controls)
+        self.assertIn('"Esquecer"', controls)
+        self.assertIn('"Reconectar"', controls)
+        self.assertIn('input.type = "password"', controls)
+        self.assertIn('input.autocomplete = "off"', controls)
+        self.assertIn('input.value = ""', controls)
+        self.assertIn('let password = input.value', controls)
+        self.assertNotIn("localStorage", controls)
+        self.assertNotIn("sessionStorage", controls)
+        self.assertNotIn("/__ordax/native/network-management", controls)
+        self.assertNotIn("networkPassword", controls)
+        self.assertIn("networkManagement,", composition)
 
     def test_contract_and_adapter_do_not_expose_generic_command_execution(self):
         contract = CONTRACT.read_text(encoding="utf-8")
