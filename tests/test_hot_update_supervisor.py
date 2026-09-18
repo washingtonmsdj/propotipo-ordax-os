@@ -129,6 +129,18 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
 
+    def test_live_reload_uses_lightweight_git_object_staging(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
+        reload_fast_path = staging.split('if [ "$candidate_mode" = reload ]; then', 1)[1].split("fi", 1)[0]
+        self.assertIn('write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"', reload_fast_path)
+        self.assertIn('write_state_value "$LAST_STAGE_DURATION_FILE" "0"', reload_fast_path)
+        self.assertIn("live-safe candidate staged in fetched Git objects", reload_fast_path)
+        self.assertIn("return 0", reload_fast_path)
+        self.assertNotIn("archive --format=tar", reload_fast_path)
+        self.assertNotIn("tar -xf", reload_fast_path)
+
+
     def test_update_latency_is_recorded_without_external_timing(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("LAST_APPLY_DURATION_FILE=$STATE_DIR/last-apply-duration-seconds", text)
