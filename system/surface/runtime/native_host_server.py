@@ -539,13 +539,17 @@ def read_network_status(
 
 def _bounded_history_lines(path: str, max_entries: int) -> list[str]:
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, "rb") as handle:
             payload = handle.read(MAX_UPDATE_HISTORY_BYTES + 1)
-    except (OSError, UnicodeError):
+    except OSError:
         return []
-    if len(payload.encode("utf-8")) > MAX_UPDATE_HISTORY_BYTES:
+    if len(payload) > MAX_UPDATE_HISTORY_BYTES:
         return []
-    return payload.splitlines()[-max_entries:]
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeError:
+        return []
+    return text.splitlines()[-max_entries:]
 
 
 def _history_text(value: str, max_length: int) -> str | None:
