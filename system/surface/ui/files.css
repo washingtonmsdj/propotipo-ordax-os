@@ -108,6 +108,37 @@
   border-bottom: 1px solid var(--ordax-border-soft);
 }
 
+.ordax-files-navigation {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+
+.ordax-files-nav-action {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--ordax-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.ordax-files-nav-action:hover:not(:disabled),
+.ordax-files-nav-action:focus-visible:not(:disabled) {
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-files-nav-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .ordax-files-breadcrumb {
   display: flex;
   min-width: 0;
@@ -439,6 +470,14 @@ button.ordax-file-row:focus-visible {
   .ordax-files-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .ordax-files-navigation {
+    align-self: flex-start;
+  }
+
+  .ordax-files-breadcrumb {
+    width: 100%;
   }
 
   .ordax-files-search {
