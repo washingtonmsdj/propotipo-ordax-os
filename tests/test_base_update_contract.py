@@ -98,6 +98,29 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertIn(" verify-envelope", staging["verifier"])
         self.assertNotIn("verify-base-update-envelope", staging["verifier"])
 
+    def test_promotion_commit_and_boot_refresh_lifecycle_are_explicit(self):
+        promotion = CONTRACT["promotion"]
+        self.assertTrue(promotion["candidate_entry_removed_before_current_commit"])
+        self.assertTrue(promotion["current_entry_is_promotion_commit_point"])
+        self.assertTrue(
+            promotion[
+                "post_commit_metadata_may_not_reclassify_promotion_as_precommit_failure"
+            ]
+        )
+        self.assertEqual(
+            promotion["boot_refresh_marker"],
+            "/ordax/state/boot-refresh-required",
+        )
+        self.assertEqual(
+            promotion["boot_refresh_marker_development_alias"],
+            "/state/ordax/boot-refresh-required",
+        )
+        self.assertTrue(
+            promotion["boot_refresh_marker_cleared_only_after_healthy_promotion"]
+        )
+        self.assertTrue(promotion["normal_reboot_must_not_clear_boot_refresh_marker"])
+        self.assertTrue(promotion["current_entry_durability_reported"])
+
     def test_candidate_entry_uses_fixed_width_single_try_counter(self):
         entry = CONTRACT["entries"]["candidate_template"]
         self.assertEqual(entry, "/loader/entries/ordax-candidate+01-00.conf")
