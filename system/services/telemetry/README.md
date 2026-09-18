@@ -23,6 +23,12 @@ checkout/update state remains observable even when Cage, Barkery or the Native H
 host never reaches readiness. The base agent is observation-only and has no process,
 Git-reset, power or rescue-control operations.
 
+The updater also emits a bounded transaction context: target SHA, phase,
+attempt id and last diagnostic. The relay stores the latest state in
+`ordax_os.device_state` and records changes in `ordax_os.device_events`.
+Heartbeat repetition does not create journal rows; only meaningful operational
+transitions do. This history is observational and never authorizes an action.
+
 Control remains separate:
 
 - normal product/update path: Git `main`;
