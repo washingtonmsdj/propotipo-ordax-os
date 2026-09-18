@@ -1648,10 +1648,16 @@ def move_user_entry(
 
             try:
                 os.unlink(name, dir_fd=source_directory_fd)
-                os.fsync(source_directory_fd)
             except Exception:
                 _remove_copy_destination(destination_directory_fd, name)
                 raise
+            try:
+                os.fsync(source_directory_fd)
+            except OSError:
+                # The destination is already durable and the source name is gone.
+                # Do not delete the only remaining copy merely because directory
+                # durability could not be confirmed by this filesystem.
+                pass
         else:
             os.fsync(destination_directory_fd)
             os.fsync(source_directory_fd)
