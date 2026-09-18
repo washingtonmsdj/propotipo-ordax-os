@@ -1,0 +1,36 @@
+{
+  "$schema": "prototype-ordax.public-identity-entry/1",
+  "status": "provider-unconfigured",
+  "purpose": "public-site-account-entry-boundary",
+  "routes": {
+    "login_page": "/login/",
+    "register_page": "/cadastro/"
+  },
+  "integration": {
+    "login_url_configurable": true,
+    "register_url_configurable": true,
+    "configured_target_policy": "same-origin",
+    "provider_may_be_replaced": true,
+    "browser_direct_provider_coupling_required": false
+  },
+  "credentials": {
+    "static_site_collects_passwords": false,
+    "static_site_stores_passwords": false,
+    "static_site_stores_bearer_tokens": false,
+    "service_role_key_in_browser_allowed": false,
+    "private_key_in_browser_allowed": false
+  },
+  "session": {
+    "owner": "future-ordax-identity-service",
+    "http_only_cookie_preferred": true,
+    "secure_cookie_required_in_production": true,
+    "same_site_default": "lax",
+    "csrf_protection_required_for_state_changes": true,
+    "session_revocation_required": true
+  },
+  "account_model": {
+    "one_identity_across_product_modes": true,
+    "local_only_fake_account_allowed": false,
+    "telemetry_identity_reuse_allowed": false
+  }
+}
