@@ -1,4 +1,4 @@
 ORDAX_RESCUE_COMMAND_V1
-generation=9
-action=retry-main
-target_sha=0bc7ba950e7a3536b6778fcc9c2007b6acac24b1
+generation=10
+action=noop
+target_sha=4f1ea27d052ca75ff32807f3ee7578a3059b7707
