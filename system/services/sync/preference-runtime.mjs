@@ -97,9 +97,14 @@ export function createPreferenceSyncRuntime(
 
   const persist = () => {
     if (!store) return false;
-    const saved = store.save(serializeState(serverRevision, queue));
-    if (saved === false) queuePersistence = "session";
-    return saved;
+    try {
+      const saved = store.save(serializeState(serverRevision, queue));
+      if (saved === false) queuePersistence = "session";
+      return saved;
+    } catch {
+      queuePersistence = "session";
+      return false;
+    }
   };
 
   const emit = () => {
