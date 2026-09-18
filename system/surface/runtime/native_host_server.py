@@ -34,6 +34,7 @@ SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 FILE_EXPORT_PATH = "/__ordax/native/file-export"
+FILE_IMPORT_PATH = "/__ordax/native/file-import"
 METRICS_PATH = "/__ordax/native/metrics"
 POWER_STATUS_PATH = "/__ordax/native/power-status"
 NETWORK_STATUS_PATH = "/__ordax/native/network-status"
@@ -68,6 +69,7 @@ MAX_FILE_ENTRIES = 1000
 MAX_TEXT_FILE_BYTES = 256 * 1024
 MAX_FILE_COPY_BYTES = 64 * 1024 * 1024
 MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024
+MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024
 MAX_UPDATE_HISTORY_BYTES = 256 * 1024
 MAX_RELEASE_HISTORY_ENTRIES = 80
 MAX_APPLICATION_HISTORY_ENTRIES = 200
@@ -1211,6 +1213,14 @@ class FileSpaceExportChangedError(Exception):
     pass
 
 
+class FileSpaceImportTooLargeError(Exception):
+    pass
+
+
+class FileSpaceImportIncompleteError(Exception):
+    pass
+
+
 def read_user_text_file(
     user_root: str,
     logical_path: str,
@@ -1326,6 +1336,79 @@ def read_user_export_file(
         return name, bytes(content)
     finally:
         os.close(descriptor)
+
+
+def import_user_file(
+    user_root: str,
+    logical_path: str,
+    name: str,
+    source,
+    length: int,
+    max_bytes: int = MAX_FILE_IMPORT_BYTES,
+) -> dict:
+    if not valid_logical_file_path(logical_path):
+        raise ValueError("invalid import directory path")
+    if not valid_file_name(name):
+        raise ValueError("invalid import name")
+    if isinstance(length, bool) or not isinstance(length, int) or length < 0:
+        raise ValueError("invalid import length")
+    if length > max_bytes:
+        raise FileSpaceImportTooLargeError("import exceeds size limit")
+
+    directory_fd = open_user_directory(user_root, logical_path)
+    destination_fd = None
+    destination_created = False
+    try:
+        destination_fd = os.open(
+            name,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            0o600,
+            dir_fd=directory_fd,
+        )
+        destination_created = True
+
+        remaining = length
+        while remaining > 0:
+            chunk = source.read(min(65536, remaining))
+            if not chunk:
+                raise FileSpaceImportIncompleteError(
+                    "import body ended before declared content length"
+                )
+            if len(chunk) > remaining:
+                chunk = chunk[:remaining]
+
+            view = memoryview(chunk)
+            while view:
+                written = os.write(destination_fd, view)
+                if written <= 0:
+                    raise OSError(errno.EIO, "import write made no progress")
+                view = view[written:]
+            remaining -= len(chunk)
+
+        os.fsync(destination_fd)
+        os.close(destination_fd)
+        destination_fd = None
+        os.fsync(directory_fd)
+        return list_user_directory(user_root, logical_path)
+    except Exception:
+        if destination_fd is not None:
+            os.close(destination_fd)
+            destination_fd = None
+        if destination_created:
+            try:
+                os.unlink(name, dir_fd=directory_fd)
+                os.fsync(directory_fd)
+            except FileNotFoundError:
+                pass
+        raise
+    finally:
+        if destination_fd is not None:
+            os.close(destination_fd)
+        os.close(directory_fd)
 
 
 def _renameat2_noreplace_between(
@@ -1592,6 +1675,22 @@ def requested_file_path(request_target: str, endpoint: str = FILES_PATH) -> str:
     if not valid_logical_file_path(logical_path):
         raise ValueError("invalid file-space path")
     return logical_path
+
+
+def requested_file_import_target(request_target: str) -> tuple[str, str]:
+    parsed = urlsplit(request_target)
+    if parsed.path != FILE_IMPORT_PATH:
+        raise ValueError("not a file import request")
+    query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+    if set(query) != {"path", "name"}:
+        raise ValueError("file import requires path and name")
+    if len(query["path"]) != 1 or len(query["name"]) != 1:
+        raise ValueError("file import requires one path and one name")
+    logical_path = query["path"][0]
+    name = query["name"][0]
+    if not valid_logical_file_path(logical_path) or not valid_file_name(name):
+        raise ValueError("invalid file import target")
+    return logical_path, name
 
 
 def valid_surface_heartbeat_payload(value: object) -> bool:
@@ -1901,6 +2000,58 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if self.client_address[0] != "127.0.0.1":
             self._empty(403)
+            return
+
+        parsed_path = urlsplit(self.path).path
+        if parsed_path == FILE_IMPORT_PATH:
+            try:
+                logical_path, name = requested_file_import_target(self.path)
+                raw_length = self.headers.get("Content-Length")
+                if raw_length is None:
+                    raise ValueError("file import requires Content-Length")
+                length = int(raw_length)
+                if length < 0:
+                    raise ValueError("invalid file import Content-Length")
+                if length > MAX_FILE_IMPORT_BYTES:
+                    raise FileSpaceImportTooLargeError("import exceeds size limit")
+                content_type = (
+                    self.headers.get("Content-Type", "")
+                    .split(";", 1)[0]
+                    .strip()
+                    .lower()
+                )
+                if content_type != "application/octet-stream":
+                    raise ValueError("file import requires application/octet-stream")
+                listing = import_user_file(
+                    self.server.user_root,
+                    logical_path,
+                    name,
+                    self.rfile,
+                    length,
+                )
+            except FileSpaceImportTooLargeError:
+                self._empty(413)
+                return
+            except FileSpaceImportIncompleteError:
+                self._empty(400)
+                return
+            except ValueError:
+                self._empty(400)
+                return
+            except FileExistsError:
+                self._empty(409)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(f"ordax-native-host: file import failed safely: {exc}", file=sys.stderr, flush=True)
+                self._empty(507 if exc.errno == errno.ENOSPC else 503)
+                return
+            self._write_json(201, listing)
             return
 
         if self.path == SURFACE_HEARTBEAT_PATH:
