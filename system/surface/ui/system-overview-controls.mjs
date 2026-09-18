@@ -184,20 +184,19 @@ export function mountSystemOverviewControls(
 
     const health = node(documentObject, "span", "ordax-system-health");
     const alerting = updateIsAlerting(updateSnapshot);
-    health.dataset.state = alerting
-      ? "attention"
-      : hostSnapshot.connectivity === "offline"
+    health.dataset.state =
+      alerting || hostSnapshot.connectivity === "offline"
         ? "attention"
-        : "healthy";
+        : "observed";
     health.textContent = updateSnapshot?.bootRefreshRequired
       ? "Atualização de base pendente"
       : alerting
-        ? "Atenção necessária"
+        ? "Atenção na atualização"
         : hostSnapshot.connectivity === "offline"
-        ? "Offline"
-        : updateSnapshot
-          ? "Operando normalmente"
-          : "Surface ativa";
+          ? "Sem conexão"
+          : updateSnapshot
+            ? updateStatusLabel(updateSnapshot.status)
+            : "Surface ativa";
     header.append(copy, health);
     view.append(header);
   };

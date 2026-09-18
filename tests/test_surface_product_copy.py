@@ -14,8 +14,10 @@ class SurfaceProductCopyTests(unittest.TestCase):
         for text in (shell, surface):
             self.assertNotIn("recuperação ao vivo", text)
             self.assertNotIn("entrega 68", text)
-        self.assertIn("Área 01 · Surface compartilhada", shell)
-        self.assertIn("`${areaLabel(activeArea)} · Surface compartilhada`", surface)
+        self.assertIn(">Área 01</p>", shell)
+        self.assertIn("areaKicker.textContent = areaLabel(activeArea);", surface)
+        self.assertNotIn("Surface compartilhada", shell)
+        self.assertNotIn("Surface compartilhada", surface)
 
     def test_settings_visible_identity_is_ajustes_while_id_stays_stable(self):
         settings = SETTINGS_APP.read_text(encoding="utf-8")

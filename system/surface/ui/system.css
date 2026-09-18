@@ -116,14 +116,6 @@
   background: var(--ordax-muted);
 }
 
-.ordax-system-health[data-state="healthy"] {
-  color: var(--ordax-text);
-}
-
-.ordax-system-health[data-state="healthy"]::before {
-  background: var(--ordax-accent);
-}
-
 .ordax-system-health[data-state="attention"] {
   border-color: var(--ordax-danger-bg);
   color: var(--ordax-danger);
