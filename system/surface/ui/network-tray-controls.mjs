@@ -6,7 +6,7 @@ import {
 const POLL_INTERVAL_MS = 5000;
 const NETWORK_TIME_ZONE = "America/Bahia";
 
-function formatReceivedAt(value) {
+export function formatNetworkReceivedAt(value) {
   if (!Number.isFinite(value)) return "horário desconhecido";
   return new Intl.DateTimeFormat("pt-BR", {
     timeZone: NETWORK_TIME_ZONE,
@@ -125,7 +125,7 @@ export function mountNetworkTrayControls(
     tray.dataset.networkState = next.state;
     tray.dataset.networkObservation = stale ? "stale" : "current";
     tray.title = stale
-      ? `Dados antigos · ${next.title} · última leitura recebida pela Surface às ${formatReceivedAt(lastSuccessAt)}`
+      ? `Dados antigos · ${next.title} · última leitura recebida pela Surface às ${formatNetworkReceivedAt(lastSuccessAt)}`
       : next.title;
     label.textContent = stale ? `${next.label} · antigo` : next.label;
     icon.dataset.state = stale
