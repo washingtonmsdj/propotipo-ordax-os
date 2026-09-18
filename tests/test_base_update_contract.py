@@ -134,6 +134,17 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertIn(" verify-envelope", staging["verifier"])
         self.assertNotIn("verify-base-update-envelope", staging["verifier"])
 
+    def test_signed_release_is_materialized_without_current_activation_before_staging(self):
+        staging = CONTRACT["staging"]
+        self.assertEqual(
+            staging["materializer"],
+            "/ordax/bootstrap/release-acquisition/ordax-release-agent materialize",
+        )
+        self.assertTrue(staging["materialize_expected_commit_required"])
+        self.assertTrue(staging["materialize_only_when_boot_refresh_pending"])
+        self.assertTrue(staging["materialization_must_not_change_current_pointer"])
+        self.assertTrue(staging["materialization_precedes_esp_stage"])
+
     def test_promotion_commit_and_boot_refresh_lifecycle_are_explicit(self):
         promotion = CONTRACT["promotion"]
         self.assertTrue(promotion["candidate_entry_removed_before_current_commit"])

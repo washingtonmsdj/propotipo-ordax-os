@@ -6,8 +6,10 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "system" / "services" / "base-update" / "orchestrator.py"
@@ -173,13 +175,100 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             self.assertTrue(first["physicalTrustEnrolled"])
             self.assertEqual(first["trustEnrollmentState"], "enrolled")
             self.assertEqual(second["trustEnrollmentState"], "already-enrolled")
-            self.assertEqual(first["phase"], "waiting-for-signed-base-orchestrator")
+            self.assertEqual(first["phase"], "no-base-update-pending")
+            self.assertEqual(first["releaseMaterializationState"], "not-required")
+            self.assertFalse(first["signedReleaseMaterialized"])
             self.assertFalse(first["rebootRequested"])
             persisted = json.loads(
                 (state / "base-update/owner-status.json").read_text(encoding="utf-8")
             )
             self.assertEqual(persisted["sourceSha"], "b" * 40)
             self.assertTrue(persisted["physicalTrustEnrolled"])
+
+    def test_pending_base_update_materializes_exact_current_signed_release_without_activation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = "f" * 40
+            repo, state, physical, _trust = self.fixture(Path(temporary))
+            (state / "boot-refresh-required").write_text(source + "\n", encoding="ascii")
+
+            channel = physical / "bootstrap/config/release-envelope-url"
+            channel.parent.mkdir(parents=True, exist_ok=True)
+            channel.write_text(
+                "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/latest/download/release-envelope.json\n",
+                encoding="ascii",
+            )
+            release_agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            release_agent.parent.mkdir(parents=True, exist_ok=True)
+            release_agent.write_bytes(b"test-release-agent")
+            release_agent.chmod(0o755)
+
+            old = "a" * 40
+            (physical / "releases" / old).mkdir(parents=True)
+            (physical / "current").symlink_to(Path("releases") / old)
+            expected_release = physical / "releases" / source
+            expected_release.mkdir(parents=True)
+            receipt = {
+                "status": "materialized",
+                "source_commit": source,
+                "release_path": str(expected_release),
+                "artifacts": ["system.tar"],
+                "idempotent": False,
+            }
+
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=(json.dumps(receipt) + "\n").encode("utf-8"),
+                stderr=b"",
+            )
+            with mock.patch.object(owner.subprocess, "run", return_value=completed) as run:
+                status = owner.run_once(repo, state, physical, source)
+
+            self.assertEqual(status["status"], "idle")
+            self.assertEqual(status["phase"], "waiting-for-base-staging-owner")
+            self.assertTrue(status["signedReleaseMaterialized"])
+            self.assertEqual(status["materializedReleaseSha"], source)
+            self.assertEqual(status["releaseMaterializationState"], "materialized")
+            command = run.call_args.args[0]
+            self.assertEqual(command[1], "materialize")
+            self.assertIn("--expected-commit", command)
+            self.assertEqual(command[command.index("--expected-commit") + 1], source)
+            self.assertNotIn("install", command)
+            self.assertEqual((physical / "current").readlink(), Path("releases") / old)
+            self.assertFalse(status["kernelStaged"])
+            self.assertFalse(status["candidateArmed"])
+            self.assertFalse(status["rebootRequested"])
+            self.assertFalse(status["promotionAttempted"])
+
+    def test_old_physical_release_agent_blocks_without_falling_back_to_install(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = "e" * 40
+            repo, state, physical, _trust = self.fixture(Path(temporary))
+            (state / "boot-refresh-required").write_text(source + "\n", encoding="ascii")
+
+            channel = physical / "bootstrap/config/release-envelope-url"
+            channel.parent.mkdir(parents=True, exist_ok=True)
+            channel.write_text("https://example.invalid/release-envelope.json\n", encoding="ascii")
+            release_agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            release_agent.parent.mkdir(parents=True, exist_ok=True)
+            release_agent.write_bytes(b"old-test-release-agent")
+            release_agent.chmod(0o755)
+
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=2,
+                stdout=b"",
+                stderr=b"usage: ordax-release-agent <verify-envelope|install> [options]\n",
+            )
+            with mock.patch.object(owner.subprocess, "run", return_value=completed) as run:
+                status = owner.run_once(repo, state, physical, source)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(status["blocker"], "release-agent-materialize-unsupported")
+            self.assertFalse(status["signedReleaseMaterialized"])
+            command = run.call_args.args[0]
+            self.assertEqual(command[1], "materialize")
+            self.assertNotIn("install", command)
 
     def test_existing_different_physical_trust_fails_closed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -233,6 +322,8 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
     def test_runtime_owner_has_no_stage_activate_or_reboot_path_yet(self):
         orchestrator = MODULE_PATH.read_text(encoding="utf-8")
         agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn('"materialize",', orchestrator)
+        self.assertNotIn('"install",', orchestrator)
         self.assertNotIn("stage.py", orchestrator)
         self.assertNotIn("activate.py", orchestrator)
         self.assertNotIn("promote.py", orchestrator)

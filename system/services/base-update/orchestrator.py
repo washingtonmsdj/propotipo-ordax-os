@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
 from typing import Any
 
@@ -27,7 +28,13 @@ KEY_ID = "ordax-prototype-release-v1"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MAX_JSON = 512 * 1024
+MAX_CHANNEL_BYTES = 4096
+MAX_RECEIPT_BYTES = 64 * 1024
+MATERIALIZE_TIMEOUT_SECONDS = 660
 TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
+PHYSICAL_TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
+RELEASE_CHANNEL_RELATIVE = Path("bootstrap/config/release-envelope-url")
+RELEASE_AGENT_RELATIVE = Path("bootstrap/release-acquisition/ordax-release-agent")
 POLICY_RELATIVE = Path("docs/contracts/release-trust-policy.json")
 MINIMAL_RELATIVE = Path("docs/contracts/minimal-bootstrap.json")
 BOOT_REFRESH_RELATIVE = Path("boot-refresh-required")
@@ -303,6 +310,119 @@ def _install_public_trust(
         raise
 
 
+def _read_release_channel(physical_root: Path) -> str:
+    payload = _regular_bytes(
+        physical_root / RELEASE_CHANNEL_RELATIVE,
+        "physical release channel",
+        MAX_CHANNEL_BYTES,
+    )
+    try:
+        value = payload.decode("ascii")
+    except UnicodeError as exc:
+        raise OwnerError("physical release channel is not ASCII") from exc
+    lines = value.splitlines()
+    if len(lines) != 1 or not lines[0] or lines[0] != lines[0].strip():
+        raise OwnerError("physical release channel must contain exactly one URL")
+    url = lines[0]
+    if not url.startswith("https://") or any(character.isspace() for character in url):
+        raise OwnerError("physical release channel must be one absolute HTTPS URL")
+    return url
+
+
+def _require_release_agent(physical_root: Path) -> Path:
+    path = physical_root / RELEASE_AGENT_RELATIVE
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise OwnerError("physical release acquisition agent is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise OwnerError("physical release acquisition agent must be a regular non-symlink file")
+    if metadata.st_size <= 0 or metadata.st_size > 128 * 1024 * 1024:
+        raise OwnerError("physical release acquisition agent size is outside the allowed range")
+    if metadata.st_mode & 0o111 == 0:
+        raise OwnerError("physical release acquisition agent is not executable")
+    return path
+
+
+def _materialize_signed_release(
+    physical_root: Path,
+    source_sha: str,
+) -> tuple[str, bool]:
+    if HEX40.fullmatch(source_sha) is None:
+        raise OwnerError("source SHA is unavailable for signed release materialization")
+
+    agent = _require_release_agent(physical_root)
+    channel = _read_release_channel(physical_root)
+    trust = physical_root / PHYSICAL_TRUST_RELATIVE
+    expected_release = physical_root / "releases" / source_sha
+
+    command = [
+        str(agent),
+        "materialize",
+        "--envelope-url",
+        channel,
+        "--trust",
+        str(trust),
+        "--root",
+        str(physical_root),
+        "--repository",
+        "washingtonmsdj/prototipo-ordax-os",
+        "--expected-commit",
+        source_sha,
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=MATERIALIZE_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OwnerError("signed release materialization timed out") from exc
+    except OSError as exc:
+        raise OwnerError("signed release materialization could not start") from exc
+
+    if len(completed.stdout) > MAX_RECEIPT_BYTES or len(completed.stderr) > MAX_RECEIPT_BYTES:
+        raise OwnerError("release acquisition output exceeded the allowed size")
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+        if "usage: ordax-release-agent" in stderr and "materialize" not in stderr:
+            raise OwnerError("physical release acquisition agent lacks materialize support")
+        raise OwnerError(
+            "signed release materialization failed"
+            + (f": {stderr[:256]}" if stderr else "")
+        )
+
+    try:
+        receipt = json.loads(
+            completed.stdout.decode("utf-8"),
+            object_pairs_hook=_no_duplicates,
+        )
+    except (UnicodeError, json.JSONDecodeError, OwnerError) as exc:
+        raise OwnerError("release acquisition receipt is invalid JSON") from exc
+    if not isinstance(receipt, dict) or set(receipt) != {
+        "status",
+        "source_commit",
+        "release_path",
+        "artifacts",
+        "idempotent",
+    }:
+        raise OwnerError("release acquisition receipt has unexpected fields")
+    if receipt.get("status") != "materialized" or receipt.get("source_commit") != source_sha:
+        raise OwnerError("release acquisition receipt identity is invalid")
+    if receipt.get("release_path") != str(expected_release):
+        raise OwnerError("release acquisition receipt path is not canonical")
+    if receipt.get("artifacts") != ["system.tar"]:
+        raise OwnerError("release acquisition receipt artifact set is invalid")
+    idempotent = receipt.get("idempotent")
+    if not isinstance(idempotent, bool):
+        raise OwnerError("release acquisition receipt idempotency flag is invalid")
+    _require_real_directory(expected_release, "materialized signed release")
+    return source_sha, idempotent
+
+
 def _read_pending_sha(state_root: Path) -> str | None:
     path = state_root / BOOT_REFRESH_RELATIVE
     try:
@@ -365,6 +485,9 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         "canonicalTrustPinned": False,
         "physicalTrustEnrolled": False,
         "trustEnrollmentState": "blocked",
+        "signedReleaseMaterialized": False,
+        "materializedReleaseSha": None,
+        "releaseMaterializationState": "blocked",
         "kernelStaged": False,
         "candidateArmed": False,
         "rebootRequested": False,
@@ -378,15 +501,43 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         enrollment = _install_public_trust(physical_root, trust_bytes, trust_sha)
         status["physicalTrustEnrolled"] = True
         status["trustEnrollmentState"] = enrollment
-        status["status"] = "idle"
-        status["phase"] = "waiting-for-signed-base-orchestrator"
-        status["blocker"] = None
+
+        if pending is None:
+            status["status"] = "idle"
+            status["phase"] = "no-base-update-pending"
+            status["releaseMaterializationState"] = "not-required"
+            status["blocker"] = None
+        elif source is None:
+            status["blocker"] = "source-sha-unavailable"
+            status["detail"] = "current checkout SHA is unavailable"
+        else:
+            materialized_sha, idempotent = _materialize_signed_release(
+                physical_root,
+                source,
+            )
+            status["signedReleaseMaterialized"] = True
+            status["materializedReleaseSha"] = materialized_sha
+            status["releaseMaterializationState"] = (
+                "already-materialized" if idempotent else "materialized"
+            )
+            status["status"] = "idle"
+            status["phase"] = "waiting-for-base-staging-owner"
+            status["blocker"] = None
     except OwnerError as exc:
         message = str(exc)
         if "canonical repository public trust is missing" in message:
             status["blocker"] = "canonical-trust-not-pinned"
         elif "conflicts with canonical repository trust" in message:
             status["blocker"] = "physical-trust-conflict"
+        elif "lacks materialize support" in message:
+            status["blocker"] = "release-agent-materialize-unsupported"
+        elif (
+            "signed release materialization" in message
+            or "release acquisition" in message
+            or "physical release channel" in message
+            or "physical release acquisition agent" in message
+        ):
+            status["blocker"] = "signed-release-materialization-failed"
         else:
             status["blocker"] = "trust-enrollment-validation-failed"
         status["detail"] = message[:512]
