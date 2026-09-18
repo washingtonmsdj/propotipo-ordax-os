@@ -1050,11 +1050,11 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Destino canônico de Atualizações em Sistema, com rodapé apontando para ele via `app-activation/1`.
 - [x] Uma tradução/derivação compartilhada para fase, resultado e impacto de atualização em `system/services/update/presentation.mjs`.
 - [x] Não apresentar `running` como “Atualizado” nem capability de sync como “Sincronização ativa”; fila local vazia também não prova nuvem sincronizada.
-- [ ] Revisar “Operando normalmente” para exigir evidência de saúde suficiente, sem inferir saúde global da Surface/conectividade apenas.
-- [ ] Distinguir recarga de interface, reinício da Surface, reinício do supervisor e reinício da máquina.
-- [ ] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot.
+- [x] Remover a inferência global de “Operando normalmente”: Sistema agora apresenta somente estado observado de atualização/conectividade e usa atenção explícita quando há evidência correspondente.
+- [x] Distinguir recarga de interface, reinício da Surface e reinício do supervisor por `readableUpdateMode`; reinício físico só é apresentado quando o fluxo de base realmente o requer.
+- [x] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot; a apresentação compartilhada deixa explícito que reiniciar manualmente sozinho não aplica bytes ainda não preparados.
 - [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
-- [ ] Remover marcadores temporários de investigação da mesa normal.
+- [x] Remover marcadores temporários/de implementação da mesa normal; a Home mostra apenas a área atual, sem “Surface compartilhada”, recuperação ao vivo ou número de entrega.
 - [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot.
 - [ ] Estado ausente, indisponível, offline e antigo são distintos.
 - [ ] Preservar lifecycle e descarte de operações/respostas antigas.
