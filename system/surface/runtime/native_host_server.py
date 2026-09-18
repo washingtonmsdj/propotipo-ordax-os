@@ -24,6 +24,7 @@ SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
+SURFACE_HEARTBEAT_PATH = "/__ordax/native/surface-heartbeat"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
@@ -32,12 +33,14 @@ UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
+SURFACE_HEARTBEAT_FILE = "/var/lib/ordax/surface-heartbeat.json"
 TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
 RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
 BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
+MAX_SURFACE_HEARTBEAT_BODY = 512
 MAX_PREFERENCE_BODY = 8192
 MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
@@ -552,6 +555,38 @@ def requested_file_path(request_target: str) -> str:
     return logical_path
 
 
+def valid_surface_heartbeat_payload(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and set(value) == {"sourceSha"}
+        and valid_commit_sha(value.get("sourceSha"))
+    )
+
+
+def record_surface_heartbeat(source_sha: str) -> None:
+    if not valid_commit_sha(source_sha):
+        raise ValueError("invalid Surface heartbeat SHA")
+    directory = os.path.dirname(SURFACE_HEARTBEAT_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    temporary = f"{SURFACE_HEARTBEAT_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    payload = {
+        "sourceSha": source_sha,
+        "observedEpoch": max(0, int(time.time())),
+    }
+    try:
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, separators=(",", ":"), sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, SURFACE_HEARTBEAT_FILE)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
 def record_surface_health(source_sha: str) -> None:
     directory = os.path.dirname(HEALTH_STATE_FILE)
     os.makedirs(directory, exist_ok=True)
@@ -706,6 +741,20 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         if self.client_address[0] != "127.0.0.1":
             self._empty(403)
+            return
+
+        if self.path == SURFACE_HEARTBEAT_PATH:
+            payload = self._read_json_body(MAX_SURFACE_HEARTBEAT_BODY)
+            if payload is None or not valid_surface_heartbeat_payload(payload):
+                self._empty(400)
+                return
+            try:
+                record_surface_heartbeat(payload["sourceSha"])
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not record Surface heartbeat: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._empty(204)
             return
 
         if self.path == HEALTH_PATH:
