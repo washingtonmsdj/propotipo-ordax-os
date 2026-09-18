@@ -556,7 +556,7 @@ Substituir linguagem interna como “o host expõe contratos” por descrição 
 
 **Aceite:** conectividade muda sem recarregar; perda de rede não fecha apps locais; erro de autenticação de rede não é mostrado como senha da conta inválida.
 
-**Estado atual:** primeiro incremento somente leitura implementado por `ordax.network-status/1` no ambiente Native: inventário delimitado de interfaces reais, tipo Wi-Fi/cabo/outro, estado de link e sinal Wi-Fi quando o kernel fornece dBm válido. A seção em Ajustes atualiza sem reload e não existe no Web quando a porta não está disponível. SSID/lista de redes e Conectar/Desconectar/Esquecer permanecem pendentes para uma porta de gerenciamento separada ligada ao owner real de rede; nenhum segredo cruza o contrato de observação.
+**Estado atual:** `ordax.network-status/1` continua responsável pela observação somente leitura. O ambiente Native também possui a infraestrutura `ordax.network-management/1`, ligada a um broker do host que reutiliza a stack real de boot (`iw`, `ip`, `wpa_supplicant`, `udhcpc` e `/state/network/wpa.conf`). A porta é loopback-only, exige token efêmero, serializa operações e expõe somente status/scan/conectar/desconectar/esquecer/reconectar. A senha não é persistida em preferências, workspace, telemetria ou logs; o host deriva o PSK e envia ao broker somente material hexadecimal por canal `0600`. A UI de Ajustes permanece somente leitura até o incremento seguinte, quando essas ações serão conectadas ao contrato já provado.
 
 ### 7.7 Dispositivos e som
 

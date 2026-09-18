@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import errno
+import hashlib
 import hmac
 import json
 import math
@@ -33,6 +34,7 @@ FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
 NETWORK_STATUS_PATH = "/__ordax/native/network-status"
+NETWORK_MANAGEMENT_PATH = "/__ordax/native/network-management"
 UPDATE_HISTORY_PATH = "/__ordax/native/update-history"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
@@ -45,8 +47,12 @@ TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
 RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
 BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
+NETWORK_TOKEN_HEADER = "X-OrdaX-Network-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
+MAX_NETWORK_ACTION_BODY = 1024
+MAX_NETWORK_SCAN_BYTES = 512 * 1024
+MAX_NETWORKS = 32
 MAX_SURFACE_HEARTBEAT_BODY = 512
 MAX_PREFERENCE_BODY = 8192
 MAX_SYNC_STATE_PAYLOAD = 65536
@@ -63,6 +69,7 @@ PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 NETWORK_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
+DEFAULT_NETWORK_SESSION_DIR = "/run/ordax-surface"
 SURFACE_HOST_RECOVERY_GENERATION = 1
 RENAME_NOREPLACE = 1
 
@@ -535,6 +542,277 @@ def read_network_status(
         )
 
     return {"interfaces": interfaces}
+
+
+def valid_wifi_ssid(value: object) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError:
+        return False
+    return (
+        1 <= len(encoded) <= 32
+        and "\x00" not in value
+        and not any(ord(character) < 32 for character in value)
+    )
+
+
+def valid_wifi_password(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeError:
+        return False
+    return (
+        8 <= len(encoded) <= 63
+        and "\x00" not in value
+        and not any(ord(character) < 32 for character in value)
+    )
+
+
+def derive_wpa_psk(ssid: str, password: str) -> str:
+    if not valid_wifi_ssid(ssid) or not valid_wifi_password(password):
+        raise ValueError("invalid Wi-Fi credentials")
+    return hashlib.pbkdf2_hmac(
+        "sha1",
+        password.encode("utf-8"),
+        ssid.encode("utf-8"),
+        4096,
+        dklen=32,
+    ).hex()
+
+
+def decode_wpa_ssid_line(line: str) -> str | None:
+    value = line.strip()
+    if not value.startswith("ssid="):
+        return None
+    raw = value[5:].strip()
+    if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+        decoded_characters = []
+        escaped = False
+        for character in raw[1:-1]:
+            if escaped:
+                decoded_characters.append(character)
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            else:
+                decoded_characters.append(character)
+        if escaped:
+            return None
+        decoded = "".join(decoded_characters)
+        return decoded if valid_wifi_ssid(decoded) else None
+    if not raw or len(raw) % 2 != 0 or any(character not in "0123456789abcdefABCDEF" for character in raw):
+        return None
+    try:
+        decoded = bytes.fromhex(raw).decode("utf-8")
+    except (ValueError, UnicodeError):
+        return None
+    return decoded if valid_wifi_ssid(decoded) else None
+
+
+def parse_iw_link(text: str) -> str | None:
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("SSID:"):
+            continue
+        ssid = line[5:].strip()
+        return ssid if valid_wifi_ssid(ssid) else None
+    return None
+
+
+def parse_iw_scan(text: str, *, current_ssid: str | None, saved_ssid: str | None) -> list[dict]:
+    networks: dict[str, dict] = {}
+    block: list[str] = []
+
+    def consume(lines: list[str]) -> None:
+        if not lines:
+            return
+        ssid = None
+        signal_dbm = None
+        supports_psk = False
+        for raw_line in lines:
+            line = raw_line.strip()
+            if line.startswith("SSID:"):
+                candidate = line[5:].strip()
+                if valid_wifi_ssid(candidate):
+                    ssid = candidate
+            elif line.startswith("signal:"):
+                raw_signal = line[7:].strip().split(" ", 1)[0]
+                try:
+                    signal_value = float(raw_signal)
+                except ValueError:
+                    continue
+                if math.isfinite(signal_value) and -200 <= signal_value <= 0:
+                    signal_dbm = int(round(signal_value))
+            elif "Authentication suites:" in line and "PSK" in line.split(":", 1)[-1].split():
+                supports_psk = True
+
+        if ssid is None or signal_dbm is None or not supports_psk:
+            return
+        existing = networks.get(ssid)
+        if existing is not None and existing["signalDbm"] >= signal_dbm:
+            return
+        networks[ssid] = {
+            "ssid": ssid,
+            "signalDbm": signal_dbm,
+            "security": "wpa-psk",
+            "connected": ssid == current_ssid,
+            "saved": ssid == saved_ssid,
+        }
+
+    for raw_line in text.splitlines():
+        if raw_line.startswith("BSS "):
+            consume(block)
+            block = [raw_line]
+        elif block:
+            block.append(raw_line)
+    consume(block)
+
+    return sorted(
+        networks.values(),
+        key=lambda entry: (not entry["connected"], not entry["saved"], -entry["signalDbm"], entry["ssid"].casefold()),
+    )[:MAX_NETWORKS]
+
+
+def network_broker_paths(session_dir: str) -> dict[str, str]:
+    return {
+        "control": os.path.join(session_dir, "network-control"),
+        "request": os.path.join(session_dir, "network-request"),
+        "response": os.path.join(session_dir, "network-response"),
+        "scan": os.path.join(session_dir, "network-scan.raw"),
+        "link": os.path.join(session_dir, "network-link.raw"),
+        "saved": os.path.join(session_dir, "network-saved-ssid"),
+    }
+
+
+def network_broker_available(paths: dict[str, str]) -> bool:
+    try:
+        metadata = os.stat(paths["control"])
+    except OSError:
+        return False
+    return (
+        stat.S_ISFIFO(metadata.st_mode)
+        and metadata.st_uid == os.geteuid()
+        and stat.S_IMODE(metadata.st_mode) == 0o600
+        and os.access(paths["control"], os.W_OK)
+    )
+
+
+def _read_bounded_bytes(path: str, max_bytes: int) -> bytes:
+    try:
+        with open(path, "rb") as handle:
+            payload = handle.read(max_bytes + 1)
+    except OSError:
+        return b""
+    return payload if len(payload) <= max_bytes else b""
+
+
+def build_network_management_snapshot(paths: dict[str, str], wifi_interface: str) -> dict:
+    if not NETWORK_INTERFACE_RE.fullmatch(wifi_interface):
+        raise ValueError("invalid Wi-Fi interface")
+    link_payload = _read_bounded_bytes(paths["link"], 64 * 1024)
+    scan_payload = _read_bounded_bytes(paths["scan"], MAX_NETWORK_SCAN_BYTES)
+    saved_payload = _read_bounded_bytes(paths["saved"], 1024)
+    try:
+        link_text = link_payload.decode("utf-8")
+        scan_text = scan_payload.decode("utf-8")
+        saved_text = saved_payload.decode("utf-8")
+    except UnicodeError as exc:
+        raise ValueError("invalid network broker output") from exc
+
+    current_ssid = parse_iw_link(link_text)
+    saved_ssid = None
+    for line in saved_text.splitlines()[:1]:
+        saved_ssid = decode_wpa_ssid_line(line)
+    return {
+        "wifiInterface": wifi_interface,
+        "currentSsid": current_ssid,
+        "savedSsid": saved_ssid,
+        "networks": parse_iw_scan(
+            scan_text,
+            current_ssid=current_ssid,
+            saved_ssid=saved_ssid,
+        ),
+    }
+
+
+def queue_network_broker_request(
+    paths: dict[str, str],
+    action: str,
+    *,
+    ssid: str | None = None,
+    password: str | None = None,
+    timeout_seconds: float = 20.0,
+) -> dict:
+    if action not in {"status", "scan", "connect", "disconnect", "forget", "reconnect"}:
+        raise ValueError("unsupported network action")
+    if not network_broker_available(paths):
+        raise FileNotFoundError("network broker unavailable")
+
+    request_id = secrets.token_hex(12)
+    lines = [request_id, action]
+    if action == "connect":
+        if not valid_wifi_ssid(ssid) or not valid_wifi_password(password):
+            raise ValueError("invalid Wi-Fi credentials")
+        lines.extend([ssid.encode("utf-8").hex(), derive_wpa_psk(ssid, password)])
+    payload = ("\n".join(lines) + "\n").encode("ascii")
+    request_dir = os.path.dirname(paths["request"])
+    temporary = f'{paths["request"]}.tmp.{os.getpid()}.{threading.get_ident()}'
+    with open(temporary, "wb") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, paths["request"])
+
+    try:
+        try:
+            os.unlink(paths["response"])
+        except FileNotFoundError:
+            pass
+
+        descriptor = os.open(
+            paths["control"],
+            os.O_WRONLY
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            metadata = os.fstat(descriptor)
+            if (
+                not stat.S_ISFIFO(metadata.st_mode)
+                or metadata.st_uid != os.geteuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+            ):
+                raise PermissionError("network broker boundary is not private")
+            if os.write(descriptor, b"request\n") != len(b"request\n"):
+                raise OSError("short write to network broker")
+        finally:
+            os.close(descriptor)
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            response = read_small_text(paths["response"], 512)
+            if response:
+                fields = response.split("\t")
+                if len(fields) == 4 and fields[0] == request_id:
+                    _, outcome, wifi_interface, detail = fields
+                    if outcome == "ok":
+                        return build_network_management_snapshot(paths, wifi_interface)
+                    error = RuntimeError(detail or "network-action-failed")
+                    error.network_detail = detail
+                    raise error
+            time.sleep(0.05)
+        raise TimeoutError("network broker response timed out")
+    finally:
+        try:
+            os.unlink(paths["request"])
+        except FileNotFoundError:
+            pass
 
 
 def _bounded_history_lines(path: str, max_entries: int) -> list[str]:
@@ -1035,12 +1313,23 @@ class NativeHostServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address, handler_class, *, user_root: str, power_request_path: str):
+    def __init__(
+        self,
+        server_address,
+        handler_class,
+        *,
+        user_root: str,
+        power_request_path: str,
+        network_session_dir: str,
+    ):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
+        self.network_token = secrets.token_urlsafe(32)
         self.health_token = secrets.token_urlsafe(32)
         self.power_request_path = power_request_path
         self.supported_actions = supported_power_actions(power_request_path)
+        self.network_paths = network_broker_paths(network_session_dir)
+        self.network_lock = threading.Lock()
         self.user_root = user_root
 
 
@@ -1095,7 +1384,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -1118,6 +1407,24 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, network_status)
+            return
+        if parsed_path == NETWORK_MANAGEMENT_PATH:
+            supplied_token = self.headers.get(NETWORK_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.network_token):
+                self._empty(403)
+                return
+            try:
+                with self.server.network_lock:
+                    snapshot = queue_network_broker_request(
+                        self.server.network_paths,
+                        "status",
+                        timeout_seconds=4.0,
+                    )
+            except (FileNotFoundError, PermissionError, TimeoutError, OSError, RuntimeError, ValueError) as exc:
+                print(f"ordax-native-host: network management status unavailable: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
+                return
+            self._write_json(200, snapshot)
             return
         if parsed_path == UPDATE_HISTORY_PATH:
             self._write_json(200, read_update_history())
@@ -1171,6 +1478,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 200,
                 {
                     "token": self.server.power_token,
+                    "networkToken": self.server.network_token,
                     "supportedActions": list(self.server.supported_actions),
                 },
             )
@@ -1247,6 +1555,42 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(500)
                 return
             self._empty(204)
+            return
+
+        if self.path == NETWORK_MANAGEMENT_PATH:
+            supplied_token = self.headers.get(NETWORK_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.network_token):
+                self._empty(403)
+                return
+            payload = self._read_json_body(MAX_NETWORK_ACTION_BODY)
+            if payload is None:
+                self._empty(400)
+                return
+            action = payload.get("action")
+            if action not in {"scan", "connect", "disconnect", "forget", "reconnect"}:
+                self._empty(400)
+                return
+            try:
+                with self.server.network_lock:
+                    snapshot = queue_network_broker_request(
+                        self.server.network_paths,
+                        action,
+                        ssid=payload.get("ssid"),
+                        password=payload.get("password"),
+                        timeout_seconds=24.0 if action in {"connect", "reconnect"} else 12.0,
+                    )
+            except ValueError:
+                self._empty(400)
+                return
+            except RuntimeError as exc:
+                detail = getattr(exc, "network_detail", "")
+                self._empty(409 if detail in {"connect-failed", "reconnect-failed"} else 503)
+                return
+            except (FileNotFoundError, PermissionError, TimeoutError, OSError) as exc:
+                print(f"ordax-native-host: network management action failed safely: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
+                return
+            self._write_json(200, snapshot)
             return
 
         if self.path == PREFERENCES_PATH:
@@ -1377,6 +1721,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--directory", default="/srv/ordax-system")
     parser.add_argument("--user-root", default="/var/lib/ordax-user")
     parser.add_argument("--power-request", default=DEFAULT_POWER_REQUEST_PATH)
+    parser.add_argument("--network-session-dir", default=DEFAULT_NETWORK_SESSION_DIR)
     parser.add_argument("--telemetry-config", default="")
     return parser.parse_args()
 
@@ -1405,6 +1750,7 @@ def main() -> int:
         handler,
         user_root=args.user_root,
         power_request_path=args.power_request,
+        network_session_dir=args.network_session_dir,
     )
     telemetry_started = start_telemetry_heartbeat(args.telemetry_config)
     print(

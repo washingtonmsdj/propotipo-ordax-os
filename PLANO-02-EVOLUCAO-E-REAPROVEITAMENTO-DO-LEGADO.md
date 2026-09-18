@@ -624,7 +624,7 @@ F3, a observabilidade local de F9 e as provas de F8 podem avançar em trilhas in
 
 ### 8.2 O próximo lote recomendado
 
-F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. O lote atual prioriza **F3 em incrementos verticais**: primeiro observabilidade nativa somente leitura; depois seleção/conexão/esquecimento/reconexão usando o owner real de rede, sem expor credenciais à Surface, preferências, logs ou telemetria.
+F0/F1 e os primeiros incrementos de F2 já avançaram na `main`. F3 já possui observabilidade nativa somente leitura e agora também um owner mutável de Wi-Fi no host, separado da UI por `ordax.network-management/1`. O incremento seguinte conecta Ajustes a scan/seleção/conexão/esquecimento/reconexão sem mover credenciais para preferências, workspace, logs ou telemetria.
 
 Não abrir simultaneamente Store, grafo de objetos, federação, IA e um package manager. A entrega de arquivos, rede e retomada já recupera valor concreto que o legado perseguia, mantendo a estrutura limpa.
 
