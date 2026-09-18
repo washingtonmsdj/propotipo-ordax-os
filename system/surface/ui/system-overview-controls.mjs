@@ -1,3 +1,4 @@
+import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   assertSurfaceHost,
   validateSurfaceSnapshot,
@@ -14,64 +15,52 @@ import {
   assertUpdateStatusPort,
   validateUpdateStatusSnapshot,
 } from "../../contracts/update-status.mjs";
+import {
+  deliveryLabel,
+  formatUpdateTimestamp,
+  readableUpdateMode,
+  shortSha,
+  updateIsAlerting,
+  updateStatusLabel,
+} from "../../services/update/presentation.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 const SYSTEM_EXTENSION_SELECTOR = '[data-app-extension="system-overview"]';
 
-const UPDATE_LABELS = Object.freeze({
-  running: "Em execução",
-  applied: "Atualização aplicada",
-  updating: "Atualizando",
-  "network-error": "Sem conexão para atualizar",
-  "remote-error": "Fonte de atualização indisponível",
-  "pull-error": "Falha ao atualizar",
-  "rolled-back": "Atualização revertida",
-  rejected: "Entrega bloqueada",
-  pinned: "Entrega fixada",
-  disabled: "Atualização indisponível",
-  unavailable: "Estado indisponível",
+const SYSTEM_SECTIONS = Object.freeze([
+  Object.freeze({ id: "overview", label: "Visão geral" }),
+  Object.freeze({ id: "updates", label: "Atualizações" }),
+  Object.freeze({ id: "storage", label: "Armazenamento" }),
+  Object.freeze({ id: "diagnostics", label: "Diagnóstico" }),
+  Object.freeze({ id: "about", label: "Sobre" }),
+]);
+
+const SECTION_COPY = Object.freeze({
+  overview: Object.freeze({
+    title: "Visão geral",
+    subtitle: "Estado atual do OrdaX, conectividade e sinais que exigem atenção.",
+  }),
+  updates: Object.freeze({
+    title: "Atualizações",
+    subtitle: "Entrega observada, aplicação, recuperação e histórico deste dispositivo.",
+  }),
+  storage: Object.freeze({
+    title: "Armazenamento",
+    subtitle: "Espaço do usuário medido pelo host, sem inferir a capacidade de outros volumes.",
+  }),
+  diagnostics: Object.freeze({
+    title: "Diagnóstico",
+    subtitle: "Capacidades realmente expostas por esta execução, sem controles administrativos genéricos.",
+  }),
+  about: Object.freeze({
+    title: "Sobre",
+    subtitle: "Identidade da entrega e limites de versionamento dos componentes do OrdaX.",
+  }),
 });
 
-const CAPABILITY_LABELS = Object.freeze({
-  "network.https": "Rede HTTPS",
-  "network.status": "Estado local de rede",
-  "network.management": "Gerenciamento de Wi-Fi",
-  "system.boot-control": "Energia do dispositivo",
-  "filesystem.user-space": "Espaço local do usuário",
-  "system.metrics": "Métricas do dispositivo",
-  "power.status": "Estado da bateria",
-});
-
-function node(documentObject, tag, className, text) {
-  const element = documentObject.createElement(tag);
-  if (className) element.className = className;
-  if (text !== undefined) element.textContent = text;
-  return element;
-}
-
-function shortSha(value) {
-  if (typeof value !== "string" || value.length < 8 || value === "unavailable") return "—";
-  return value.slice(0, 8);
-}
-
-function deliveryLabel(value) {
-  return Number.isSafeInteger(value) && value > 0 ? `Entrega ${value}` : "Entrega sem número";
-}
-
-function formatTimestamp(value) {
-  if (typeof value !== "string" || !value || value === "unknown") return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR", {
-    timeZone: "America/Bahia",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+function validSystemSection(value) {
+  return SYSTEM_SECTIONS.some((section) => section.id === value);
 }
 
 function formatBytes(bytes) {
@@ -95,7 +84,7 @@ function formatUptime(seconds) {
   return `${minutes}min`;
 }
 
-function readableMode(mode) {
+function readableUpdateMode(mode) {
   switch (mode) {
     case "reload": return "Recarga rápida da Surface";
     case "surface-restart": return "Reinício somente da Surface";
@@ -146,6 +135,7 @@ export function mountSystemOverviewControls(
   systemMetrics = null,
   surfaceLifecycle = null,
   updateHistory = null,
+  appActivation = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("System overview controls require a Surface root Element");
@@ -155,6 +145,7 @@ export function mountSystemOverviewControls(
   const updatePort = updateStatusPort === null ? null : assertUpdateStatusPort(updateStatusPort);
   const metricsPort = systemMetrics === null ? null : assertSystemMetricsPort(systemMetrics);
   const historyPort = updateHistory === null ? null : assertUpdateHistoryPort(updateHistory);
+  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -170,6 +161,7 @@ export function mountSystemOverviewControls(
   let historySnapshot = null;
   let historyMessage = "";
   let historyOrdinal = 0;
+  let activeSection = "overview";
   let destroyed = false;
   let mountedSlot = null;
 
@@ -179,15 +171,11 @@ export function mountSystemOverviewControls(
   const renderHeader = (view) => {
     const header = node(documentObject, "header", "ordax-system-header");
     const copy = node(documentObject, "div", "ordax-system-header-copy");
+    const sectionCopy = SECTION_COPY[activeSection];
     copy.append(
-      node(documentObject, "span", "ordax-system-eyebrow", "OrdaX"),
-      node(documentObject, "h3", "ordax-system-title", "Estado do sistema"),
-      node(
-        documentObject,
-        "p",
-        "ordax-system-subtitle",
-        "Entrega, saúde da atualização e recursos expostos por contratos neutros.",
-      ),
+      node(documentObject, "span", "ordax-system-eyebrow", "Sistema"),
+      node(documentObject, "h3", "ordax-system-title", sectionCopy.title),
+      node(documentObject, "p", "ordax-system-subtitle", sectionCopy.subtitle),
     );
 
     const health = node(documentObject, "span", "ordax-system-health");
@@ -208,6 +196,21 @@ export function mountSystemOverviewControls(
     view.append(header);
   };
 
+  const renderSectionNavigation = (view) => {
+    const navigation = node(documentObject, "nav", "ordax-system-navigation");
+    navigation.setAttribute("aria-label", "Seções de Sistema");
+    for (const section of SYSTEM_SECTIONS) {
+      const button = node(documentObject, "button", "ordax-system-navigation-item", section.label);
+      button.type = "button";
+      button.dataset.systemSection = section.id;
+      const active = activeSection === section.id;
+      button.dataset.active = String(active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+      navigation.append(button);
+    }
+    view.append(navigation);
+  };
+
   const renderSummary = (view) => {
     const grid = node(documentObject, "section", "ordax-system-summary");
     grid.setAttribute("aria-label", "Resumo do sistema");
@@ -216,7 +219,7 @@ export function mountSystemOverviewControls(
       label: "Entrega observada",
       value: updateSnapshot ? deliveryLabel(updateSnapshot.deliveryNumber) : "—",
       detail: updateSnapshot
-        ? `SHA ${shortSha(updateSnapshot.sourceSha)} · ${readableMode(updateSnapshot.applyMode)}`
+        ? `SHA ${shortSha(updateSnapshot.sourceSha)} · ${readableUpdateMode(updateSnapshot.applyMode)}`
         : "Gerenciamento de entrega não exposto neste host",
     });
 
@@ -225,7 +228,7 @@ export function mountSystemOverviewControls(
       value: updateSnapshot
         ? updateSnapshot.bootRefreshRequired
           ? "Reinício necessário"
-          : UPDATE_LABELS[updateSnapshot.status] ?? updateSnapshot.status
+          : updateStatusLabel(updateSnapshot.status)
         : "Indisponível",
       detail: updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
         ? `Verificado: ${updateSnapshot.checkedAt}`
@@ -251,15 +254,14 @@ export function mountSystemOverviewControls(
     view.append(grid);
   };
 
-  const renderResources = (view) => {
+  const renderMemory = (view) => {
     const section = node(documentObject, "section", "ordax-system-section");
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
     headingCopy.append(
       node(documentObject, "span", "ordax-system-section-kicker", "Recursos"),
-      node(documentObject, "h4", "ordax-system-section-title", "Uso do dispositivo"),
+      node(documentObject, "h4", "ordax-system-section-title", "Memória"),
     );
-
     const refresh = node(
       documentObject,
       "button",
@@ -272,26 +274,17 @@ export function mountSystemOverviewControls(
     heading.append(headingCopy, refresh);
     section.append(heading);
 
-    if (!metricsPort) {
+    if (!metricsPort || !metricsSnapshot) {
       section.append(
         node(
           documentObject,
           "p",
           "ordax-system-placeholder",
-          "Este host não expõe métricas locais de memória e armazenamento.",
-        ),
-      );
-      view.append(section);
-      return;
-    }
-
-    if (!metricsSnapshot) {
-      section.append(
-        node(
-          documentObject,
-          "p",
-          "ordax-system-placeholder",
-          metricsPending ? "Lendo recursos do dispositivo…" : (metricsMessage || "Aguardando leitura local."),
+          metricsPort
+            ? metricsPending
+              ? "Lendo recursos do dispositivo…"
+              : (metricsMessage || "Aguardando leitura local.")
+            : "Este host não expõe métricas locais de memória.",
         ),
       );
       view.append(section);
@@ -299,22 +292,72 @@ export function mountSystemOverviewControls(
     }
 
     const memoryUsed = metricsSnapshot.memoryTotalBytes - metricsSnapshot.memoryAvailableBytes;
-    const storageUsed = metricsSnapshot.userStorageTotalBytes - metricsSnapshot.userStorageFreeBytes;
     const resourceGrid = node(documentObject, "div", "ordax-system-resource-grid");
-
     appendMetricCard(documentObject, resourceGrid, {
-      label: "Memória",
+      label: "Memória em uso",
       value: formatBytes(memoryUsed),
       detail: `${formatBytes(metricsSnapshot.memoryAvailableBytes)} disponível de ${formatBytes(metricsSnapshot.memoryTotalBytes)}`,
       progress: ratio(memoryUsed, metricsSnapshot.memoryTotalBytes),
     });
+    section.append(resourceGrid);
+    if (metricsMessage) section.append(node(documentObject, "p", "ordax-system-message", metricsMessage));
+    view.append(section);
+  };
+
+  const renderStorage = (view) => {
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Armazenamento"),
+      node(documentObject, "h4", "ordax-system-section-title", "Espaço do usuário"),
+    );
+    const refresh = node(
+      documentObject,
+      "button",
+      "ordax-system-action",
+      metricsPending ? "Atualizando…" : "Atualizar leitura",
+    );
+    refresh.type = "button";
+    refresh.dataset.systemOverviewRefresh = "";
+    refresh.disabled = metricsPending || !metricsPort;
+    heading.append(headingCopy, refresh);
+    section.append(heading);
+
+    if (!metricsPort || !metricsSnapshot) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          metricsPort
+            ? metricsPending
+              ? "Lendo armazenamento do usuário…"
+              : (metricsMessage || "Aguardando leitura local.")
+            : "Este host não expõe a capacidade do espaço do usuário.",
+        ),
+      );
+      view.append(section);
+      return;
+    }
+
+    const storageUsed = metricsSnapshot.userStorageTotalBytes - metricsSnapshot.userStorageFreeBytes;
+    const resourceGrid = node(documentObject, "div", "ordax-system-resource-grid");
     appendMetricCard(documentObject, resourceGrid, {
-      label: "Espaço do usuário",
+      label: "Espaço usado",
       value: formatBytes(storageUsed),
       detail: `${formatBytes(metricsSnapshot.userStorageFreeBytes)} livre de ${formatBytes(metricsSnapshot.userStorageTotalBytes)}`,
       progress: ratio(storageUsed, metricsSnapshot.userStorageTotalBytes),
     });
     section.append(resourceGrid);
+    section.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-system-section-copy",
+        "Esta leitura cobre somente o espaço persistente do usuário exposto pelo host. Não representa o disco físico inteiro.",
+      ),
+    );
     if (metricsMessage) section.append(node(documentObject, "p", "ordax-system-message", metricsMessage));
     view.append(section);
   };
@@ -355,9 +398,9 @@ export function mountSystemOverviewControls(
 
     addFact("Entrega", deliveryLabel(updateSnapshot.deliveryNumber));
     addFact("Commit técnico", shortSha(updateSnapshot.sourceSha));
-    addFact("Aplicação", readableMode(updateSnapshot.applyMode));
+    addFact("Aplicação", readableUpdateMode(updateSnapshot.applyMode));
     if (updateSnapshot.lastAppliedAt !== "unknown") {
-      addFact("Última aplicação", formatTimestamp(updateSnapshot.lastAppliedAt));
+      addFact("Última aplicação", formatUpdateTimestamp(updateSnapshot.lastAppliedAt));
       addFact("Duração", `${updateSnapshot.lastApplyDurationSeconds}s · preparação ${updateSnapshot.lastStageDurationSeconds}s`);
     }
     if (updateSnapshot.rejectedSha) {
@@ -387,13 +430,17 @@ export function mountSystemOverviewControls(
   };
 
   const renderComponentVersions = (view) => {
-    if (!updateSnapshot?.deliveryNumber) return;
     const section = node(documentObject, "section", "ordax-system-section");
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
     headingCopy.append(
       node(documentObject, "span", "ordax-system-section-kicker", "Identidade da entrega"),
-      node(documentObject, "h4", "ordax-system-section-title", deliveryLabel(updateSnapshot.deliveryNumber)),
+      node(
+        documentObject,
+        "h4",
+        "ordax-system-section-title",
+        updateSnapshot?.deliveryNumber ? deliveryLabel(updateSnapshot.deliveryNumber) : "Entrega não informada",
+      ),
     );
     heading.append(headingCopy);
     section.append(heading);
@@ -405,6 +452,19 @@ export function mountSystemOverviewControls(
         "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. Componentes só exibem versão própria quando tiverem empacotamento e ciclo de release independentes.",
       ),
     );
+
+    if (!updateSnapshot?.deliveryNumber) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          "Este host não informa uma identidade técnica de entrega. O OrdaX não inventa uma versão local.",
+        ),
+      );
+      view.append(section);
+      return;
+    }
 
     const list = node(documentObject, "div", "ordax-system-version-grid");
     for (const label of ["Surface", "Arquivos", "Ajustes", "Conta", "Sistema", "Rede", "Atualizador"]) {
@@ -464,12 +524,12 @@ export function mountSystemOverviewControls(
         const result = entry.result === "applied" ? "Aplicada" : "Revertida";
         item.append(
           node(documentObject, "strong", "", `${deliveryLabel(entry.deliveryNumber)} · ${result}`),
-          node(documentObject, "span", "", formatTimestamp(entry.appliedAt)),
+          node(documentObject, "span", "", formatUpdateTimestamp(entry.appliedAt)),
           node(
             documentObject,
             "small",
             "",
-            `SHA ${shortSha(entry.sourceSha)} · ${readableMode(entry.applyMode)} · ${entry.applyDurationSeconds}s (preparação ${entry.stageDurationSeconds}s)`,
+            `SHA ${shortSha(entry.sourceSha)} · ${readableUpdateMode(entry.applyMode)} · ${entry.applyDurationSeconds}s (preparação ${entry.stageDurationSeconds}s)`,
           ),
         );
         applications.append(item);
@@ -482,7 +542,7 @@ export function mountSystemOverviewControls(
       const item = node(documentObject, "article", "ordax-system-history-item");
       item.append(
         node(documentObject, "strong", "", `${deliveryLabel(entry.deliveryNumber)} · ${entry.title}`),
-        node(documentObject, "span", "", formatTimestamp(entry.releasedAt)),
+        node(documentObject, "span", "", formatUpdateTimestamp(entry.releasedAt)),
         node(documentObject, "small", "", `SHA ${shortSha(entry.sourceSha)}`),
       );
       releases.append(item);
@@ -525,15 +585,25 @@ export function mountSystemOverviewControls(
   const paint = (slot) => {
     slot.replaceChildren();
     slot.dataset.ordaxSystemOverviewView = "";
+    slot.dataset.systemSection = activeSection;
 
     const view = node(documentObject, "div", "ordax-system-view");
     renderHeader(view);
-    renderSummary(view);
-    renderResources(view);
-    renderUpdateDetails(view);
-    renderComponentVersions(view);
-    renderHistory(view);
-    renderCapabilities(view);
+    renderSectionNavigation(view);
+
+    if (activeSection === "overview") {
+      renderSummary(view);
+      renderMemory(view);
+    } else if (activeSection === "updates") {
+      renderUpdateDetails(view);
+      renderHistory(view);
+    } else if (activeSection === "storage") {
+      renderStorage(view);
+    } else if (activeSection === "diagnostics") {
+      renderCapabilities(view);
+    } else if (activeSection === "about") {
+      renderComponentVersions(view);
+    }
     slot.append(view);
   };
 
@@ -589,6 +659,13 @@ export function mountSystemOverviewControls(
   };
 
   const onClick = (event) => {
+    const section = event.target.closest("[data-system-section]");
+    if (section && root.contains(section) && validSystemSection(section.dataset.systemSection)) {
+      activeSection = section.dataset.systemSection;
+      replaceView();
+      return;
+    }
+
     const refresh = event.target.closest("[data-system-overview-refresh]");
     if (refresh && root.contains(refresh)) {
       void refreshMetrics();
@@ -603,6 +680,16 @@ export function mountSystemOverviewControls(
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
     replaceView();
+  });
+  const unsubscribeActivation = activationPort?.subscribe((activation) => {
+    if (
+      activation.appId === "system"
+      && activation.target !== null
+      && validSystemSection(activation.target)
+    ) {
+      activeSection = activation.target;
+      replaceView();
+    }
   });
   const unsubscribeUpdate = updatePort?.subscribe((snapshot) => {
     const previousAppliedSha = updateSnapshot?.lastAppliedSha ?? "";
@@ -622,6 +709,7 @@ export function mountSystemOverviewControls(
       metricsOrdinal += 1;
       historyOrdinal += 1;
       unsubscribeUpdate?.();
+      unsubscribeActivation?.();
       unsubscribeHost?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
