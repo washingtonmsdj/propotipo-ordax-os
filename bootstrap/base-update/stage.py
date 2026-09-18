@@ -39,12 +39,18 @@ def sha256_file(path: Path) -> str:
 
 
 def require_regular_source(path: Path, expected_sha256: str) -> Path:
+    try:
+        original_metadata = path.lstat()
+    except OSError as exc:
+        raise StageError(f"candidate source unavailable: {path.name}") from exc
+    if stat.S_ISLNK(original_metadata.st_mode):
+        raise StageError(f"candidate source must not be a symlink: {path.name}")
     path = path.resolve()
     try:
         metadata = path.stat()
     except OSError as exc:
         raise StageError(f"candidate source unavailable: {path.name}") from exc
-    if not stat.S_ISREG(metadata.st_mode) or path.is_symlink():
+    if not stat.S_ISREG(metadata.st_mode):
         raise StageError(f"candidate source is not a regular file: {path.name}")
     actual = sha256_file(path)
     if actual != expected_sha256:
@@ -155,8 +161,6 @@ def _atomic_copy(esp_root: Path, source: Path, target: Path, expected_sha256: st
 
 def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
     ensure_private_parent(esp_root, target)
-    if target.exists() or target.is_symlink():
-        raise StageError("candidate boot entry already exists")
     kernel = plan["stage"]["kernel"]["target_path"]
     initramfs = plan["stage"]["initramfs"]["target_path"]
     options = " ".join(plan["stage"]["kernel_options"])
@@ -166,7 +170,6 @@ def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
         f"initrd {initramfs}\n"
         f"options console=tty0 {options}\n"
     ).encode("utf-8")
-    temporary = target.with_name(f".{target.name}.ordax-stage-{os.getpid()}")
     flags = (
         os.O_WRONLY
         | os.O_CREAT
@@ -175,7 +178,10 @@ def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
         | getattr(os, "O_NOFOLLOW", 0)
     )
     try:
-        descriptor = os.open(temporary, flags, ENTRY_MODE)
+        descriptor = os.open(target, flags, ENTRY_MODE)
+    except FileExistsError as exc:
+        raise StageError("candidate boot entry already exists") from exc
+    try:
         try:
             offset = 0
             while offset < len(payload):
@@ -186,15 +192,14 @@ def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        if target.exists():
-            raise StageError("candidate boot entry appeared concurrently")
-        os.link(temporary, target, follow_symlinks=False)
-        temporary.unlink()
         fsync_directory(target.parent)
     except Exception:
+        # A partial candidate marker is never promoted or selected automatically;
+        # remove it best-effort and leave the known-good current entry untouched.
         try:
-            temporary.unlink()
-        except FileNotFoundError:
+            target.unlink()
+            fsync_directory(target.parent)
+        except OSError:
             pass
         raise
 
@@ -222,6 +227,8 @@ def stage(
         raise StageError("ESP root must be an existing directory")
     plan = _planner.plan(active_slot, candidate)
     protected_before = snapshot_protected_files(esp_root)
+    if any(value is None for value in protected_before.values()):
+        raise StageError("known-good current/recovery entries must exist before staging")
 
     kernel_source = require_regular_source(
         kernel_source, plan["stage"]["kernel"]["sha256"]
