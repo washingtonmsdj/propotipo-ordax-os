@@ -22,6 +22,7 @@ SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
 TIME_SYNC_LOG=$SESSION_DIR/time-sync.log
+TIME_SYNC_PID_FILE=$SESSION_DIR/time-sync.pid
 NETWORK_LOG=$SESSION_DIR/network-broker.log
 NETWORK_CONTROL=$SESSION_DIR/network-control
 NETWORK_REQUEST=$SESSION_DIR/network-request
@@ -287,6 +288,7 @@ cleanup() {
         terminate_child "$TIME_SYNC_PID" "time sync agent"
         TIME_SYNC_PID=""
     fi
+    rm -f "$TIME_SYNC_PID_FILE" >/dev/null 2>&1 || true
     if [ -n "$POWER_BROKER_PID" ]; then
         terminate_child "$POWER_BROKER_PID" "power broker"
         POWER_BROKER_PID=""
@@ -540,13 +542,22 @@ start_network_broker() {
 }
 
 start_time_sync_agent() {
+    rm -f "$TIME_SYNC_PID_FILE" >/dev/null 2>&1 || true
     /bin/busybox ntpd -n \
         -p time.cloudflare.com \
         -p time.google.com \
         -p pool.ntp.org \
         >>"$TIME_SYNC_LOG" 2>&1 &
     TIME_SYNC_PID=$!
-    kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
+    if ! kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1; then
+        TIME_SYNC_PID=""
+        return 1
+    fi
+    temporary=$TIME_SYNC_PID_FILE.tmp.$
+    printf '%s\n' "$TIME_SYNC_PID" >"$temporary" || return 1
+    chmod 600 "$temporary" || return 1
+    /bin/busybox mv -f "$temporary" "$TIME_SYNC_PID_FILE" || return 1
+    return 0
 }
 
 prepare_power_broker() {
