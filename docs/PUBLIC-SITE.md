@@ -16,6 +16,7 @@ sites/public/
   download/index.html
   login/index.html
   cadastro/index.html
+  licencas/index.html
   assets/
   config/public-site.json
 ```
@@ -30,6 +31,7 @@ Keeping the portal in the monorepo does not make it part of the operating-system
 - `/download/`: public release discovery and verified download links.
 - `/login/`: sign-in entry point.
 - `/cadastro/`: account-creation entry point.
+- `/licencas/`: release-specific license, SBOM and source-compliance entry point.
 
 Future routes such as support, docs, legal and account management may be added here only when they have a real owner and service contract.
 
@@ -73,6 +75,8 @@ source commit
 ```
 
 When there is no authorized release, the generated catalog is valid but empty; the page says so and exposes no download button. A missing or malformed catalog still fails closed.
+
+A public release must also pass the release-compliance gate in `docs/RELEASE-COMPLIANCE.md` and `docs/contracts/release-compliance.json`. Each listed release must expose an integrity-bound SBOM, third-party notices and release-specific source-compliance bundle before the Download or Licenças page can render it.
 
 ## Security invariants
 
