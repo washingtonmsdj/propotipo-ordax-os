@@ -13,6 +13,7 @@ function resolveStorage(windowRef) {
       storage
       && typeof storage.getItem === "function"
       && typeof storage.setItem === "function"
+      && typeof storage.removeItem === "function"
     ) {
       return storage;
     }
@@ -40,11 +41,7 @@ export function createWebDiagnosticJournalStore(windowRef = globalThis.window) {
         return true;
       }
       if (validated === null) {
-        if (typeof storage.removeItem === "function") {
-          storage.removeItem(WEB_DIAGNOSTIC_JOURNAL_STORAGE_KEY);
-        } else {
-          storage.setItem(WEB_DIAGNOSTIC_JOURNAL_STORAGE_KEY, "");
-        }
+        storage.removeItem(WEB_DIAGNOSTIC_JOURNAL_STORAGE_KEY);
       } else {
         storage.setItem(WEB_DIAGNOSTIC_JOURNAL_STORAGE_KEY, validated);
       }
