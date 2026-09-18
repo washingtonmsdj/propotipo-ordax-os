@@ -1,0 +1,18 @@
+{
+  "$schema": "prototype-ordax.release-agent-refresh/1",
+  "status": "development-git-migration",
+  "component": "bootstrap-release-acquisition",
+  "artifact": "ordax-release-agent",
+  "allowed_from_sha256": [
+    "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4"
+  ],
+  "target_sha256": "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0",
+  "target_size": 7094432,
+  "download_url": "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/ordax-release-agent-19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0/ordax-release-agent",
+  "target_path": "/ordax/bootstrap/release-acquisition/ordax-release-agent",
+  "mode": "0755",
+  "physical_media_rewrite_required": false,
+  "raw_device_write_allowed": false,
+  "unknown_installed_hash_policy": "block",
+  "replacement": "same-directory-temp-fsync-atomic-replace"
+}
