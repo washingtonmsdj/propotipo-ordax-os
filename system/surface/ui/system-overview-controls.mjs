@@ -19,6 +19,7 @@ import {
   deliveryLabel,
   formatUpdateTimestamp,
   readableUpdateMode,
+  readableUpdatePhase,
   shortSha,
   updateIsAlerting,
   updateStatusLabel,
@@ -398,7 +399,24 @@ export function mountSystemOverviewControls(
 
     addFact("Entrega", deliveryLabel(updateSnapshot.deliveryNumber));
     addFact("Commit técnico", shortSha(updateSnapshot.sourceSha));
+    if (updateSnapshot.runtimeSurfaceSha) {
+      addFact("Surface em execução", shortSha(updateSnapshot.runtimeSurfaceSha));
+    }
+    addFact("Estado", updateStatusLabel(updateSnapshot.status));
+    addFact("Fase", readableUpdatePhase(updateSnapshot.phase));
     addFact("Aplicação", readableUpdateMode(updateSnapshot.applyMode));
+    if (updateSnapshot.targetSha) {
+      addFact("Alvo", shortSha(updateSnapshot.targetSha));
+    }
+    if (updateSnapshot.attemptId) {
+      addFact("Tentativa", formatUpdateTimestamp(updateSnapshot.attemptId));
+    }
+    if (updateSnapshot.checkedAt && updateSnapshot.checkedAt !== "unknown") {
+      addFact("Última verificação", formatUpdateTimestamp(updateSnapshot.checkedAt));
+    }
+    if (updateSnapshot.lastError) {
+      addFact("Diagnóstico", updateSnapshot.lastError);
+    }
     if (updateSnapshot.lastAppliedAt !== "unknown") {
       addFact("Última aplicação", formatUpdateTimestamp(updateSnapshot.lastAppliedAt));
       addFact("Duração", `${updateSnapshot.lastApplyDurationSeconds}s · preparação ${updateSnapshot.lastStageDurationSeconds}s`);
