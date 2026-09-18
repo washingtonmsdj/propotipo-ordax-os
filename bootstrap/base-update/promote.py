@@ -202,6 +202,16 @@ def validate_candidate_entry(
         raise PromotionError("candidate boot entry identity does not match health proof")
 
 
+def validate_protected_entry(root: Path, relative: Path) -> None:
+    target = root / relative
+    try:
+        metadata = target.lstat()
+    except OSError as exc:
+        raise PromotionError(f"protected boot entry missing: {relative.name}") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise PromotionError(f"protected boot entry is unsafe: {relative.name}")
+
+
 def entry_payload(title: str, slot: str, mode: str) -> bytes:
     if slot not in SLOTS or mode not in {"normal", "recovery"}:
         raise PromotionError("invalid promoted boot entry")
@@ -427,6 +437,8 @@ def promote(
         raise PromotionError("ESP root must be an existing directory")
     candidate = locate_candidate_entry(root)
     validate_candidate_entry(candidate, release_sha, candidate_slot)
+    validate_protected_entry(root, CURRENT_ENTRY)
+    validate_protected_entry(root, RECOVERY_ENTRY)
 
     state_root_resolved = state_root.resolve()
     active_temporary, active_target = prepare_active_record(
