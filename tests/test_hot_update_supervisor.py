@@ -352,7 +352,10 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('target: "updates"', controls)
         self.assertIn("updateIsAlerting", controls)
         self.assertIn('"rolled-back": "Atualização revertida"', presentation)
-        self.assertIn('"Reinício necessário"', overview)
+        self.assertIn('"Atualização de base pendente"', presentation)
+        self.assertIn("updateSummaryLabel", overview)
+        self.assertIn("updateAttentionMessage", overview)
+        self.assertNotIn('"Reinício necessário"', overview)
         self.assertIn("lastAppliedAt", overview)
         self.assertIn("rejectedSha", overview)
 
