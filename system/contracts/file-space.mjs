@@ -1,4 +1,4 @@
-export const FILE_SPACE_SCHEMA = "ordax.file-space/6";
+export const FILE_SPACE_SCHEMA = "ordax.file-space/7";
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 export const MAX_FILE_COPY_BYTES = 64 * 1024 * 1024;
 
@@ -83,10 +83,11 @@ export function assertFileSpacePort(port) {
     typeof port.readTextFile !== "function" ||
     typeof port.renameEntry !== "function" ||
     typeof port.copyFile !== "function" ||
-    typeof port.moveEntry !== "function"
+    typeof port.moveEntry !== "function" ||
+    typeof port.exportFile !== "function"
   ) {
     throw new TypeError(
-      "File-space port must implement list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), and moveEntry()",
+      "File-space port must implement list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), moveEntry(), and exportFile()",
     );
   }
   return port;
