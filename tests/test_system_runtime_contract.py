@@ -222,7 +222,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn('/bin/busybox sync', text)
         self.assertLess(
             text.index("record_power_request restart pending"),
-            text.index("restart_host ||"),
+            text.index("if ! restart_host; then"),
         )
         self.assertLess(
             text.index("record_power_request shutdown pending"),
