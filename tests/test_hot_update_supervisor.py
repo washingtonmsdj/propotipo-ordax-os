@@ -58,7 +58,17 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('fetch --no-tags origin', text)
         self.assertIn('merge-base --is-ancestor "$previous_sha" "$expected_sha"', text)
         self.assertIn('reset --hard "$expected_sha"', text)
-        self.assertIn('sparse-checkout set --no-cone /system/', text)
+        self.assertIn('sparse-checkout set --no-cone', text)
+        for authority_path in (
+            "/system/",
+            "/bootstrap/trust/",
+            "/docs/contracts/release-trust-policy.json",
+            "/docs/contracts/minimal-bootstrap.json",
+            "/docs/evidence/release-trust-ceremony.json",
+            "/docs/evidence/release-trust-proof-manifest.json",
+            "/docs/evidence/release-trust-recovery-envelope.json",
+        ):
+            self.assertIn(authority_path, text)
         self.assertIn('PREVIOUS_FILE=$STATE_DIR/previous-commit', text)
         self.assertIn('CURRENT_FILE=$STATE_DIR/current-commit', text)
         self.assertNotIn('/usr/local/bin/ordax-pull', text)
