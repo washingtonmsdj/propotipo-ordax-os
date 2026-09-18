@@ -36,6 +36,8 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
             "system/surface/ui/files.css",
+            "system/surface/ui/system.css",
+            "system/surface/ui/system-overview-controls.mjs",
         ):
             self.assertIn(expected, graph)
 
@@ -117,6 +119,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         self.assertNotIn("../", rendered)
         self.assertIn("./system/surface/ui/tokens.css", rendered)
         self.assertIn("./system/surface/ui/files.css", rendered)
+        self.assertIn("./system/surface/ui/system.css", rendered)
         self.assertIn("./system/composition/web/main.mjs", rendered)
         self.assertNotIn("https://", rendered)
 

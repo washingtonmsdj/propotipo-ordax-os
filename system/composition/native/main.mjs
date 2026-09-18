@@ -12,8 +12,7 @@ import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
-import { mountSystemMetricsControls } from "../../surface/ui/system-metrics-controls.mjs";
-import { mountSystemStatusControls } from "../../surface/ui/system-status-controls.mjs";
+import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
 async function start() {
@@ -76,8 +75,13 @@ async function start() {
     appActivation,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
-  const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics, surface);
-  const systemStatusControls = mountSystemStatusControls(root, updateWatcher, surface);
+  const systemOverviewControls = mountSystemOverviewControls(
+    root,
+    host,
+    updateWatcher,
+    systemMetrics,
+    surface,
+  );
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
 
@@ -91,8 +95,7 @@ async function start() {
     () => {
       powerControls.destroy();
       updateControls.destroy();
-      systemStatusControls.destroy();
-      systemMetricsControls.destroy();
+      systemOverviewControls.destroy();
       fileSpaceControls.destroy();
       updateWatcher.dispose();
       surface.destroy();
