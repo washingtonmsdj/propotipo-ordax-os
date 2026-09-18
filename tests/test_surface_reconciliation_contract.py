@@ -47,12 +47,21 @@ class SurfaceReconciliationContractTests(unittest.TestCase):
     def test_windows_are_reconciled_by_workspace_and_window_identity(self):
         surface = self.read_surface()
         self.assertIn("function syncWindowNode", surface)
-        self.assertIn("windowNode.dataset.areaId = area.id", surface)
+        self.assertIn("windowNode.dataset.windowAreaId = area.id", surface)
         self.assertIn("windowNode.dataset.windowId = windowState.id", surface)
-        self.assertIn("node.dataset.areaId === area.id", surface)
+        self.assertIn("node.dataset.windowAreaId === area.id", surface)
         self.assertIn("node.dataset.windowId === windowState.id", surface)
         self.assertIn("node.dataset.appId === app.id", surface)
         self.assertIn("if (!retained.has(staleWindow)) staleWindow.remove();", surface)
+
+    def test_area_control_selector_is_not_reused_by_window_identity(self):
+        surface = self.read_surface()
+        self.assertIn('event.target.closest("[data-area-id]")', surface)
+        self.assertIn("button.dataset.areaId = area.id", surface)
+        self.assertNotIn("windowNode.dataset.areaId", surface)
+        self.assertNotIn("node.dataset.areaId === areaId", surface)
+        self.assertNotIn("node.dataset.areaId === area.id", surface)
+        self.assertIn("windowNode.dataset.windowAreaId = area.id", surface)
 
     def test_minimize_does_not_destroy_application_dom(self):
         surface = self.read_surface()
