@@ -50,6 +50,7 @@ class NativePowerStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             self._supply(root, "BAT0", "Battery", capacity="999", status="Charging")
+            self._supply(root, "BAT1", "Battery", present="0", capacity="0", status="Unknown")
             self._supply(root, "AC0", "Mains", online="0")
             self.assertEqual(
                 native_host.read_power_status(str(root)),
