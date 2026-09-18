@@ -87,6 +87,13 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('log "native host update applied; restarting Surface only"', text)
         self.assertIn("exit 75", text)
 
+    def test_system_markdown_is_runtime_neutral(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        markdown_case = text.index("system/*.md)")
+        broad_system_case = text.index("system/*)", markdown_case)
+        self.assertLess(markdown_case, broad_system_case)
+        self.assertIn('system/*.md)\n                ;;', text)
+
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("boot/*|bootstrap/*", text)
