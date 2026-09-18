@@ -1634,14 +1634,22 @@ button.ordax-tray-item:focus-visible {
   }
 }
 
+[data-ordax-motion="reduced"] *,
+[data-ordax-motion="reduced"] *::before,
+[data-ordax-motion="reduced"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .ordax-window,
-  .ordax-launcher-panel {
+  [data-ordax-motion="standard"] .ordax-window,
+  [data-ordax-motion="standard"] .ordax-launcher-panel {
     animation: ordax-enter 180ms ease-out both;
   }
 
-  .ordax-space-link,
-  .ordax-rail-button {
+  [data-ordax-motion="standard"] .ordax-space-link,
+  [data-ordax-motion="standard"] .ordax-rail-button {
     transition: background-color 140ms ease, color 140ms ease, padding 140ms ease;
   }
 
