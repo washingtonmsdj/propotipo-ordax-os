@@ -33,7 +33,8 @@ class DiagnosticReportContractTests(unittest.TestCase):
         self.assertIn('"[ip]"', report)
         self.assertIn("healthTokenPresent", report)
         self.assertNotIn("healthToken: snapshot.healthToken", report)
-        self.assertNotIn("...snapshot", report)
+        self.assertNotIn("healthToken: value.healthToken", report)
+        self.assertIn("lastError: redactDiagnosticText(snapshot.lastError)", report)
 
     def test_report_bounds_history_and_normalizes_capabilities(self):
         report = self.read_report()
