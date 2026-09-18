@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hmac
 import json
 import math
@@ -53,6 +55,7 @@ PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 SURFACE_HOST_RECOVERY_GENERATION = 1
+RENAME_NOREPLACE = 1
 
 
 def read_small_text(path: str, max_chars: int = 4096) -> str:
@@ -585,6 +588,60 @@ def read_user_text_file(
         os.close(descriptor)
 
 
+def _renameat2_noreplace(directory_fd: int, old_name: str, new_name: str) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError(errno.ENOSYS, "renameat2 is unavailable")
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(
+        directory_fd,
+        os.fsencode(old_name),
+        directory_fd,
+        os.fsencode(new_name),
+        RENAME_NOREPLACE,
+    )
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number == errno.EEXIST:
+        raise FileExistsError(error_number, os.strerror(error_number), new_name)
+    raise OSError(error_number, os.strerror(error_number), new_name)
+
+
+def rename_user_entry(
+    user_root: str,
+    logical_path: str,
+    name: str,
+    new_name: str,
+) -> dict:
+    if not valid_logical_file_path(logical_path):
+        raise ValueError("invalid rename directory path")
+    if not valid_file_name(name) or not valid_file_name(new_name):
+        raise ValueError("invalid rename name")
+    if name == new_name:
+        return list_user_directory(user_root, logical_path)
+
+    descriptor = open_user_directory(user_root, logical_path)
+    try:
+        metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError("symbolic links cannot be renamed through file-space")
+        if not (stat.S_ISREG(metadata.st_mode) or stat.S_ISDIR(metadata.st_mode)):
+            raise ValueError("unsupported file-space entry kind")
+        _renameat2_noreplace(descriptor, name, new_name)
+    finally:
+        os.close(descriptor)
+    return list_user_directory(user_root, logical_path)
+
+
 def create_user_directory(user_root: str, logical_path: str, name: str) -> dict:
     if not valid_file_name(name):
         raise ValueError("invalid directory name")
@@ -910,15 +967,29 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
         if self.path == FILES_PATH:
             payload = self._read_json_body(MAX_FILE_ACTION_BODY)
-            if payload is None or payload.get("action") != "create-directory":
+            if payload is None:
                 self._empty(400)
                 return
+            action = payload.get("action")
             try:
-                listing = create_user_directory(
-                    self.server.user_root,
-                    payload.get("path"),
-                    payload.get("name"),
-                )
+                if action == "create-directory":
+                    listing = create_user_directory(
+                        self.server.user_root,
+                        payload.get("path"),
+                        payload.get("name"),
+                    )
+                    status = 201
+                elif action == "rename-entry":
+                    listing = rename_user_entry(
+                        self.server.user_root,
+                        payload.get("path"),
+                        payload.get("name"),
+                        payload.get("newName"),
+                    )
+                    status = 200
+                else:
+                    self._empty(400)
+                    return
             except ValueError:
                 self._empty(400)
                 return
@@ -932,10 +1003,10 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(403)
                 return
             except OSError as exc:
-                print(f"ordax-native-host: could not create user directory: {exc}", file=sys.stderr, flush=True)
-                self._empty(500)
+                print(f"ordax-native-host: file-space mutation failed safely: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
                 return
-            self._write_json(201, listing)
+            self._write_json(status, listing)
             return
 
         if self.path != POWER_PATH:
