@@ -17,6 +17,8 @@ The machine-readable authority is `docs/contracts/sync-model.json`.
 
 This is **not** an account backend and does not make account continuity active. `SYNC_CORE_STATUS` deliberately reports identity and transport as `host-required`. A platform/remote adapter must still provide authenticated identity, authorization and encrypted transport before `account.identity` or `sync.safe-state` may be advertised as runtime capabilities.
 
+The shared Surface now also has a local preference-sync bridge. It observes the live `ordax.preference-runtime/1` state, converts appearance changes into canonical idempotent appearance mutations and exposes only local queue/status through `ordax.sync-runtime/1`. Repeated offline theme changes compact to the newest pending value for the single stable `appearance/theme` object. This bridge does not publish anything by itself and does not advertise cloud/account continuity.
+
 Core rules remain:
 
 - one OrdaX identity spans Web, Mobile, Desktop, USB and native-disk modes;
