@@ -36,6 +36,8 @@ MAX_RECEIPT_BYTES = 64 * 1024
 MAX_RELEASE_AGENT_BYTES = 32 * 1024 * 1024
 REFRESH_DOWNLOAD_TIMEOUT_SECONDS = 45
 MATERIALIZE_TIMEOUT_SECONDS = 660
+STAGE_TIMEOUT_SECONDS = 180
+MOUNT_TIMEOUT_SECONDS = 20
 TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
 PHYSICAL_TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
 RELEASE_CHANNEL_RELATIVE = Path("bootstrap/config/release-envelope-url")
@@ -45,6 +47,10 @@ POLICY_RELATIVE = Path("docs/contracts/release-trust-policy.json")
 MINIMAL_RELATIVE = Path("docs/contracts/minimal-bootstrap.json")
 BOOT_REFRESH_RELATIVE = Path("boot-refresh-required")
 STATUS_RELATIVE = Path("base-update/owner-status.json")
+STAGE_SCRIPT_RELATIVE = Path("bootstrap/base-update/stage.py")
+STAGE_PLANNER_RELATIVE = Path("bootstrap/base-update/planner.py")
+ESP_LABEL = Path("/dev/disk/by-label/ORDAX-ESP")
+ESP_MOUNT = Path("/run/ordax-base-update/esp")
 
 
 class OwnerError(RuntimeError):
@@ -872,6 +878,324 @@ def _materialize_signed_release(
     return source_sha, idempotent
 
 
+def _candidate_sources_from_minimal(repo_root: Path) -> tuple[Path, Path]:
+    _payload, minimal = _strict_json(
+        repo_root / MINIMAL_RELATIVE,
+        "minimal bootstrap contract",
+    )
+    groups = minimal.get("artifact_groups")
+    if not isinstance(groups, list):
+        raise OwnerError("minimal bootstrap artifact groups are invalid")
+
+    resolved: dict[str, Path] = {}
+    expected_targets = {
+        "kernel": "/ordax/vmlinuz",
+        "initramfs": "/ordax/initrd.gz",
+    }
+    for group_id in ("kernel", "initramfs"):
+        matches = [
+            group
+            for group in groups
+            if isinstance(group, dict) and group.get("id") == group_id
+        ]
+        if len(matches) != 1:
+            raise OwnerError(f"minimal bootstrap {group_id} group is invalid")
+        artifacts = matches[0].get("artifacts")
+        if (
+            matches[0].get("resolved") is not True
+            or not isinstance(artifacts, list)
+            or len(artifacts) != 1
+        ):
+            raise OwnerError(f"minimal bootstrap {group_id} artifact is unresolved")
+        artifact = artifacts[0]
+        source_path = artifact.get("source_path")
+        target_path = artifact.get("target_path")
+        digest = artifact.get("sha256")
+        if (
+            not isinstance(source_path, str)
+            or not source_path
+            or Path(source_path).is_absolute()
+            or ".." in Path(source_path).parts
+        ):
+            raise OwnerError(f"minimal bootstrap {group_id} source path is invalid")
+        if target_path != expected_targets[group_id]:
+            raise OwnerError(f"minimal bootstrap {group_id} target path is invalid")
+        if not isinstance(digest, str) or HEX64.fullmatch(digest) is None:
+            raise OwnerError(f"minimal bootstrap {group_id} hash is invalid")
+        source = repo_root / source_path
+        actual_sha, _actual_size = _hash_regular_file(
+            source,
+            f"repository {group_id} candidate",
+            max_bytes=256 * 1024 * 1024,
+        )
+        if actual_sha != digest:
+            raise OwnerError(f"repository {group_id} candidate differs from minimal-bootstrap hash")
+        resolved[group_id] = source
+
+    return resolved["kernel"], resolved["initramfs"]
+
+
+def _current_base_slot() -> str:
+    try:
+        cmdline = Path("/proc/cmdline").read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise OwnerError("kernel command line is unavailable") from exc
+    if not cmdline or len(cmdline) > 16 * 1024:
+        raise OwnerError("kernel command line size is invalid")
+
+    slot_values = [
+        token.split("=", 1)[1]
+        for token in cmdline.split()
+        if token.startswith("ordax.base_slot=")
+    ]
+    candidate_values = [
+        token.split("=", 1)[1]
+        for token in cmdline.split()
+        if token.startswith("ordax.base_candidate=")
+    ]
+    if candidate_values:
+        if (
+            len(candidate_values) != 1
+            or HEX40.fullmatch(candidate_values[0]) is None
+        ):
+            raise OwnerError("candidate boot identity is invalid")
+        raise OwnerError("candidate boot session must be promoted or fall back before staging")
+    if not slot_values:
+        return "legacy"
+    if len(slot_values) != 1 or slot_values[0] not in {"a", "b"}:
+        raise OwnerError("active base slot is invalid")
+    return slot_values[0]
+
+
+def _decode_mount_path(value: str) -> str:
+    return (
+        value.replace("\\040", " ")
+        .replace("\\011", "\t")
+        .replace("\\012", "\n")
+        .replace("\\134", "\\")
+    )
+
+
+def _mounted_at(path: Path) -> tuple[str, str] | None:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(
+            encoding="utf-8",
+            errors="strict",
+        ).splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise OwnerError("mount table is unavailable") from exc
+    target = str(path)
+    for line in lines:
+        left, separator, right = line.partition(" - ")
+        if not separator:
+            continue
+        fields = left.split()
+        right_fields = right.split()
+        if len(fields) < 6 or len(right_fields) < 2:
+            continue
+        if _decode_mount_path(fields[4]) != target:
+            continue
+        return fields[2], right_fields[0]
+    return None
+
+
+def _esp_device_identity() -> tuple[Path, str]:
+    try:
+        resolved = ESP_LABEL.resolve(strict=True)
+        metadata = resolved.stat()
+    except OSError as exc:
+        raise OwnerError("ORDAX-ESP block device is unavailable") from exc
+    if not stat.S_ISBLK(metadata.st_mode):
+        raise OwnerError("ORDAX-ESP label does not resolve to a block device")
+    identity = f"{os.major(metadata.st_rdev)}:{os.minor(metadata.st_rdev)}"
+    return resolved, identity
+
+
+def _run_busybox(args: list[str], timeout: int, label: str) -> subprocess.CompletedProcess[bytes]:
+    try:
+        completed = subprocess.run(
+            ["/bin/busybox", *args],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise OwnerError(f"{label} could not run") from exc
+    if len(completed.stdout) > MAX_RECEIPT_BYTES or len(completed.stderr) > MAX_RECEIPT_BYTES:
+        raise OwnerError(f"{label} output exceeded the allowed size")
+    return completed
+
+
+def _prepare_esp_mount() -> tuple[Path, bool]:
+    device, identity = _esp_device_identity()
+    parent = ESP_MOUNT.parent
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _require_real_directory(parent, "base-update runtime directory")
+    ESP_MOUNT.mkdir(mode=0o700, exist_ok=True)
+    _require_real_directory(ESP_MOUNT, "base-update ESP mount point")
+
+    existing = _mounted_at(ESP_MOUNT)
+    if existing is not None:
+        mounted_identity, fs_type = existing
+        if mounted_identity != identity or fs_type not in {"vfat", "msdos"}:
+            raise OwnerError("controlled ESP mount point is occupied by an unexpected filesystem")
+        stale_unmount = _run_busybox(
+            ["umount", str(ESP_MOUNT)],
+            MOUNT_TIMEOUT_SECONDS,
+            "stale ESP unmount",
+        )
+        if stale_unmount.returncode != 0 or _mounted_at(ESP_MOUNT) is not None:
+            raise OwnerError("stale controlled ESP mount could not be released")
+
+    mounted = _run_busybox(
+        [
+            "mount",
+            "-t",
+            "vfat",
+            "-o",
+            "rw,nosuid,nodev,noexec,umask=0077",
+            str(device),
+            str(ESP_MOUNT),
+        ],
+        MOUNT_TIMEOUT_SECONDS,
+        "ESP mount",
+    )
+    if mounted.returncode != 0:
+        raise OwnerError("ORDAX-ESP could not be mounted for candidate staging")
+    mounted_state = _mounted_at(ESP_MOUNT)
+    if mounted_state is None or mounted_state[0] != identity or mounted_state[1] not in {"vfat", "msdos"}:
+        _run_busybox(
+            ["umount", str(ESP_MOUNT)],
+            MOUNT_TIMEOUT_SECONDS,
+            "unexpected ESP unmount",
+        )
+        raise OwnerError("mounted ORDAX-ESP identity could not be verified")
+    return ESP_MOUNT, True
+
+
+def _release_envelope_path(physical_root: Path, source_sha: str) -> Path:
+    release_root = physical_root / "releases" / source_sha
+    _require_real_directory(release_root, "materialized signed release")
+    envelope = release_root / "release-envelope.json"
+    _regular_bytes(envelope, "persisted verified release envelope", 2 * 1024 * 1024)
+    return envelope
+
+
+def _stage_materialized_release(
+    repo_root: Path,
+    physical_root: Path,
+    source_sha: str,
+) -> tuple[dict[str, Any], bool]:
+    stage_script = repo_root / STAGE_SCRIPT_RELATIVE
+    planner_script = repo_root / STAGE_PLANNER_RELATIVE
+    _regular_bytes(stage_script, "base-update stage owner", 512 * 1024)
+    _regular_bytes(planner_script, "base-update stage planner", 512 * 1024)
+    kernel_source, initramfs_source = _candidate_sources_from_minimal(repo_root)
+    envelope = _release_envelope_path(physical_root, source_sha)
+    active_slot = _current_base_slot()
+
+    esp_root, mounted_by_owner = _prepare_esp_mount()
+    stage_result: dict[str, Any] | None = None
+    unmounted = False
+    try:
+        command = [
+            sys.executable,
+            str(stage_script),
+            "--esp-root",
+            str(esp_root),
+            "--active-slot",
+            active_slot,
+            "--envelope",
+            str(envelope),
+            "--kernel",
+            str(kernel_source),
+            "--initramfs",
+            str(initramfs_source),
+            "--ensure-existing",
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=STAGE_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OwnerError("base candidate staging could not run") from exc
+        if len(completed.stdout) > MAX_RECEIPT_BYTES or len(completed.stderr) > MAX_RECEIPT_BYTES:
+            raise OwnerError("base candidate staging output exceeded the allowed size")
+        if completed.returncode != 0:
+            stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise OwnerError(
+                "base candidate staging failed"
+                + (f": {stderr[:256]}" if stderr else "")
+            )
+        try:
+            parsed = json.loads(
+                completed.stdout.decode("utf-8"),
+                object_pairs_hook=_no_duplicates,
+            )
+        except (UnicodeError, json.JSONDecodeError, OwnerError) as exc:
+            raise OwnerError("base candidate staging receipt is invalid JSON") from exc
+        expected_fields = {
+            "$schema",
+            "release_sha",
+            "active_slot",
+            "previous_slot",
+            "candidate_slot",
+            "legacy_enrollment",
+            "legacy_current_entry_unchanged",
+            "legacy_baseline_reused",
+            "kernel_target",
+            "initramfs_target",
+            "candidate_entry",
+            "activation_ready",
+            "efi_variable_written",
+            "reboot_requested",
+            "idempotent",
+        }
+        if not isinstance(parsed, dict) or set(parsed) != expected_fields:
+            raise OwnerError("base candidate staging receipt has unexpected fields")
+        if (
+            parsed.get("$schema") != "prototype-ordax.base-update-stage-result/1"
+            or parsed.get("release_sha") != source_sha
+            or parsed.get("active_slot") != active_slot
+            or parsed.get("activation_ready") is not True
+            or parsed.get("efi_variable_written") is not False
+            or parsed.get("reboot_requested") is not False
+            or not isinstance(parsed.get("idempotent"), bool)
+        ):
+            raise OwnerError("base candidate staging receipt identity is invalid")
+        if active_slot == "legacy":
+            if (
+                parsed.get("previous_slot") != "a"
+                or parsed.get("candidate_slot") != "b"
+                or parsed.get("legacy_enrollment") is not True
+                or parsed.get("legacy_current_entry_unchanged") is not True
+            ):
+                raise OwnerError("legacy A/B staging receipt is invalid")
+        stage_result = parsed
+        sync_result = _run_busybox(["sync"], MOUNT_TIMEOUT_SECONDS, "post-stage sync")
+        if sync_result.returncode != 0:
+            raise OwnerError("post-stage filesystem sync failed")
+    finally:
+        if mounted_by_owner:
+            unmount = _run_busybox(
+                ["umount", str(ESP_MOUNT)],
+                MOUNT_TIMEOUT_SECONDS,
+                "ESP unmount",
+            )
+            unmounted = unmount.returncode == 0 and _mounted_at(ESP_MOUNT) is None
+
+    if stage_result is None:
+        raise OwnerError("base candidate staging did not produce a result")
+    return stage_result, unmounted
+
+
 def _read_pending_sha(state_root: Path) -> str | None:
     path = state_root / BOOT_REFRESH_RELATIVE
     try:
@@ -1020,9 +1344,24 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
             status["releaseMaterializationState"] = (
                 "already-materialized" if idempotent else "materialized"
             )
-            status["status"] = "idle"
-            status["phase"] = "waiting-for-base-staging-owner"
-            status["blocker"] = None
+            stage_result, esp_unmounted = _stage_materialized_release(
+                repo_root,
+                physical_root,
+                source,
+            )
+            status["kernelStaged"] = True
+            status["candidateArmed"] = False
+            status["rebootRequested"] = False
+            status["promotionAttempted"] = False
+            status["status"] = "idle" if esp_unmounted else "blocked"
+            status["phase"] = (
+                "waiting-for-candidate-activation-owner"
+                if esp_unmounted
+                else "base-staged-esp-unmount-pending"
+            )
+            status["blocker"] = None if esp_unmounted else "esp-unmount-failed"
+            status["stagedCandidateSlot"] = stage_result["candidate_slot"]
+            status["stageIdempotent"] = stage_result["idempotent"]
     except OwnerError as exc:
         message = str(exc)
         if "canonical repository public trust is missing" in message:
@@ -1038,6 +1377,15 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
             or "physical release acquisition agent" in message
         ):
             status["blocker"] = "signed-release-materialization-failed"
+        elif "candidate boot session" in message:
+            status["blocker"] = "candidate-session-awaiting-promotion"
+            status["phase"] = "candidate-boot"
+        elif "ESP" in message or "mount" in message:
+            status["blocker"] = "esp-staging-mount-failed"
+            status["phase"] = "base-staging"
+        elif "base candidate staging" in message or "repository kernel candidate" in message or "repository initramfs candidate" in message:
+            status["blocker"] = "base-staging-failed"
+            status["phase"] = "base-staging"
         else:
             status["blocker"] = "trust-enrollment-validation-failed"
         status["detail"] = message[:512]
