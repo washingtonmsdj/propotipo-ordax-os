@@ -19,6 +19,7 @@ REJECTED_FILE=$STATE_DIR/rejected-commit
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
 RESCUE_ACTION_FILE=$STATE_DIR/rescue/last-action
+POWER_LAST_REQUEST_FILE=$STATE_DIR/power/last-request
 BOOT_ID_FILE=/run/ordax-update/base-boot-id
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 
@@ -239,6 +240,36 @@ while :; do
         [ "$last_stage_duration" -le 3600 ] 2>/dev/null || last_stage_duration=0
         boot_id=$(read_first_line "$BOOT_ID_FILE")
 
+        last_power_action=""
+        last_power_request_boot_id=""
+        last_power_request_epoch=null
+        last_power_request_status=""
+        last_power_request_crossed_boot=false
+        if [ -s "$POWER_LAST_REQUEST_FILE" ]; then
+            IFS=" " read -r last_power_action last_power_request_boot_id last_power_request_epoch last_power_request_status <"$POWER_LAST_REQUEST_FILE" || true
+            case "$last_power_action" in
+                restart|shutdown) ;;
+                *) last_power_action="" ;;
+            esac
+            case "$last_power_request_boot_id" in
+                ''|*[!0-9a-f]*) last_power_request_boot_id="" ;;
+            esac
+            [ "${#last_power_request_boot_id}" -le 128 ] || last_power_request_boot_id=""
+            case "$last_power_request_epoch" in
+                ''|*[!0-9]*) last_power_request_epoch=null ;;
+            esac
+            case "$last_power_request_status" in
+                pending|failed) ;;
+                *) last_power_request_status="" ;;
+            esac
+            if [ "$last_power_request_status" = "pending" ] &&
+               [ -n "$last_power_request_boot_id" ] &&
+               [ -n "$boot_id" ] &&
+               [ "$last_power_request_boot_id" != "$boot_id" ]; then
+                last_power_request_crossed_boot=true
+            fi
+        fi
+
         power_supply_class_available=false
         battery_detected=false
         kernel_sysrq_restart_available=false
@@ -284,7 +315,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","lastPowerAction":"%s","lastPowerRequestBootId":"%s","lastPowerRequestEpoch":%s,"lastPowerRequestStatus":"%s","lastPowerRequestCrossedBoot":%s,"powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$last_power_action" "$last_power_request_boot_id" "$last_power_request_epoch" "$last_power_request_status" "$last_power_request_crossed_boot" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \

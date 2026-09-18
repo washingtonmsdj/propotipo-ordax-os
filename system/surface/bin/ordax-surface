@@ -31,6 +31,8 @@ NETWORK_LINK_RAW=$SESSION_DIR/network-link.raw
 NETWORK_SAVED_SSID=$SESSION_DIR/network-saved-ssid
 NETWORK_BROKER_SOURCE=$SYSTEM_ROOT/surface/runtime/network_broker.sh
 POWER_REQUEST=$SESSION_DIR/power-request
+POWER_STATE_DIR=$STATE_ROOT/power
+POWER_LAST_REQUEST=$POWER_STATE_DIR/last-request
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
 RUNTIME_ID=alpine-v3.22-cage-barkery-v1
@@ -51,8 +53,8 @@ STATE_BOUND=0
 USER_HOME_BOUND=0
 UDEV_ACTIVE=0
 
-mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR"
-chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR"
+mkdir -p "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$POWER_STATE_DIR"
+chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RESCUE_DIR" "$BASE_TELEMETRY_DIR" "$POWER_STATE_DIR"
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
 : > "$TIME_SYNC_LOG"
@@ -549,6 +551,39 @@ start_time_sync_agent() {
     kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
 }
 
+record_power_request() {
+    action=${1:-}
+    status=${2:-pending}
+    case "$action" in
+        restart|shutdown) ;;
+        *) return 1 ;;
+    esac
+    case "$status" in
+        pending|failed) ;;
+        *) return 1 ;;
+    esac
+
+    request_boot_id=""
+    if [ -s /run/ordax-update/base-boot-id ]; then
+        IFS= read -r request_boot_id </run/ordax-update/base-boot-id || true
+    fi
+    case "$request_boot_id" in
+        ''|*[!0-9a-f]*) request_boot_id="" ;;
+    esac
+    [ "${#request_boot_id}" -le 128 ] || request_boot_id=""
+
+    request_epoch=$(/bin/busybox date +%s 2>/dev/null || true)
+    case "$request_epoch" in
+        ''|*[!0-9]*) request_epoch=0 ;;
+    esac
+
+    temporary=$POWER_LAST_REQUEST.tmp.$
+    printf '%s %s %s %s\n' "$action" "$request_boot_id" "$request_epoch" "$status" >"$temporary" || return 1
+    chmod 600 "$temporary" || return 1
+    /bin/busybox mv -f "$temporary" "$POWER_LAST_REQUEST" || return 1
+    return 0
+}
+
 restart_host() {
     echo "ordax-surface: host restart requested; flushing filesystems" >>"$HOST_LOG"
     /bin/busybox sync >>"$HOST_LOG" 2>&1 || true
@@ -584,14 +619,20 @@ prepare_power_broker() {
                 case "$action" in
                     restart)
                         echo "ordax-surface: host power broker accepted restart" >>"$HOST_LOG"
+                        record_power_request restart pending || echo "ordax-surface: failed to persist restart request proof" >>"$HOST_LOG"
                         /bin/busybox sleep 1
-                        restart_host || true
+                        if ! restart_host; then
+                            record_power_request restart failed || true
+                        fi
                         ;;
                     shutdown)
                         echo "ordax-surface: host power broker accepted shutdown" >>"$HOST_LOG"
+                        record_power_request shutdown pending || echo "ordax-surface: failed to persist shutdown request proof" >>"$HOST_LOG"
                         /bin/busybox sleep 1
+                        /bin/busybox sync >>"$HOST_LOG" 2>&1 || true
                         if ! /bin/busybox poweroff -f >>"$HOST_LOG" 2>&1; then
                             echo "ordax-surface: host poweroff command returned without shutting down" >>"$HOST_LOG"
+                            record_power_request shutdown failed || true
                         fi
                         ;;
                     *)

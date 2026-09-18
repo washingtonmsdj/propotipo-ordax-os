@@ -211,6 +211,24 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn('/bin/busybox poweroff -f', text)
         self.assertNotIn("restart_host || true\n                        shutdown", text)
 
+    def test_power_actions_persist_cross_boot_proof_before_destructive_action(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("POWER_LAST_REQUEST=$POWER_STATE_DIR/last-request", text)
+        self.assertIn("record_power_request()", text)
+        self.assertIn("record_power_request restart pending", text)
+        self.assertIn("record_power_request restart failed", text)
+        self.assertIn("record_power_request shutdown pending", text)
+        self.assertIn("record_power_request shutdown failed", text)
+        self.assertIn('/bin/busybox sync', text)
+        self.assertLess(
+            text.index("record_power_request restart pending"),
+            text.index("if ! restart_host; then"),
+        )
+        self.assertLess(
+            text.index("record_power_request shutdown pending"),
+            text.index('/bin/busybox poweroff -f'),
+        )
+
     def test_wlroots_physical_prerequisites_are_prepared(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("ensure_shared_memory", text)
