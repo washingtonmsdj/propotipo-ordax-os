@@ -324,7 +324,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 
 **Navegação interna:** Meu espaço; Recentes; Favoritos; Documentos; Imagens; Downloads; locais adicionais e Lixeira quando disponíveis.
 
-**Conteúdo:** inicialmente lista com Nome, Tipo e Tamanho. Adicionar Modificado somente com dado real no contrato. Modo grade/miniaturas vem após leitura segura de conteúdo.
+**Conteúdo:** lista com Nome, Tipo e Tamanho; os três campos existentes já podem ordenar localmente em ordem crescente/decrescente, mantendo pastas agrupadas antes dos arquivos. Adicionar Modificado somente com dado real no contrato. Modo grade/miniaturas vem após leitura segura de conteúdo.
 
 **Rodapé contextual:** quantidade de itens, quantidade selecionada e operação em andamento. Espaço livre pode aparecer como resumo com atalho para Sistema → Armazenamento.
 
