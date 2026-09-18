@@ -1055,7 +1055,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot; a apresentação compartilhada deixa explícito que reiniciar manualmente sozinho não aplica bytes ainda não preparados.
 - [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
 - [x] Remover marcadores temporários/de implementação da mesa normal; a Home mostra apenas a área atual, sem “Surface compartilhada”, recuperação ao vivo ou número de entrega.
-- [ ] Foco, scroll e formulário não são reiniciados por toda atualização de snapshot.
+- [x] Preservar interação durante snapshots ao vivo: Sistema/Ajustes/Conta restauram foco e scroll em repaints, Ajustes adia snapshots enquanto a senha Wi-Fi está em edição e Arquivos mantém drafts/caret próprios nos formulários locais.
 - [ ] Estado ausente, indisponível, offline e antigo são distintos.
 - [x] Preservar lifecycle e descartar respostas assíncronas antigas: Arquivos/Sistema mantêm ordinais existentes e Conta, Ajustes, Wi-Fi rápido, bateria/rede da barra e energia agora invalidam conclusões após operação nova ou `destroy()`.
 
