@@ -11,6 +11,7 @@ import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
+import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
@@ -27,6 +28,7 @@ async function start() {
 
   const preferenceStore = await createNativePreferenceStore(window);
   const workspaceStore = createNativeWorkspaceStore(window);
+  const workspaceMetadata = createWorkspaceMetadataBridge(workspaceStore);
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
@@ -81,7 +83,7 @@ async function start() {
     root,
     host,
     preferenceStore,
-    workspaceStore,
+    workspaceMetadata.store,
     appActivation,
   );
   let syncMutationOrdinal = 0;
@@ -100,6 +102,7 @@ async function start() {
     identityActions,
     surface,
     preferenceSync,
+    workspaceMetadata.source,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
   const settingsOverviewControls = mountSettingsOverviewControls(
