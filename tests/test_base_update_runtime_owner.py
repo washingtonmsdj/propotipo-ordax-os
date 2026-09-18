@@ -494,8 +494,49 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("LoaderEntryOneShot", orchestrator)
         self.assertNotIn("/sys/firmware/efi/efivars", orchestrator)
         self.assertNotIn("power-request", orchestrator)
-        self.assertNotIn("reboot", agent)
+        self.assertNotIn("reboot -f", agent)
+        self.assertNotIn("busybox reboot", agent)
         self.assertNotIn("sysrq", agent)
+
+    def test_agent_maps_development_root_to_real_physical_ordax_root(self):
+        subprocess.run(["sh", "-n", str(AGENT)], check=True)
+        agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn("MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}", agent)
+        self.assertIn("MOUNT_STAGE_HOST=${ORDAX_BASE_MOUNT_STAGE_ROOT:-/run/ordax-base-owner}", agent)
+        self.assertIn("PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device", agent)
+        self.assertIn('root_mount_record()', agent)
+        self.assertIn('ensure_mount_stage()', agent)
+        self.assertIn('mount -t tmpfs -o mode=0700,size=1m tmpfs "$MOUNT_STAGE_HOST"', agent)
+        self.assertIn('PHYSICAL_MOUNT_HOST=$MOUNT_STAGE_HOST/physical', agent)
+        self.assertIn('mount -o bind "$PHYSICAL_MOUNT_HOST" "$PHYSICAL_BIND_HOST"', agent)
+        self.assertIn('$5 == "/"', agent)
+        self.assertIn('[ "$root_fstype" = "ext4" ]', agent)
+        self.assertIn('/dev/*)', agent)
+        self.assertIn('mount -t ext4 -o rw "$root_source" "$PHYSICAL_MOUNT_HOST"', agent)
+        self.assertIn(
+            'release_agent=$PHYSICAL_MOUNT_HOST/bootstrap/release-acquisition/ordax-release-agent',
+            agent,
+        )
+        self.assertIn(
+            'release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url',
+            agent,
+        )
+        self.assertIn('host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax', agent)
+        self.assertIn(
+            'OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$root_subpath/state/ordax',
+            agent,
+        )
+        self.assertIn('--state-root "$OWNER_STATE_CHROOT"', agent)
+        self.assertIn('--physical-root "$PHYSICAL_MOUNT_CHROOT"', agent)
+        self.assertNotIn("--state-root /var/lib/ordax", agent)
+        self.assertNotIn("--physical-root /ordax", agent)
+        self.assertIn("write_preflight_status()", agent)
+        self.assertIn('"$schema":"ordax.base-update-owner-status/1"', agent)
+        self.assertIn("temporary=$status_dir/.owner-status.json.preflight.$", agent)
+        self.assertIn('"phase":"physical-root-preflight"', agent)
+        self.assertIn("physical-mount-failed", agent)
+        self.assertIn("release-agent-missing", agent)
+        self.assertNotIn(r'\\$schema', agent)
 
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")

@@ -168,6 +168,31 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(promotion["normal_reboot_must_not_clear_boot_refresh_marker"])
         self.assertTrue(promotion["current_entry_durability_reported"])
 
+    def test_runtime_owner_uses_real_ordax_root_and_development_state_alias(self):
+        owner = CONTRACT["runtime_owner"]
+        self.assertEqual(owner["development_host_state_root"], "/state/ordax")
+        self.assertEqual(owner["graphical_native_state_root"], "/var/lib/ordax")
+        self.assertTrue(owner["graphical_native_state_is_not_base_owner_state_root"])
+        self.assertEqual(
+            owner["physical_root_discovery"],
+            "/proc/self/mountinfo root mount",
+        )
+        self.assertEqual(owner["physical_root_required_filesystem"], "ext4")
+        self.assertEqual(owner["physical_root_required_source_prefix"], "/dev/")
+        self.assertEqual(owner["physical_root_chroot_mount"], "/mnt/ordax-device")
+        self.assertEqual(owner["mount_staging_host"], "/run/ordax-base-owner")
+        self.assertEqual(owner["mount_staging_filesystem"], "tmpfs")
+        self.assertEqual(owner["mount_staging_size"], "1m")
+        self.assertEqual(
+            owner["physical_root_host_mount"],
+            "/run/ordax-base-owner/physical",
+        )
+        self.assertTrue(owner["physical_root_bound_into_chroot"])
+        self.assertTrue(owner["mount_tree_must_not_recurse_into_ordax_filesystem"])
+        self.assertTrue(owner["state_root_derived_from_mountinfo_subpath"])
+        self.assertTrue(owner["physical_root_requires_release_agent_and_channel_sentinels"])
+        self.assertTrue(owner["recursive_state_bind_forbidden"])
+
     def test_candidate_entry_uses_fixed_width_single_try_counter(self):
         entry = CONTRACT["entries"]["candidate_template"]
         self.assertEqual(entry, "/loader/entries/ordax-candidate+01-00.conf")
