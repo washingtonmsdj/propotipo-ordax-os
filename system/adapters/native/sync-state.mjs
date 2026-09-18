@@ -42,6 +42,7 @@ export async function createNativeSyncStateStore(windowRef = globalThis.window) 
 
   const store = {
     schema: SYNC_STATE_STORE_SCHEMA,
+    scope: "device",
     load() {
       return memory;
     },
