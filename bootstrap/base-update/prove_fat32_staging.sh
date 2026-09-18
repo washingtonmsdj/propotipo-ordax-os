@@ -12,6 +12,7 @@ for command in losetup mkfs.vfat fsck.vfat mount umount mountpoint sha256sum pyt
   fi
 done
 
+mkdir -p "$ROOT/out"
 WORK="$(mktemp -d "$ROOT/out/base-update-fat32.XXXXXX")"
 IMAGE="$WORK/esp.raw"
 MOUNT="$WORK/mnt"
