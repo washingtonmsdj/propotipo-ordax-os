@@ -1,0 +1,77 @@
+name: Base Update FAT32 Proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/base-update/**'
+      - 'docs/contracts/base-update.json'
+      - 'tests/test_base_update_*.py'
+      - '.github/workflows/base-update-fat32-proof.yml'
+  pull_request:
+    paths:
+      - 'bootstrap/base-update/**'
+      - 'docs/contracts/base-update.json'
+      - 'tests/test_base_update_*.py'
+      - '.github/workflows/base-update-fat32-proof.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: base-update-fat32-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fat32-staging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Install disposable FAT32 proof dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dosfstools util-linux
+
+      - name: Run base update unit regressions
+        run: |
+          python -m unittest tests.test_base_update_contract -v
+          python -m unittest tests.test_base_update_plan -v
+          python -m unittest tests.test_base_update_stage -v
+
+      - name: Prove staging on disposable FAT32 loop image
+        run: |
+          bash bootstrap/base-update/prove_fat32_staging.sh             out/base-update/fat32-staging-proof.json
+
+      - name: Validate proof metadata
+        run: |
+          python - out/base-update/fat32-staging-proof.json <<'PY'
+          import json, pathlib, sys
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert proof["$schema"] == "prototype-ordax.base-update-fat32-staging-proof/1"
+          assert proof["status"] == "pass"
+          assert proof["filesystem"] == "fat32"
+          assert proof["filesystem_label"] == "ORDAX-ESP"
+          assert all(proof["checks"].values())
+          assert proof["real_hardware_touched"] is False
+          assert proof["physical_write_authorized"] is False
+          print("BASE_UPDATE_FAT32_PROOF=PASS")
+          PY
+
+      - name: Upload proof metadata only
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-base-update-fat32-proof-${{ github.sha }}
+          path: out/base-update/fat32-staging-proof.json
+          if-no-files-found: error
+          retention-days: 14
