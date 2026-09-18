@@ -89,6 +89,8 @@ export function mountPowerControls(root, powerActions = null) {
   let pending = null;
   let message = "";
   let resetTimer = null;
+  let actionOrdinal = 0;
+  let destroyed = false;
 
   const render = () => {
     overlay.hidden = !open;
@@ -124,7 +126,7 @@ export function mountPowerControls(root, powerActions = null) {
   };
 
   const invoke = (action) => {
-    if (pending !== null || !isPowerActionSupported(snapshot, action)) return;
+    if (destroyed || pending !== null || !isPowerActionSupported(snapshot, action)) return;
     const descriptor = ACTIONS.find((item) => item.id === action);
     if (!descriptor) return;
 
@@ -135,6 +137,7 @@ export function mountPowerControls(root, powerActions = null) {
       return;
     }
 
+    const ordinal = ++actionOrdinal;
     confirming = null;
     pending = action;
     message = action === "restart" ? "Solicitando reinício ao host…" : "Solicitando desligamento ao host…";
@@ -142,16 +145,19 @@ export function mountPowerControls(root, powerActions = null) {
     Promise.resolve()
       .then(() => port.execute(action))
       .then(() => {
+        if (destroyed || ordinal !== actionOrdinal) return;
         message = "Solicitação aceita pelo host.";
         render();
         clearResetTimer();
         resetTimer = globalThis.setTimeout(() => {
+          if (destroyed || ordinal !== actionOrdinal) return;
           pending = null;
           message = "O host permaneceu ativo; a ação pode ser tentada novamente.";
           render();
         }, 5000);
       })
       .catch(() => {
+        if (destroyed || ordinal !== actionOrdinal) return;
         pending = null;
         message = "A ação de energia não pôde ser concluída.";
         render();
@@ -199,6 +205,7 @@ export function mountPowerControls(root, powerActions = null) {
   root.addEventListener("click", onRootClick);
   root.addEventListener("keydown", onRootKeyDown);
   const unsubscribe = port.subscribe((nextSnapshot) => {
+    if (destroyed) return;
     snapshot = validatePowerActionsSnapshot(nextSnapshot);
     if (availableActions().length === 0) {
       open = false;
@@ -209,6 +216,8 @@ export function mountPowerControls(root, powerActions = null) {
 
   return Object.freeze({
     destroy() {
+      destroyed = true;
+      actionOrdinal += 1;
       clearResetTimer();
       unsubscribe?.();
       root.removeEventListener("click", onRootClick);
