@@ -533,6 +533,8 @@ Substituir linguagem interna como “o host expõe contratos” por descrição 
 
 **Idioma:** português brasileiro é o conteúdo atual; oferecer outro idioma só quando traduções e fallback estiverem completos. Não criar menu com idiomas que deixam metade da UI em português.
 
+**Consistência enquanto PT-BR for o único locale completo:** toda ação, mensagem e menu que pertence à Surface deve permanecer em português brasileiro. Chrome do navegador incorporado é detalhe de implementação e não deve vazar ações de fornecedor como `Back`, `Forward`, `Stop` ou `Reload`; até existir menu contextual próprio do OrdaX, o menu nativo da página deve ficar suprimido. A futura internacionalização deve centralizar mensagens e fallback por locale, sem espalhar condicionais de idioma pelos apps.
+
 **Data/hora automática:** somente se o adapter administra essa configuração e relata estado. Mostrar origem da hora no detalhe técnico, sem abrir terminal.
 
 **Aceite:** prévia reflete locale escolhido; timestamps persistidos mantêm representação não ambígua e são formatados na borda; erros de relógio não determinam resolução de conflitos de sync.

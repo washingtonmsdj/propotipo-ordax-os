@@ -459,6 +459,14 @@ export function mountSurface(
     if (event.target === launcherQuery) renderLauncher();
   };
 
+  // The embedded browser is an implementation detail of the native Surface.
+  // Do not leak its vendor context menu (and untranslated browser actions) into
+  // the OrdaX product. A future OrdaX-owned context menu can replace this with
+  // localized actions once those actions have product semantics.
+  const onContextMenu = (event) => {
+    event.preventDefault();
+  };
+
   const onPointerDown = (event) => {
     if (event.button !== 0 || !isMovableWorkspace()) return;
     const titlebar = event.target.closest("[data-window-titlebar]");
@@ -593,6 +601,7 @@ export function mountSurface(
 
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
+  root.addEventListener("contextmenu", onContextMenu);
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointermove", onPointerMove);
   root.addEventListener("pointerup", onPointerUp);
@@ -642,6 +651,7 @@ export function mountSurface(
       unsubscribeHost?.();
       root.removeEventListener("click", onClick);
       root.removeEventListener("input", onInput);
+      root.removeEventListener("contextmenu", onContextMenu);
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("pointermove", onPointerMove);
       root.removeEventListener("pointerup", onPointerUp);

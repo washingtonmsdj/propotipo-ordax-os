@@ -122,6 +122,15 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("subscribeRender(listener)", surface)
         self.assertIn("../../contracts/power-actions.mjs", power)
 
+    def test_surface_owns_context_menu_boundary_instead_of_browser_chrome(self):
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        self.assertIn('const onContextMenu = (event) => {', surface)
+        self.assertIn('event.preventDefault();', surface)
+        self.assertIn('root.addEventListener("contextmenu", onContextMenu)', surface)
+        self.assertIn('root.removeEventListener("contextmenu", onContextMenu)', surface)
+        for browser_action in ("Back", "Forward", "Stop", "Reload"):
+            self.assertNotIn(browser_action, surface)
+
     def test_shared_extensions_use_explicit_surface_render_lifecycle(self):
         lifecycle = SURFACE_LIFECYCLE.read_text(encoding="utf-8")
         self.assertIn('ordax.surface-render-lifecycle/1', lifecycle)
