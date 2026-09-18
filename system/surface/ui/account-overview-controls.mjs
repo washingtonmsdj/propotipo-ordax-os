@@ -15,6 +15,10 @@ import {
   assertSyncRuntimePort,
   validateSyncRuntimeSnapshot,
 } from "../../contracts/sync-runtime.mjs";
+import {
+  assertWorkspaceMetadataSource,
+  validateWorkspaceMetadata,
+} from "../../contracts/workspace-metadata-source.mjs";
 import { SYNC_CORE_STATUS } from "../../services/sync/runtime.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -72,6 +76,7 @@ export function mountAccountOverviewControls(
   identityActions,
   surfaceLifecycle = null,
   syncRuntime = null,
+  workspaceMetadataSource = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Account overview controls require a Surface root Element");
@@ -81,6 +86,9 @@ export function mountAccountOverviewControls(
   const sessionPort = assertIdentitySessionPort(identitySession);
   const actionsPort = assertIdentityActionsPort(identityActions);
   const syncPort = syncRuntime === null ? null : assertSyncRuntimePort(syncRuntime);
+  const workspaceMetadataPort = workspaceMetadataSource === null
+    ? null
+    : assertWorkspaceMetadataSource(workspaceMetadataSource);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -88,6 +96,9 @@ export function mountAccountOverviewControls(
   let sessionSnapshot = validateIdentitySessionSnapshot(sessionPort.getSnapshot());
   let actionsSnapshot = validateIdentityActionsSnapshot(actionsPort.getSnapshot());
   let syncSnapshot = syncPort ? validateSyncRuntimeSnapshot(syncPort.getSnapshot()) : null;
+  let workspaceMetadataSnapshot = workspaceMetadataPort
+    ? validateWorkspaceMetadata(workspaceMetadataPort.getSnapshot())
+    : null;
   let pendingAction = null;
   let actionMessage = "";
   let destroyed = false;
@@ -217,6 +228,23 @@ export function mountAccountOverviewControls(
       appearanceTracked ? "available" : "neutral",
     );
     const queueIsDurable = syncSnapshot?.queuePersistence === "device";
+    const workspaceAreaCount = workspaceMetadataSnapshot?.areas.length ?? 0;
+    const workspaceAppCount = workspaceMetadataSnapshot
+      ? workspaceMetadataSnapshot.areas.reduce((total, area) => total + area.appIds.length, 0)
+      : 0;
+    appendStateCard(
+      documentObject,
+      grid,
+      "Áreas e apps",
+      workspaceMetadataSnapshot
+        ? `${workspaceAreaCount} área${workspaceAreaCount === 1 ? "" : "s"} · ${workspaceAppCount} app${workspaceAppCount === 1 ? "" : "s"}`
+        : "Preparação indisponível",
+      workspaceMetadataSnapshot
+        ? "Somente áreas e apps abertos entram no metadata portátil; posição, tamanho, maximização e minimização continuam locais."
+        : "A composição atual ainda não expõe metadata portátil do workspace.",
+      workspaceMetadataSnapshot ? "available" : "neutral",
+    );
+
     appendStateCard(
       documentObject,
       grid,
@@ -333,10 +361,15 @@ export function mountAccountOverviewControls(
     syncSnapshot = validateSyncRuntimeSnapshot(snapshot);
     replaceView();
   });
+  const unsubscribeWorkspaceMetadata = workspaceMetadataPort?.subscribe((snapshot) => {
+    workspaceMetadataSnapshot = validateWorkspaceMetadata(snapshot);
+    replaceView();
+  });
 
   return Object.freeze({
     destroy() {
       destroyed = true;
+      unsubscribeWorkspaceMetadata?.();
       unsubscribeSync?.();
       unsubscribeActions?.();
       unsubscribeSession?.();
