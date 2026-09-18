@@ -141,7 +141,7 @@ class NativeTelemetryTests(unittest.TestCase):
             host.SURFACE_HEARTBEAT_FILE = str(root / "surface-heartbeat.json")
             host.BOOT_ID_FILE = str(root / "boot-id")
             (root / "boot-id").write_text(
-                "01234567-89ab-cdef-0123-456789abcdef\n",
+                "0123456789abcdef0123456789abcdef\n",
                 encoding="utf-8",
             )
             sha = "c" * 40
@@ -151,7 +151,7 @@ class NativeTelemetryTests(unittest.TestCase):
             host.record_surface_heartbeat(sha)
             payload = json.loads((root / "surface-heartbeat.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["sourceSha"], sha)
-            self.assertEqual(payload["bootId"], "01234567-89ab-cdef-0123-456789abcdef")
+            self.assertEqual(payload["bootId"], "0123456789abcdef0123456789abcdef")
             self.assertIsInstance(payload["observedEpoch"], int)
             self.assertGreaterEqual(payload["observedEpoch"], 0)
             self.assertFalse(list(root.glob("*.tmp.*")))
