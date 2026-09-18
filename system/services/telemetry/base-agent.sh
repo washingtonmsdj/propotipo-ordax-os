@@ -57,6 +57,13 @@ json_field() {
     /bin/busybox sed -n "s/.*\\\"$field\\\":\\\"\\([^\\\"]*\\)\\\".*/\\1/p" "$path" 2>/dev/null | /bin/busybox head -n 1
 }
 
+json_number_field() {
+    field=$1
+    path=$2
+    [ -s "$path" ] || return 0
+    /bin/busybox sed -n "s/.*\\\"$field\\\":\\([0-9][0-9]*\\).*/\\1/p" "$path" 2>/dev/null | /bin/busybox head -n 1
+}
+
 config_string() {
     field=$1
     /bin/busybox sed -n "s/^[[:space:]]*\\\"$field\\\":[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p" "$CONFIG_FILE" 2>/dev/null | /bin/busybox head -n 1
@@ -221,6 +228,14 @@ while :; do
         is_sha "$last_applied_sha" || last_applied_sha=""
         last_applied_at=$(read_first_line "$LAST_APPLIED_AT_FILE")
         [ "${#last_applied_at}" -le 64 ] || last_applied_at=""
+        staged_release_sha=$(json_field stagedReleaseSha "$UPDATE_STATE")
+        is_sha "$staged_release_sha" || staged_release_sha=""
+        last_apply_duration=$(json_number_field lastApplyDurationSeconds "$UPDATE_STATE")
+        case "$last_apply_duration" in ''|*[!0-9]*) last_apply_duration=0 ;; esac
+        [ "$last_apply_duration" -le 3600 ] 2>/dev/null || last_apply_duration=0
+        last_stage_duration=$(json_number_field lastStageDurationSeconds "$UPDATE_STATE")
+        case "$last_stage_duration" in ''|*[!0-9]*) last_stage_duration=0 ;; esac
+        [ "$last_stage_duration" -le 3600 ] 2>/dev/null || last_stage_duration=0
         boot_id=$(read_first_line "$BOOT_ID_FILE")
         read_rescue_state
 
@@ -228,7 +243,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","relayVersion":1}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \
