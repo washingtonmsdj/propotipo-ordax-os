@@ -41,6 +41,7 @@ STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
+SURFACE_HOST_RECOVERY_GENERATION = 1
 
 
 def supported_power_actions(power_request_path: str) -> tuple[str, ...]:
@@ -683,13 +684,14 @@ def main() -> int:
         power_request_path=args.power_request,
     )
     print(
-        "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s"
+        "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s; recovery-generation=%d"
         % (
             args.directory,
             args.bind,
             args.port,
             args.user_root,
             ",".join(server.supported_actions) or "none",
+            SURFACE_HOST_RECOVERY_GENERATION,
         ),
         file=sys.stderr,
         flush=True,
