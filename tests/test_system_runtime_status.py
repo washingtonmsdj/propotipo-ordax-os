@@ -4,6 +4,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "system" / "contracts" / "update-status.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "update-runtime.mjs"
+HISTORY_CONTRACT = ROOT / "system" / "contracts" / "update-history.mjs"
+HISTORY_ADAPTER = ROOT / "system" / "adapters" / "native" / "update-history.mjs"
 CONTROLS = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_COMPOSITION = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -22,6 +24,9 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         self.assertIn("phase", contract)
         self.assertIn("attemptId", contract)
         self.assertIn("lastError", contract)
+        self.assertIn("versionNumber", contract)
+        self.assertIn("lastApplyDurationSeconds", contract)
+        self.assertIn("lastStageDurationSeconds", contract)
         self.assertIn("UPDATE_STATUS_SCHEMA", adapter)
         self.assertIn("validateUpdateStatusSnapshot", adapter)
         self.assertIn("schema: UPDATE_STATUS_SCHEMA", adapter)
@@ -32,12 +37,16 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         css = SYSTEM_CSS.read_text(encoding="utf-8")
 
         self.assertIn("contracts/update-status.mjs", controls)
+        self.assertIn("contracts/update-history.mjs", controls)
         self.assertIn("contracts/system-metrics.mjs", controls)
         self.assertIn("contracts/surface-host.mjs", controls)
         self.assertIn("./surface-lifecycle.mjs", controls)
         self.assertIn('[data-app-extension="system-overview"]', controls)
         self.assertIn("Versão em execução", controls)
         self.assertIn("Entrega e recuperação", controls)
+        self.assertIn("Histórico de atualizações", controls)
+        self.assertIn("Componentes integrados", controls)
+        self.assertIn("America/Bahia", controls)
         self.assertIn("Capacidades desta execução", controls)
         self.assertIn('kind: "extension"', system_app)
         self.assertIn('extensionId: "system-overview"', system_app)
@@ -51,11 +60,22 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         composition = NATIVE_COMPOSITION.read_text(encoding="utf-8")
         self.assertEqual(composition.count("createNativeUpdateWatcher(window)"), 1)
         self.assertIn("mountSystemOverviewControls(", composition)
-        self.assertIn("root,\n    host,\n    updateWatcher,\n    systemMetrics,\n    surface,", composition)
+        self.assertIn("root,\n    host,\n    updateWatcher,\n    systemMetrics,\n    surface,\n    updateHistory,", composition)
+        self.assertIn("createNativeUpdateHistory(window)", composition)
         self.assertIn("mountUpdateControls(root, updateWatcher)", composition)
         self.assertIn("systemOverviewControls.destroy()", composition)
         self.assertNotIn("mountSystemStatusControls", composition)
         self.assertNotIn("mountSystemMetricsControls", composition)
+
+    def test_update_history_has_neutral_read_only_contract(self):
+        contract = HISTORY_CONTRACT.read_text(encoding="utf-8")
+        adapter = HISTORY_ADAPTER.read_text(encoding="utf-8")
+        self.assertIn('ordax.update-history/1', contract)
+        self.assertIn("assertUpdateHistoryPort", contract)
+        self.assertIn("validateUpdateHistorySnapshot", contract)
+        self.assertIn('UPDATE_HISTORY_ENDPOINT = "/__ordax/native/update-history"', adapter)
+        self.assertIn("async list()", adapter)
+        self.assertNotIn('method: "POST"', adapter)
 
     def test_web_mounts_same_system_overview_without_native_ports(self):
         composition = WEB_COMPOSITION.read_text(encoding="utf-8")
