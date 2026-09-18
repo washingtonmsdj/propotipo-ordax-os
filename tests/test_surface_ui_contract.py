@@ -470,6 +470,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("data-battery-tray", shell)
         self.assertIn("data-battery-icon", shell)
         self.assertIn("data-battery-label", shell)
+        self.assertIn('data-quick-panel-toggle="battery"', shell)
+        self.assertIn('data-quick-panel="battery"', shell)
         self.assertIn("data-connectivity-icon", shell)
         self.assertIn("ordax-network-symbol-wifi", shell)
         self.assertIn("ordax-network-symbol-ethernet", shell)
@@ -502,6 +504,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('[data-network-kind="ethernet"]', css)
         self.assertIn(".ordax-quick-panel-layer", css)
         self.assertIn(".ordax-quick-panel-datetime", css)
+        self.assertIn(".ordax-quick-panel-battery", css)
 
     def test_system_tray_quick_panels_are_shared_accessible_and_platform_neutral(self):
         controller = SYSTEM_TRAY_QUICK_PANELS.read_text(encoding="utf-8")
