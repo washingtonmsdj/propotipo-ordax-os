@@ -4,6 +4,18 @@ import {
 } from "../../contracts/power-status.mjs";
 
 const POLL_INTERVAL_MS = 30000;
+const POWER_TIME_ZONE = "America/Bahia";
+
+export function formatPowerReceivedAt(value) {
+  if (!Number.isFinite(value)) return "horário desconhecido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: POWER_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
 
 function batteryLevel(percent) {
   if (percent <= 10) return 0;
@@ -21,12 +33,6 @@ function batteryStateLabel(state) {
     "not-charging": "Conectada à energia",
     unknown: "Estado desconhecido",
   }[state] ?? "Estado desconhecido";
-}
-
-function externalPowerLabel(externalPower) {
-  if (externalPower === true) return "Energia externa conectada";
-  if (externalPower === false) return "Usando bateria";
-  return "Estado da fonte desconhecido";
 }
 
 function batteryTitle(battery, externalPower) {
@@ -52,71 +58,76 @@ export function mountBatteryTrayControls(
   const item = root.querySelector("[data-battery-tray]");
   const icon = root.querySelector("[data-battery-icon]");
   const label = root.querySelector("[data-battery-label]");
-  const panel = root.querySelector('[data-quick-panel="battery"]');
-  const quickPercent = root.querySelector("[data-quick-battery-percent]");
-  const quickState = root.querySelector("[data-quick-battery-state]");
-  const quickPower = root.querySelector("[data-quick-battery-power]");
-  if (!item || !icon || !label || !panel || !quickPercent || !quickState || !quickPower) {
-    throw new Error("Battery tray controls require the shared system tray and quick panel");
+  if (!item || !icon || !label) {
+    throw new Error("Battery tray controls require the shared system tray");
   }
 
   let destroyed = false;
   let polling = false;
+  let lastSnapshot = null;
+  let lastSuccessAt = null;
 
-  const render = (snapshot) => {
+  const render = (snapshot, { stale = false } = {}) => {
     const value = validatePowerStatusSnapshot(snapshot);
-    if (value.battery === null) {
-      item.hidden = false;
-      item.dataset.batteryState = "not-detected";
-      item.dataset.externalPower =
-        value.externalPower === null ? "unknown" : String(value.externalPower);
-      icon.dataset.batteryLevel = "unknown";
-      icon.dataset.charging = "false";
-      label.textContent = "--";
-      item.title = "Bateria não detectada";
-      quickPercent.textContent = "--";
-      quickState.textContent = "Bateria não detectada.";
-      quickPower.textContent = externalPowerLabel(value.externalPower);
-      return;
-    }
     item.hidden = false;
-    item.dataset.batteryState = value.battery.state;
+    item.dataset.batteryObservation = stale ? "stale" : "current";
     item.dataset.externalPower =
       value.externalPower === null ? "unknown" : String(value.externalPower);
-    icon.dataset.batteryLevel = String(batteryLevel(value.battery.percent));
-    icon.dataset.charging = String(value.battery.state === "charging");
-    label.textContent = `${value.battery.percent}%`;
-    item.title = batteryTitle(value.battery, value.externalPower);
-    quickPercent.textContent = `${value.battery.percent}%`;
-    quickState.textContent = batteryStateLabel(value.battery.state);
-    quickPower.textContent = externalPowerLabel(value.externalPower);
+
+    if (value.battery === null) {
+      item.dataset.batteryState = "not-detected";
+      icon.dataset.batteryLevel = "unknown";
+      icon.dataset.charging = "false";
+      label.textContent = stale ? "-- · antigo" : "--";
+      item.title = stale
+        ? `Dados antigos · bateria não detectada · última leitura recebida pela Surface às ${formatPowerReceivedAt(lastSuccessAt)}`
+        : "Bateria não detectada";
+      return;
+    }
+
+    item.dataset.batteryState = value.battery.state;
+    icon.dataset.batteryLevel = stale
+      ? "unknown"
+      : String(batteryLevel(value.battery.percent));
+    icon.dataset.charging = stale ? "false" : String(value.battery.state === "charging");
+    label.textContent = stale ? `${value.battery.percent}% · antigo` : `${value.battery.percent}%`;
+    const title = batteryTitle(value.battery, value.externalPower);
+    item.title = stale
+      ? `Dados antigos · ${title} · última leitura recebida pela Surface às ${formatPowerReceivedAt(lastSuccessAt)}`
+      : title;
+  };
+
+  const renderUnavailable = () => {
+    item.hidden = false;
+    item.dataset.batteryState = "unavailable";
+    item.dataset.batteryObservation = "unavailable";
+    item.dataset.externalPower = "unknown";
+    icon.dataset.batteryLevel = "unknown";
+    icon.dataset.charging = "false";
+    label.textContent = "--";
+    item.title = "Estado da bateria indisponível";
   };
 
   const refresh = async () => {
     if (destroyed || polling) return;
     polling = true;
     try {
-      const snapshot = await port.read();
+      const snapshot = validatePowerStatusSnapshot(await port.read());
       if (destroyed) return;
+      lastSnapshot = snapshot;
+      lastSuccessAt = Date.now();
       render(snapshot);
     } catch {
       if (destroyed) return;
-      item.hidden = false;
-      item.dataset.batteryState = "unavailable";
-      icon.dataset.batteryLevel = "unknown";
-      icon.dataset.charging = "false";
-      label.textContent = "--";
-      item.title = "Estado da bateria indisponível";
-      quickPercent.textContent = "--";
-      quickState.textContent = "Estado da bateria indisponível.";
-      quickPower.textContent = "Não foi possível consultar a fonte de energia.";
+      if (lastSnapshot) {
+        render(lastSnapshot, { stale: true });
+      } else {
+        renderUnavailable();
+      }
     } finally {
       if (!destroyed) polling = false;
     }
   };
-
-  const onQuickPanelOpen = () => void refresh();
-  panel.addEventListener("ordax:quick-panel-open", onQuickPanelOpen);
 
   void refresh();
   const timer = setInterval(() => void refresh(), pollIntervalMs);
@@ -126,7 +137,9 @@ export function mountBatteryTrayControls(
     destroy() {
       destroyed = true;
       clearInterval(timer);
-      panel.removeEventListener("ordax:quick-panel-open", onQuickPanelOpen);
+      lastSnapshot = null;
+      lastSuccessAt = null;
+      delete item.dataset.batteryObservation;
     },
   });
 }

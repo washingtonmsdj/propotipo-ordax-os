@@ -9,6 +9,7 @@ SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 CONTRACT = ROOT / "system" / "contracts" / "power-status.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "power-status.mjs"
 TRAY = ROOT / "system" / "surface" / "ui" / "battery-tray-controls.mjs"
+QUICK = ROOT / "system" / "surface" / "ui" / "battery-quick-panel.mjs"
 SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
@@ -102,17 +103,24 @@ class NativePowerStatusTests(unittest.TestCase):
         tray = TRAY.read_text(encoding="utf-8")
         self.assertIn('item.dataset.batteryState = "not-detected"', tray)
         self.assertIn('item.dataset.batteryState = "unavailable"', tray)
+        self.assertIn('item.dataset.batteryObservation = "unavailable"', tray)
+        self.assertIn('item.dataset.batteryObservation = stale ? "stale" : "current"', tray)
         self.assertIn('icon.dataset.batteryLevel = "unknown"', tray)
         self.assertIn('label.textContent = "--"', tray)
-        self.assertIn('item.title = "Bateria não detectada"', tray)
+        self.assertIn('"Bateria não detectada"', tray)
+        self.assertIn("item.hidden = false", tray)
+        self.assertIn("lastSnapshot", tray)
+        self.assertIn("lastSuccessAt", tray)
+        self.assertIn("Dados antigos", tray)
         null_block = tray.split("if (value.battery === null)", 1)[1].split("return;", 1)[0]
-        self.assertIn("item.hidden = false", null_block)
         self.assertNotIn("item.hidden = true", null_block)
+        self.assertNotIn("item.hidden = true", tray)
 
     def test_contract_adapter_tray_and_native_composition_are_separated(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
         tray = TRAY.read_text(encoding="utf-8")
+        quick = QUICK.read_text(encoding="utf-8")
         shell = SHELL.read_text(encoding="utf-8")
         composition = COMPOSITION.read_text(encoding="utf-8")
         runtime = RUNTIME.read_text(encoding="utf-8")
@@ -120,10 +128,16 @@ class NativePowerStatusTests(unittest.TestCase):
         self.assertIn('ordax.power-status/1', contract)
         self.assertIn('/__ordax/native/power-status', adapter)
         self.assertIn("assertPowerStatusPort", tray)
-        self.assertIn('panel.addEventListener("ordax:quick-panel-open"', tray)
-        self.assertIn("quickPercent.textContent", tray)
-        self.assertIn("quickState.textContent", tray)
-        self.assertIn("quickPower.textContent", tray)
+        self.assertNotIn("data-quick-battery-percent", tray)
+        self.assertNotIn("quickPercent", tray)
+        self.assertNotIn('panel.addEventListener("ordax:quick-panel-open"', tray)
+        self.assertIn("assertPowerStatusPort", quick)
+        self.assertIn('panel.addEventListener("ordax:quick-panel-open"', quick)
+        self.assertIn("lastSnapshot", quick)
+        self.assertIn("lastSuccessAt", quick)
+        self.assertIn('panel.dataset.powerObservation = stale ? "stale" : "current"', quick)
+        self.assertIn('"unavailable"', quick)
+        self.assertIn("dados antigos", quick)
         self.assertIn("data-battery-tray", shell)
         self.assertIn('data-quick-panel-toggle="battery"', shell)
         self.assertIn('data-quick-panel="battery"', shell)
@@ -133,8 +147,11 @@ class NativePowerStatusTests(unittest.TestCase):
         self.assertIn(" hidden", shell)
         self.assertIn("createNativePowerStatus", composition)
         self.assertIn("mountBatteryTrayControls", composition)
+        self.assertIn("mountBatteryQuickPanel", composition)
         self.assertIn('reportClientDiagnostic("battery-tray-status", error)', composition)
+        self.assertIn('reportClientDiagnostic("battery-quick-panel", error)', composition)
         self.assertIn("batteryTrayControls?.destroy()", composition)
+        self.assertIn("batteryQuickPanel?.destroy()", composition)
         self.assertIn('"power.status"', runtime)
         self.assertNotIn("/__ordax/native/", tray)
         self.assertNotIn("serial", tray.lower())
