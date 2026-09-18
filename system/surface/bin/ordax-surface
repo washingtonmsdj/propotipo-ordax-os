@@ -507,24 +507,11 @@ bind_runtime_mounts() {
 }
 
 start_time_sync_agent() {
-    (
-        retry_delay=120
-        steady_delay=1800
-        while :; do
-            synced=0
-            for server in time.cloudflare.com time.google.com pool.ntp.org; do
-                if /bin/busybox timeout -k 1 6 /bin/busybox ntpd -q -n -p "$server" >>"$TIME_SYNC_LOG" 2>&1; then
-                    synced=1
-                    break
-                fi
-            done
-            if [ "$synced" -eq 1 ]; then
-                /bin/busybox sleep "$steady_delay"
-            else
-                /bin/busybox sleep "$retry_delay"
-            fi
-        done
-    ) &
+    /bin/busybox ntpd -n \
+        -p time.cloudflare.com \
+        -p time.google.com \
+        -p pool.ntp.org \
+        >>"$TIME_SYNC_LOG" 2>&1 &
     TIME_SYNC_PID=$!
     kill -0 "$TIME_SYNC_PID" >/dev/null 2>&1
 }
