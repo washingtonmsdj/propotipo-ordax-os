@@ -5,12 +5,18 @@ on:
     branches: [main]
     paths:
       - 'bootstrap/base-update/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'tools/release-manifest/**'
+      - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
       - 'tests/test_base_update_*.py'
       - '.github/workflows/base-update-fat32-proof.yml'
   pull_request:
     paths:
       - 'bootstrap/base-update/**'
+      - 'bootstrap/release-acquisition/**'
+      - 'tools/release-manifest/**'
+      - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
       - 'tests/test_base_update_*.py'
       - '.github/workflows/base-update-fat32-proof.yml'
@@ -38,6 +44,13 @@ jobs:
           python-version: '3.12'
           check-latest: false
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
       - name: Install disposable FAT32 proof dependencies
         run: |
           sudo apt-get update
@@ -53,6 +66,45 @@ jobs:
         run: |
           bash bootstrap/base-update/prove_fat32_staging.sh \
             out/base-update/fat32-staging-proof.json
+
+      - name: Build signed release verification tools
+        run: |
+          set -euo pipefail
+          mkdir -p out/base-update-proof
+          (cd tools/release-manifest && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/base-update-proof/ordax-release-manifest .)
+          (cd tools/release-signing && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/base-update-proof/ordax-release-signing .)
+          (cd bootstrap/release-acquisition && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/base-update-proof/ordax-release-agent .)
+
+      - name: Prove signed release verification through product CLI on FAT32
+        run: |
+          bash bootstrap/base-update/prove_signed_fat32_staging.sh \
+            out/base-update/signed-fat32-staging-proof.json \
+            out/base-update-proof/ordax-release-signing \
+            out/base-update-proof/ordax-release-manifest \
+            out/base-update-proof/ordax-release-agent
+
+      - name: Validate signed staging proof boundaries
+        run: |
+          python - out/base-update/signed-fat32-staging-proof.json <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          proof = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert proof["$schema"] == "prototype-ordax.base-update-signed-fat32-proof/1"
+          assert proof["status"] == "pass"
+          assert proof["scope"] == "signed-release-to-filesystem-staging"
+          assert all(proof["checks"].values())
+          boundary = proof["trust_boundary"]
+          assert boundary["test_key_scope"] == "ci-ephemeral-only"
+          assert boundary["canonical_runtime_paths_exercised"] is True
+          assert boundary["canonical_release_trust_exercised"] is False
+          assert boundary["canonical_public_anchor_promoted"] is False
+          assert boundary["physical_write_authorized"] is False
+          assert boundary["real_hardware_touched"] is False
+          assert boundary["physical_hardware_proven"] is False
+          print("BASE_UPDATE_SIGNED_FAT32_PROOF=PASS")
+          PY
 
       - name: Validate evidence-only proof metadata
         run: |
@@ -81,6 +133,8 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-base-update-fat32-proof-${{ github.sha }}
-          path: out/base-update/fat32-staging-proof.json
+          path: |
+            out/base-update/fat32-staging-proof.json
+            out/base-update/signed-fat32-staging-proof.json
           if-no-files-found: error
           retention-days: 14
