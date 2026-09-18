@@ -1,0 +1,7 @@
+{
+  "$schema": "ordax.telemetry-relay/1",
+  "endpoint": "https://pdytjhtjlxvbbeuxgnms.supabase.co/functions/v1/ordax-os-telemetry",
+  "publishableKey": "sb_publishable_7PzqC83109MXqWvA9EF8kg_gWUswVXV",
+  "intervalSeconds": 30,
+  "timeoutSeconds": 4
+}
