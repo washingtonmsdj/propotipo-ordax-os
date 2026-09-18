@@ -67,7 +67,7 @@ export function createDesktopShellMarkup() {
 
         <section class="ordax-desktop" aria-labelledby="surface-home-title">
           <div class="ordax-home-panel">
-            <p class="ordax-area-kicker" data-area-kicker>Área 01 · Surface compartilhada</p>
+            <p class="ordax-area-kicker" data-area-kicker>Área 01</p>
             <h1 id="surface-home-title" class="ordax-clock"><time data-ordax-clock>--:--</time></h1>
             <p class="ordax-date" data-ordax-date>Carregando data…</p>
 
