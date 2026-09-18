@@ -775,7 +775,10 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         status["phase"] = "bootstrap-component-refresh"
         if "unrecognized installed hash" in message:
             status["blocker"] = "release-agent-installed-hash-unrecognized"
-        elif "download" in message or "Content-Length" in message:
+        elif (
+            "download is unavailable" in message
+            or "download returned HTTP" in message
+        ):
             status["blocker"] = "release-agent-refresh-unavailable"
         else:
             status["blocker"] = "release-agent-refresh-validation-failed"
