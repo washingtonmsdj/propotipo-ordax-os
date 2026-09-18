@@ -46,7 +46,7 @@ jobs:
           mkdir -p out/release-pipeline
           (cd tools/release-bundle && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-bundle .)
           (cd tools/release-manifest && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-manifest .)
-          (cd tools/release-signing && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-signing .)
+          (cd tools/release-signing && go test -count=1 ./... && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-signing .)
           (cd bootstrap/release-acquisition && CGO_ENABLED=0 go build -trimpath -buildvcs=false -o ../../out/release-pipeline/ordax-release-agent .)
 
       - name: Prove real repository system bundle
@@ -144,4 +144,90 @@ jobs:
           echo 'CI_TEST_KEY_REMOVED=YES'
           echo 'CANONICAL_TRUST_ANCHOR=NO'
           echo 'RELEASE_PUBLISHED=NO'
+          echo 'PHYSICAL_WRITE_AUTHORIZED=NO'
+
+      - name: Prove public trust promotion check with ephemeral recovery proof
+        run: |
+          set -euo pipefail
+          manifest_tool="$PWD/out/release-pipeline/ordax-release-manifest"
+          signer="$PWD/out/release-pipeline/ordax-release-signing"
+          work="$RUNNER_TEMP/public-trust-promotion-proof"
+          public="$work/public-promotion"
+          commit="89abcdef0123456789abcdef0123456789abcdef"
+          mkdir -p "$public"
+          printf 'ci-public-trust-proof\n' > "$work/system.tar"
+
+          "$manifest_tool" \
+            --artifact "$work/system.tar" \
+            --source-commit "$commit" \
+            --artifact-url "https://github.com/washingtonmsdj/prototipo-ordax-os/releases/download/ci-trust-proof/system.tar" \
+            --out "$public/trust-proof-manifest.json"
+
+          "$signer" generate-key \
+            --private-key "$work/private.pem" \
+            --trust "$public/release-ed25519.json" \
+            --key-id ordax-prototype-release-v1
+
+          "$signer" sign \
+            --manifest "$public/trust-proof-manifest.json" \
+            --private-key "$work/private.pem" \
+            --trust "$public/release-ed25519.json" \
+            --key-id ordax-prototype-release-v1 \
+            --out "$public/trust-proof-recovery-envelope.json"
+
+          verify_output="$("$signer" verify-envelope \
+            --envelope "$public/trust-proof-recovery-envelope.json" \
+            --trust "$public/release-ed25519.json")"
+          printf '%s\n' "$verify_output"
+          grep -q 'RELEASE_ENVELOPE_VERIFIED=YES' <<<"$verify_output"
+          grep -q 'SIGNATURE_VERIFIED=YES' <<<"$verify_output"
+
+          python - "$public" <<'PY'
+          import hashlib, json, pathlib, sys
+          root = pathlib.Path(sys.argv[1])
+          digest = lambda name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+          evidence = {
+              '$schema': 'prototype-ordax.release-trust-ceremony-evidence/1',
+              'status': 'pass',
+              'key_id': 'ordax-prototype-release-v1',
+              'public_trust_sha256': digest('release-ed25519.json'),
+              'proof_manifest_sha256': digest('trust-proof-manifest.json'),
+              'recovery_envelope_sha256': digest('trust-proof-recovery-envelope.json'),
+              'primary_public_derivation_match': True,
+              'recovered_public_derivation_match': True,
+              'recovered_private_path_distinct': True,
+              'recovered_signing_proof': True,
+              'offline_encrypted_backup_recovery_verified': True,
+              'private_key_in_public_evidence': False,
+              'ready_to_pin_public_anchor': True,
+          }
+          (root / 'ceremony-public-evidence.json').write_text(
+              json.dumps(evidence, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+          python tools/release-signing/promote_public_trust.py check \
+            --repo-root "$PWD" \
+            --promotion-dir "$public" \
+            --verifier "$signer" \
+            > "$work/promotion-check.json"
+
+          python - "$work/promotion-check.json" <<'PY'
+          import json, pathlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert result['ready'] is True
+          assert result['physical_authorization_eligible'] is True
+          assert result['physical_write_allowed'] is False
+          assert len(result['trust_sha256']) == 64
+          assert len(result['minimal_bootstrap_sha256']) == 64
+          print('PUBLIC_TRUST_PROMOTION_CHECK=PASS')
+          PY
+
+          rm -f "$work/private.pem"
+          test ! -e "$work/private.pem"
+          test ! -e bootstrap/trust/release-ed25519.json
+          echo 'CI_TEST_KEY_REMOVED=YES'
+          echo 'PUBLIC_TRUST_PROMOTION_APPLIED=NO'
+          echo 'CANONICAL_TRUST_ANCHOR=NO'
           echo 'PHYSICAL_WRITE_AUTHORIZED=NO'

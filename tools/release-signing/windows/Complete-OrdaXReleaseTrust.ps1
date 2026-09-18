@@ -64,6 +64,8 @@ $PublicEvidencePath = Join-Path $ReviewDirectory 'ceremony-public-evidence.json'
 $PublicPromotionDirectory = Join-Path $ReviewDirectory 'public-promotion'
 $PromotionTrustPath = Join-Path $PublicPromotionDirectory 'release-ed25519.json'
 $PromotionEvidencePath = Join-Path $PublicPromotionDirectory 'ceremony-public-evidence.json'
+$PromotionProofManifestPath = Join-Path $PublicPromotionDirectory 'trust-proof-manifest.json'
+$PromotionRecoveryEnvelopePath = Join-Path $PublicPromotionDirectory 'trust-proof-recovery-envelope.json'
 
 foreach ($path in @($TrustPath, $PrimaryDerivedPath, $ProofManifestPath, $InitialResultPath)) {
     Assert-RegularFile $path 'required trust ceremony file'
@@ -76,7 +78,15 @@ if ($InitialResult.'$schema' -ne 'prototype-ordax.release-trust-ceremony-result/
     $InitialResult.ready_to_pin_public_anchor -ne $false) {
     throw 'Initial trust ceremony result is not the expected fail-closed pre-recovery state.'
 }
-foreach ($path in @($RecoveryDerivedPath, $RecoveryEnvelopePath, $PublicEvidencePath, $PromotionTrustPath, $PromotionEvidencePath)) {
+foreach ($path in @(
+    $RecoveryDerivedPath,
+    $RecoveryEnvelopePath,
+    $PublicEvidencePath,
+    $PromotionTrustPath,
+    $PromotionEvidencePath,
+    $PromotionProofManifestPath,
+    $PromotionRecoveryEnvelopePath
+)) {
     if (Test-Path -LiteralPath $path) {
         throw "Refusing to replace an existing recovery proof output: $path"
     }
@@ -126,6 +136,10 @@ Write-Host 'Signing the proof manifest with the recovered offline copy...'
 & $Signer sign --manifest $ProofManifestPath --private-key $RecoveredPrivateKeyPath --trust $TrustPath --key-id $KeyId --out $RecoveryEnvelopePath
 if ($LASTEXITCODE -ne 0) { throw 'Recovered private key signing proof failed.' }
 
+Write-Host 'Verifying the recovered signing proof with public trust only...'
+& $Signer verify-envelope --envelope $RecoveryEnvelopePath --trust $TrustPath
+if ($LASTEXITCODE -ne 0) { throw 'Recovered signing proof did not verify with public trust.' }
+
 $TrustHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $TrustPath).Hash.ToLowerInvariant()
 $RecoveryEnvelopeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RecoveryEnvelopePath).Hash.ToLowerInvariant()
 $ProofManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ProofManifestPath).Hash.ToLowerInvariant()
@@ -149,8 +163,15 @@ $Utf8NoBom = [Text.UTF8Encoding]::new($false)
 
 Copy-Item -LiteralPath $TrustPath -Destination $PromotionTrustPath
 Copy-Item -LiteralPath $PublicEvidencePath -Destination $PromotionEvidencePath
+Copy-Item -LiteralPath $ProofManifestPath -Destination $PromotionProofManifestPath
+Copy-Item -LiteralPath $RecoveryEnvelopePath -Destination $PromotionRecoveryEnvelopePath
 
-foreach ($path in @($PromotionTrustPath, $PromotionEvidencePath)) {
+foreach ($path in @(
+    $PromotionTrustPath,
+    $PromotionEvidencePath,
+    $PromotionProofManifestPath,
+    $PromotionRecoveryEnvelopePath
+)) {
     Assert-RegularFile $path 'public promotion output'
 }
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $PromotionTrustPath).Hash.ToLowerInvariant() -ne $TrustHash) {
@@ -163,6 +184,7 @@ Write-Host 'PRIMARY_PUBLIC_DERIVATION_MATCH=YES'
 Write-Host 'RECOVERED_PUBLIC_DERIVATION_MATCH=YES'
 Write-Host 'RECOVERED_PRIVATE_PATH_DISTINCT=YES'
 Write-Host 'RECOVERED_SIGNING_PROOF=YES'
+Write-Host 'RECOVERED_ENVELOPE_VERIFIED=YES'
 Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
 Write-Host 'PRIVATE_KEY_PRINTED=NO'
 Write-Host 'PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO'

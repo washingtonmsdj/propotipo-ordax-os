@@ -153,7 +153,11 @@ The `trust-review/public-promotion/` directory contains only public material:
 ```text
 release-ed25519.json
 ceremony-public-evidence.json
+trust-proof-manifest.json
+trust-proof-recovery-envelope.json
 ```
+
+The recovered-signing envelope is re-verified with `ordax-release-signing verify-envelope` before the finalizer reports readiness. The public-promotion set therefore carries both the ceremony assertions and the cryptographic proof needed to revalidate them later without any private key.
 
 The restored private PEM should be removed from the temporary recovery location after verification according to the operator's backup procedure. The repository does not prescribe the backup encryption product or password handling; it proves that the recovered material is cryptographically the same release identity.
 
@@ -175,7 +179,30 @@ KEY_ID_REVIEWED=YES
 PUBLIC_KEY_FINGERPRINT_REVIEWED=YES
 ```
 
-Then bind the exact public-anchor SHA-256 into `docs/contracts/minimal-bootstrap.json`, update the trust-policy gates, and run the full bootstrap/release verification suite.
+Then run the repository promoter with the exact reviewed signer binary:
+
+```text
+python tools/release-signing/promote_public_trust.py check \
+  --promotion-dir <trust-review>\public-promotion \
+  --verifier <toolkit>\ordax-release-signing.exe
+
+python tools/release-signing/promote_public_trust.py apply \
+  --promotion-dir <trust-review>\public-promotion \
+  --verifier <toolkit>\ordax-release-signing.exe
+```
+
+The promoter re-verifies the Ed25519 recovery envelope, pins the exact public-anchor SHA-256 into `docs/contracts/minimal-bootstrap.json`, records the public proof material under `docs/evidence/`, updates the trust-policy gates, and computes public bindings for the later physical-write authorization.
+
+It **does not** authorize destructive writes. After successful public trust promotion:
+
+```text
+MINIMAL_BOOTSTRAP_ALL_ARTIFACTS_RESOLVED=YES
+PHYSICAL_AUTHORIZATION_ELIGIBLE=YES
+PHYSICAL_AUTHORIZATION_ELIGIBLE=NO
+PHYSICAL_WRITE_ALLOWED=NO
+```
+
+Physical authorization remains a separate contract and separate gate.
 
 ## CI signing
 

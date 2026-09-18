@@ -130,14 +130,16 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
     _add(blockers, consumer_ok, "consumer-publisher-boundary-invalid")
 
     gates = policy.get("gates")
-    gates_ok = isinstance(gates, dict) and all(
-        gates.get(name) is True
-        for name in (
-            "key_material_generated",
-            "public_anchor_pinned",
-            "minimal_bootstrap_resolved",
-            "physical_write_allowed",
-        )
+    expected_gate_names = {
+        "key_material_generated",
+        "public_anchor_pinned",
+        "minimal_bootstrap_resolved",
+        "physical_authorization_eligible",
+    }
+    gates_ok = (
+        isinstance(gates, dict)
+        and set(gates) == expected_gate_names
+        and all(gates.get(name) is True for name in expected_gate_names)
     )
     _add(blockers, gates_ok, "release-trust-policy-gates-not-authorized")
 

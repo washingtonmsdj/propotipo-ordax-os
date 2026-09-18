@@ -55,7 +55,8 @@ class ReleaseTrustPolicyTests(unittest.TestCase):
         self.assertFalse(gates["key_material_generated"])
         self.assertFalse(gates["public_anchor_pinned"])
         self.assertFalse(gates["minimal_bootstrap_resolved"])
-        self.assertFalse(gates["physical_write_allowed"])
+        self.assertFalse(gates["physical_authorization_eligible"])
+        self.assertNotIn("physical_write_allowed", gates)
         if policy["status"] == "policy-resolved-key-material-pending":
             self.assertFalse(TRUST_PATH.exists(), "pending policy must not ship placeholder canonical trust")
 
