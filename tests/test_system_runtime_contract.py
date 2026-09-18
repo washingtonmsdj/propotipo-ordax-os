@@ -26,6 +26,11 @@ class SystemRuntimeContractTests(unittest.TestCase):
         for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME):
             subprocess.run(["sh", "-n", str(path)], check=True)
 
+    def test_native_host_user_folder_provisioning_is_fail_soft(self):
+        text = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        self.assertIn("except OSError as exc:", text)
+        self.assertIn("could not provision standard user directories", text)
+
     def test_native_host_server_python_syntax_is_valid(self):
         subprocess.run(
             ["python3", "-m", "py_compile", str(NATIVE_HOST_SERVER)],
@@ -102,6 +107,14 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
 
+    def test_native_surface_waits_for_http_and_watches_server_lifetime(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("wait_for_native_server()", text)
+        self.assertIn('socket.create_connection(("127.0.0.1", 8765), 0.5)', text)
+        self.assertIn('wait_for_native_server 10', text)
+        self.assertIn("native HTTP/control server exited while graphics remained active", text)
+        self.assertIn('kill -0 "$HTTP_PID"', text)
+
     def test_native_surface_server_is_runtime_owned_loopback_only_and_control_capable(self):
         launcher = SURFACE_RUNTIME.read_text(encoding="utf-8")
         server = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
@@ -172,7 +185,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("DRM device /dev/dri/card0 is unavailable", text)
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
         self.assertIn("failed to bind host resources into graphical runtime", text)
-        self.assertIn("native Surface HTTP/control server failed to start", text)
+        self.assertIn("native Surface HTTP/control server failed readiness check", text)
         self.assertIn("native Cage/Barkery host exited with status", text)
 
 

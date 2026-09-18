@@ -580,7 +580,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    standard_directories = ensure_standard_user_directories(args.user_root)
+    try:
+        standard_directories = ensure_standard_user_directories(args.user_root)
+    except OSError as exc:
+        standard_directories = ()
+        print(
+            f"ordax-native-host: could not provision standard user directories: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
     if len(standard_directories) != len(STANDARD_USER_DIRECTORIES):
         missing = sorted(set(STANDARD_USER_DIRECTORIES) - set(standard_directories))
         print(
