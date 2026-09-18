@@ -55,6 +55,17 @@ function node(documentObject, tag, className, text) {
   return element;
 }
 
+function formatReceivedAt(value) {
+  if (!Number.isFinite(value)) return "horário desconhecido";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Bahia",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
 function optionDescription(preferenceId, value) {
   if (preferenceId === "appearance.theme") {
     return value === "dark"
@@ -99,8 +110,10 @@ export function mountSettingsOverviewControls(
   let preferenceSnapshot = preferences.getSnapshot();
   let networkSnapshot = null;
   let networkReadFailed = false;
+  let networkLastSuccessAt = null;
   let networkManagementSnapshot = null;
   let networkManagementReadFailed = false;
+  let networkManagementLastSuccessAt = null;
   let networkManagementPending = false;
   let networkManagementMessage = "";
   let networkReadOrdinal = 0;
@@ -310,7 +323,9 @@ export function mountSettingsOverviewControls(
       const button = node(documentObject, "button", "ordax-settings-network-action", label);
       button.type = "button";
       button.dataset.settingsNetworkAction = action;
-      button.disabled = networkManagementPending;
+      button.disabled =
+        networkManagementPending
+        || (networkManagementReadFailed && action !== "scan");
       actions.append(button);
     };
     addAction("scan", networkManagementPending ? "Aguarde…" : "Procurar redes");
@@ -332,17 +347,28 @@ export function mountSettingsOverviewControls(
     message.setAttribute("aria-live", "polite");
     if (networkManagementMessage) panel.append(message);
 
-    if (networkManagementReadFailed) {
+    if (networkManagementReadFailed && networkManagementSnapshot === null) {
       panel.append(
         node(
           documentObject,
           "p",
           "ordax-settings-empty",
-          "O gerenciamento de Wi-Fi está temporariamente indisponível. A rede atual continua preservada.",
+          "O gerenciamento de Wi-Fi está temporariamente indisponível e ainda não há uma leitura válida nesta sessão.",
         ),
       );
       section.append(panel);
       return;
+    }
+
+    if (networkManagementReadFailed && networkManagementSnapshot !== null) {
+      panel.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-settings-network-message",
+          `Dados de Wi-Fi antigos · última leitura recebida pela Surface às ${formatReceivedAt(networkManagementLastSuccessAt)}. Uma nova leitura será tentada automaticamente.`,
+        ),
+      );
     }
 
     if (networkManagementSnapshot === null) {
@@ -368,7 +394,7 @@ export function mountSettingsOverviewControls(
         button.dataset.settingsWifiSsid = entry.ssid;
         button.dataset.selected = String(selectedNetworkSsid === entry.ssid);
         button.dataset.connected = String(entry.connected);
-        button.disabled = networkManagementPending;
+        button.disabled = networkManagementPending || networkManagementReadFailed;
         button.setAttribute("aria-pressed", String(selectedNetworkSsid === entry.ssid));
 
         const copy = node(documentObject, "span", "ordax-settings-wifi-network-copy");
@@ -405,7 +431,7 @@ export function mountSettingsOverviewControls(
       input.type = "password";
       input.autocomplete = "off";
       input.spellcheck = false;
-      input.disabled = networkManagementPending;
+      input.disabled = networkManagementPending || networkManagementReadFailed;
       input.dataset.settingsWifiPassword = "";
       input.dataset.settingsWifiPasswordFor = selected.ssid;
       input.setAttribute("aria-label", `Senha da rede ${selected.ssid}`);
@@ -420,7 +446,7 @@ export function mountSettingsOverviewControls(
       connect.type = "button";
       connect.dataset.settingsNetworkAction = "connect";
       connect.dataset.settingsWifiSsid = selected.ssid;
-      connect.disabled = networkManagementPending;
+      connect.disabled = networkManagementPending || networkManagementReadFailed;
       form.append(label, connect);
       panel.append(form);
     }
@@ -458,18 +484,29 @@ export function mountSettingsOverviewControls(
     section.append(service);
 
     if (networkPort) {
-      if (networkReadFailed) {
+      if (networkReadFailed && networkSnapshot === null) {
         section.append(
           node(
             documentObject,
             "p",
             "ordax-settings-empty",
-            "Não foi possível atualizar os detalhes das interfaces. O gerenciamento Wi-Fi continua disponível quando suportado.",
+            "Os detalhes das interfaces estão temporariamente indisponíveis e ainda não há uma leitura válida nesta sessão.",
           ),
         );
-      } else if (networkSnapshot === null) {
-        section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
       } else {
+        if (networkReadFailed && networkSnapshot !== null) {
+          section.append(
+            node(
+              documentObject,
+              "p",
+              "ordax-settings-network-message",
+              `Dados de interface antigos · última leitura recebida pela Surface às ${formatReceivedAt(networkLastSuccessAt)}.`,
+            ),
+          );
+        }
+        if (networkSnapshot === null) {
+          section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
+        } else {
         const interfaces = node(documentObject, "div", "ordax-settings-network-list");
         if (networkSnapshot.interfaces.length === 0) {
           interfaces.append(
@@ -500,6 +537,7 @@ export function mountSettingsOverviewControls(
           }
         }
         section.append(interfaces);
+        }
       }
     }
     renderNetworkManagement(section);
@@ -549,6 +587,7 @@ export function mountSettingsOverviewControls(
         JSON.stringify(nextSnapshot) !== JSON.stringify(networkSnapshot);
       networkSnapshot = nextSnapshot;
       networkReadFailed = false;
+      networkLastSuccessAt = Date.now();
     } catch {
       if (destroyed || ordinal !== networkReadOrdinal) return;
       changed = !networkReadFailed;
@@ -571,6 +610,7 @@ export function mountSettingsOverviewControls(
         || JSON.stringify(nextSnapshot) !== JSON.stringify(networkManagementSnapshot);
       networkManagementSnapshot = nextSnapshot;
       networkManagementReadFailed = false;
+      networkManagementLastSuccessAt = Date.now();
       if (
         selectedNetworkSsid !== null
         && !nextSnapshot.networks.some((entry) => entry.ssid === selectedNetworkSsid)
@@ -605,6 +645,7 @@ export function mountSettingsOverviewControls(
       if (destroyed || ordinal !== networkActionOrdinal) return;
       networkManagementSnapshot = nextSnapshot;
       networkManagementReadFailed = false;
+      networkManagementLastSuccessAt = Date.now();
       networkManagementMessage = networkManagementActionMessage(action, 1);
       if (action === "connect" || action === "forget") selectedNetworkSsid = null;
       void refreshNetwork();
