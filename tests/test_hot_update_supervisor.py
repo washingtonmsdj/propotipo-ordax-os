@@ -344,7 +344,9 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("updateWatcher.markHealthy()", composition)
         self.assertIn("updateControls.destroy()", composition)
         self.assertIn('"Atualização revertida"', controls)
-        self.assertIn('"Reinício necessário"', controls)
+        self.assertIn('"Atualização de base pendente"', controls)
+        self.assertIn("Reiniciar manualmente agora", controls)
+        self.assertNotIn('"Reinício necessário"', controls)
         self.assertIn("lastAppliedAt", controls)
         self.assertIn("rejectedSha", controls)
 
