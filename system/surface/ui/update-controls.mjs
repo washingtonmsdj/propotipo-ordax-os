@@ -6,13 +6,13 @@ const STATUS_COPY = Object.freeze({
   running: ["Atualizado", "A Surface está executando a entrega sincronizada."],
   applied: ["Aplicando atualização", "Uma nova entrega foi recebida e está sendo ativada."],
   updating: ["Atualizando…", "O OrdaX está recebendo uma nova entrega."],
-  "network-error": ["Sem conexão", "A versão atual continua funcionando e uma nova tentativa será feita automaticamente."],
+  "network-error": ["Sem conexão", "A entrega atual continua funcionando e uma nova tentativa será feita automaticamente."],
   "remote-error": ["Fonte de atualização indisponível", "A entrega atual foi preservada."],
   "pull-error": ["Falha ao atualizar", "A entrega atual foi preservada e o OrdaX tentará novamente."],
   "rolled-back": ["Atualização revertida", "A nova entrega não ficou saudável e o OrdaX voltou automaticamente para a entrega anterior."],
   rejected: ["Entrega bloqueada", "Uma atualização com falha foi bloqueada até existir uma nova entrega candidata."],
   pinned: ["Entrega fixada", "As atualizações automáticas estão pausadas por uma entrega fixada."],
-  disabled: ["Atualização indisponível", "Este ambiente não possui o fluxo Git automático ativo."],
+  disabled: ["Atualização indisponível", "Este ambiente não possui o fluxo automático de entregas ativo."],
   unavailable: ["Estado indisponível", "O host ainda não publicou o estado do atualizador."],
 });
 
