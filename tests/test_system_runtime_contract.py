@@ -10,6 +10,7 @@ SURFACE_ENTRYPOINT = ROOT / "system" / "surface" / "entrypoint"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 RESCUE_AGENT = ROOT / "system" / "rescue" / "agent.sh"
+BASE_TELEMETRY_AGENT = ROOT / "system" / "services" / "telemetry" / "base-agent.sh"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 
 
@@ -21,11 +22,12 @@ class SystemRuntimeContractTests(unittest.TestCase):
             self.assertEqual(mode, 0o755, f"{path} mode={mode:o}")
         self.assertTrue(NATIVE_HOST_SERVER.is_file(), NATIVE_HOST_SERVER)
         self.assertTrue(RESCUE_AGENT.is_file(), RESCUE_AGENT)
+        self.assertTrue(BASE_TELEMETRY_AGENT.is_file(), BASE_TELEMETRY_AGENT)
         self.assertTrue((NATIVE_COMPOSITION / "index.html").is_file())
         self.assertTrue((NATIVE_COMPOSITION / "main.mjs").is_file())
 
     def test_shell_syntax_is_valid(self):
-        for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME, RESCUE_AGENT):
+        for path in (SYSTEM_ENTRYPOINT, SURFACE_ENTRYPOINT, SURFACE_RUNTIME, RESCUE_AGENT, BASE_TELEMETRY_AGENT):
             subprocess.run(["sh", "-n", str(path)], check=True)
 
     def test_native_host_user_folder_provisioning_is_fail_soft(self):
@@ -108,6 +110,15 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn('mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA"', text)
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
+
+    def test_native_surface_bootstraps_persistent_base_telemetry_fail_soft(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("BASE_TELEMETRY_SOURCE=$SYSTEM_ROOT/services/telemetry/base-agent.sh", text)
+        self.assertIn("BASE_TELEMETRY_DIR=$STATE_ROOT/telemetry", text)
+        self.assertIn("ensure_base_telemetry_agent()", text)
+        self.assertIn('/bin/setsid "$BASE_TELEMETRY_AGENT"', text)
+        self.assertIn("base telemetry bootstrap failed; continuing Surface startup", text)
+        self.assertNotIn('kill "$BASE_TELEMETRY_AGENT"', text)
 
     def test_native_surface_bootstraps_persistent_rescue_agent_fail_soft(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")

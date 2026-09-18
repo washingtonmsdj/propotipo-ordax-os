@@ -16,6 +16,13 @@ call the internal ingestion RPC.
 Telemetry failure is fail-soft: it cannot prevent Surface boot, local HTTP, update
 rollback, Files, Account, power actions or the independent Git rescue channel.
 
+A second host-base telemetry agent is installed under `/state/ordax/telemetry/`.
+It starts before the graphical runtime and reports a separate `:base` device row
+using the same anonymous persistent device identity. That row exists specifically so
+checkout/update state remains observable even when Cage, Barkery or the Native HTTP
+host never reaches readiness. The base agent is observation-only and has no process,
+Git-reset, power or rescue-control operations.
+
 Control remains separate:
 
 - normal product/update path: Git `main`;
