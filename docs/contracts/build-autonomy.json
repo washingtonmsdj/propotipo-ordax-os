@@ -39,6 +39,7 @@
       "initramfs",
       "minimal-bootstrap",
       "shared-system-bundle",
+      "public-site",
       "web-client",
       "mobile-client",
       "desktop-client",
@@ -55,7 +56,10 @@
     "shared_surface_change_may_rebuild_all_applicable_product_modes": true,
     "shared_contract_change_runs_cross_mode_validation": true,
     "affected_build_selection_must_be_dependency_driven": true,
-    "ci_path_filters_are_optimization_not_dependency_authority": true
+    "ci_path_filters_are_optimization_not_dependency_authority": true,
+    "public_site_change_rebuilds_kernel": false,
+    "public_site_change_rebuilds_system": false,
+    "public_site_change_rebuilds_client_modes": false
   },
   "target_relationships": {
     "web-client": [
