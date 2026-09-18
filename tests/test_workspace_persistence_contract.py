@@ -20,10 +20,15 @@ class WorkspacePersistenceContractTests(unittest.TestCase):
         self.assertIn('WORKSPACE_STORE_SCHEMA = "ordax.workspace-store/2"', contract)
         self.assertIn('LEGACY_WORKSPACE_STORE_SCHEMA = "ordax.workspace-store/1"', contract)
         self.assertIn("MAX_WORKSPACE_AREAS = 8", contract)
+        self.assertIn("MAX_TARGET_LENGTH = 4096", contract)
+        self.assertIn("validateWorkspaceTarget", contract)
         self.assertIn("migrateLegacyWorkspaceRecord", contract)
         self.assertIn("assertWorkspaceStore", surface)
         self.assertIn("createWorkspaceSnapshot", surface)
+        self.assertIn("getAppTarget(appId)", surface)
+        self.assertIn("target: activation.target", surface)
         self.assertIn("validateWorkspaceRecord", state)
+        self.assertIn("target: windowState.target", state)
         self.assertIn('case "area.create"', state)
         self.assertIn('case "area.switch"', state)
         self.assertNotIn("adapters/native", surface)
@@ -56,6 +61,7 @@ class WorkspacePersistenceContractTests(unittest.TestCase):
         self.assertIn("MAX_WINDOWS = 32", contract)
         self.assertIn("MAX_WORKSPACE_AREAS = 8", contract)
         self.assertIn("MAX_COORDINATE = 1_000_000", contract)
+        self.assertIn("MAX_TARGET_LENGTH = 4096", contract)
         self.assertNotIn("fetch(", native)
 
     def test_area_controls_are_real_not_disabled_placeholders(self):
