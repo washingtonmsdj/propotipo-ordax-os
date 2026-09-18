@@ -10,6 +10,7 @@ const VALUES = new Set(OPTIONS.map((option) => option.value));
 
 export const appearancePreference = Object.freeze({
   id: APPEARANCE_PREFERENCE_ID,
+  sectionId: "appearance",
   label: "Aparência",
   title: "Tema da Surface",
   description: "Escolha como o OrdaX apresenta superfícies, janelas e controles neste dispositivo.",

@@ -14,14 +14,17 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
     def test_settings_owns_only_real_canonical_sections(self):
         controls = SETTINGS.read_text(encoding="utf-8")
         self.assertIn('id: "appearance"', controls)
+        self.assertIn('id: "accessibility"', controls)
         self.assertIn('id: "network"', controls)
         self.assertIn("validSettingsSection", controls)
-        self.assertIn('activeSection === "appearance"', controls)
+        self.assertIn(
+            'activeSection === "appearance" || activeSection === "accessibility"',
+            controls,
+        )
         self.assertIn('activeSection === "network"', controls)
-        self.assertNotIn('id: "accessibility"', controls)
+        self.assertIn("definition.sectionId !== sectionId", controls)
         self.assertNotIn('id: "audio"', controls)
         self.assertNotIn('id: "display"', controls)
-        self.assertNotIn("sectionId", controls)
         self.assertNotIn("detailId", controls)
 
     def test_app_activation_deep_link_is_bounded_to_settings_sections(self):
