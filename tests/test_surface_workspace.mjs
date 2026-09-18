@@ -78,6 +78,14 @@ test("launched windows receive stable placement ordinals inside the active area"
   assert.equal(state.areas[1].windows.length, 0);
 });
 
+test("focusing an already-active top window is a no-op", () => {
+  let state = baseline();
+  state = reduceSurfaceState(state, { type: "app.launch", appId: "files" });
+  const focused = state;
+  state = reduceSurfaceState(state, { type: "window.focus", windowId: "files" });
+  assert.equal(state, focused);
+});
+
 test("area switching preserves independent window sets and focus", () => {
   let state = baseline();
   state = reduceSurfaceState(state, { type: "app.launch", appId: "files" });
