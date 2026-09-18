@@ -20,7 +20,7 @@ system/apps/system/app.mjs
 The initial owners are:
 
 - Arquivos;
-- Configurações;
+- Ajustes;
 - Conta;
 - Sistema.
 
