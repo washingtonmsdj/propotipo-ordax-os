@@ -104,7 +104,7 @@ IMAGE_SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
 SOURCE_COMMIT="${GITHUB_SHA:-unknown}"
 cat >"$PROOF" <<EOF
 {
-  "$schema": "prototype-ordax.base-update-fat32-staging-proof/1",
+  "\$schema": "prototype-ordax.base-update-fat32-staging-proof/1",
   "status": "pass",
   "source_commit": "$SOURCE_COMMIT",
   "filesystem": "fat32",
