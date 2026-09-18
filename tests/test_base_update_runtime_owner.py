@@ -49,6 +49,19 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         fixture_agent.write_bytes(fixture_agent_bytes)
         fixture_agent.chmod(0o755)
         fixture_agent_sha = sha256(fixture_agent_bytes)
+
+        fixture_channel_bytes = (
+            b"https://github.com/washingtonmsdj/prototipo-ordax-os/"
+            b"releases/latest/download/release-envelope.json\n"
+        )
+        fixture_channel_sha = sha256(fixture_channel_bytes)
+        repo_channel = repo / "bootstrap/config/release-envelope-url"
+        repo_channel.parent.mkdir(parents=True, exist_ok=True)
+        repo_channel.write_bytes(fixture_channel_bytes)
+        physical_channel = physical / "bootstrap/config/release-envelope-url"
+        physical_channel.parent.mkdir(parents=True, exist_ok=True)
+        physical_channel.write_bytes(fixture_channel_bytes)
+
         write_json(
             repo / "system/services/base-update/release-agent-refresh.json",
             {
@@ -90,7 +103,20 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 "status": "candidate-bytes-resolved-trust-pending",
                 "physical_write_allowed": False,
                 "all_artifacts_resolved": False,
-                "artifact_groups": [],
+                "artifact_groups": [
+                    {
+                        "id": "bootstrap-release-channel",
+                        "resolved": True,
+                        "artifacts": [
+                            {
+                                "source_path": "bootstrap/config/release-envelope-url",
+                                "target_path": "/ordax/bootstrap/config/release-envelope-url",
+                                "sha256": fixture_channel_sha,
+                                "mode": "0644",
+                            }
+                        ],
+                    }
+                ],
             }
             write_json(repo / "docs/contracts/release-trust-policy.json", policy)
             write_json(repo / "docs/contracts/minimal-bootstrap.json", minimal)
@@ -166,6 +192,18 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                         }
                     ],
                 },
+                {
+                    "id": "bootstrap-release-channel",
+                    "resolved": True,
+                    "artifacts": [
+                        {
+                            "source_path": "bootstrap/config/release-envelope-url",
+                            "target_path": "/ordax/bootstrap/config/release-envelope-url",
+                            "sha256": fixture_channel_sha,
+                            "mode": "0644",
+                        }
+                    ],
+                },
             ],
         }
         write_json(repo / "docs/contracts/minimal-bootstrap.json", minimal)
@@ -195,6 +233,77 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             self.assertFalse(
                 (physical / "bootstrap/trust/release-ed25519.json").exists()
             )
+
+    def test_missing_release_channel_is_enrolled_from_minimal_bootstrap_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, state, physical, _trust = self.fixture(
+                Path(temporary),
+                promoted=False,
+            )
+            repo_channel = repo / "bootstrap/config/release-envelope-url"
+            physical_channel = physical / "bootstrap/config/release-envelope-url"
+            expected = repo_channel.read_bytes()
+            expected_sha = sha256(expected)
+            physical_channel.unlink()
+
+            status = owner.run_once(repo, state, physical, "a" * 40)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(status["blocker"], "canonical-trust-not-pinned")
+            self.assertEqual(
+                status["releaseChannelEnrollmentState"],
+                "enrolled",
+            )
+            self.assertEqual(status["releaseChannelSha256"], expected_sha)
+            self.assertEqual(physical_channel.read_bytes(), expected)
+            self.assertEqual(physical_channel.stat().st_mode & 0o777, 0o644)
+
+            second = owner.run_once(repo, state, physical, "a" * 40)
+            self.assertEqual(
+                second["releaseChannelEnrollmentState"],
+                "already-enrolled",
+            )
+            self.assertEqual(physical_channel.read_bytes(), expected)
+
+    def test_divergent_existing_release_channel_blocks_without_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, state, physical, _trust = self.fixture(
+                Path(temporary),
+                promoted=False,
+            )
+            physical_channel = physical / "bootstrap/config/release-envelope-url"
+            divergent = b"https://example.invalid/other-release-envelope.json\n"
+            physical_channel.write_bytes(divergent)
+
+            status = owner.run_once(repo, state, physical, "a" * 40)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(status["blocker"], "release-channel-conflict")
+            self.assertEqual(physical_channel.read_bytes(), divergent)
+            self.assertFalse(status["canonicalTrustPinned"])
+
+    def test_release_channel_source_must_match_minimal_bootstrap_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, state, physical, _trust = self.fixture(
+                Path(temporary),
+                promoted=False,
+            )
+            physical_channel = physical / "bootstrap/config/release-envelope-url"
+            physical_channel.unlink()
+            repo_channel = repo / "bootstrap/config/release-envelope-url"
+            repo_channel.write_bytes(
+                b"https://example.invalid/tampered-release-envelope.json\n"
+            )
+
+            status = owner.run_once(repo, state, physical, "a" * 40)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(
+                status["blocker"],
+                "release-channel-enrollment-validation-failed",
+            )
+            self.assertFalse(physical_channel.exists())
+            self.assertFalse(status["canonicalTrustPinned"])
 
     def test_promoted_public_trust_is_enrolled_exactly_and_idempotently(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -592,11 +701,12 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn('/dev/*)', agent)
         self.assertIn('mount -t ext4 -o rw "$root_source" "$PHYSICAL_MOUNT_HOST"', agent)
         self.assertNotIn("release-agent-missing", agent)
+        self.assertNotIn("release-channel-missing", agent)
         self.assertNotIn(
             'release_agent=$PHYSICAL_MOUNT_HOST/bootstrap/release-acquisition/ordax-release-agent',
             agent,
         )
-        self.assertIn(
+        self.assertNotIn(
             'release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url',
             agent,
         )
@@ -614,7 +724,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn("temporary=$status_dir/.owner-status.json.preflight.$", agent)
         self.assertIn('"phase":"physical-root-preflight"', agent)
         self.assertIn("physical-mount-failed", agent)
-        self.assertIn("release-channel-missing", agent)
+        self.assertNotIn("release-channel-missing", agent)
         self.assertNotIn("release-agent-missing", agent)
         self.assertNotIn(r'\\$schema', agent)
 
