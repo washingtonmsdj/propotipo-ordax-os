@@ -62,6 +62,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         for authority_path in (
             "/system/",
             "/bootstrap/trust/",
+            "/bootstrap/config/release-envelope-url",
             "/docs/contracts/release-trust-policy.json",
             "/docs/contracts/minimal-bootstrap.json",
             "/docs/evidence/release-trust-ceremony.json",
