@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/network-status.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/sync-runtime.mjs'
@@ -42,6 +43,7 @@ on:
   pull_request:
     paths:
       - 'system/contracts/surface-host.mjs'
+      - 'system/contracts/network-status.mjs'
       - 'system/contracts/preference-store.mjs'
       - 'system/contracts/preference-runtime.mjs'
       - 'system/contracts/sync-runtime.mjs'
