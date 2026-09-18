@@ -241,7 +241,7 @@ jobs:
               [ref]$errors
             ) | Out-Null
             if ($errors.Count -ne 0) {
-              throw "PowerShell parse failed for $path: $($errors | Out-String)"
+              throw "PowerShell parse failed for ${path}: $($errors | Out-String)"
             }
           }
           Write-Host 'RELEASE_TRUST_POWERSHELL_PARSE=PASS'
