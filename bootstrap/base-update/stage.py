@@ -32,9 +32,10 @@ RELEASE_ENVELOPE_SCHEMA = "prototype-ordax.release-envelope/1"
 RELEASE_MANIFEST_SCHEMA = "prototype-ordax.release-manifest/1"
 BASE_CANDIDATE_SCHEMA = "prototype-ordax.base-update-candidate/1"
 BASE_CANDIDATE_MEMBER = "system/base-update/candidate.json"
-DEFAULT_RELEASE_AGENT = Path("/ordax/bootstrap/release-acquisition/ordax-release-agent")
-DEFAULT_TRUST = Path("/ordax/bootstrap/trust/release-ed25519.json")
-DEFAULT_RELEASES_ROOT = Path("/ordax/releases")
+DEFAULT_ORDAX_ROOT = Path("/ordax")
+DEFAULT_RELEASE_AGENT = DEFAULT_ORDAX_ROOT / "bootstrap/release-acquisition/ordax-release-agent"
+DEFAULT_TRUST = DEFAULT_ORDAX_ROOT / "bootstrap/trust/release-ed25519.json"
+DEFAULT_RELEASES_ROOT = DEFAULT_ORDAX_ROOT / "releases"
 MAX_ENVELOPE_BYTES = 1 << 20
 MAX_MANIFEST_BYTES = 512 << 10
 MAX_DESCRIPTOR_BYTES = 16 << 10
@@ -341,6 +342,27 @@ def snapshot_protected_files(esp_root: Path) -> dict[str, str | None]:
         path = esp_root / relative
         result[relative] = sha256_file(path) if path.is_file() and not path.is_symlink() else None
     return result
+
+
+def _runtime_release_authority() -> tuple[Path, Path, Path]:
+    configured = os.environ.get("ORDAX_STAGE_PHYSICAL_ROOT", "")
+    if not configured:
+        return DEFAULT_TRUST, DEFAULT_RELEASE_AGENT, DEFAULT_RELEASES_ROOT
+
+    root = Path(configured)
+    if not root.is_absolute():
+        raise StageError("runtime physical OrdaX root must be absolute")
+    try:
+        metadata = root.lstat()
+    except OSError as exc:
+        raise StageError("runtime physical OrdaX root is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+        raise StageError("runtime physical OrdaX root must be a real directory")
+    return (
+        root / "bootstrap/trust/release-ed25519.json",
+        root / "bootstrap/release-acquisition/ordax-release-agent",
+        root / "releases",
+    )
 
 
 def _require_regular_local_file(path: Path, label: str, executable: bool = False) -> Path:
@@ -816,17 +838,15 @@ def main() -> int:
     parser.add_argument("--envelope", type=Path, required=True)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
-    parser.add_argument("--trust", type=Path, default=DEFAULT_TRUST)
-    parser.add_argument("--release-agent", type=Path, default=DEFAULT_RELEASE_AGENT)
-    parser.add_argument("--releases-root", type=Path, default=DEFAULT_RELEASES_ROOT)
     parser.add_argument("--ensure-existing", action="store_true")
     args = parser.parse_args()
     try:
+        trust_path, release_agent, releases_root = _runtime_release_authority()
         candidate = verified_candidate_from_release(
             args.envelope,
-            args.trust,
-            args.release_agent,
-            args.releases_root,
+            trust_path,
+            release_agent,
+            releases_root,
         )
         owner = ensure_stage if args.ensure_existing else stage
         result = owner(
