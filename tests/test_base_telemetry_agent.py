@@ -19,6 +19,8 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn('RESCUE_ACTION_FILE=$STATE_DIR/rescue/last-action', text)
         self.assertIn("targetSha", text)
         self.assertIn("phase", text)
+        self.assertIn("supervisorCheckedAt", text)
+        self.assertIn('supervisor_checked_at=$(json_field checkedAt "$UPDATE_STATE")', text)
         self.assertIn("attemptId", text)
         self.assertIn("lastError", text)
         for forbidden in (
@@ -36,6 +38,11 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
             "sh -c",
         ):
             self.assertNotIn(forbidden, text)
+
+    def test_agent_pid_guard_uses_real_shell_pid(self):
+        text = AGENT.read_text(encoding="utf-8")
+        self.assertIn('[ "$existing_pid" != "$$" ]', text)
+        self.assertNotIn('[ "$existing_pid" != "$" ]', text)
 
     def test_agent_reuses_native_device_identity_and_separates_base_row(self):
         text = AGENT.read_text(encoding="utf-8")
