@@ -26,6 +26,9 @@ if ([string]::IsNullOrWhiteSpace($ReviewDirectory)) {
 $PrimaryPrivateKeyPath = [IO.Path]::GetFullPath($PrimaryPrivateKeyPath)
 $RecoveredPrivateKeyPath = [IO.Path]::GetFullPath($RecoveredPrivateKeyPath)
 $ReviewDirectory = [IO.Path]::GetFullPath($ReviewDirectory)
+if ($PrimaryPrivateKeyPath.Equals($RecoveredPrivateKeyPath, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Recovered private key must be a distinct restored file, not the primary custody path.'
+}
 
 function Assert-RegularFile([string]$Path, [string]$Label) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
@@ -54,6 +57,7 @@ Assert-PrivateOutsideToolkit $RecoveredPrivateKeyPath 'Recovered private key'
 $TrustPath = Join-Path $ReviewDirectory 'release-ed25519.json'
 $PrimaryDerivedPath = Join-Path $ReviewDirectory 'release-ed25519-derived.json'
 $ProofManifestPath = Join-Path $ReviewDirectory 'trust-proof-manifest.json'
+$InitialResultPath = Join-Path $ReviewDirectory 'ceremony-result.json'
 $RecoveryDerivedPath = Join-Path $ReviewDirectory 'release-ed25519-recovered.json'
 $RecoveryEnvelopePath = Join-Path $ReviewDirectory 'trust-proof-recovery-envelope.json'
 $PublicEvidencePath = Join-Path $ReviewDirectory 'ceremony-public-evidence.json'
@@ -61,8 +65,16 @@ $PublicPromotionDirectory = Join-Path $ReviewDirectory 'public-promotion'
 $PromotionTrustPath = Join-Path $PublicPromotionDirectory 'release-ed25519.json'
 $PromotionEvidencePath = Join-Path $PublicPromotionDirectory 'ceremony-public-evidence.json'
 
-foreach ($path in @($TrustPath, $PrimaryDerivedPath, $ProofManifestPath)) {
+foreach ($path in @($TrustPath, $PrimaryDerivedPath, $ProofManifestPath, $InitialResultPath)) {
     Assert-RegularFile $path 'required trust ceremony file'
+}
+
+$InitialResult = Get-Content -LiteralPath $InitialResultPath -Raw | ConvertFrom-Json
+if ($InitialResult.'$schema' -ne 'prototype-ordax.release-trust-ceremony-result/1' -or
+    $InitialResult.key_id -ne $KeyId -or
+    $InitialResult.offline_encrypted_backup_required -ne $true -or
+    $InitialResult.ready_to_pin_public_anchor -ne $false) {
+    throw 'Initial trust ceremony result is not the expected fail-closed pre-recovery state.'
 }
 foreach ($path in @($RecoveryDerivedPath, $RecoveryEnvelopePath, $PublicEvidencePath, $PromotionTrustPath, $PromotionEvidencePath)) {
     if (Test-Path -LiteralPath $path) {
@@ -117,12 +129,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Recovered private key signing proof failed.' }
 $TrustHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $TrustPath).Hash.ToLowerInvariant()
 $RecoveryEnvelopeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RecoveryEnvelopePath).Hash.ToLowerInvariant()
 $ProofManifestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $ProofManifestPath).Hash.ToLowerInvariant()
-$PrimaryPrivateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $PrimaryPrivateKeyPath).Hash.ToLowerInvariant()
-$RecoveredPrivateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RecoveredPrivateKeyPath).Hash.ToLowerInvariant()
-if ($PrimaryPrivateHash -ne $RecoveredPrivateHash) {
-    throw 'Recovered private key bytes do not match the primary custodial key.'
-}
-
 $Evidence = [ordered]@{
     '$schema' = 'prototype-ordax.release-trust-ceremony-evidence/1'
     status = 'pass'
@@ -132,7 +138,7 @@ $Evidence = [ordered]@{
     recovery_envelope_sha256 = $RecoveryEnvelopeHash
     primary_public_derivation_match = $true
     recovered_public_derivation_match = $true
-    recovered_private_bytes_match = $true
+    recovered_private_path_distinct = $true
     recovered_signing_proof = $true
     offline_encrypted_backup_recovery_verified = $true
     private_key_in_public_evidence = $false
@@ -155,7 +161,7 @@ Write-Host ''
 Write-Host 'OFFLINE_RECOVERY_VERIFIED=YES'
 Write-Host 'PRIMARY_PUBLIC_DERIVATION_MATCH=YES'
 Write-Host 'RECOVERED_PUBLIC_DERIVATION_MATCH=YES'
-Write-Host 'RECOVERED_PRIVATE_BYTES_MATCH=YES'
+Write-Host 'RECOVERED_PRIVATE_PATH_DISTINCT=YES'
 Write-Host 'RECOVERED_SIGNING_PROOF=YES'
 Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
 Write-Host 'PRIVATE_KEY_PRINTED=NO'
