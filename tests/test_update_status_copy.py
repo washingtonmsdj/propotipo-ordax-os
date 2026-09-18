@@ -7,6 +7,17 @@ SYSTEM_OVERVIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls
 
 
 class UpdateStatusCopyTests(unittest.TestCase):
+    def test_boot_refresh_does_not_claim_manual_reboot_will_apply_update(self):
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
+        self.assertIn('"Atualização de base pendente"', presentation)
+        self.assertIn("Reiniciar manualmente agora não conclui esta atualização", presentation)
+        self.assertIn("Base pendente de ativação", presentation)
+        self.assertIn("updateSummaryLabel(updateSnapshot)", overview)
+        self.assertIn("updateBootLabel(updateSnapshot)", overview)
+        self.assertNotIn('"Reinício necessário"', overview)
+        self.assertNotIn("Mudança pendente de reinício físico", overview)
+
     def test_running_does_not_claim_latest_remote_delivery(self):
         presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
         overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
