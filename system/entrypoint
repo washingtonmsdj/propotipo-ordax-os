@@ -279,17 +279,28 @@ check_for_update() {
     esac
 
     rejected_sha=$(read_state_value "$REJECTED_FILE")
+
+    if [ "$remote_sha" = "$current" ]; then
+        healthy_sha=$(read_state_value "$HEALTH_FILE")
+        if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ] && [ "$healthy_sha" = "$current" ]; then
+            rm -f "$REJECTED_FILE"
+            rejected_sha=""
+            log "cleared stale rejected state for healthy current checkout $current"
+        fi
+        if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ]; then
+            write_update_state "$current" rejected none
+        else
+            write_update_state "$current" running none
+        fi
+        return 0
+    fi
+
     if [ -n "$rejected_sha" ] && [ "$remote_sha" = "$rejected_sha" ]; then
         write_update_state "$current" rejected none
         return 0
     fi
     if [ -n "$rejected_sha" ] && [ "$remote_sha" != "$rejected_sha" ]; then
         rm -f "$REJECTED_FILE"
-    fi
-
-    if [ "$remote_sha" = "$current" ]; then
-        write_update_state "$current" running none
-        return 0
     fi
 
     old_sha=$current
