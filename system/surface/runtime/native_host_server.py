@@ -43,7 +43,12 @@ def supported_power_actions(power_request_path: str) -> tuple[str, ...]:
         metadata = os.stat(power_request_path)
     except OSError:
         return ()
-    if not stat.S_ISFIFO(metadata.st_mode) or not os.access(power_request_path, os.W_OK):
+    if (
+        not stat.S_ISFIFO(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or not os.access(power_request_path, os.W_OK)
+    ):
         return ()
     return POWER_ACTIONS
 
@@ -53,9 +58,19 @@ def queue_power_action(power_request_path: str, action: str) -> None:
         raise ValueError("unsupported power action")
     descriptor = os.open(
         power_request_path,
-        os.O_WRONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0),
+        os.O_WRONLY
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
     )
     try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISFIFO(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
+            raise PermissionError("host power broker boundary is not a private FIFO")
         payload = f"{action}\n".encode("ascii")
         written = os.write(descriptor, payload)
         if written != len(payload):
