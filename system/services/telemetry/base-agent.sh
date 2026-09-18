@@ -13,6 +13,7 @@ PID_FILE=$TELEMETRY_DIR/agent.pid
 LAST_RESULT_FILE=$TELEMETRY_DIR/last-result
 UPDATE_STATE=/run/ordax-update/state.json
 HEALTH_FILE=/run/ordax-update/healthy-sha
+SURFACE_HEARTBEAT_FILE=$STATE_DIR/native-state/surface-heartbeat.json
 REJECTED_FILE=$STATE_DIR/rejected-commit
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
@@ -185,6 +186,27 @@ while :; do
         case "$supervisor_state_epoch" in
             ''|*[!0-9]*) supervisor_state_epoch=null ;;
         esac
+        surface_source_sha=$(json_field sourceSha "$SURFACE_HEARTBEAT_FILE")
+        is_sha "$surface_source_sha" || surface_source_sha=""
+        surface_heartbeat_epoch=$(/bin/busybox stat -c %Y "$SURFACE_HEARTBEAT_FILE" 2>/dev/null || true)
+        case "$surface_heartbeat_epoch" in
+            ''|*[!0-9]*) surface_heartbeat_epoch=null ;;
+        esac
+        surface_state=unknown
+        if [ -n "$surface_source_sha" ] && [ "$surface_heartbeat_epoch" != null ]; then
+            now_epoch=$(/bin/busybox date +%s 2>/dev/null || true)
+            case "$now_epoch" in
+                ''|*[!0-9]*) ;;
+                *)
+                    surface_age=$((now_epoch - surface_heartbeat_epoch))
+                    if [ "$surface_age" -ge 0 ] 2>/dev/null && [ "$surface_age" -le 60 ] 2>/dev/null; then
+                        surface_state=running
+                    else
+                        surface_state=stopped
+                    fi
+                    ;;
+            esac
+        fi
         attempt_id=$(json_field attemptId "$UPDATE_STATE")
         [ "${#attempt_id}" -le 96 ] || attempt_id=""
         last_error=$(json_field lastError "$UPDATE_STATE")
@@ -204,7 +226,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rescueGeneration":%s,"rescueAction":"%s","surfaceState":"unknown","bootId":"%s","lastError":"%s","relayVersion":1}' "$device_id" "$source_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$rescue_generation_json" "$action" "$boot_id" "$last_error")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","relayVersion":1}' "$device_id" "$source_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \
