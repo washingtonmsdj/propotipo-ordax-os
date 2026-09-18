@@ -3,7 +3,7 @@ import { defineFirstPartyApp } from "../app-contract.mjs";
 export const settingsApp = defineFirstPartyApp({
   id: "settings",
   title: "Ajustes",
-  description: "Preferências compartilhadas, aparência e capacidades desta execução.",
+  description: "Preferências compartilhadas, aparência e rede do OrdaX.",
   monogram: "AJ",
   singleton: true,
   requiredCapabilities: [],
