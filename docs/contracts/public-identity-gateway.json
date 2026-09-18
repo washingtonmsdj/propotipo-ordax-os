@@ -1,0 +1,56 @@
+{
+  "$schema": "prototype-ordax.public-identity-gateway/1",
+  "status": "implemented-provider-unconfigured",
+  "runtime": {
+    "entrypoint": "services/public-identity/gateway.py:application",
+    "protocol": "WSGI",
+    "external_dependencies": false,
+    "listener_owned_here": false
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/auth/session",
+      "unconfigured_status": 200,
+      "purpose": "anonymous-session-state"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/login",
+      "unconfigured_status": 503,
+      "purpose": "begin-login"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/register",
+      "unconfigured_status": 503,
+      "purpose": "begin-registration"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/callback",
+      "unconfigured_status": 503,
+      "purpose": "complete-provider-callback"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/logout",
+      "unconfigured_status": 503,
+      "purpose": "revoke-session"
+    }
+  ],
+  "baseline": {
+    "provider_configured": false,
+    "credential_collection": false,
+    "anonymous_session_is_authenticated": false,
+    "cache_control": "no-store",
+    "remote_redirect_allowed": false,
+    "cross_site_logout_allowed": false,
+    "tokens_in_response_body_allowed": false
+  },
+  "deployment": {
+    "same_origin_required_for_public_site": true,
+    "tls_required_in_production": true,
+    "reverse_proxy_or_platform_adapter_expected": true
+  }
+}
