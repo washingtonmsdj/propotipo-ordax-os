@@ -19,7 +19,11 @@ MANIFEST_NAME = "public-site-manifest.json"
 SCHEMA = "prototype-ordax.public-site-bundle/1"
 CONFIG_SCHEMA = "prototype-ordax.public-site-runtime/1"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
-REMOTE_REF_RE = re.compile(r"(?:https?:)?//", re.IGNORECASE)
+REMOTE_HTML_REF_RE = re.compile(r"\\b(?:src|href)\\s*=\\s*['\"]//", re.IGNORECASE)
+REMOTE_CSS_REF_RE = re.compile(
+    r"(?:url\\(\\s*['\"]?|@import\\s+(?:url\\()?\\s*['\"]?)//",
+    re.IGNORECASE,
+)
 REQUIRED_FILES = (
     "index.html",
     "download/index.html",
@@ -50,7 +54,10 @@ def same_origin_path(value: object) -> bool:
 def source_files(root: Path = SOURCE) -> list[Path]:
     if not root.is_dir():
         raise PublicSiteError(f"missing public site source root: {root}")
-    files = sorted((path for path in root.rglob("*") if path.is_file()), key=lambda p: p.relative_to(root).as_posix())
+    files = sorted(
+        (path for path in root.rglob("*") if path.is_file()),
+        key=lambda p: p.relative_to(root).as_posix(),
+    )
     if not files:
         raise PublicSiteError("public site source is empty")
     return files
@@ -64,13 +71,24 @@ def validate_source(root: Path = SOURCE) -> list[Path]:
         raise PublicSiteError(f"missing required public site files: {missing}")
 
     for path in files:
-        if path.suffix.lower() not in {".html", ".css", ".js", ".json", ".md"}:
-            raise PublicSiteError(f"unexpected public site source type: {path.relative_to(root).as_posix()}")
-        if path.suffix.lower() in {".html", ".css", ".js"}:
+        suffix = path.suffix.lower()
+        if suffix not in {".html", ".css", ".js", ".json", ".md"}:
+            raise PublicSiteError(
+                f"unexpected public site source type: {path.relative_to(root).as_posix()}"
+            )
+        if suffix in {".html", ".css", ".js"}:
             text = path.read_text(encoding="utf-8")
-            if REMOTE_REF_RE.search(text):
+            if "http://" in text or "https://" in text:
                 raise PublicSiteError(
                     f"remote runtime reference is not allowed: {path.relative_to(root).as_posix()}"
+                )
+            if suffix == ".html" and REMOTE_HTML_REF_RE.search(text):
+                raise PublicSiteError(
+                    f"protocol-relative HTML reference is not allowed: {path.relative_to(root).as_posix()}"
+                )
+            if suffix == ".css" and REMOTE_CSS_REF_RE.search(text):
+                raise PublicSiteError(
+                    f"protocol-relative CSS reference is not allowed: {path.relative_to(root).as_posix()}"
                 )
 
     config_path = root / "config" / "public-site.json"
@@ -108,7 +126,10 @@ def build_bundle(out_dir: Path, source_commit: str, root: Path = SOURCE) -> dict
             shutil.copyfile(path, destination)
 
         records = []
-        for path in sorted((p for p in stage.rglob("*") if p.is_file()), key=lambda p: p.relative_to(stage).as_posix()):
+        for path in sorted(
+            (p for p in stage.rglob("*") if p.is_file()),
+            key=lambda p: p.relative_to(stage).as_posix(),
+        ):
             payload = path.read_bytes()
             records.append(
                 {
