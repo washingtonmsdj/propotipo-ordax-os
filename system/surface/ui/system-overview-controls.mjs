@@ -197,9 +197,11 @@ export function mountSystemOverviewControls(
       : hostSnapshot.connectivity === "offline"
         ? "attention"
         : "healthy";
-    health.textContent = alerting
-      ? "Atenção necessária"
-      : hostSnapshot.connectivity === "offline"
+    health.textContent = updateSnapshot?.bootRefreshRequired
+      ? "Atualização de base pendente"
+      : alerting
+        ? "Atenção necessária"
+        : hostSnapshot.connectivity === "offline"
         ? "Offline"
         : updateSnapshot
           ? "Operando normalmente"
@@ -224,12 +226,14 @@ export function mountSystemOverviewControls(
       label: "Atualização",
       value: updateSnapshot
         ? updateSnapshot.bootRefreshRequired
-          ? "Reinício necessário"
+          ? "Atualização de base pendente"
           : UPDATE_LABELS[updateSnapshot.status] ?? updateSnapshot.status
         : "Indisponível",
-      detail: updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
-        ? `Verificado: ${updateSnapshot.checkedAt}`
-        : "Sem estado de atualização publicado",
+      detail: updateSnapshot?.bootRefreshRequired
+        ? "Reiniciar manualmente agora não conclui esta atualização; a ativação e o reinício serão conduzidos automaticamente quando a base estiver preparada."
+        : updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
+          ? `Verificado: ${updateSnapshot.checkedAt}`
+          : "Sem estado de atualização publicado",
     });
 
     appendMetricCard(documentObject, grid, {
