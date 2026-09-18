@@ -517,12 +517,58 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 command[command.index("--envelope") + 1],
                 str(envelope),
             )
+            self.assertEqual(
+                command[command.index("--trust") + 1],
+                str(physical / "bootstrap/trust/release-ed25519.json"),
+            )
+            self.assertEqual(
+                command[command.index("--release-agent") + 1],
+                str(physical / "bootstrap/release-acquisition/ordax-release-agent"),
+            )
+            self.assertEqual(
+                command[command.index("--releases-root") + 1],
+                str(physical / "releases"),
+            )
             self.assertNotIn("activate.py", " ".join(command))
             self.assertNotIn("LoaderEntryOneShot", " ".join(command))
             self.assertNotIn("reboot", " ".join(command))
             calls = [call.args[0] for call in busybox.call_args_list]
             self.assertIn(["sync"], calls)
             self.assertIn(["umount", str(owner.ESP_MOUNT)], calls)
+
+    def test_runtime_stage_owner_refuses_post_transition_ab_layout_before_mount(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = "f" * 40
+            repo, _state, physical, _trust = self.fixture(root)
+
+            stage_script = repo / "bootstrap/base-update/stage.py"
+            planner_script = repo / "bootstrap/base-update/planner.py"
+            stage_script.parent.mkdir(parents=True, exist_ok=True)
+            stage_script.write_text("# fixture stage\n", encoding="utf-8")
+            planner_script.write_text("# fixture planner\n", encoding="utf-8")
+
+            release_root = physical / "releases" / source
+            release_root.mkdir(parents=True)
+            (release_root / "release-envelope.json").write_text(
+                '{"fixture":"signed-envelope"}\n',
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(owner, "_current_base_slot", return_value="a"),
+                mock.patch.object(owner, "_prepare_esp_mount") as mount,
+            ):
+                with self.assertRaisesRegex(
+                    owner.OwnerError,
+                    "only supports the legacy base layout",
+                ):
+                    owner._stage_materialized_release(
+                        repo,
+                        physical,
+                        source,
+                    )
+            mount.assert_not_called()
 
     def test_staged_candidate_with_failed_unmount_is_reported_blocked_not_armed(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -860,7 +906,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             self.assertEqual(status["status"], "blocked")
             self.assertFalse(status["physicalTrustEnrolled"])
 
-    def test_runtime_owner_has_no_stage_activate_or_reboot_path_yet(self):
+    def test_runtime_owner_stages_but_still_has_no_activation_or_reboot_path(self):
         orchestrator = MODULE_PATH.read_text(encoding="utf-8")
         agent = AGENT.read_text(encoding="utf-8")
         self.assertIn('"materialize",', orchestrator)
@@ -868,7 +914,11 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn("release-agent-refresh.json", orchestrator)
         self.assertIn("unknown_installed_hash_policy", orchestrator)
         self.assertIn("os.replace(temporary, target)", orchestrator)
-        self.assertNotIn("stage.py", orchestrator)
+        self.assertIn("stage.py", orchestrator)
+        self.assertIn("--ensure-existing", orchestrator)
+        self.assertIn("--trust", orchestrator)
+        self.assertIn("--release-agent", orchestrator)
+        self.assertIn("--releases-root", orchestrator)
         self.assertNotIn("activate.py", orchestrator)
         self.assertNotIn("promote.py", orchestrator)
         self.assertNotIn("LoaderEntryOneShot", orchestrator)
