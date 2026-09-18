@@ -16,9 +16,11 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertIn('"system.boot-control"', text)
         self.assertIn('"filesystem.user-space"', text)
         self.assertIn('"system.metrics"', text)
+        self.assertIn('"network.status"', text)
         self.assertIn("bootControlAvailable", text)
         self.assertIn("userFileSpaceAvailable", text)
         self.assertIn("systemMetricsAvailable", text)
+        self.assertIn("networkStatusAvailable", text)
         self.assertIn("validateSurfaceSnapshot", text)
         self.assertIn("navigator.onLine", text)
 
@@ -34,9 +36,11 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertIn("powerActions?.getSnapshot().supportedActions.length", text)
         self.assertIn("userFileSpaceAvailable = fileSpace !== null", text)
         self.assertIn("systemMetricsAvailable = systemMetrics !== null", text)
+        self.assertIn("networkStatusAvailable = networkStatus !== null", text)
         self.assertIn("bootControlAvailable,", text)
         self.assertIn("userFileSpaceAvailable,", text)
         self.assertIn("systemMetricsAvailable,", text)
+        self.assertIn("networkStatusAvailable,", text)
         self.assertIn("createNativeSurfaceHost(window, {", text)
 
     def test_native_adapter_does_not_claim_unimplemented_account_or_sync(self):
@@ -52,6 +56,7 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertNotIn("system.boot-control", text)
         self.assertNotIn("filesystem.user-space", text)
         self.assertNotIn("system.metrics", text)
+        self.assertNotIn("network.status", text)
 
 
 if __name__ == "__main__":
