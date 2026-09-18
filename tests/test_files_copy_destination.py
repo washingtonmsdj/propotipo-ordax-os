@@ -44,7 +44,7 @@ class FilesCopyDestinationTests(unittest.TestCase):
     def test_contract_and_adapter_use_explicit_source_and_destination(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/9', contract)
+        self.assertIn('ordax.file-space/10', contract)
         self.assertIn(
             "async copyFile(sourcePath, name, destinationPath, newName)",
             adapter,
