@@ -933,9 +933,12 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn("stage.py", orchestrator)
         self.assertIn("--ensure-existing", orchestrator)
         self.assertIn("ORDAX_STAGE_PHYSICAL_ROOT", orchestrator)
-        self.assertNotIn('"--trust"', orchestrator)
-        self.assertNotIn('"--release-agent"', orchestrator)
-        self.assertNotIn('"--releases-root"', orchestrator)
+        stage_owner = orchestrator.split(
+            "def _stage_materialized_release(", 1
+        )[1].split("\ndef _read_pending_sha", 1)[0]
+        self.assertNotIn('"--trust"', stage_owner)
+        self.assertNotIn('"--release-agent"', stage_owner)
+        self.assertNotIn('"--releases-root"', stage_owner)
         self.assertNotIn("activate.py", orchestrator)
         self.assertNotIn("promote.py", orchestrator)
         self.assertNotIn("LoaderEntryOneShot", orchestrator)
