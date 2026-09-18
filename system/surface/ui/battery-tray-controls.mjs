@@ -13,14 +13,24 @@ function batteryLevel(percent) {
   return 4;
 }
 
+function batteryStateLabel(state) {
+  return {
+    charging: "Carregando",
+    discharging: "Em uso",
+    full: "Carga completa",
+    "not-charging": "Conectada à energia",
+    unknown: "Estado desconhecido",
+  }[state] ?? "Estado desconhecido";
+}
+
+function externalPowerLabel(externalPower) {
+  if (externalPower === true) return "Energia externa conectada";
+  if (externalPower === false) return "Usando bateria";
+  return "Estado da fonte desconhecido";
+}
+
 function batteryTitle(battery, externalPower) {
-  const stateCopy = {
-    charging: "carregando",
-    discharging: "em uso",
-    full: "carregada",
-    "not-charging": "conectada à energia",
-    unknown: "estado desconhecido",
-  }[battery.state] ?? "estado desconhecido";
+  const stateCopy = batteryStateLabel(battery.state).toLocaleLowerCase("pt-BR");
   const powerCopy =
     externalPower === true
       ? " · energia externa conectada"
@@ -42,8 +52,12 @@ export function mountBatteryTrayControls(
   const item = root.querySelector("[data-battery-tray]");
   const icon = root.querySelector("[data-battery-icon]");
   const label = root.querySelector("[data-battery-label]");
-  if (!item || !icon || !label) {
-    throw new Error("Battery tray controls require the shared system tray");
+  const panel = root.querySelector('[data-quick-panel="battery"]');
+  const quickPercent = root.querySelector("[data-quick-battery-percent]");
+  const quickState = root.querySelector("[data-quick-battery-state]");
+  const quickPower = root.querySelector("[data-quick-battery-power]");
+  if (!item || !icon || !label || !panel || !quickPercent || !quickState || !quickPower) {
+    throw new Error("Battery tray controls require the shared system tray and quick panel");
   }
 
   let destroyed = false;
@@ -53,6 +67,9 @@ export function mountBatteryTrayControls(
     const value = validatePowerStatusSnapshot(snapshot);
     if (value.battery === null) {
       item.hidden = true;
+      quickPercent.textContent = "--%";
+      quickState.textContent = "Bateria não detectada.";
+      quickPower.textContent = externalPowerLabel(value.externalPower);
       return;
     }
     item.hidden = false;
@@ -63,6 +80,9 @@ export function mountBatteryTrayControls(
     icon.dataset.charging = String(value.battery.state === "charging");
     label.textContent = `${value.battery.percent}%`;
     item.title = batteryTitle(value.battery, value.externalPower);
+    quickPercent.textContent = `${value.battery.percent}%`;
+    quickState.textContent = batteryStateLabel(value.battery.state);
+    quickPower.textContent = externalPowerLabel(value.externalPower);
   };
 
   const refresh = async () => {
@@ -77,6 +97,9 @@ export function mountBatteryTrayControls(
     }
   };
 
+  const onQuickPanelOpen = () => void refresh();
+  panel.addEventListener("ordax:quick-panel-open", onQuickPanelOpen);
+
   void refresh();
   const timer = setInterval(() => void refresh(), pollIntervalMs);
 
@@ -85,6 +108,7 @@ export function mountBatteryTrayControls(
     destroy() {
       destroyed = true;
       clearInterval(timer);
+      panel.removeEventListener("ordax:quick-panel-open", onQuickPanelOpen);
     },
   });
 }
