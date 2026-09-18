@@ -220,6 +220,7 @@ trap terminate HUP INT TERM
 
 write_pid "$GUARDIAN_PID_FILE" "$"
 log "guardian started pid=$"
+ensure_base_boot_id || fail_closed "boot session id could not be initialized"
 write_base_update_heartbeat
 
 consecutive_failures=0
