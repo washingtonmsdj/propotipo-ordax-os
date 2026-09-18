@@ -39,6 +39,12 @@ class RescueAgentContractTests(unittest.TestCase):
         self.assertNotIn("/bin/busybox reboot", text)
         self.assertNotIn("/bin/busybox poweroff", text)
 
+    def test_rescue_status_is_mirrored_as_bounded_telemetry_only(self):
+        text = AGENT.read_text(encoding="utf-8")
+        self.assertIn("TELEMETRY_STATUS_FILE=$STATE_DIR/native-state/rescue-status.json", text)
+        self.assertIn('{"generation":%s,"action":"%s"}', text)
+        self.assertNotIn('"command":', text)
+
     def test_surface_copies_agent_into_persistent_state_and_does_not_own_its_lifetime(self):
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertIn("RESCUE_DIR=$STATE_ROOT/rescue", text)
