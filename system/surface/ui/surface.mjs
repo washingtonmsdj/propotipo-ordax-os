@@ -50,6 +50,12 @@ function element(tag, className, text) {
   return node;
 }
 
+function placeChildAt(container, child, index) {
+  const current = container.children[index] ?? null;
+  if (current === child) return;
+  container.insertBefore(child, current);
+}
+
 function areaLabel(area) {
   return `Área ${String(area.ordinal).padStart(2, "0")}`;
 }
@@ -81,7 +87,7 @@ function syncPreferenceChoice(choices, panel, state) {
   );
   const retained = new Set();
 
-  for (const option of panel.options) {
+  for (const [index, option] of panel.options.entries()) {
     let button = existing.get(option.value) ?? null;
     if (!button) {
       button = element("button", "ordax-preference-choice");
@@ -92,7 +98,7 @@ function syncPreferenceChoice(choices, panel, state) {
     button.dataset.preferenceValue = option.value;
     button.dataset.selected = String(selected === option.value);
     button.setAttribute("aria-pressed", String(selected === option.value));
-    choices.append(button);
+    placeChildAt(choices, button, index);
     retained.add(button);
   }
 
@@ -205,7 +211,7 @@ function syncWindowPanels(body, app, state) {
     } else {
       syncPanel(section, panel, state);
     }
-    body.append(section);
+    placeChildAt(body, section, index);
     retained.add(section);
   }
 
@@ -365,10 +371,11 @@ export function mountSurface(
 
   const renderLauncher = () => {
     const query = launcherQuery.value.trim().toLocaleLowerCase("pt-BR");
+    const focusedLauncherApp = root.ownerDocument.activeElement?.dataset?.launchApp ?? null;
     const retained = new Set();
     let visible = 0;
 
-    for (const app of listFirstPartyApps()) {
+    for (const [index, app] of listFirstPartyApps().entries()) {
       const available = isAppAvailable(app, state.capabilityIds);
       const searchable = `${app.title} ${app.description} ${app.id}`.toLocaleLowerCase("pt-BR");
       const matches = !query || searchable.includes(query);
@@ -398,7 +405,7 @@ export function mountSurface(
           description.textContent = available ? app.description : "Capacidades necessárias indisponíveis";
         }
       }
-      appLauncher.append(button);
+      placeChildAt(appLauncher, button, index);
       retained.add(button);
       if (matches) visible += 1;
     }
@@ -413,20 +420,25 @@ export function mountSurface(
         empty = element("p", "ordax-launcher-empty", "Nenhum aplicativo encontrado.");
         empty.dataset.launcherEmpty = "";
       }
-      appLauncher.append(empty);
+      placeChildAt(appLauncher, empty, retained.size);
     } else {
       empty?.remove();
     }
 
-    const activeElement = root.ownerDocument.activeElement;
-    if (activeElement?.dataset?.launchApp && activeElement.hidden) {
-      launcherQuery.focus({ preventScroll: true });
+    if (focusedLauncherApp) {
+      const focusedButton = Array.from(appLauncher.children).find(
+        (child) => child.dataset?.launchApp === focusedLauncherApp,
+      ) ?? null;
+      if (!focusedButton || focusedButton.hidden || focusedButton.disabled) {
+        launcherQuery.focus({ preventScroll: true });
+      }
     }
   };
 
   const renderWindows = () => {
     const area = getActiveArea(state);
     const retained = new Set();
+    let renderedIndex = 0;
     let visibleIndex = 0;
 
     for (const windowState of area.windows) {
@@ -446,7 +458,8 @@ export function mountSurface(
       } else {
         syncWindowNode(windowNode, app, windowState, state, index, area);
       }
-      windowLayer.append(windowNode);
+      placeChildAt(windowLayer, windowNode, renderedIndex);
+      renderedIndex += 1;
       retained.add(windowNode);
     }
 
@@ -458,6 +471,7 @@ export function mountSurface(
   const renderDock = () => {
     const area = getActiveArea(state);
     const retained = new Set();
+    let index = 0;
     for (const windowState of area.windows) {
       const app = getFirstPartyApp(windowState.appId);
       if (!app) continue;
@@ -473,7 +487,8 @@ export function mountSurface(
       button.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
       button.setAttribute("aria-label", `${windowState.minimized ? "Restaurar" : "Focar"} ${app.title}`);
       button.title = app.title;
-      runningApps.append(button);
+      placeChildAt(runningApps, button, index);
+      index += 1;
       retained.add(button);
     }
     for (const child of Array.from(runningApps.children)) {
@@ -495,6 +510,7 @@ export function mountSurface(
   const renderAreas = () => {
     const activeArea = getActiveArea(state);
     const retained = new Set();
+    let index = 0;
     for (const area of state.areas) {
       const active = area.id === state.activeAreaId;
       let button = Array.from(areaSwitcher.children).find(
@@ -514,7 +530,8 @@ export function mountSurface(
         dot.setAttribute("aria-hidden", "true");
         button.prepend(dot);
       }
-      areaSwitcher.append(button);
+      placeChildAt(areaSwitcher, button, index);
+      index += 1;
       retained.add(button);
     }
 
@@ -526,7 +543,7 @@ export function mountSurface(
         add.dataset.areaCreate = "";
         add.setAttribute("aria-label", "Criar nova área de trabalho");
       }
-      areaSwitcher.append(add);
+      placeChildAt(areaSwitcher, add, index);
       retained.add(add);
     } else {
       add?.remove();
@@ -671,7 +688,11 @@ export function mountSurface(
 
     const control = event.target.closest("[data-window-action]");
     if (control) {
-      dispatch({ type: `window.${control.dataset.windowAction}`, windowId: control.dataset.windowId });
+      const action = control.dataset.windowAction;
+      dispatch({ type: `window.${action}`, windowId: control.dataset.windowId });
+      if (action === "minimize" || action === "close") {
+        workspace.focus({ preventScroll: true });
+      }
       return;
     }
 
