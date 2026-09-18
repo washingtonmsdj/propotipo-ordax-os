@@ -265,9 +265,14 @@ button.ordax-file-row {
 }
 
 button.ordax-file-row:hover,
-button.ordax-file-row:focus-visible {
+button.ordax-file-row:focus-visible,
+button.ordax-file-row[data-selected="true"] {
   background: var(--ordax-hover-bg);
   outline: none;
+}
+
+button.ordax-file-row[data-selected="true"] {
+  box-shadow: inset 3px 0 0 var(--ordax-accent);
 }
 
 button.ordax-file-row:focus-visible {
@@ -463,4 +468,56 @@ button.ordax-file-row:focus-visible {
   margin: 0;
   padding: 9px 10px;
   line-height: 1.45;
+}
+
+.ordax-files-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-files-details-summary {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ordax-files-details-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-files-details-meta,
+.ordax-files-details-path {
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-files-details-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .ordax-files-details {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ordax-files-details-actions {
+    justify-content: flex-end;
+  }
 }
