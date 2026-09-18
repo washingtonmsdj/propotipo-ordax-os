@@ -1,0 +1,467 @@
+import {
+  assertSurfaceHost,
+  validateSurfaceSnapshot,
+} from "../../contracts/surface-host.mjs";
+import {
+  assertSystemMetricsPort,
+  validateSystemMetricsSnapshot,
+} from "../../contracts/system-metrics.mjs";
+import {
+  assertUpdateStatusPort,
+  validateUpdateStatusSnapshot,
+} from "../../contracts/update-status.mjs";
+import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+
+const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
+const SYSTEM_EXTENSION_SELECTOR = '[data-app-extension="system-overview"]';
+
+const UPDATE_LABELS = Object.freeze({
+  running: "Atualizado",
+  applied: "Atualização aplicada",
+  updating: "Atualizando",
+  "network-error": "Sem conexão para atualizar",
+  "remote-error": "Git remoto indisponível",
+  "pull-error": "Falha ao atualizar",
+  "rolled-back": "Atualização revertida",
+  rejected: "Versão bloqueada",
+  pinned: "Versão fixada",
+  disabled: "Atualização indisponível",
+  unavailable: "Estado indisponível",
+});
+
+const CAPABILITY_LABELS = Object.freeze({
+  "network.https": "Rede HTTPS",
+  "system.boot-control": "Energia do dispositivo",
+  "filesystem.user-space": "Espaço local do usuário",
+  "system.metrics": "Métricas do dispositivo",
+});
+
+function node(documentObject, tag, className, text) {
+  const element = documentObject.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
+function shortSha(value) {
+  if (typeof value !== "string" || value.length < 8 || value === "unavailable") return "—";
+  return value.slice(0, 8);
+}
+
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const precision = unit >= 3 && value < 10 ? 1 : 0;
+  return `${value.toFixed(precision)} ${units[unit]}`;
+}
+
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h ${minutes}min`;
+  if (hours > 0) return `${hours}h ${minutes}min`;
+  return `${minutes}min`;
+}
+
+function readableMode(mode) {
+  switch (mode) {
+    case "reload": return "Recarga rápida da Surface";
+    case "surface-restart": return "Reinício somente da Surface";
+    case "supervisor-restart": return "Reinício do supervisor";
+    case "initial": return "Inicialização";
+    default: return "Sem ação pendente";
+  }
+}
+
+function updateIsAlerting(snapshot) {
+  return Boolean(snapshot?.bootRefreshRequired) || [
+    "network-error",
+    "remote-error",
+    "pull-error",
+    "rolled-back",
+    "rejected",
+  ].includes(snapshot?.status);
+}
+
+function ratio(used, total) {
+  if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return 0;
+  return Math.min(1, Math.max(0, used / total));
+}
+
+function percent(value) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function appendMetricCard(documentObject, container, { label, value, detail = "", progress = null }) {
+  const card = node(documentObject, "article", "ordax-system-card");
+  card.append(node(documentObject, "span", "ordax-system-card-label", label));
+  card.append(node(documentObject, "strong", "ordax-system-card-value", value));
+  if (progress !== null) {
+    const track = node(documentObject, "span", "ordax-system-meter");
+    const fill = node(documentObject, "span", "ordax-system-meter-fill");
+    fill.style.setProperty("--ordax-system-meter-value", percent(progress));
+    track.append(fill);
+    card.append(track);
+  }
+  if (detail) card.append(node(documentObject, "small", "ordax-system-card-detail", detail));
+  container.append(card);
+}
+
+export function mountSystemOverviewControls(
+  root,
+  host,
+  updateStatusPort = null,
+  systemMetrics = null,
+  surfaceLifecycle = null,
+) {
+  if (!(root instanceof Element)) {
+    throw new TypeError("System overview controls require a Surface root Element");
+  }
+
+  const hostPort = assertSurfaceHost(host);
+  const updatePort = updateStatusPort === null ? null : assertUpdateStatusPort(updateStatusPort);
+  const metricsPort = systemMetrics === null ? null : assertSystemMetricsPort(systemMetrics);
+  const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+  const documentObject = root.ownerDocument;
+
+  let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
+  let updateSnapshot = updatePort?.getSnapshot();
+  if (updateSnapshot !== null && updateSnapshot !== undefined) {
+    updateSnapshot = validateUpdateStatusSnapshot(updateSnapshot);
+  }
+  let metricsSnapshot = null;
+  let metricsPending = false;
+  let metricsMessage = "";
+  let metricsOrdinal = 0;
+  let destroyed = false;
+  let mountedSlot = null;
+
+  const findSlot = () =>
+    root.querySelector(`${SYSTEM_WINDOW_SELECTOR} ${SYSTEM_EXTENSION_SELECTOR}`);
+
+  const renderHeader = (view) => {
+    const header = node(documentObject, "header", "ordax-system-header");
+    const copy = node(documentObject, "div", "ordax-system-header-copy");
+    copy.append(
+      node(documentObject, "span", "ordax-system-eyebrow", "OrdaX"),
+      node(documentObject, "h3", "ordax-system-title", "Estado do sistema"),
+      node(
+        documentObject,
+        "p",
+        "ordax-system-subtitle",
+        "Versão, saúde da atualização e recursos expostos por contratos neutros.",
+      ),
+    );
+
+    const health = node(documentObject, "span", "ordax-system-health");
+    const alerting = updateIsAlerting(updateSnapshot);
+    health.dataset.state = alerting
+      ? "attention"
+      : hostSnapshot.connectivity === "offline"
+        ? "attention"
+        : "healthy";
+    health.textContent = alerting
+      ? "Atenção necessária"
+      : hostSnapshot.connectivity === "offline"
+        ? "Offline"
+        : updateSnapshot
+          ? "Operando normalmente"
+          : "Surface ativa";
+    header.append(copy, health);
+    view.append(header);
+  };
+
+  const renderSummary = (view) => {
+    const grid = node(documentObject, "section", "ordax-system-summary");
+    grid.setAttribute("aria-label", "Resumo do sistema");
+
+    appendMetricCard(documentObject, grid, {
+      label: "Versão em execução",
+      value: updateSnapshot ? shortSha(updateSnapshot.sourceSha) : "—",
+      detail: updateSnapshot
+        ? `Aplicação: ${readableMode(updateSnapshot.applyMode)}`
+        : "Gerenciamento de versão não exposto neste host",
+    });
+
+    appendMetricCard(documentObject, grid, {
+      label: "Atualização",
+      value: updateSnapshot
+        ? updateSnapshot.bootRefreshRequired
+          ? "Reinício necessário"
+          : UPDATE_LABELS[updateSnapshot.status] ?? updateSnapshot.status
+        : "Indisponível",
+      detail: updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
+        ? `Verificado: ${updateSnapshot.checkedAt}`
+        : "Sem estado de atualização publicado",
+    });
+
+    appendMetricCard(documentObject, grid, {
+      label: "Conectividade",
+      value: hostSnapshot.connectivity === "online"
+        ? "Online"
+        : hostSnapshot.connectivity === "offline"
+          ? "Offline"
+          : "Desconhecida",
+      detail: `${hostSnapshot.capabilityIds.length} capacidades ativas`,
+    });
+
+    appendMetricCard(documentObject, grid, {
+      label: "Tempo ligado",
+      value: metricsSnapshot ? formatUptime(metricsSnapshot.uptimeSeconds) : "—",
+      detail: metricsPort ? "Leitura local do dispositivo" : "Métrica local indisponível",
+    });
+
+    view.append(grid);
+  };
+
+  const renderResources = (view) => {
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Recursos"),
+      node(documentObject, "h4", "ordax-system-section-title", "Uso do dispositivo"),
+    );
+
+    const refresh = node(
+      documentObject,
+      "button",
+      "ordax-system-action",
+      metricsPending ? "Atualizando…" : "Atualizar leitura",
+    );
+    refresh.type = "button";
+    refresh.dataset.systemOverviewRefresh = "";
+    refresh.disabled = metricsPending || !metricsPort;
+    heading.append(headingCopy, refresh);
+    section.append(heading);
+
+    if (!metricsPort) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          "Este host não expõe métricas locais de memória e armazenamento.",
+        ),
+      );
+      view.append(section);
+      return;
+    }
+
+    if (!metricsSnapshot) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          metricsPending ? "Lendo recursos do dispositivo…" : (metricsMessage || "Aguardando leitura local."),
+        ),
+      );
+      view.append(section);
+      return;
+    }
+
+    const memoryUsed = metricsSnapshot.memoryTotalBytes - metricsSnapshot.memoryAvailableBytes;
+    const storageUsed = metricsSnapshot.userStorageTotalBytes - metricsSnapshot.userStorageFreeBytes;
+    const resourceGrid = node(documentObject, "div", "ordax-system-resource-grid");
+
+    appendMetricCard(documentObject, resourceGrid, {
+      label: "Memória",
+      value: formatBytes(memoryUsed),
+      detail: `${formatBytes(metricsSnapshot.memoryAvailableBytes)} disponível de ${formatBytes(metricsSnapshot.memoryTotalBytes)}`,
+      progress: ratio(memoryUsed, metricsSnapshot.memoryTotalBytes),
+    });
+    appendMetricCard(documentObject, resourceGrid, {
+      label: "Espaço do usuário",
+      value: formatBytes(storageUsed),
+      detail: `${formatBytes(metricsSnapshot.userStorageFreeBytes)} livre de ${formatBytes(metricsSnapshot.userStorageTotalBytes)}`,
+      progress: ratio(storageUsed, metricsSnapshot.userStorageTotalBytes),
+    });
+    section.append(resourceGrid);
+    if (metricsMessage) section.append(node(documentObject, "p", "ordax-system-message", metricsMessage));
+    view.append(section);
+  };
+
+  const renderUpdateDetails = (view) => {
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Atualização"),
+      node(documentObject, "h4", "ordax-system-section-title", "Entrega e recuperação"),
+    );
+    heading.append(headingCopy);
+    section.append(heading);
+
+    if (!updateSnapshot) {
+      section.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          "Este host não publica o estado do supervisor de atualizações.",
+        ),
+      );
+      view.append(section);
+      return;
+    }
+
+    const facts = node(documentObject, "dl", "ordax-system-facts");
+    const addFact = (label, value) => {
+      const item = node(documentObject, "div", "ordax-system-fact");
+      item.append(
+        node(documentObject, "dt", "", label),
+        node(documentObject, "dd", "", value),
+      );
+      facts.append(item);
+    };
+
+    addFact("Commit", shortSha(updateSnapshot.sourceSha));
+    addFact("Aplicação", readableMode(updateSnapshot.applyMode));
+    if (updateSnapshot.lastAppliedAt !== "unknown") {
+      addFact("Última aplicação", updateSnapshot.lastAppliedAt);
+    }
+    if (updateSnapshot.rejectedSha) {
+      addFact("Commit bloqueado", shortSha(updateSnapshot.rejectedSha));
+    }
+    addFact(
+      "Boot",
+      updateSnapshot.bootRefreshRequired
+        ? "Mudança pendente de reinício físico"
+        : "Nenhum reinício físico pendente",
+    );
+    section.append(facts);
+
+    if (updateIsAlerting(updateSnapshot)) {
+      const warning = node(
+        documentObject,
+        "p",
+        "ordax-system-warning",
+        updateSnapshot.bootRefreshRequired
+          ? "Existe uma atualização de boot/bootstrap pendente. O OrdaX não reiniciará a máquina automaticamente."
+          : "A versão atual permanece preservada enquanto o atualizador tenta recuperar um estado saudável.",
+      );
+      section.append(warning);
+    }
+
+    view.append(section);
+  };
+
+  const renderCapabilities = (view) => {
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Contrato"),
+      node(documentObject, "h4", "ordax-system-section-title", "Capacidades desta execução"),
+    );
+    heading.append(headingCopy);
+    section.append(heading);
+
+    const list = node(documentObject, "div", "ordax-system-capabilities");
+    if (hostSnapshot.capabilityIds.length === 0) {
+      list.append(node(documentObject, "p", "ordax-system-placeholder", "Nenhuma capacidade adicional declarada."));
+    } else {
+      for (const capabilityId of hostSnapshot.capabilityIds) {
+        const item = node(documentObject, "div", "ordax-system-capability");
+        item.append(
+          node(documentObject, "span", "ordax-system-capability-dot"),
+          node(documentObject, "strong", "", CAPABILITY_LABELS[capabilityId] ?? capabilityId),
+          node(documentObject, "small", "", capabilityId),
+        );
+        list.append(item);
+      }
+    }
+    section.append(list);
+    view.append(section);
+  };
+
+  const paint = (slot) => {
+    slot.replaceChildren();
+    slot.dataset.ordaxSystemOverviewView = "";
+
+    const view = node(documentObject, "div", "ordax-system-view");
+    renderHeader(view);
+    renderSummary(view);
+    renderResources(view);
+    renderUpdateDetails(view);
+    renderCapabilities(view);
+    slot.append(view);
+  };
+
+  const renderView = (force = false) => {
+    if (destroyed) return;
+    const slot = findSlot();
+    if (!slot) {
+      mountedSlot = null;
+      return;
+    }
+    if (!force && mountedSlot === slot) return;
+    mountedSlot = slot;
+    paint(slot);
+  };
+
+  const replaceView = () => renderView(true);
+
+  const refreshMetrics = async () => {
+    if (!metricsPort || metricsPending) return;
+    const ordinal = ++metricsOrdinal;
+    metricsPending = true;
+    metricsMessage = "";
+    replaceView();
+    try {
+      const next = validateSystemMetricsSnapshot(await metricsPort.read());
+      if (destroyed || ordinal !== metricsOrdinal) return;
+      metricsSnapshot = next;
+    } catch {
+      if (destroyed || ordinal !== metricsOrdinal) return;
+      metricsMessage = "Não foi possível atualizar a leitura dos recursos.";
+    } finally {
+      if (!destroyed && ordinal === metricsOrdinal) {
+        metricsPending = false;
+        replaceView();
+      }
+    }
+  };
+
+  const onClick = (event) => {
+    const refresh = event.target.closest("[data-system-overview-refresh]");
+    if (refresh && root.contains(refresh)) void refreshMetrics();
+  };
+
+  root.addEventListener("click", onClick);
+  const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
+  const unsubscribeHost = hostPort.subscribe((snapshot) => {
+    hostSnapshot = validateSurfaceSnapshot(snapshot);
+    replaceView();
+  });
+  const unsubscribeUpdate = updatePort?.subscribe((snapshot) => {
+    updateSnapshot = validateUpdateStatusSnapshot(snapshot);
+    replaceView();
+  });
+
+  if (metricsPort) void refreshMetrics();
+
+  return Object.freeze({
+    destroy() {
+      destroyed = true;
+      metricsOrdinal += 1;
+      unsubscribeUpdate?.();
+      unsubscribeHost?.();
+      unsubscribeRender();
+      root.removeEventListener("click", onClick);
+      const slot = findSlot();
+      if (slot?.dataset.ordaxSystemOverviewView !== undefined) {
+        slot.replaceChildren();
+        delete slot.dataset.ordaxSystemOverviewView;
+      }
+      mountedSlot = null;
+    },
+  });
+}
