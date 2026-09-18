@@ -1031,7 +1031,7 @@ USB e Native podem compartilhar adapter, mas o nome Native não comprova o perfi
 | Entrega | Conteúdo | Dependências | Saída verificável |
 |---|---|---|---|
 | E0 / P0 | Revalidar source, inventariar capacidades, padronizar Ajustes, mapear seções e destinos únicos. | `main` atual e contratos. | Mapa de navegação e inventário factual atualizados. |
-| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema, Ajustes e Conta já possuem subseções canônicas validadas/deep links por `app-activation/1`; Arquivos mantém seu target de caminho lógico. A principal lacuna transversal restante é persistir a subseção por área/janela sem criar segundo roteador. |
+| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial avançado:** Sistema, Ajustes e Conta possuem subseções canônicas validadas/deep links por `app-activation/1`; o target interno agora fica persistido por janela/área no workspace e é restaurado pelo lifecycle compartilhado sem segundo roteador. Arquivos mantém seu target lógico e a navegação interna de pasta continua owner de Arquivos. |
 | E2 / P1 | Sistema: Visão geral, Atualizações observacionais, Armazenamento, Diagnóstico, Sobre e Energia quando suportada; remover traduções duplicadas. | E1, portas existentes. | **Parcial:** Visão geral, Atualizações, Armazenamento, Diagnóstico e Sobre já têm destinos canônicos com dados reais; rodapé abre a única seção Atualizações e a tradução comum foi centralizada. Energia completa permanece condicionada à capacidade real. |
 | E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | **Parcial:** Aparência e Rede já são destinos canônicos, tema real continua persistido e a listagem técnica de capacidades foi removida de Ajustes; preferências de acessibilidade ainda faltam. |
 | E4 / P1 | Arquivos básico completo em incrementos: seleção/detalhes, leitura/abertura, importação/exportação e mutações. | E1, extensões de contrato/backend por operação. | Fluxos de usuário com dados reais e proteção da raiz. |
@@ -1063,7 +1063,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 
 **Meta básica:** o usuário abre os quatro apps, entende limites reais, navega pelas seções entregues, personaliza o tema, realiza operações de arquivos suportadas, consulta versão/atualização/métricas, usa energia nativa confirmada e mantém estado entre recargas.
 
-Para essa meta, a navegação canônica já cobre Sistema, Ajustes e Conta; faltam principalmente persistir a subseção por área/janela, preferências de acessibilidade e demais ajustes ainda não suportados, diagnóstico/exportação técnica mais completa, recursos P2 de Arquivos e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
+Para essa meta, a navegação canônica cobre Sistema, Ajustes e Conta e a subseção escolhida já é persistida por janela/área; faltam principalmente preferências de acessibilidade e demais ajustes ainda não suportados, diagnóstico/exportação técnica mais completa, recursos P2 de Arquivos e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
 
 **Não chamar de concluído:** login real sem provedor; cloud sem transporte e autorização; gerenciador de arquivos completo sem leitura/mutações; recuperação canônica sem gates; áudio/suspensão sem prova; instalação nativa baseada apenas em imagem conceitual.
 
@@ -1090,7 +1090,7 @@ Uma captura bonita não prova integração. Teste unitário de contrato não pro
 | ID | Cenário | Resultado esperado |
 |---|---|---|
 | NAV-01 | Abrir Sistema e clicar no estado de atualização do rodapé. | Uma única janela/destino Atualizações; nenhuma segunda central. |
-| NAV-02 | Trocar subseção, minimizar, restaurar e recarregar. | Destino/foco/estado restaurados conforme contrato, sem duplicar listeners. |
+| NAV-02 | Trocar subseção, minimizar, restaurar, alternar área e recarregar. | Target interno persistido por janela/área e restaurado pelo lifecycle; owner continua validando o destino, sem duplicar listeners ou criar segundo roteador. |
 | NAV-03 | Usar app em tela estreita e com teclado. | Navegação alcançável e retorno claro, sem três colunas ilegíveis. |
 | FILE-01 | Abrir Documentos pela mesa, criar pasta e atualizar. | Mesmo local autorizado e pasta real, persistente. |
 | FILE-02 | Criar nome inválido/duplicado e perder permissão. | Erro específico, preservação do contexto, nenhuma escrita fora da raiz. |
