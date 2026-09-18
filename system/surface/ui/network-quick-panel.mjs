@@ -367,6 +367,9 @@ export function mountNetworkQuickPanel(
       managementSnapshot = nextSnapshot;
       managementReadFailed = false;
       managementLastSuccessAt = Date.now();
+      if (message === "O gerenciamento de Wi-Fi está temporariamente indisponível.") {
+        message = "";
+      }
       if (
         selectedSsid !== null
         && !nextSnapshot.networks.some((entry) => entry.ssid === selectedSsid)
