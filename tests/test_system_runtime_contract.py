@@ -95,7 +95,10 @@ class SystemRuntimeContractTests(unittest.TestCase):
     def test_native_browser_is_configured_for_local_shared_surface(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("/etc/barkery/barkery.conf", text)
-        self.assertIn("start_uri = http://127.0.0.1:8765/composition/native/index.html", text)
+        self.assertIn("start_uri = http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA", text)
+        self.assertIn('/usr/bin/git -C "$repo_root" rev-parse HEAD', text)
+        self.assertIn("XDG_CACHE_HOME=/tmp/ordax-web-cache-$SOURCE_SHA", text)
+        self.assertIn('mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA"', text)
         self.assertIn("GDK_BACKEND=wayland", text)
         self.assertIn("enabled = 0", text)
 
