@@ -30,7 +30,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
         self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
         self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
-        self.assertIn('RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-12}', text)
+        self.assertIn('RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-$SURFACE_HEALTH_TIMEOUT}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
         self.assertIn('run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote', text)
         self.assertIn('apply_remote_checkout "$old_sha" "$remote_sha"', text)
@@ -293,6 +293,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_live_reload_requires_surface_health_acknowledgement(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
+        self.assertIn("surface_health_matches()", text)
         self.assertIn("wait_for_surface_health", text)
         self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
         self.assertIn('wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"', text)
@@ -303,6 +304,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('wait_for_surface_health "$expected_sha" "$RELOAD_FALLBACK_HEALTH_TIMEOUT"', text)
         self.assertIn("live reload health acknowledgement timed out; restarting Surface once", text)
         self.assertIn("Surface restart fallback acknowledged healthy state", text)
+        self.assertIn("late Surface health acknowledgement arrived before rollback commit", text)
+        self.assertIn('surface_health_matches "$new_sha"', text)
         self.assertIn("Surface did not acknowledge healthy state after reload and one Surface restart", text)
         recovery = text.split("recover_reload_with_surface_restart() {", 1)[1].split("\n}\n", 1)[0]
         self.assertEqual(recovery.count("stop_surface"), 1)
