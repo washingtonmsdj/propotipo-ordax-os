@@ -37,6 +37,7 @@ WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-
 NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
 NATIVE_SURFACE_HEARTBEAT_ADAPTER = ROOT / "system" / "adapters" / "native" / "surface-heartbeat.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
+UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
