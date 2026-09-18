@@ -1,10 +1,12 @@
 import {
   WORKSPACE_STORE_SCHEMA,
   assertWorkspaceStore,
+  migrateLegacyWorkspaceRecord,
   validateWorkspaceRecord,
 } from "../../contracts/workspace-store.mjs";
 
-const STORAGE_KEY = "ordax.workspace.v1";
+const STORAGE_KEY = "ordax.workspace.v2";
+const LEGACY_STORAGE_KEY = "ordax.workspace.v1";
 
 function resolveStorage(windowRef) {
   try {
@@ -18,23 +20,43 @@ function resolveStorage(windowRef) {
   return null;
 }
 
+function readStored(storage, key, validator) {
+  const raw = storage.getItem(key);
+  if (raw === null) return null;
+  return validator(JSON.parse(raw));
+}
+
 export function createWebWorkspaceStore(windowRef = globalThis.window) {
   const storage = resolveStorage(windowRef);
   let memory = validateWorkspaceRecord(null);
 
-  const store = {
-    schema: WORKSPACE_STORE_SCHEMA,
-    load() {
-      if (!storage) return memory;
+  const load = () => {
+    if (!storage) return memory;
+    const currentRaw = storage.getItem(STORAGE_KEY);
+    if (currentRaw !== null) {
       try {
-        const raw = storage.getItem(STORAGE_KEY);
-        if (raw === null) return memory;
-        memory = validateWorkspaceRecord(JSON.parse(raw));
+        memory = validateWorkspaceRecord(JSON.parse(currentRaw));
       } catch {
-        // Corrupt storage never prevents the Surface from starting.
+        memory = validateWorkspaceRecord(null);
       }
       return memory;
-    },
+    }
+
+    try {
+      const legacy = readStored(storage, LEGACY_STORAGE_KEY, migrateLegacyWorkspaceRecord);
+      if (legacy) {
+        memory = legacy;
+        storage.setItem(STORAGE_KEY, JSON.stringify(memory));
+      }
+    } catch {
+      memory = validateWorkspaceRecord(null);
+    }
+    return memory;
+  };
+
+  const store = {
+    schema: WORKSPACE_STORE_SCHEMA,
+    load,
     save(snapshot) {
       const validated = validateWorkspaceRecord(snapshot);
       memory = validated;
