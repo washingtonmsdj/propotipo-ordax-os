@@ -364,6 +364,36 @@
   gap: 10px;
 }
 
+.ordax-files-sort {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.ordax-files-sort:hover,
+.ordax-files-sort:focus-visible {
+  color: var(--ordax-text);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-files-sort-indicator {
+  min-width: 0.8em;
+  color: var(--ordax-accent);
+  font-size: 0.82em;
+}
+
 .ordax-files-list-header {
   position: sticky;
   z-index: 2;
