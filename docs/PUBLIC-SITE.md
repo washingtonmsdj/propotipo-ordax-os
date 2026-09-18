@@ -51,6 +51,8 @@ The future identity service may use an external infrastructure provider behind a
 
 The machine-readable entry boundary is `docs/contracts/public-identity.json`. It requires one account model across product modes, forbids browser/service secrets and keeps login/cadastro unavailable until a real same-origin identity route is configured.
 
+The server-side responsibility is prepared under `services/public-identity/`. A Supabase adapter may be used behind that gateway, but only on a dedicated or isolated target that passes `infra/supabase/identity/preflight.sql`. The previously considered shared project already owns unrelated Auth/profile behavior, so it was left unchanged.
+
 ## Download boundary
 
 The site never hard-codes a "latest" image or fabricates release availability.
