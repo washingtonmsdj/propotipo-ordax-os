@@ -98,6 +98,104 @@ export function mountSettingsOverviewControls(
   const findSlot = () =>
     root.querySelector(`${SETTINGS_WINDOW_SELECTOR} ${SETTINGS_EXTENSION_SELECTOR}`);
 
+  const focusIdentity = (element) => {
+    if (!element || !element.dataset) return null;
+    if (element.dataset.settingsWifiPasswordFor) {
+      return Object.freeze({
+        kind: "wifi-password",
+        value: element.dataset.settingsWifiPasswordFor,
+      });
+    }
+    if (element.dataset.settingsSection) {
+      return Object.freeze({ kind: "section", value: element.dataset.settingsSection });
+    }
+    if (element.dataset.settingsWifiSsid && !element.dataset.settingsNetworkAction) {
+      return Object.freeze({ kind: "wifi-network", value: element.dataset.settingsWifiSsid });
+    }
+    if (element.dataset.settingsNetworkAction) {
+      return Object.freeze({
+        kind: "network-action",
+        value: element.dataset.settingsNetworkAction,
+        ssid: element.dataset.settingsWifiSsid ?? null,
+      });
+    }
+    if (element.dataset.settingsPreferenceId) {
+      return Object.freeze({
+        kind: "preference",
+        value: element.dataset.settingsPreferenceId,
+        option: element.dataset.settingsPreferenceValue ?? "",
+      });
+    }
+    return null;
+  };
+
+  const findFocusTarget = (slot, identity) => {
+    if (!identity) return null;
+    const candidates = Array.from(slot.querySelectorAll("button, input"));
+    return candidates.find((element) => {
+      const candidate = focusIdentity(element);
+      return candidate
+        && candidate.kind === identity.kind
+        && candidate.value === identity.value
+        && (candidate.ssid ?? null) === (identity.ssid ?? null)
+        && (candidate.option ?? "") === (identity.option ?? "");
+    }) ?? null;
+  };
+
+  const captureInteractionState = (slot) => {
+    const windowBody = slot.closest(".ordax-window-body");
+    const passwordInput = slot.querySelector("[data-settings-wifi-password]");
+    const activeElement = documentObject.activeElement;
+    const activeInside = activeElement && slot.contains(activeElement);
+    return {
+      scrollTop: windowBody?.scrollTop ?? 0,
+      scrollLeft: windowBody?.scrollLeft ?? 0,
+      focus: activeInside ? focusIdentity(activeElement) : null,
+      password:
+        passwordInput instanceof HTMLInputElement
+          ? {
+              ssid: passwordInput.dataset.settingsWifiPasswordFor ?? "",
+              value: passwordInput.value,
+              selectionStart: passwordInput.selectionStart,
+              selectionEnd: passwordInput.selectionEnd,
+            }
+          : null,
+    };
+  };
+
+  const restoreInteractionState = (slot, snapshot) => {
+    if (!snapshot) return;
+    const windowBody = slot.closest(".ordax-window-body");
+    if (windowBody) {
+      windowBody.scrollTop = snapshot.scrollTop;
+      windowBody.scrollLeft = snapshot.scrollLeft;
+    }
+
+    if (snapshot.password?.ssid) {
+      const passwordInput = slot.querySelector("[data-settings-wifi-password]");
+      if (
+        passwordInput instanceof HTMLInputElement
+        && passwordInput.dataset.settingsWifiPasswordFor === snapshot.password.ssid
+      ) {
+        passwordInput.value = snapshot.password.value;
+        if (
+          snapshot.password.selectionStart !== null
+          && snapshot.password.selectionEnd !== null
+        ) {
+          passwordInput.setSelectionRange(
+            snapshot.password.selectionStart,
+            snapshot.password.selectionEnd,
+          );
+        }
+      }
+    }
+
+    const focusTarget = findFocusTarget(slot, snapshot.focus);
+    if (focusTarget && !focusTarget.disabled) {
+      focusTarget.focus({ preventScroll: true });
+    }
+  };
+
   const renderHeader = (view) => {
     const header = node(documentObject, "header", "ordax-settings-header");
     const copy = SECTION_COPY[activeSection];
@@ -390,6 +488,7 @@ export function mountSettingsOverviewControls(
   };
 
   const paint = (slot) => {
+    const interaction = captureInteractionState(slot);
     slot.replaceChildren();
     slot.dataset.ordaxSettingsOverviewView = "";
     slot.dataset.settingsSection = activeSection;
@@ -402,6 +501,7 @@ export function mountSettingsOverviewControls(
       renderNetwork(view);
     }
     slot.append(view);
+    restoreInteractionState(slot, interaction);
   };
 
   const renderView = (force = false) => {
