@@ -227,7 +227,7 @@ function syncWindowPanels(body, app, state) {
 function syncWindowNode(windowNode, app, windowState, state, index, area) {
   windowNode.dataset.windowId = windowState.id;
   windowNode.dataset.appId = app.id;
-  windowNode.dataset.areaId = area.id;
+  windowNode.dataset.windowAreaId = area.id;
   windowNode.dataset.active = String(area.activeWindowId === windowState.id && !windowState.minimized);
   windowNode.dataset.maximized = String(windowState.maximized);
   windowNode.dataset.minimized = String(windowState.minimized);
@@ -347,7 +347,7 @@ export function mountSurface(
   const findRenderedWindow = (windowId) => {
     const areaId = getActiveArea(state).id;
     return Array.from(windowLayer.children).find(
-      (node) => node.dataset.areaId === areaId && node.dataset.windowId === windowId,
+      (node) => node.dataset.windowAreaId === areaId && node.dataset.windowId === windowId,
     ) ?? null;
   };
 
@@ -453,7 +453,7 @@ export function mountSurface(
 
       let windowNode = Array.from(windowLayer.children).find(
         (node) =>
-          node.dataset.areaId === area.id
+          node.dataset.windowAreaId === area.id
           && node.dataset.windowId === windowState.id
           && node.dataset.appId === app.id,
       ) ?? null;
