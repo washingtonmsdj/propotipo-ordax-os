@@ -295,26 +295,35 @@ def _legacy_source_snapshot(esp_root: Path) -> dict[str, str]:
     return snapshot
 
 
+def _legacy_baseline_target_state(
+    target: Path,
+    expected_sha256: str,
+) -> str:
+    try:
+        existing = target.lstat()
+    except FileNotFoundError:
+        return "absent"
+    except OSError as exc:
+        raise StageError(f"cannot inspect legacy A/B baseline: {target.name}") from exc
+
+    if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
+        raise StageError(f"legacy A/B baseline is unsafe: {target.name}")
+    if sha256_file(target) != expected_sha256:
+        raise StageError(f"legacy A/B baseline conflicts with known-good bytes: {target.name}")
+    return "matching"
+
+
 def _preserve_legacy_file(
     esp_root: Path,
     source: Path,
     target: Path,
     expected_sha256: str,
+    target_state: str,
 ) -> bool:
-    try:
-        existing = target.lstat()
-    except FileNotFoundError:
-        existing = None
-    except OSError as exc:
-        raise StageError(f"cannot inspect legacy A/B baseline: {target.name}") from exc
-
-    if existing is not None:
-        if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
-            raise StageError(f"legacy A/B baseline is unsafe: {target.name}")
-        if sha256_file(target) != expected_sha256:
-            raise StageError(f"legacy A/B baseline conflicts with known-good bytes: {target.name}")
+    if target_state == "matching":
         return True
-
+    if target_state != "absent":
+        raise StageError("legacy A/B baseline target state is invalid")
     _atomic_copy(esp_root, source, target, expected_sha256)
     return False
 
@@ -601,17 +610,27 @@ def stage(
     if legacy_enrollment:
         baseline_kernel = target_path(esp_root, "/ordax/base/a/vmlinuz")
         baseline_initramfs = target_path(esp_root, "/ordax/base/a/initrd.gz")
+        kernel_state = _legacy_baseline_target_state(
+            baseline_kernel,
+            legacy_before[LEGACY_KERNEL.as_posix()],
+        )
+        initramfs_state = _legacy_baseline_target_state(
+            baseline_initramfs,
+            legacy_before[LEGACY_INITRAMFS.as_posix()],
+        )
         kernel_reused = _preserve_legacy_file(
             esp_root,
             esp_root / LEGACY_KERNEL,
             baseline_kernel,
             legacy_before[LEGACY_KERNEL.as_posix()],
+            kernel_state,
         )
         initramfs_reused = _preserve_legacy_file(
             esp_root,
             esp_root / LEGACY_INITRAMFS,
             baseline_initramfs,
             legacy_before[LEGACY_INITRAMFS.as_posix()],
+            initramfs_state,
         )
         legacy_baseline_reused = kernel_reused and initramfs_reused
         if _legacy_source_snapshot(esp_root) != legacy_before:
