@@ -136,9 +136,11 @@ test("native update watcher turns a live-safe Git update into one page reload", 
 });
 
 test("old Surface never acknowledges the new SHA before reload", async () => {
+  const oldSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const newSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const updates = [
-    { sourceSha: "aaa", applyMode: "initial", status: "running", healthToken: "token-aaa" },
-    { sourceSha: "bbb", applyMode: "reload", status: "applied", healthToken: "token-bbb" },
+    { sourceSha: oldSha, applyMode: "initial", status: "running", healthToken: "token-aaa" },
+    { sourceSha: newSha, applyMode: "reload", status: "applied", healthToken: "token-bbb" },
   ];
   const healthPosts = [];
   let scheduled = null;
@@ -155,7 +157,10 @@ test("old Surface never acknowledges the new SHA before reload", async () => {
       }
       throw new Error(`unexpected URL ${url}`);
     },
-    location: { reload: () => { reloads += 1; } },
+    location: {
+      href: `http://127.0.0.1:8765/composition/native/index.html?source=${oldSha}`,
+      reload: () => { reloads += 1; },
+    },
     setTimeout(callback) {
       scheduled = callback;
       return 1;
@@ -166,14 +171,14 @@ test("old Surface never acknowledges the new SHA before reload", async () => {
   const watcher = createNativeUpdateWatcher(fakeWindow, { intervalMs: 1 });
   await flushAsyncWork();
   await watcher.markHealthy();
-  assert.deepEqual(healthPosts, [{ sourceSha: "aaa" }]);
+  assert.deepEqual(healthPosts, [{ sourceSha: oldSha }]);
 
   scheduled();
   await flushAsyncWork();
   await flushAsyncWork();
 
   assert.equal(reloads, 1);
-  assert.deepEqual(healthPosts, [{ sourceSha: "aaa" }]);
+  assert.deepEqual(healthPosts, [{ sourceSha: oldSha }]);
   watcher.dispose();
 });
 
