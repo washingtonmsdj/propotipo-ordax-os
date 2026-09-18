@@ -20,15 +20,26 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_supervisor_polls_git_without_rebooting_for_normal_updates(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn('UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}', text)
-        self.assertIn('ls-remote --heads origin "refs/heads/$BRANCH"', text)
+        self.assertIn('REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}', text)
+        self.assertIn('PULL_TIMEOUT=${ORDAX_PULL_TIMEOUT_SECONDS:-45}', text)
+        self.assertIn('GIT_TERMINAL_PROMPT=0', text)
+        self.assertIn('run_bounded "$REMOTE_TIMEOUT" "$GIT_BIN" -C "$WORKTREE" ls-remote', text)
         self.assertIn('PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}', text)
-        self.assertIn('if ! "$PULL_BIN"', text)
+        self.assertIn('run_bounded "$PULL_TIMEOUT" "$PULL_BIN"', text)
         self.assertIn("classify_changes", text)
         self.assertIn("APPLY_MODE=reload", text)
         self.assertIn("APPLY_MODE=surface-restart", text)
         self.assertIn("APPLY_MODE=supervisor-restart", text)
         self.assertNotIn("reboot -f", text)
         self.assertNotIn("poweroff -f", text)
+
+    def test_git_update_operations_are_bounded(self):
+        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('/bin/busybox timeout -k 5 "$timeout_seconds" "$@"', text)
+        self.assertIn('failed or timed out after ${REMOTE_TIMEOUT}s', text)
+        self.assertIn('failed or timed out after ${PULL_TIMEOUT}s', text)
+        self.assertIn('write_update_state "$current" network-error none', text)
+        self.assertIn('write_update_state "$old_sha" pull-error none', text)
 
     def test_live_safe_and_host_changes_have_distinct_apply_modes(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
