@@ -105,6 +105,73 @@ test("area switching preserves independent window sets and focus", () => {
   assert.equal(active(state).activeWindowId, "files");
 });
 
+test("app navigation targets are isolated per area and survive snapshot recovery", () => {
+  let state = baseline();
+  state = reduceSurfaceState(state, {
+    type: "app.launch",
+    appId: "system",
+    target: "updates",
+  });
+  assert.equal(active(state).windows[0].target, "updates");
+
+  state = reduceSurfaceState(state, { type: "area.switch", areaId: "area-2" });
+  state = reduceSurfaceState(state, {
+    type: "app.launch",
+    appId: "system",
+    target: "about",
+  });
+  assert.equal(active(state).windows[0].target, "about");
+
+  const recovered = baseline(createWorkspaceSnapshot(state));
+  assert.equal(recovered.activeAreaId, "area-2");
+  assert.equal(recovered.areas[0].windows[0].target, "updates");
+  assert.equal(recovered.areas[1].windows[0].target, "about");
+
+  const firstArea = reduceSurfaceState(recovered, {
+    type: "area.switch",
+    areaId: "area-1",
+  });
+  assert.equal(active(firstArea).windows[0].target, "updates");
+});
+
+test("launch without a target preserves an existing singleton target", () => {
+  let state = baseline();
+  state = reduceSurfaceState(state, {
+    type: "app.launch",
+    appId: "settings",
+    target: "network",
+  });
+  state = reduceSurfaceState(state, { type: "app.launch", appId: "settings" });
+  assert.equal(active(state).windows[0].target, "network");
+
+  state = reduceSurfaceState(state, {
+    type: "app.launch",
+    appId: "settings",
+    target: "appearance",
+  });
+  assert.equal(active(state).windows[0].target, "appearance");
+});
+
+test("workspace target validation is bounded and rejects control characters", () => {
+  let state = baseline();
+  assert.throws(
+    () => reduceSurfaceState(state, {
+      type: "app.launch",
+      appId: "system",
+      target: "bad\ntarget",
+    }),
+    TypeError,
+  );
+  assert.throws(
+    () => reduceSurfaceState(state, {
+      type: "app.launch",
+      appId: "system",
+      target: "x".repeat(4097),
+    }),
+    TypeError,
+  );
+});
+
 test("new areas get monotonic identities and become active", () => {
   let state = baseline();
   state = reduceSurfaceState(state, { type: "area.create" });
