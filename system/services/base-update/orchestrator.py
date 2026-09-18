@@ -137,7 +137,13 @@ def _validate_repository_authority(
     ):
         relative = anchor.get(path_key)
         expected = anchor.get(hash_key)
-        if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        relative_path = Path(relative) if isinstance(relative, str) else Path()
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or relative_path.is_absolute()
+            or ".." in relative_path.parts
+        ):
             raise OwnerError(f"release trust policy {path_key} is invalid")
         if not isinstance(expected, str) or HEX64.fullmatch(expected) is None:
             raise OwnerError(f"release trust policy {hash_key} is invalid")
@@ -162,8 +168,16 @@ def _validate_repository_authority(
     if minimal.get("physical_write_allowed") is not False:
         raise OwnerError("minimal bootstrap must remain non-destructive")
     groups = minimal.get("artifact_groups")
-    if not isinstance(groups, list):
+    if not isinstance(groups, list) or not groups:
         raise OwnerError("minimal bootstrap artifact groups are invalid")
+    for candidate_group in groups:
+        if (
+            not isinstance(candidate_group, dict)
+            or candidate_group.get("resolved") is not True
+            or not isinstance(candidate_group.get("artifacts"), list)
+            or not candidate_group["artifacts"]
+        ):
+            raise OwnerError("minimal bootstrap contains an unresolved artifact group")
     trust_groups = [
         group
         for group in groups
@@ -322,7 +336,12 @@ def _atomic_status(state_root: Path, value: dict[str, Any]) -> None:
     )
     descriptor = os.open(temporary, flags, 0o600)
     try:
-        os.write(descriptor, payload)
+        offset = 0
+        while offset < len(payload):
+            written = os.write(descriptor, payload[offset:])
+            if written <= 0:
+                raise OwnerError("short write while recording base-update owner status")
+            offset += written
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
