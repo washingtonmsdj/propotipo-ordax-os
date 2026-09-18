@@ -6,6 +6,11 @@ import {
   assertNetworkStatusPort,
   validateNetworkStatusSnapshot,
 } from "../../contracts/network-status.mjs";
+import {
+  networkManagementActionMessage,
+  networkManagementFailureMessage,
+  runNetworkManagementAction,
+} from "../../services/network/management-runtime.mjs";
 import { summarizeNetworkStatus } from "./network-tray-controls.mjs";
 
 const MAX_QUICK_NETWORKS = 8;
@@ -224,51 +229,18 @@ export function mountNetworkQuickPanel(
   const runAction = async (action, credentials = null) => {
     if (!managementPort || pending || destroyed) return;
     pending = true;
-    message = {
-      scan: "Procurando redes Wi-Fi…",
-      connect: "Conectando ao Wi-Fi…",
-      disconnect: "Desconectando do Wi-Fi…",
-      reconnect: "Reconectando ao Wi-Fi salvo…",
-    }[action] ?? "";
+    message = networkManagementActionMessage(action, 0);
     render();
 
     try {
-      let next;
-      switch (action) {
-        case "scan":
-          next = await managementPort.scan();
-          break;
-        case "connect":
-          next = await managementPort.connect(credentials);
-          break;
-        case "disconnect":
-          next = await managementPort.disconnect();
-          break;
-        case "reconnect":
-          next = await managementPort.reconnect();
-          break;
-        default:
-          throw new TypeError("Ação rápida de Wi-Fi inválida");
-      }
-      managementSnapshot = validateNetworkManagementSnapshot(next);
+      managementSnapshot = validateNetworkManagementSnapshot(
+        await runNetworkManagementAction(managementPort, action, credentials),
+      );
       selectedSsid = null;
-      message = {
-        scan: "Redes Wi-Fi atualizadas.",
-        connect: "Wi-Fi conectado.",
-        disconnect: "Wi-Fi desconectado.",
-        reconnect: "Wi-Fi reconectado.",
-      }[action] ?? "";
+      message = networkManagementActionMessage(action, 1);
       await refreshStatus();
     } catch (error) {
-      if (action === "connect" && error?.status === 409) {
-        message = "Não foi possível conectar. Confira a senha e tente novamente.";
-      } else if (action === "reconnect" && error?.status === 409) {
-        message = "A rede salva não pôde ser reconectada.";
-      } else if (error instanceof TypeError) {
-        message = "A senha deve ter entre 8 e 63 caracteres válidos.";
-      } else {
-        message = "A ação de Wi-Fi não pôde ser concluída.";
-      }
+      message = networkManagementFailureMessage(action, error);
     } finally {
       pending = false;
       if (!destroyed) render();
