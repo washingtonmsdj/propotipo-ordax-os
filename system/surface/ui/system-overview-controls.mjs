@@ -390,9 +390,10 @@ export function mountSystemOverviewControls(
     const section = node(documentObject, "section", "ordax-system-section");
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
+    const globalVersion = `OrdaX ${versionLabel(updateSnapshot.versionNumber)}`;
     headingCopy.append(
-      node(documentObject, "span", "ordax-system-section-kicker", "Versões"),
-      node(documentObject, "h4", "ordax-system-section-title", "Componentes integrados"),
+      node(documentObject, "span", "ordax-system-section-kicker", "Versão global"),
+      node(documentObject, "h4", "ordax-system-section-title", globalVersion),
     );
     heading.append(headingCopy);
     section.append(heading);
@@ -401,7 +402,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Enquanto estes componentes são distribuídos juntos, eles herdam a versão da entrega do OrdaX. Versões independentes só serão usadas quando houver empacotamento independente real.",
+        "Esta é a versão da entrega instalada no dispositivo. Surface, apps e serviços abaixo fazem parte da mesma release; um componente só terá versão própria se passar a ser distribuído separadamente.",
       ),
     );
 
@@ -410,7 +411,7 @@ export function mountSystemOverviewControls(
       const item = node(documentObject, "div", "ordax-system-version-item");
       item.append(
         node(documentObject, "strong", "", label),
-        node(documentObject, "span", "", versionLabel(updateSnapshot.versionNumber)),
+        node(documentObject, "span", "", "Incluído nesta entrega"),
       );
       list.append(item);
     }
