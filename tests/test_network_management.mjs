@@ -53,7 +53,7 @@ test("network management enforces real SSID and WPA passphrase byte limits", () 
   assert.doesNotThrow(() => validateWifiCredentials({ ssid: "á".repeat(16), password: "12345678" }));
   assert.throws(() => validateWifiCredentials({ ssid: "á".repeat(17), password: "12345678" }));
   assert.throws(() => validateWifiCredentials({ ssid: "Casa", password: "x".repeat(64) }));
-  assert.throws(() => validateWifiCredentials({ ssid: "Casa", password: "senha\\ninvalida" }));
+  assert.throws(() => validateWifiCredentials({ ssid: "Casa", password: "senha\ninvalida" }));
 });
 
 test("network management port has explicit bounded actions", () => {
