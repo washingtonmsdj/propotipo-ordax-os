@@ -13,6 +13,7 @@ import { mountAccountOverviewControls } from "../../surface/ui/account-overview-
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 import { mountUpdateControls } from "../../surface/ui/update-controls.mjs";
 
@@ -81,6 +82,12 @@ async function start() {
     surface,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
+  const settingsOverviewControls = mountSettingsOverviewControls(
+    root,
+    host,
+    surface.preferences,
+    surface,
+  );
   const systemOverviewControls = mountSystemOverviewControls(
     root,
     host,
@@ -102,6 +109,7 @@ async function start() {
       powerControls.destroy();
       updateControls.destroy();
       systemOverviewControls.destroy();
+      settingsOverviewControls.destroy();
       fileSpaceControls.destroy();
       accountOverviewControls.destroy();
       updateWatcher.dispose();
