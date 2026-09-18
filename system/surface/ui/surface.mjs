@@ -316,7 +316,7 @@ export function mountSurface(
       add.setAttribute("aria-label", "Criar nova área de trabalho");
       areaSwitcher.append(add);
     }
-    areaKicker.textContent = `${areaLabel(activeArea)} · Surface compartilhada`;
+    areaKicker.textContent = areaLabel(activeArea);
   };
 
   const render = () => {
