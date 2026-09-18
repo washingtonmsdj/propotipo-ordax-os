@@ -28,6 +28,7 @@ import {
   updateSummaryDetail,
   updateSummaryLabel,
 } from "../../services/update/presentation.mjs";
+import { mountSystemDiagnosticsReview } from "./system-diagnostics-review.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
@@ -56,7 +57,7 @@ const SECTION_COPY = Object.freeze({
   }),
   diagnostics: Object.freeze({
     title: "Diagnóstico",
-    subtitle: "Capacidades realmente expostas por esta execução, sem controles administrativos genéricos.",
+    subtitle: "Capacidades desta execução e, quando disponível, uma revisão local explícita e sanitizada.",
   }),
   about: Object.freeze({
     title: "Sobre",
@@ -149,6 +150,7 @@ export function mountSystemOverviewControls(
   surfaceLifecycle = null,
   updateHistory = null,
   appActivation = null,
+  diagnosticReviewController = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("System overview controls require a Surface root Element");
@@ -181,9 +183,15 @@ export function mountSystemOverviewControls(
     : "overview";
   let destroyed = false;
   let mountedSlot = null;
+  let diagnosticsReviewMount = null;
 
   const findSlot = () =>
     root.querySelector(`${SYSTEM_WINDOW_SELECTOR} ${SYSTEM_EXTENSION_SELECTOR}`);
+
+  const disposeDiagnosticsReview = () => {
+    diagnosticsReviewMount?.dispose();
+    diagnosticsReviewMount = null;
+  };
 
   const focusIdentity = (element) => {
     if (!element || !element.dataset) return null;
@@ -195,6 +203,15 @@ export function mountSystemOverviewControls(
     }
     if (element.dataset.systemHistoryRefresh !== undefined) {
       return Object.freeze({ kind: "history-refresh", value: "" });
+    }
+    if (element.dataset.systemDiagnosticsPrepare !== undefined) {
+      return Object.freeze({ kind: "diagnostics-prepare", value: "" });
+    }
+    if (element.dataset.systemDiagnosticsCopy !== undefined) {
+      return Object.freeze({ kind: "diagnostics-copy", value: "" });
+    }
+    if (element.dataset.systemDiagnosticsExport !== undefined) {
+      return Object.freeze({ kind: "diagnostics-export", value: "" });
     }
     return null;
   };
@@ -694,7 +711,16 @@ export function mountSystemOverviewControls(
     view.append(section);
   };
 
+  const renderDiagnosticReviewMount = (view) => {
+    if (diagnosticReviewController === null) return null;
+    const mount = node(documentObject, "div", "");
+    mount.dataset.systemDiagnosticsReviewMount = "";
+    view.append(mount);
+    return mount;
+  };
+
   const paint = (slot, interaction = null) => {
+    disposeDiagnosticsReview();
     slot.replaceChildren();
     slot.dataset.ordaxSystemOverviewView = "";
     slot.dataset.systemActiveSection = activeSection;
@@ -702,6 +728,7 @@ export function mountSystemOverviewControls(
     const view = node(documentObject, "div", "ordax-system-view");
     renderHeader(view);
     renderSectionNavigation(view);
+    let diagnosticMount = null;
 
     if (activeSection === "overview") {
       renderSummary(view);
@@ -712,11 +739,19 @@ export function mountSystemOverviewControls(
     } else if (activeSection === "storage") {
       renderStorage(view);
     } else if (activeSection === "diagnostics") {
+      diagnosticMount = renderDiagnosticReviewMount(view);
       renderCapabilities(view);
     } else if (activeSection === "about") {
       renderComponentVersions(view);
     }
     slot.append(view);
+
+    if (diagnosticMount) {
+      diagnosticsReviewMount = mountSystemDiagnosticsReview(
+        diagnosticMount,
+        diagnosticReviewController,
+      );
+    }
     restoreInteractionState(slot, interaction);
   };
 
@@ -724,6 +759,7 @@ export function mountSystemOverviewControls(
     if (destroyed) return;
     const slot = findSlot();
     if (!slot) {
+      disposeDiagnosticsReview();
       mountedSlot = null;
       return;
     }
@@ -838,6 +874,7 @@ export function mountSystemOverviewControls(
       destroyed = true;
       metricsOrdinal += 1;
       historyOrdinal += 1;
+      disposeDiagnosticsReview();
       unsubscribeUpdate?.();
       unsubscribeActivation?.();
       unsubscribeHost?.();
