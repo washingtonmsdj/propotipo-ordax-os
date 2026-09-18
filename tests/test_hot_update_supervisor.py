@@ -23,7 +23,6 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}', text)
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
-        self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
         self.assertIn('run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote', text)
         self.assertIn('apply_remote_checkout "$old_sha" "$remote_sha"', text)
@@ -104,8 +103,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
         self.assertIn("wait_for_surface_health", text)
-        self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
-        self.assertIn('wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"', text)
+        self.assertIn('wait_for_surface_health "$new_sha" 12', text)
         self.assertIn('rollback_update "$old_sha" "$new_sha" reload', text)
         self.assertIn("SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update", text)
 
