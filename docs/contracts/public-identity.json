@@ -39,7 +39,10 @@
     "provider_configured": false,
     "dedicated_or_isolated_target_required": true,
     "conflicting_auth_user_trigger_allowed": false,
-    "migration_auto_apply_allowed": false
+    "migration_auto_apply_allowed": false,
+    "gateway_contract": "docs/contracts/public-identity-gateway.json",
+    "gateway_entrypoint": "services/public-identity/gateway.py:application",
+    "gateway_core_implemented": true
   },
   "supabase_candidate": {
     "status": "not-configured",
