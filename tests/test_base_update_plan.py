@@ -38,7 +38,7 @@ class BaseUpdatePlannerTests(unittest.TestCase):
     def test_activation_is_one_shot_and_never_changes_default_before_health(self):
         value = planner.plan("a", self.candidate())
         self.assertEqual(value["activation"]["selector"], "LoaderEntryOneShot")
-        self.assertEqual(value["activation"]["entry_id"], "ordax-candidate")
+        self.assertEqual(value["activation"]["entry_id"], "ordax-candidate.conf")
         self.assertEqual(value["activation"]["tries"], 1)
         self.assertFalse(value["activation"]["default_entry_changes_before_health"])
         self.assertEqual(
