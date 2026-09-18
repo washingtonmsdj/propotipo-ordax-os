@@ -60,12 +60,12 @@ const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
 });
 const accountOverviewControls = mountAccountOverviewControls(
   root,
-  host,
   identitySession,
   identityActions,
   surface,
   preferenceSync,
   workspaceMetadata.source,
+  appActivation,
 );
 const settingsOverviewControls = mountSettingsOverviewControls(
   root,

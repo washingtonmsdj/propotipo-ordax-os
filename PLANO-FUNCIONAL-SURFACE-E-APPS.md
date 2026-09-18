@@ -599,7 +599,7 @@ Remover Atualizações, Armazenamento, Recuperação, Sobre e a listagem técnic
 
 ### 8.1 Regra de entrada e quatro estados fundamentais
 
-Conta representa **a identidade OrdaX e o estado que pode acompanhar essa identidade**. Continuar usando capacidades locais não exige autenticação artificial.
+Conta representa **a identidade OrdaX e o estado que pode acompanhar essa identidade**. Continuar usando capacidades locais não exige autenticação artificial. **Estado atual:** o app possui dois destinos canônicos e reais — **Visão geral** e **Sincronização** — validados pelo próprio owner e acionáveis por `app-activation/1`. Perfil, Segurança, Dispositivos/Sessões e Plano continuam fora da navegação enquanto não houver serviços reais correspondentes.
 
 | Estado | Conteúdo da entrada | Ação permitida |
 |---|---|---|
@@ -701,7 +701,7 @@ Uma desconexão não prova revogação, e um cache de perfil não prova sessão 
 
 **Aceite:** alterar tema offline mantém tema e fila; reiniciar com store durável conserva pendências; mesma mutação reenviada não duplica efeito; mudança de usuário não envia estado para conta errada; fila vazia não é sinônimo de nuvem sincronizada.
 
-**Estado:** núcleo/fila/ponte de preferências EXISTEM; transporte, conta e controles completos PARCIAIS/FUTUROS. P1 para apresentação honesta, P2 para continuidade ponta a ponta.
+**Estado:** núcleo/fila/ponte de preferências EXISTEM e agora são apresentados em **Conta → Sincronização** como estado **local**: pendências, persistência da fila, aparência acompanhada e metadata de áreas/apps. A UI não chama a fila vazia de “sincronizada” e não deduz transporte ativo de uma capability. Transporte autenticado, conta real e conflitos ponta a ponta continuam PARCIAIS/FUTUROS. P1 para apresentação honesta, P2 para continuidade ponta a ponta.
 
 ### 8.7 Dados e privacidade
 
@@ -1031,11 +1031,11 @@ USB e Native podem compartilhar adapter, mas o nome Native não comprova o perfi
 | Entrega | Conteúdo | Dependências | Saída verificável |
 |---|---|---|---|
 | E0 / P0 | Revalidar source, inventariar capacidades, padronizar Ajustes, mapear seções e destinos únicos. | `main` atual e contratos. | Mapa de navegação e inventário factual atualizados. |
-| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema e Ajustes já possuem subseções canônicas validadas e deep links por `app-activation/1` sem segundo roteador; persistência da subseção por área/janela e a mesma disciplina em Conta ainda faltam. |
+| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema, Ajustes e Conta já possuem subseções canônicas validadas/deep links por `app-activation/1`; Arquivos mantém seu target de caminho lógico. A principal lacuna transversal restante é persistir a subseção por área/janela sem criar segundo roteador. |
 | E2 / P1 | Sistema: Visão geral, Atualizações observacionais, Armazenamento, Diagnóstico, Sobre e Energia quando suportada; remover traduções duplicadas. | E1, portas existentes. | **Parcial:** Visão geral, Atualizações, Armazenamento, Diagnóstico e Sobre já têm destinos canônicos com dados reais; rodapé abre a única seção Atualizações e a tradução comum foi centralizada. Energia completa permanece condicionada à capacidade real. |
 | E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | **Parcial:** Aparência e Rede já são destinos canônicos, tema real continua persistido e a listagem técnica de capacidades foi removida de Ajustes; preferências de acessibilidade ainda faltam. |
 | E4 / P1 | Arquivos básico completo em incrementos: seleção/detalhes, leitura/abertura, importação/exportação e mutações. | E1, extensões de contrato/backend por operação. | Fluxos de usuário com dados reais e proteção da raiz. |
-| E5 / P1 | Conta com estados honestos e Sincronização local compreensível. | E1, identity/sync existentes. | Nenhuma identidade ou nuvem simulada; pendências locais explicadas. |
+| E5 / P1 | Conta com estados honestos e Sincronização local compreensível. | E1, identity/sync existentes. | **Parcial:** Visão geral e Sincronização são destinos canônicos; identidade indisponível continua honesta; fila/metadata locais são explicados sem anunciar nuvem. Provedor real e transporte autenticado continuam pendentes. |
 | E6 / P2 | Favoritos, recentes, lixeira, miniaturas, múltiplos locais e pesquisa ampliada. | E4. | Organização/restauração de arquivos testada. |
 | E7 / P2 | Comandos de atualização, histórico, diagnóstico/exportação e armazenamento detalhado. | E2, portas de comando/observação específicas. | Manutenção real com dados atuais e revisão de ações. |
 | E8 / P2 | Integração de identidade, perfil, sessões, segurança e transporte de sync. | Serviço/provedor decidido e autorização de servidor. | Continuidade ponta a ponta entre duas sessões/dispositivos autorizados. |
@@ -1049,7 +1049,8 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 - [x] Rótulo **Ajustes** consistente em app/rail/janela/launcher e acessibilidade, mantendo `settings` como ID estável.
 - [x] Destino canônico de Atualizações em Sistema, com rodapé apontando para ele via `app-activation/1`.
 - [x] Uma tradução/derivação compartilhada para fase, resultado e impacto de atualização em `system/services/update/presentation.mjs`.
-- [ ] Revisar “Atualizado”, “Sincronização ativa” e “Operando normalmente” para exigir evidência suficiente.
+- [x] Não apresentar `running` como “Atualizado” nem capability de sync como “Sincronização ativa”; fila local vazia também não prova nuvem sincronizada.
+- [ ] Revisar “Operando normalmente” para exigir evidência de saúde suficiente, sem inferir saúde global da Surface/conectividade apenas.
 - [ ] Distinguir recarga de interface, reinício da Surface, reinício do supervisor e reinício da máquina.
 - [ ] Não vender `bootRefreshRequired` como garantia de atualização por simples reboot.
 - [x] Mover detalhes técnicos de capacidades para a subseção canônica Diagnóstico de Sistema.
@@ -1062,7 +1063,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 
 **Meta básica:** o usuário abre os quatro apps, entende limites reais, navega pelas seções entregues, personaliza o tema, realiza operações de arquivos suportadas, consulta versão/atualização/métricas, usa energia nativa confirmada e mantém estado entre recargas.
 
-Para essa meta, faltam principalmente estender a navegação interna uniforme a Conta e persistir a subseção por área/janela; preferências de acessibilidade e demais ajustes ainda não suportados; diagnóstico/exportação técnica mais completa; recursos P2 de Arquivos; e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
+Para essa meta, a navegação canônica já cobre Sistema, Ajustes e Conta; faltam principalmente persistir a subseção por área/janela, preferências de acessibilidade e demais ajustes ainda não suportados, diagnóstico/exportação técnica mais completa, recursos P2 de Arquivos e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
 
 **Não chamar de concluído:** login real sem provedor; cloud sem transporte e autorização; gerenciador de arquivos completo sem leitura/mutações; recuperação canônica sem gates; áudio/suspensão sem prova; instalação nativa baseada apenas em imagem conceitual.
 

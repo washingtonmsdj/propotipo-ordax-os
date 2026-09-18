@@ -16,6 +16,48 @@
   color: var(--ordax-text);
 }
 
+.ordax-account-header {
+  padding: 24px 26px 22px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-account-navigation {
+  display: flex;
+  gap: 4px;
+  padding: 8px 18px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--ordax-border-soft);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-account-navigation-item {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+  border: 0;
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.ordax-account-navigation-item:hover,
+.ordax-account-navigation-item:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-account-navigation-item[data-active="true"] {
+  background: var(--ordax-window-bg);
+  color: var(--ordax-text);
+  box-shadow: inset 0 -2px 0 var(--ordax-accent);
+}
+
 .ordax-account-section {
   padding: 22px 26px 24px;
   border-bottom: 1px solid var(--ordax-border-soft);
@@ -235,36 +277,14 @@
   line-height: 1.4;
 }
 
-.ordax-account-facts {
-  display: grid;
-  gap: 0;
-  margin-top: 14px;
-  border-top: 1px solid var(--ordax-border-soft);
-}
-
-.ordax-account-fact {
-  display: grid;
-  grid-template-columns: minmax(150px, 0.36fr) minmax(0, 1fr);
-  gap: 18px;
-  min-height: 48px;
-  align-items: center;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--ordax-border-soft);
-}
-
-.ordax-account-fact strong {
-  font-size: 0.75rem;
-}
-
-.ordax-account-fact span {
-  color: var(--ordax-muted);
-  font-size: 0.72rem;
-  line-height: 1.4;
-}
-
 @media (max-width: 760px) {
+  .ordax-account-header,
   .ordax-account-section {
     padding: 18px;
+  }
+
+  .ordax-account-navigation {
+    padding: 7px 10px;
   }
 
   .ordax-account-section-heading {
@@ -280,9 +300,4 @@
     grid-template-columns: 1fr;
   }
 
-  .ordax-account-fact {
-    grid-template-columns: 1fr;
-    gap: 4px;
-    padding: 10px 4px;
-  }
 }
