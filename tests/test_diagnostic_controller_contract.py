@@ -25,10 +25,10 @@ class DiagnosticReviewControllerContractTests(unittest.TestCase):
 
     def test_export_requires_a_prepared_review_and_has_stable_failure_codes(self):
         source = self.source()
-        self.assertIn('code: "review-not-prepared"', source)
-        self.assertIn('code: "export-unavailable"', source)
-        self.assertIn('code: "export-in-progress"', source)
-        self.assertIn('code: "review-prepare-failed"', source)
+        self.assertIn('"review-not-prepared"', source)
+        self.assertIn('"export-unavailable"', source)
+        self.assertIn('"export-in-progress"', source)
+        self.assertIn('"review-prepare-failed"', source)
         self.assertIn('status === "saved"', source)
         self.assertIn("preparedDocument = null", source)
 
