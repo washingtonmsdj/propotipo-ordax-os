@@ -1,3 +1,7 @@
+import {
+  assertNetworkManagementPort,
+  validateNetworkManagementSnapshot,
+} from "../../contracts/network-management.mjs";
 import { assertPreferenceRuntimePort } from "../../contracts/preference-runtime.mjs";
 import {
   assertNetworkStatusPort,
@@ -16,6 +20,7 @@ const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
 const CAPABILITY_LABELS = Object.freeze({
   "network.https": "Rede HTTPS",
   "network.status": "Estado local de rede",
+  "network.management": "Gerenciamento de Wi-Fi",
   "filesystem.user-space": "Arquivos persistentes",
   "system.boot-control": "Energia do dispositivo",
   "system.metrics": "Métricas locais",
@@ -45,6 +50,7 @@ export function mountSettingsOverviewControls(
   preferenceRuntime,
   surfaceLifecycle = null,
   networkStatus = null,
+  networkManagement = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Settings overview controls require a Surface root Element");
@@ -53,12 +59,19 @@ export function mountSettingsOverviewControls(
   const preferences = assertPreferenceRuntimePort(preferenceRuntime);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const networkPort = networkStatus === null ? null : assertNetworkStatusPort(networkStatus);
+  const networkManagementPort =
+    networkManagement === null ? null : assertNetworkManagementPort(networkManagement);
   const documentObject = root.ownerDocument;
 
   let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
   let preferenceSnapshot = preferences.getSnapshot();
   let networkSnapshot = null;
   let networkReadFailed = false;
+  let networkManagementSnapshot = null;
+  let networkManagementReadFailed = false;
+  let networkManagementPending = false;
+  let networkManagementMessage = "";
+  let selectedNetworkSsid = null;
   let destroyed = false;
   let mountedSlot = null;
 
@@ -69,7 +82,7 @@ export function mountSettingsOverviewControls(
     const header = node(documentObject, "header", "ordax-settings-header");
     header.append(
       node(documentObject, "span", "ordax-settings-eyebrow", "OrdaX"),
-      node(documentObject, "h3", "ordax-settings-title", "Configurações"),
+      node(documentObject, "h3", "ordax-settings-title", "Ajustes"),
       node(
         documentObject,
         "p",
@@ -122,8 +135,153 @@ export function mountSettingsOverviewControls(
     }
   };
 
+  const renderNetworkManagement = (section) => {
+    if (!networkManagementPort) return;
+
+    const panel = node(documentObject, "div", "ordax-settings-wifi");
+    panel.dataset.settingsWifi = "";
+
+    const heading = node(documentObject, "div", "ordax-settings-wifi-heading");
+    const headingCopy = node(documentObject, "div", "ordax-settings-wifi-heading-copy");
+    headingCopy.append(
+      node(documentObject, "strong", "", "Wi-Fi"),
+      node(
+        documentObject,
+        "span",
+        "",
+        networkManagementSnapshot?.currentSsid
+          ? `Conectado a ${networkManagementSnapshot.currentSsid}`
+          : networkManagementSnapshot?.savedSsid
+            ? `Rede salva: ${networkManagementSnapshot.savedSsid}`
+            : "Nenhuma rede Wi-Fi conectada",
+      ),
+    );
+
+    const actions = node(documentObject, "div", "ordax-settings-wifi-actions");
+    const addAction = (action, label) => {
+      const button = node(documentObject, "button", "ordax-settings-network-action", label);
+      button.type = "button";
+      button.dataset.settingsNetworkAction = action;
+      button.disabled = networkManagementPending;
+      actions.append(button);
+    };
+    addAction("scan", networkManagementPending ? "Aguarde…" : "Procurar redes");
+    if (networkManagementSnapshot?.currentSsid) addAction("disconnect", "Desconectar");
+    if (networkManagementSnapshot?.savedSsid) {
+      if (!networkManagementSnapshot.currentSsid) addAction("reconnect", "Reconectar");
+      addAction("forget", "Esquecer");
+    }
+    heading.append(headingCopy, actions);
+    panel.append(heading);
+
+    const message = node(
+      documentObject,
+      "p",
+      "ordax-settings-network-message",
+      networkManagementMessage,
+    );
+    message.setAttribute("role", "status");
+    message.setAttribute("aria-live", "polite");
+    if (networkManagementMessage) panel.append(message);
+
+    if (networkManagementReadFailed) {
+      panel.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-settings-empty",
+          "O gerenciamento de Wi-Fi está temporariamente indisponível. A rede atual continua preservada.",
+        ),
+      );
+      section.append(panel);
+      return;
+    }
+
+    if (networkManagementSnapshot === null) {
+      panel.append(node(documentObject, "p", "ordax-settings-empty", "Lendo estado do Wi-Fi…"));
+      section.append(panel);
+      return;
+    }
+
+    const networks = node(documentObject, "div", "ordax-settings-wifi-list");
+    if (networkManagementSnapshot.networks.length === 0) {
+      networks.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-settings-empty",
+          "Use “Procurar redes” para listar redes Wi-Fi compatíveis próximas.",
+        ),
+      );
+    } else {
+      for (const entry of networkManagementSnapshot.networks) {
+        const button = node(documentObject, "button", "ordax-settings-wifi-network");
+        button.type = "button";
+        button.dataset.settingsWifiSsid = entry.ssid;
+        button.dataset.selected = String(selectedNetworkSsid === entry.ssid);
+        button.dataset.connected = String(entry.connected);
+        button.disabled = networkManagementPending;
+        button.setAttribute("aria-pressed", String(selectedNetworkSsid === entry.ssid));
+
+        const copy = node(documentObject, "span", "ordax-settings-wifi-network-copy");
+        const state = entry.connected
+          ? "Conectada"
+          : entry.saved
+            ? "Salva"
+            : "Disponível";
+        copy.append(
+          node(documentObject, "strong", "", entry.ssid),
+          node(documentObject, "small", "", `${state} · sinal ${entry.signalDbm} dBm · WPA/WPA2`),
+        );
+        button.append(
+          node(documentObject, "span", "ordax-settings-network-dot"),
+          copy,
+        );
+        networks.append(button);
+      }
+    }
+    panel.append(networks);
+
+    const selected = networkManagementSnapshot.networks.find(
+      (entry) => entry.ssid === selectedNetworkSsid,
+    );
+    if (selected && !selected.connected && !selected.saved) {
+      const form = node(documentObject, "div", "ordax-settings-wifi-connect");
+      const label = node(
+        documentObject,
+        "label",
+        "ordax-settings-wifi-password-label",
+        `Senha de “${selected.ssid}”`,
+      );
+      const input = node(documentObject, "input", "ordax-settings-wifi-password");
+      input.type = "password";
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      input.disabled = networkManagementPending;
+      input.dataset.settingsWifiPassword = "";
+      input.dataset.settingsWifiPasswordFor = selected.ssid;
+      input.setAttribute("aria-label", `Senha da rede ${selected.ssid}`);
+      label.append(input);
+
+      const connect = node(
+        documentObject,
+        "button",
+        "ordax-settings-network-action ordax-settings-network-primary",
+        networkManagementPending ? "Conectando…" : "Conectar",
+      );
+      connect.type = "button";
+      connect.dataset.settingsNetworkAction = "connect";
+      connect.dataset.settingsWifiSsid = selected.ssid;
+      connect.disabled = networkManagementPending;
+      form.append(label, connect);
+      panel.append(form);
+    }
+
+    section.append(panel);
+  };
+
   const renderNetwork = (view) => {
-    if (!networkPort) return;
+    if (!networkPort && !networkManagementPort) return;
 
     const section = node(documentObject, "section", "ordax-settings-section");
     section.dataset.settingsNetwork = "";
@@ -134,7 +292,9 @@ export function mountSettingsOverviewControls(
         documentObject,
         "p",
         "ordax-settings-section-copy",
-        "Estado real observado no host nativo. Somente leitura nesta etapa; conexão, troca e esquecimento de Wi-Fi entram no próximo incremento.",
+        networkManagementPort
+          ? "Estado real do host e gerenciamento Wi-Fi pelo owner nativo. Senhas são usadas apenas no instante da conexão e não entram em preferências ou sincronização."
+          : "Estado real observado no host nativo. O gerenciamento de Wi-Fi não está disponível neste ambiente.",
       ),
     );
 
@@ -151,50 +311,52 @@ export function mountSettingsOverviewControls(
     );
     section.append(service);
 
-    if (networkReadFailed) {
-      section.append(
-        node(documentObject, "p", "ordax-settings-empty", "Não foi possível atualizar o estado de rede."),
-      );
-      view.append(section);
-      return;
-    }
-
-    if (networkSnapshot === null) {
-      section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
-      view.append(section);
-      return;
-    }
-
-    const interfaces = node(documentObject, "div", "ordax-settings-network-list");
-    if (networkSnapshot.interfaces.length === 0) {
-      interfaces.append(
-        node(documentObject, "p", "ordax-settings-empty", "Nenhuma interface de rede utilizável foi observada."),
-      );
-    } else {
-      const kindLabels = { wifi: "Wi-Fi", ethernet: "Cabo", other: "Outra interface" };
-      const stateLabels = {
-        connected: "Conectado",
-        disconnected: "Desconectado",
-        unknown: "Estado desconhecido",
-      };
-      for (const entry of networkSnapshot.interfaces) {
-        const item = node(documentObject, "div", "ordax-settings-network-item");
-        item.dataset.state = entry.state;
-        const copy = node(documentObject, "span", "ordax-settings-network-copy");
-        copy.append(
-          node(documentObject, "strong", "", kindLabels[entry.kind] ?? kindLabels.other),
+    if (networkPort) {
+      if (networkReadFailed) {
+        section.append(
           node(
             documentObject,
-            "small",
-            "",
-            `${entry.name} · ${stateLabels[entry.state] ?? stateLabels.unknown}${entry.signalDbm === null ? "" : ` · sinal ${entry.signalDbm} dBm`}`,
+            "p",
+            "ordax-settings-empty",
+            "Não foi possível atualizar os detalhes das interfaces. O gerenciamento Wi-Fi continua disponível quando suportado.",
           ),
         );
-        item.append(node(documentObject, "span", "ordax-settings-network-dot"), copy);
-        interfaces.append(item);
+      } else if (networkSnapshot === null) {
+        section.append(node(documentObject, "p", "ordax-settings-empty", "Lendo interfaces de rede…"));
+      } else {
+        const interfaces = node(documentObject, "div", "ordax-settings-network-list");
+        if (networkSnapshot.interfaces.length === 0) {
+          interfaces.append(
+            node(documentObject, "p", "ordax-settings-empty", "Nenhuma interface de rede utilizável foi observada."),
+          );
+        } else {
+          const kindLabels = { wifi: "Wi-Fi", ethernet: "Cabo", other: "Outra interface" };
+          const stateLabels = {
+            connected: "Conectado",
+            disconnected: "Desconectado",
+            unknown: "Estado desconhecido",
+          };
+          for (const entry of networkSnapshot.interfaces) {
+            const item = node(documentObject, "div", "ordax-settings-network-item");
+            item.dataset.state = entry.state;
+            const copy = node(documentObject, "span", "ordax-settings-network-copy");
+            copy.append(
+              node(documentObject, "strong", "", kindLabels[entry.kind] ?? kindLabels.other),
+              node(
+                documentObject,
+                "small",
+                "",
+                `${entry.name} · ${stateLabels[entry.state] ?? stateLabels.unknown}${entry.signalDbm === null ? "" : ` · sinal ${entry.signalDbm} dBm`}`,
+              ),
+            );
+            item.append(node(documentObject, "span", "ordax-settings-network-dot"), copy);
+            interfaces.append(item);
+          }
+        }
+        section.append(interfaces);
       }
     }
-    section.append(interfaces);
+    renderNetworkManagement(section);
     view.append(section);
   };
 
@@ -287,16 +449,167 @@ export function mountSettingsOverviewControls(
     if (changed && !destroyed) replaceView();
   };
 
+  const refreshNetworkManagement = async () => {
+    if (!networkManagementPort || destroyed || networkManagementPending) return;
+    let changed = false;
+    try {
+      const nextSnapshot = validateNetworkManagementSnapshot(
+        await networkManagementPort.status(),
+      );
+      changed =
+        networkManagementReadFailed
+        || JSON.stringify(nextSnapshot) !== JSON.stringify(networkManagementSnapshot);
+      networkManagementSnapshot = nextSnapshot;
+      networkManagementReadFailed = false;
+      if (
+        selectedNetworkSsid !== null
+        && !nextSnapshot.networks.some((entry) => entry.ssid === selectedNetworkSsid)
+      ) {
+        selectedNetworkSsid = null;
+        changed = true;
+      }
+    } catch {
+      changed = !networkManagementReadFailed;
+      networkManagementReadFailed = true;
+    }
+    if (changed && !destroyed) replaceView();
+  };
+
+  const networkActionMessage = (action, state) => {
+    const labels = {
+      scan: ["Procurando redes Wi-Fi…", "Redes Wi-Fi atualizadas."],
+      connect: ["Conectando ao Wi-Fi…", "Wi-Fi conectado."],
+      disconnect: ["Desconectando do Wi-Fi…", "Wi-Fi desconectado."],
+      forget: ["Esquecendo a rede salva…", "Rede Wi-Fi esquecida."],
+      reconnect: ["Reconectando ao Wi-Fi salvo…", "Wi-Fi reconectado."],
+    };
+    return labels[action]?.[state] ?? "";
+  };
+
+  const runNetworkAction = async (action, { ssid = null, password = null } = {}) => {
+    if (!networkManagementPort || networkManagementPending || destroyed) return;
+    networkManagementPending = true;
+    networkManagementMessage = networkActionMessage(action, 0);
+    replaceView();
+
+    try {
+      let nextSnapshot;
+      switch (action) {
+        case "scan":
+          nextSnapshot = await networkManagementPort.scan();
+          break;
+        case "connect":
+          nextSnapshot = await networkManagementPort.connect({ ssid, password });
+          break;
+        case "disconnect":
+          nextSnapshot = await networkManagementPort.disconnect();
+          break;
+        case "forget":
+          nextSnapshot = await networkManagementPort.forget();
+          break;
+        case "reconnect":
+          nextSnapshot = await networkManagementPort.reconnect();
+          break;
+        default:
+          return;
+      }
+      networkManagementSnapshot = validateNetworkManagementSnapshot(nextSnapshot);
+      networkManagementReadFailed = false;
+      networkManagementMessage = networkActionMessage(action, 1);
+      if (action === "connect" || action === "forget") selectedNetworkSsid = null;
+      void refreshNetwork();
+    } catch (error) {
+      if (error?.status === 409 && action === "connect") {
+        networkManagementMessage =
+          "Não foi possível conectar. Confira a senha e se a rede ainda está disponível.";
+      } else if (error?.status === 409 && action === "reconnect") {
+        networkManagementMessage =
+          "A rede salva não pôde ser reconectada. A configuração salva foi preservada.";
+      } else if (error instanceof TypeError) {
+        networkManagementMessage =
+          "SSID ou senha fora dos limites aceitos para esta rede Wi-Fi.";
+      } else {
+        networkManagementMessage =
+          "A ação de Wi-Fi não pôde ser concluída. A rede anterior foi preservada quando aplicável.";
+      }
+    } finally {
+      networkManagementPending = false;
+      if (!destroyed) replaceView();
+    }
+  };
+
   const onClick = (event) => {
-    const button = event.target.closest("[data-settings-preference-id]");
-    if (!button || !root.contains(button)) return;
-    preferences.set(
-      button.dataset.settingsPreferenceId,
-      button.dataset.settingsPreferenceValue,
-    );
+    const preferenceButton = event.target.closest("[data-settings-preference-id]");
+    if (preferenceButton && root.contains(preferenceButton)) {
+      preferences.set(
+        preferenceButton.dataset.settingsPreferenceId,
+        preferenceButton.dataset.settingsPreferenceValue,
+      );
+      return;
+    }
+
+    const networkButton = event.target.closest("[data-settings-wifi-ssid]");
+    if (
+      networkButton
+      && root.contains(networkButton)
+      && !networkButton.matches("[data-settings-network-action]")
+    ) {
+      selectedNetworkSsid = networkButton.dataset.settingsWifiSsid ?? null;
+      networkManagementMessage = "";
+      replaceView();
+      return;
+    }
+
+    const actionButton = event.target.closest("[data-settings-network-action]");
+    if (!actionButton || !root.contains(actionButton)) return;
+    const action = actionButton.dataset.settingsNetworkAction;
+
+    if (action === "connect") {
+      const ssid = actionButton.dataset.settingsWifiSsid;
+      const input = root.querySelector("[data-settings-wifi-password]");
+      if (
+        !(input instanceof HTMLInputElement)
+        || input.dataset.settingsWifiPasswordFor !== ssid
+      ) return;
+      let password = input.value;
+      input.value = "";
+      if (!password) {
+        networkManagementMessage = "Digite a senha da rede Wi-Fi.";
+        password = "";
+        replaceView();
+        return;
+      }
+      const operationPassword = password;
+      password = "";
+      void runNetworkAction("connect", { ssid, password: operationPassword });
+      return;
+    }
+
+    void runNetworkAction(action);
+  };
+
+  const onKeyDown = (event) => {
+    const input = event.target.closest("[data-settings-wifi-password]");
+    if (!input || !root.contains(input)) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const connect = root.querySelector(
+        '[data-settings-network-action="connect"]',
+      );
+      connect?.click();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      input.value = "";
+      selectedNetworkSsid = null;
+      networkManagementMessage = "";
+      replaceView();
+    }
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("keydown", onKeyDown);
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeHost = hostPort.subscribe((snapshot) => {
     hostSnapshot = validateSurfaceSnapshot(snapshot);
@@ -309,16 +622,22 @@ export function mountSettingsOverviewControls(
   const networkPoll = networkPort
     ? setInterval(() => void refreshNetwork(), 5000)
     : null;
+  const networkManagementPoll = networkManagementPort
+    ? setInterval(() => void refreshNetworkManagement(), 5000)
+    : null;
   if (networkPort) void refreshNetwork();
+  if (networkManagementPort) void refreshNetworkManagement();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
       if (networkPoll !== null) clearInterval(networkPoll);
+      if (networkManagementPoll !== null) clearInterval(networkManagementPoll);
       unsubscribePreferences?.();
       unsubscribeHost?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("keydown", onKeyDown);
       const slot = findSlot();
       if (slot?.dataset.ordaxSettingsOverviewView !== undefined) {
         slot.replaceChildren();
