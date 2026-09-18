@@ -1,3 +1,4 @@
+// Staged-slot latency probe: no behavior change; exercises the live reload path.
 // Fast-path probe: this UI file is intentionally safe for live Surface reloads.
 const STATUS_COPY = Object.freeze({
   running: ["Atualizado", "A Surface está executando a versão sincronizada."],
