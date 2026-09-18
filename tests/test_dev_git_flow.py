@@ -73,7 +73,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             encoding="ascii",
         )
         stage_owner = self.source / "bootstrap/base-update/stage.py"
-        planner = self.source / "bootstrap/base-update/planner.py"
+        planner = self.source / "bootstrap/base-update/plan.py"
         kernel = self.source / "bootstrap/kernel/vmlinuz-6.6.52"
         initramfs = self.source / "bootstrap/initramfs/initramfs.cpio.gz"
         stage_owner.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +157,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
                 "/docs/evidence/release-trust-proof-manifest.json",
                 "/docs/evidence/release-trust-recovery-envelope.json",
                 "/bootstrap/base-update/stage.py",
-                "/bootstrap/base-update/planner.py",
+                "/bootstrap/base-update/plan.py",
                 "/bootstrap/kernel/vmlinuz-6.6.52",
                 "/bootstrap/initramfs/initramfs.cpio.gz",
             },
@@ -182,7 +182,7 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             (self.worktree / "bootstrap/base-update/stage.py").is_file()
         )
         self.assertTrue(
-            (self.worktree / "bootstrap/base-update/planner.py").is_file()
+            (self.worktree / "bootstrap/base-update/plan.py").is_file()
         )
         self.assertTrue(
             (self.worktree / "bootstrap/kernel/vmlinuz-6.6.52").is_file()
