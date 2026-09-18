@@ -11,7 +11,7 @@ class RescueAgentContractTests(unittest.TestCase):
     def test_agent_is_shell_valid_and_provider_read_only(self):
         subprocess.run(["sh", "-n", str(AGENT)], check=True)
         text = AGENT.read_text(encoding="utf-8")
-        self.assertIn('RESCUE_BRANCH=\${ORDAX_RESCUE_BRANCH:-ordax-rescue}', text)
+        self.assertIn('RESCUE_BRANCH=${ORDAX_RESCUE_BRANCH:-ordax-rescue}', text)
         self.assertIn('ls-remote --heads origin "refs/heads/$RESCUE_BRANCH"', text)
         self.assertIn('"refs/heads/$RESCUE_BRANCH:refs/remotes/origin/$RESCUE_BRANCH"', text)
         self.assertIn('"$rescue_sha:rescue/command.txt"', text)
