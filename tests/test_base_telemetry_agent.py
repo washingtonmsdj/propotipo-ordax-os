@@ -21,6 +21,8 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn("phase", text)
         self.assertIn("supervisorCheckedAt", text)
         self.assertIn('supervisor_checked_at=$(json_field checkedAt "$UPDATE_STATE")', text)
+        self.assertIn('supervisor_state_epoch=$(/bin/busybox stat -c %Y "$UPDATE_STATE"', text)
+        self.assertIn('"supervisorStateEpoch":%s', text)
         self.assertIn("attemptId", text)
         self.assertIn("lastError", text)
         for forbidden in (

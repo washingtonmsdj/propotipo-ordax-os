@@ -26,10 +26,13 @@ Git-reset, power or rescue-control operations.
 The updater also emits a bounded transaction context: target SHA, phase,
 attempt id and last diagnostic. The relay stores the latest state in
 `ordax_os.device_state` and records changes in `ordax_os.device_events`.
-The host-base heartbeat also forwards the updater's `checkedAt` value as
-`supervisorCheckedAt`. Because the base agent has its own process lifetime, comparing
-relay `last_seen_at` with this field distinguishes a live device/base agent from a
-stalled system supervisor without adding another supervisor heartbeat mechanism.
+The host-base heartbeat forwards the updater's `checkedAt` value as
+`supervisorCheckedAt` and also reports the filesystem mtime of the updater state as
+`supervisorStateEpoch`. The mtime is the robust liveness signal: the supervisor
+rewrites that state file as it checks for updates, while the base telemetry process
+has an independent lifetime. A fresh relay `last_seen_at` paired with a stale
+`supervisorStateEpoch` therefore identifies a stalled supervisor without adding a
+second supervisor timer or control path.
 
 Heartbeat repetition does not create journal rows; only meaningful operational
 transitions do. This history is observational and never authorizes an action.
