@@ -231,6 +231,26 @@ class SystemRuntimeContractTests(unittest.TestCase):
             text.index('/bin/busybox poweroff -f'),
         )
 
+    def test_stale_same_boot_power_request_is_reconciled_as_failed(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("POWER_PENDING_STALE_SECONDS=120", text)
+        self.assertIn("write_power_request_record()", text)
+        self.assertIn("current_power_boot_id()", text)
+        self.assertIn("reconcile_stale_power_request()", text)
+        self.assertIn('[ "$request_boot_id" = "$current_boot_id" ] || return 0', text)
+        self.assertIn(
+            'write_power_request_record "$action" "$request_boot_id" "$request_epoch" failed',
+            text,
+        )
+        self.assertIn(
+            "different boot id is positive cross-boot evidence",
+            text,
+        )
+        self.assertLess(
+            text.index("reconcile_stale_power_request ||"),
+            text.index("ensure_base_telemetry_agent ||"),
+        )
+
     def test_wlroots_physical_prerequisites_are_prepared(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("ensure_shared_memory", text)
