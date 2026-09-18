@@ -79,13 +79,19 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
       requireSuccess(response, "text-read");
       return validateTextFile(await response.json());
     },
-    async copyFile(path, name, newName) {
+    async copyFile(sourcePath, name, destinationPath, newName) {
       const response = await windowRef.fetch(FILES_ENDPOINT, {
         method: "POST",
         cache: "no-store",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "copy-file", path, name, newName }),
+        body: JSON.stringify({
+          action: "copy-file",
+          sourcePath,
+          name,
+          destinationPath,
+          newName,
+        }),
       });
       requireSuccess(response, "copy");
       return validateFileListing(await response.json());

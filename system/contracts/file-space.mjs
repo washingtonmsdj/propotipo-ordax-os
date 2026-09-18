@@ -1,4 +1,4 @@
-export const FILE_SPACE_SCHEMA = "ordax.file-space/8";
+export const FILE_SPACE_SCHEMA = "ordax.file-space/9";
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 export const MAX_FILE_COPY_BYTES = 64 * 1024 * 1024;
 export const MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024;

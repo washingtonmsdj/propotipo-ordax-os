@@ -32,7 +32,7 @@ class NativeUserFilesTests(unittest.TestCase):
     def test_file_space_contract_and_native_adapter_are_narrow(self):
         contract = CONTRACT.read_text(encoding="utf-8")
         adapter = ADAPTER.read_text(encoding="utf-8")
-        self.assertIn('ordax.file-space/8', contract)
+        self.assertIn('ordax.file-space/9', contract)
         self.assertIn(
             "list(), createDirectory(), readTextFile(), renameEntry(), copyFile(), moveEntry(), exportFile(), and importFile()",
             contract,
@@ -49,6 +49,8 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('"rename-entry"', adapter)
         self.assertIn("copyFile", adapter)
         self.assertIn('"copy-file"', adapter)
+        self.assertIn("sourcePath", adapter)
+        self.assertIn("destinationPath", adapter)
         self.assertIn("moveEntry", adapter)
         self.assertIn('"move-entry"', adapter)
         self.assertIn("exportFile", adapter)
@@ -163,6 +165,7 @@ class NativeUserFilesTests(unittest.TestCase):
             outside = base / "outside"
             user_root.mkdir()
             outside.mkdir()
+            (user_root / "Documentos").mkdir()
 
             source = user_root / "source.txt"
             source.write_text("copy me", encoding="utf-8")
@@ -170,24 +173,33 @@ class NativeUserFilesTests(unittest.TestCase):
                 str(user_root),
                 "/",
                 "source.txt",
+                "/Documentos",
                 "copy.txt",
             )
             self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
-            self.assertEqual((user_root / "copy.txt").read_text(encoding="utf-8"), "copy me")
+            self.assertEqual(
+                (user_root / "Documentos" / "copy.txt").read_text(encoding="utf-8"),
+                "copy me",
+            )
             copied = next(entry for entry in listing["entries"] if entry["name"] == "copy.txt")
+            self.assertEqual(listing["path"], "/Documentos")
             self.assertEqual(copied["kind"], "file")
             self.assertEqual(copied["size"], 7)
             self.assertIsInstance(copied["modifiedAt"], int)
 
-            (user_root / "occupied.txt").write_text("keep", encoding="utf-8")
+            (user_root / "Documentos" / "occupied.txt").write_text("keep", encoding="utf-8")
             with self.assertRaises(FileExistsError):
                 native_host.copy_user_file(
                     str(user_root),
                     "/",
                     "source.txt",
+                    "/Documentos",
                     "occupied.txt",
                 )
-            self.assertEqual((user_root / "occupied.txt").read_text(encoding="utf-8"), "keep")
+            self.assertEqual(
+                (user_root / "Documentos" / "occupied.txt").read_text(encoding="utf-8"),
+                "keep",
+            )
             self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
 
             (user_root / "large.bin").write_bytes(b"12345")
@@ -196,10 +208,11 @@ class NativeUserFilesTests(unittest.TestCase):
                     str(user_root),
                     "/",
                     "large.bin",
+                    "/Documentos",
                     "large-copy.bin",
                     max_bytes=4,
                 )
-            self.assertFalse((user_root / "large-copy.bin").exists())
+            self.assertFalse((user_root / "Documentos" / "large-copy.bin").exists())
 
             (outside / "secret.txt").write_text("blocked", encoding="utf-8")
             os.symlink(outside / "secret.txt", user_root / "copy-link.txt")
@@ -208,9 +221,10 @@ class NativeUserFilesTests(unittest.TestCase):
                     str(user_root),
                     "/",
                     "copy-link.txt",
+                    "/Documentos",
                     "escaped.txt",
                 )
-            self.assertFalse((user_root / "escaped.txt").exists())
+            self.assertFalse((user_root / "Documentos" / "escaped.txt").exists())
 
             with mock.patch.object(
                 native_host.os,
@@ -222,10 +236,24 @@ class NativeUserFilesTests(unittest.TestCase):
                         str(user_root),
                         "/",
                         "source.txt",
+                        "/Documentos",
                         "partial.txt",
                     )
-            self.assertFalse((user_root / "partial.txt").exists())
+            self.assertFalse((user_root / "Documentos" / "partial.txt").exists())
             self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
+
+            same_folder = native_host.copy_user_file(
+                str(user_root),
+                "/",
+                "source.txt",
+                "/",
+                "source - cópia.txt",
+            )
+            self.assertEqual(same_folder["path"], "/")
+            self.assertEqual(
+                (user_root / "source - cópia.txt").read_text(encoding="utf-8"),
+                "copy me",
+            )
 
     def test_standard_user_directories_are_idempotent_and_symlink_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -309,10 +337,11 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("data-file-rename-name", controls)
         self.assertIn("renameSelected", controls)
         self.assertIn("copySelected", controls)
-        self.assertIn("moveToCurrentDirectory", controls)
+        self.assertIn("transferToCurrentDirectory", controls)
         self.assertIn("data-file-move-toggle", controls)
-        self.assertIn("data-file-move-confirm", controls)
-        self.assertIn("data-file-move-cancel", controls)
+        self.assertIn("data-file-copy-to-toggle", controls)
+        self.assertIn("data-file-transfer-confirm", controls)
+        self.assertIn("data-file-transfer-cancel", controls)
         self.assertIn("data-file-copy-toggle", controls)
         self.assertIn("data-file-copy-confirm", controls)
         self.assertIn("data-file-copy-name", controls)
