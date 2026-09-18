@@ -1,5 +1,6 @@
 export const ACCESSIBILITY_CONTRAST_PREFERENCE_ID = "accessibility.contrast";
 export const ACCESSIBILITY_MOTION_PREFERENCE_ID = "accessibility.motion";
+export const ACCESSIBILITY_TEXT_SCALE_PREFERENCE_ID = "accessibility.text-scale";
 
 function choicePreference({
   id,
@@ -50,5 +51,19 @@ export const accessibilityMotionPreference = choicePreference({
   options: [
     { value: "standard", label: "Padrão" },
     { value: "reduced", label: "Reduzido" },
+  ],
+});
+
+
+export const accessibilityTextScalePreference = choicePreference({
+  id: ACCESSIBILITY_TEXT_SCALE_PREFERENCE_ID,
+  title: "Tamanho do texto",
+  description:
+    "Aumente a escala tipográfica da Surface sem alterar o zoom do navegador ou do sistema.",
+  defaultValue: "standard",
+  options: [
+    { value: "standard", label: "Padrão" },
+    { value: "large", label: "Grande" },
+    { value: "extra-large", label: "Muito grande" },
   ],
 });
