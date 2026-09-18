@@ -86,12 +86,11 @@ ensure_base_boot_id() {
     if [ -r "$BASE_BOOT_ID_FILE" ]; then
         current=$(/bin/busybox cat "$BASE_BOOT_ID_FILE" 2>/dev/null || true)
     fi
-    case "$current" in
-        ????????????????????????????????) 
-            case "$current" in *[!0-9a-f]*) current="" ;; esac
-            ;;
-        *) current="" ;;
-    esac
+    if [ "${#current}" -eq 32 ]; then
+        case "$current" in *[!0-9a-f]*) current="" ;; esac
+    else
+        current=""
+    fi
     [ -n "$current" ] && return 0
 
     generated=$(/bin/busybox od -An -N16 -tx1 /dev/urandom 2>/dev/null | /bin/busybox tr -d ' \n' || true)
