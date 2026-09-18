@@ -12,6 +12,7 @@ class DiagnosticsCiCoverageTests(unittest.TestCase):
     def test_diagnostics_source_and_contract_trigger_web_contract_ci(self):
         workflow = self.workflow()
         self.assertEqual(workflow.count("- 'docs/contracts/diagnostics.json'"), 2)
+        self.assertEqual(workflow.count("- 'system/contracts/diagnostic-journal-store.mjs'"), 2)
         self.assertEqual(workflow.count("- 'system/services/diagnostics/**'"), 2)
 
     def test_diagnostics_modules_are_in_zero_dependency_syntax_scan(self):
