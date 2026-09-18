@@ -45,6 +45,12 @@
   },
   "staging": {
     "signed_manifest_required": true,
+    "envelope_schema": "prototype-ordax.base-update-envelope/1",
+    "manifest_schema": "prototype-ordax.base-update-manifest/1",
+    "verification_schema": "prototype-ordax.base-update-verification/1",
+    "canonical_trust_path": "/ordax/bootstrap/trust/release-ed25519.json",
+    "verifier": "/ordax/bootstrap/release-acquisition/ordax-release-agent verify-base-update-envelope",
+    "unsigned_candidate_cli_allowed": false,
     "kernel_sha256_required": true,
     "initramfs_sha256_required": true,
     "same_release_identity_required": true,
