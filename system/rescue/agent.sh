@@ -18,6 +18,7 @@ PID_FILE=$RESCUE_DIR/agent.pid
 LAST_GENERATION_FILE=$RESCUE_DIR/last-generation
 LAST_ACTION_FILE=$RESCUE_DIR/last-action
 LOG_FILE=$RESCUE_DIR/agent.log
+TELEMETRY_STATUS_FILE=$STATE_DIR/native-state/rescue-status.json
 REJECTED_FILE=$STATE_DIR/rejected-commit
 
 mkdir -p "$RESCUE_DIR"
@@ -99,12 +100,17 @@ read_generation() {
 record_command() {
     generation=$1
     action=$2
-    temporary=$LAST_GENERATION_FILE.tmp.$$
+    temporary=$LAST_GENERATION_FILE.tmp.$
     printf '%s\n' "$generation" >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_GENERATION_FILE"
-    temporary=$LAST_ACTION_FILE.tmp.$$
+    temporary=$LAST_ACTION_FILE.tmp.$
     printf '%s %s\n' "$generation" "$action" >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_ACTION_FILE"
+
+    mkdir -p "$(dirname "$TELEMETRY_STATUS_FILE")"
+    temporary=$TELEMETRY_STATUS_FILE.tmp.$
+    printf '{"generation":%s,"action":"%s"}\n' "$generation" "$action" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$TELEMETRY_STATUS_FILE"
 }
 
 find_surface_pid() {

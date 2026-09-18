@@ -118,6 +118,14 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("rescue agent bootstrap failed; continuing Surface startup", text)
         self.assertNotIn('kill "$RESCUE', text)
 
+    def test_native_surface_wires_fail_soft_telemetry_config(self):
+        launcher = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        server = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        self.assertIn("--telemetry-config /srv/ordax-system/services/telemetry/relay.json", launcher)
+        self.assertIn("start_telemetry_heartbeat", server)
+        self.assertIn("telemetry heartbeat failed safely", server)
+        self.assertIn("daemon=True", server)
+
     def test_native_surface_waits_for_http_and_watches_server_lifetime(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("wait_for_native_server()", text)

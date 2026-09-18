@@ -13,9 +13,12 @@ import secrets
 import stat
 import sys
 import threading
+import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
+from urllib.request import Request, urlopen
 
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
@@ -29,6 +32,9 @@ UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
+TELEMETRY_DEVICE_ID_FILE = "/var/lib/ordax/telemetry-device-id"
+RESCUE_STATUS_FILE = "/var/lib/ordax/rescue-status.json"
+BOOT_ID_FILE = "/proc/sys/kernel/random/boot_id"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
@@ -42,6 +48,165 @@ PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 SURFACE_HOST_RECOVERY_GENERATION = 1
+
+
+def read_small_text(path: str, max_chars: int = 4096) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read(max_chars).strip()
+    except (OSError, UnicodeError):
+        return ""
+
+
+def persistent_telemetry_device_id() -> str:
+    current = read_small_text(TELEMETRY_DEVICE_ID_FILE, 256)
+    if re.fullmatch(r"ordax-[0-9a-f]{32}", current):
+        return current
+
+    device_id = f"ordax-{secrets.token_hex(16)}"
+    directory = os.path.dirname(TELEMETRY_DEVICE_ID_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    temporary = f"{TELEMETRY_DEVICE_ID_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write(device_id)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, TELEMETRY_DEVICE_ID_FILE)
+    return device_id
+
+
+def read_telemetry_config(path: str) -> dict | None:
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or payload.get("$schema") != "ordax.telemetry-relay/1":
+        return None
+    endpoint = payload.get("endpoint")
+    publishable_key = payload.get("publishableKey")
+    interval = payload.get("intervalSeconds", 30)
+    timeout = payload.get("timeoutSeconds", 4)
+    if (
+        not isinstance(endpoint, str)
+        or not endpoint.startswith("https://")
+        or len(endpoint) > 2048
+        or not isinstance(publishable_key, str)
+        or not publishable_key.startswith("sb_publishable_")
+        or len(publishable_key) > 512
+        or not isinstance(interval, int)
+        or interval < 15
+        or interval > 3600
+        or not isinstance(timeout, int)
+        or timeout < 1
+        or timeout > 15
+    ):
+        return None
+    return {
+        "endpoint": endpoint,
+        "publishableKey": publishable_key,
+        "intervalSeconds": interval,
+        "timeoutSeconds": timeout,
+    }
+
+
+def read_rescue_status() -> tuple[int | None, str]:
+    try:
+        with open(RESCUE_STATUS_FILE, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None, "none"
+    if not isinstance(payload, dict):
+        return None, "none"
+    generation = payload.get("generation")
+    action = payload.get("action")
+    if not isinstance(generation, int) or generation < 0:
+        generation = None
+    if action not in {"none", "noop", "clear-rejected", "retry-main"}:
+        action = "none"
+    return generation, action
+
+
+def build_telemetry_payload(device_id: str) -> dict:
+    update = read_update_state() or {}
+    rescue_generation, rescue_action = read_rescue_status()
+    healthy_sha = read_small_text(HEALTH_STATE_FILE, 128)
+    if not valid_commit_sha(healthy_sha):
+        healthy_sha = ""
+
+    last_applied_at = update.get("lastAppliedAt")
+    if not isinstance(last_applied_at, str) or last_applied_at in {"", "unknown"}:
+        last_applied_at = ""
+
+    return {
+        "deviceId": device_id,
+        "sourceSha": update.get("sourceSha") if valid_commit_sha(update.get("sourceSha")) else "",
+        "remoteSha": "",
+        "updateStatus": update.get("status") if isinstance(update.get("status"), str) else "",
+        "applyMode": update.get("applyMode") if isinstance(update.get("applyMode"), str) else "",
+        "rejectedSha": update.get("rejectedSha") if valid_commit_sha(update.get("rejectedSha")) else "",
+        "healthySha": healthy_sha,
+        "lastAppliedSha": update.get("lastAppliedSha") if valid_commit_sha(update.get("lastAppliedSha")) else "",
+        "lastAppliedAt": last_applied_at,
+        "rescueGeneration": rescue_generation,
+        "rescueAction": rescue_action,
+        "surfaceState": "running",
+        "bootId": read_small_text(BOOT_ID_FILE, 256),
+        "lastError": "",
+        "relayVersion": 1,
+    }
+
+
+def submit_telemetry(config: dict, payload: dict) -> bool:
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    request = Request(
+        config["endpoint"],
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "apikey": config["publishableKey"],
+            "User-Agent": "OrdaX-OS-Telemetry/1",
+        },
+    )
+    try:
+        with urlopen(request, timeout=config["timeoutSeconds"]) as response:
+            return 200 <= response.status < 300
+    except (HTTPError, URLError, OSError, TimeoutError):
+        return False
+
+
+def telemetry_heartbeat_loop(config: dict) -> None:
+    try:
+        device_id = persistent_telemetry_device_id()
+    except OSError as exc:
+        print(f"ordax-native-host: telemetry device id unavailable: {exc}", file=sys.stderr, flush=True)
+        return
+
+    while True:
+        try:
+            submit_telemetry(config, build_telemetry_payload(device_id))
+        except Exception as exc:
+            print(f"ordax-native-host: telemetry heartbeat failed safely: {exc}", file=sys.stderr, flush=True)
+        time.sleep(config["intervalSeconds"])
+
+
+def start_telemetry_heartbeat(config_path: str) -> bool:
+    config = read_telemetry_config(config_path)
+    if config is None:
+        return False
+    thread = threading.Thread(
+        target=telemetry_heartbeat_loop,
+        args=(config,),
+        name="ordax-telemetry",
+        daemon=True,
+    )
+    thread.start()
+    return True
 
 
 def supported_power_actions(power_request_path: str) -> tuple[str, ...]:
@@ -655,6 +820,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--directory", default="/srv/ordax-system")
     parser.add_argument("--user-root", default="/var/lib/ordax-user")
     parser.add_argument("--power-request", default=DEFAULT_POWER_REQUEST_PATH)
+    parser.add_argument("--telemetry-config", default="")
     return parser.parse_args()
 
 
@@ -683,8 +849,9 @@ def main() -> int:
         user_root=args.user_root,
         power_request_path=args.power_request,
     )
+    telemetry_started = start_telemetry_heartbeat(args.telemetry_config)
     print(
-        "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s; recovery-generation=%d"
+        "ordax-native-host: serving %s on %s:%d; user root=%s; power actions=%s; recovery-generation=%d; telemetry=%s"
         % (
             args.directory,
             args.bind,
@@ -692,6 +859,7 @@ def main() -> int:
             args.user_root,
             ",".join(server.supported_actions) or "none",
             SURFACE_HOST_RECOVERY_GENERATION,
+            "enabled" if telemetry_started else "disabled",
         ),
         file=sys.stderr,
         flush=True,
