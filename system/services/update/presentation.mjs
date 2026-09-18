@@ -73,3 +73,27 @@ export function readableUpdatePhase(phase) {
     default: return "Em repouso";
   }
 }
+
+export function updateSummaryLabel(snapshot) {
+  return snapshot?.bootRefreshRequired
+    ? "Atualização de base pendente"
+    : updateStatusLabel(snapshot?.status);
+}
+
+export function updateSummaryDetail(snapshot) {
+  if (!snapshot?.bootRefreshRequired) return "";
+  return "Reiniciar manualmente agora não conclui esta atualização; a ativação e o reinício serão conduzidos automaticamente quando a base estiver preparada.";
+}
+
+export function updateBootLabel(snapshot) {
+  return snapshot?.bootRefreshRequired
+    ? "Base pendente de ativação"
+    : "Nenhuma atualização de base pendente";
+}
+
+export function updateAttentionMessage(snapshot) {
+  if (snapshot?.bootRefreshRequired) {
+    return "Existe uma atualização de boot/kernel pendente. Reiniciar manualmente agora, sozinho, não aplica esses bytes; o OrdaX fará a ativação e solicitará o reinício automaticamente quando a base estiver preparada.";
+  }
+  return "A entrega atual permanece preservada enquanto o atualizador tenta recuperar um estado saudável.";
+}
