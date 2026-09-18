@@ -36,6 +36,7 @@ const UPDATE_LABELS = Object.freeze({
 const CAPABILITY_LABELS = Object.freeze({
   "network.https": "Rede HTTPS",
   "network.status": "Estado local de rede",
+  "network.management": "Gerenciamento de Wi-Fi",
   "system.boot-control": "Energia do dispositivo",
   "filesystem.user-space": "Espaço local do usuário",
   "system.metrics": "Métricas do dispositivo",
