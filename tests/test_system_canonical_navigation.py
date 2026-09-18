@@ -37,9 +37,12 @@ class SystemCanonicalNavigationTests(unittest.TestCase):
     def test_surface_activation_channel_opens_target_app_before_owner_handles_target(self):
         surface = SURFACE.read_text(encoding="utf-8")
         self.assertIn("activationPort?.subscribe", surface)
-        self.assertIn('dispatch({ type: "app.launch", appId: activation.appId })', surface)
+        self.assertIn('appId: activation.appId,', surface)
+        self.assertIn('target: activation.target,', surface)
         self.assertIn("unsubscribeActivation?.()", surface)
         self.assertIn("activationPort.publish({ appId, target })", surface)
+        self.assertIn('lifecycle.getAppTarget("system")', system)
+        self.assertIn('activationPort.publish({ appId: "system", target: nextSection })', system)
 
     def test_update_presentation_has_one_shared_owner(self):
         update = UPDATE.read_text(encoding="utf-8")
