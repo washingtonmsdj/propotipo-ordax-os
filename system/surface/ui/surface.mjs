@@ -131,11 +131,17 @@ function renderPanel(
   identityActionPending,
   identityActionMessage,
 ) {
-  const section = element("section", "ordax-app-panel");
+  const section = element(
+    "section",
+    panel.kind === "extension" ? "ordax-app-extension" : "ordax-app-panel",
+  );
   section.append(element("span", "ordax-app-panel-label", panel.label));
   section.append(element("h3", "ordax-app-panel-title", panel.title));
 
-  if (panel.kind === "connectivity") {
+  if (panel.kind === "extension") {
+    section.dataset.appExtension = panel.extensionId;
+    section.setAttribute("aria-label", panel.title);
+  } else if (panel.kind === "connectivity") {
     const label = CONNECTIVITY_LABELS[state.connectivity] ?? CONNECTIVITY_LABELS.unknown;
     const badge = element("span", "ordax-inline-status", label);
     badge.dataset.state = state.connectivity;

@@ -50,6 +50,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SYSTEM_STATUS_CONTROLS,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
+            SURFACE / "files.css",
             POWER_CONTROLS,
             APP_CATALOG,
             APP_CONTRACT,
@@ -127,8 +128,24 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('"preference-choice"', text)
         self.assertIn('"identity-session"', text)
         self.assertIn('"identity-actions"', text)
+        self.assertIn('"extension"', text)
+        self.assertIn("extensionId", text)
         self.assertIn("preferenceId", text)
         self.assertIn("PANEL_KINDS", text)
+
+    def test_files_uses_formal_shared_extension_slot(self):
+        files = APP_OWNERS["files"].read_text(encoding="utf-8")
+        surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
+        css = (SURFACE / "files.css").read_text(encoding="utf-8")
+        web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
+        native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
+        self.assertIn('kind: "extension"', files)
+        self.assertIn('extensionId: "file-space"', files)
+        self.assertIn('panel.kind === "extension"', surface)
+        self.assertIn("dataset.appExtension", surface)
+        self.assertIn('.ordax-files-view', css)
+        self.assertIn("../../surface/ui/files.css", web_html)
+        self.assertIn("../../surface/ui/files.css", native_html)
 
     def test_settings_uses_shared_appearance_preference(self):
         settings = APP_OWNERS["settings"].read_text(encoding="utf-8")
@@ -270,6 +287,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("validateAccountRuntime", main)
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
+        self.assertIn("../../surface/ui/files.css", html)
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
@@ -357,6 +375,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("system/composition/native", workflow)
         self.assertIn("node --test tests/test_power_actions.mjs", workflow)
         self.assertIn("node --test tests/test_app_activation.mjs", workflow)
+        self.assertIn("node --test tests/test_app_contract.mjs", workflow)
 
 
 if __name__ == "__main__":

@@ -3,32 +3,48 @@ import { assertFileSpacePort, validateFileListing } from "../../contracts/file-s
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
+const FILE_EXTENSION_SELECTOR = '[data-app-extension="file-space"]';
+const LOCATIONS = Object.freeze([
+  Object.freeze({ label: "Meu espaço", path: "/" }),
+  Object.freeze({ label: "Documentos", path: "/Documentos" }),
+  Object.freeze({ label: "Imagens", path: "/Imagens" }),
+  Object.freeze({ label: "Downloads", path: "/Downloads" }),
+]);
 
-function element(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
+function node(documentObject, tag, className, text) {
+  const element = documentObject.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
 }
 
 function joinPath(path, name) {
   return path === "/" ? `/${name}` : `${path}/${name}`;
 }
 
-function parentPath(path) {
-  if (path === "/") return "/";
-  const parts = path.split("/").filter(Boolean);
-  parts.pop();
-  return parts.length ? `/${parts.join("/")}` : "/";
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
-export function mountFileSpaceControls(root, fileSpace = null, appActivation = null, surfaceLifecycle = null) {
+function locationIsActive(currentPath, locationPath) {
+  if (locationPath === "/") return currentPath === "/";
+  return currentPath === locationPath || currentPath.startsWith(`${locationPath}/`);
+}
+
+function breadcrumbParts(path) {
+  if (path === "/") return [];
+  return path.split("/").filter(Boolean);
+}
+
+export function mountFileSpaceControls(
+  root,
+  fileSpace = null,
+  appActivation = null,
+  surfaceLifecycle = null,
+) {
   if (!(root instanceof Element)) {
     throw new TypeError("File-space controls require a Surface root Element");
   }
@@ -38,108 +54,220 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
     return Object.freeze({ destroy() {} });
   }
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+  const documentObject = root.ownerDocument;
 
   let listing = null;
   let pending = false;
   let message = null;
   let destroyed = false;
   let requestOrdinal = 0;
+  let mountedSlot = null;
+  let creatingDirectory = false;
+  let directoryDraft = "";
 
-  const renderPanel = () => {
-    if (destroyed) return;
-    const body = root.querySelector(`${FILE_WINDOW_SELECTOR} .ordax-window-body`);
-    if (!body || body.querySelector("[data-ordax-file-space-panel]")) return;
+  const findSlot = () =>
+    root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
 
-    const section = element("section", "ordax-app-panel");
-    section.dataset.ordaxFileSpacePanel = "";
-    section.append(element("span", "ordax-app-panel-label", "Espaço do usuário"));
-    section.append(element("h3", "ordax-app-panel-title", "Arquivos locais do OrdaX"));
+  const renderLocations = (container) => {
+    const heading = node(documentObject, "p", "ordax-files-section-label", "Locais");
+    container.append(heading);
+    for (const location of LOCATIONS) {
+      const button = node(documentObject, "button", "ordax-files-location", location.label);
+      button.type = "button";
+      button.dataset.fileOpenPath = location.path;
+      const active = Boolean(listing && locationIsActive(listing.path, location.path));
+      button.dataset.active = String(active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+      container.append(button);
+    }
+  };
 
-    const status = element(
-      "span",
-      "ordax-inline-status",
-      pending ? "Atualizando…" : listing ? listing.path : "Abrindo…",
+  const renderBreadcrumb = (container) => {
+    const rootButton = node(documentObject, "button", "ordax-files-crumb", "Meu espaço");
+    rootButton.type = "button";
+    rootButton.dataset.fileOpenPath = "/";
+    container.append(rootButton);
+
+    let current = "";
+    for (const part of breadcrumbParts(listing?.path ?? "/")) {
+      container.append(node(documentObject, "span", "ordax-files-crumb-separator", "/"));
+      current += `/${part}`;
+      const button = node(documentObject, "button", "ordax-files-crumb", part);
+      button.type = "button";
+      button.dataset.fileOpenPath = current;
+      container.append(button);
+    }
+  };
+
+  const renderCreateDirectory = (container) => {
+    if (!creatingDirectory) return;
+    const form = node(documentObject, "div", "ordax-files-create");
+    const input = node(documentObject, "input", "ordax-files-create-input");
+    input.type = "text";
+    input.maxLength = 120;
+    input.autocomplete = "off";
+    input.placeholder = "Nome da nova pasta";
+    input.value = directoryDraft;
+    input.dataset.fileDirectoryName = "";
+    input.setAttribute("aria-label", "Nome da nova pasta");
+    const confirm = node(documentObject, "button", "ordax-files-action ordax-files-action-primary", "Criar");
+    confirm.type = "button";
+    confirm.dataset.fileCreateDirectory = "";
+    confirm.disabled = pending;
+    const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+    cancel.type = "button";
+    cancel.dataset.fileCreateCancel = "";
+    cancel.disabled = pending;
+    form.append(input, confirm, cancel);
+    container.append(form);
+    queueMicrotask(() => input.isConnected && input.focus());
+  };
+
+  const renderEntries = (container) => {
+    const list = node(documentObject, "div", "ordax-files-list");
+    const header = node(documentObject, "div", "ordax-files-list-header");
+    header.append(
+      node(documentObject, "span", "", "Nome"),
+      node(documentObject, "span", "", "Tipo"),
+      node(documentObject, "span", "", "Tamanho"),
     );
-    status.dataset.state = pending ? "unknown" : "available";
-    section.append(status);
+    list.append(header);
 
-    if (listing) {
-      const navigation = element("div", "ordax-preference-choices");
-      if (listing.path !== "/") {
-        const up = element("button", "ordax-preference-choice", "← Voltar");
-        up.type = "button";
-        up.dataset.fileOpenPath = parentPath(listing.path);
-        navigation.append(up);
-      }
-      const input = element("input");
-      input.type = "text";
-      input.maxLength = 120;
-      input.placeholder = "Nome da nova pasta";
-      input.autocomplete = "off";
-      input.dataset.fileDirectoryName = "";
-      input.setAttribute("aria-label", "Nome da nova pasta");
-      navigation.append(input);
-      const create = element("button", "ordax-preference-choice", "Criar pasta");
-      create.type = "button";
-      create.dataset.fileCreateDirectory = "";
-      create.disabled = pending;
-      navigation.append(create);
-      section.append(navigation);
-
-      if (listing.entries.length === 0) {
-        section.append(element("p", "ordax-empty", "Esta pasta está vazia."));
-      } else {
-        const list = element("ul", "ordax-capability-list");
-        for (const entry of listing.entries) {
-          const item = element("li");
-          if (entry.kind === "directory") {
-            const button = element("button", "ordax-preference-choice", `📁 ${entry.name}`);
-            button.type = "button";
-            button.dataset.fileOpenPath = joinPath(listing.path, entry.name);
-            item.append(button);
-          } else {
-            item.textContent = `📄 ${entry.name} · ${formatSize(entry.size)}`;
-          }
-          list.append(item);
-        }
-        section.append(list);
-      }
+    if (!listing) {
+      const empty = node(
+        documentObject,
+        "div",
+        "ordax-files-empty",
+        pending ? "Abrindo espaço do usuário…" : "Espaço do usuário indisponível.",
+      );
+      list.append(empty);
+      container.append(list);
+      return;
     }
 
-    if (message) {
-      section.append(element("p", "ordax-empty", message));
+    if (listing.entries.length === 0) {
+      list.append(node(documentObject, "div", "ordax-files-empty", "Esta pasta está vazia."));
+      container.append(list);
+      return;
     }
-    section.append(
-      element(
+
+    for (const entry of listing.entries) {
+      const row = entry.kind === "directory"
+        ? node(documentObject, "button", "ordax-file-row")
+        : node(documentObject, "div", "ordax-file-row");
+      if (entry.kind === "directory") {
+        row.type = "button";
+        row.dataset.fileOpenPath = joinPath(listing.path, entry.name);
+        row.setAttribute("aria-label", `Abrir pasta ${entry.name}`);
+      }
+      row.dataset.kind = entry.kind;
+
+      const nameCell = node(documentObject, "span", "ordax-file-name");
+      const icon = node(documentObject, "span", "ordax-file-icon");
+      icon.dataset.kind = entry.kind;
+      icon.setAttribute("aria-hidden", "true");
+      nameCell.append(icon, node(documentObject, "span", "", entry.name));
+
+      row.append(
+        nameCell,
+        node(documentObject, "span", "ordax-file-meta", entry.kind === "directory" ? "Pasta" : "Arquivo"),
+        node(documentObject, "span", "ordax-file-meta", entry.kind === "directory" ? "—" : formatSize(entry.size)),
+      );
+      list.append(row);
+    }
+    container.append(list);
+  };
+
+  const paint = (slot) => {
+    slot.replaceChildren();
+    slot.dataset.ordaxFileSpaceView = "";
+
+    const view = node(documentObject, "div", "ordax-files-view");
+    const locations = node(documentObject, "nav", "ordax-files-locations");
+    locations.setAttribute("aria-label", "Locais de arquivos");
+    renderLocations(locations);
+
+    const content = node(documentObject, "section", "ordax-files-content");
+    const toolbar = node(documentObject, "header", "ordax-files-toolbar");
+    const breadcrumb = node(documentObject, "nav", "ordax-files-breadcrumb");
+    breadcrumb.setAttribute("aria-label", "Caminho atual");
+    renderBreadcrumb(breadcrumb);
+
+    const actions = node(documentObject, "div", "ordax-files-actions");
+    const refresh = node(documentObject, "button", "ordax-files-action", pending ? "Atualizando…" : "Atualizar");
+    refresh.type = "button";
+    refresh.dataset.fileRefresh = "";
+    refresh.disabled = pending;
+    const create = node(documentObject, "button", "ordax-files-action ordax-files-action-primary", "Nova pasta");
+    create.type = "button";
+    create.dataset.fileCreateToggle = "";
+    create.disabled = pending || !listing;
+    actions.append(refresh, create);
+    toolbar.append(breadcrumb, actions);
+    content.append(toolbar);
+
+    const status = node(
+      documentObject,
+      "div",
+      "ordax-files-status",
+      pending
+        ? "Atualizando conteúdo…"
+        : listing
+          ? `${listing.entries.length} ${listing.entries.length === 1 ? "item" : "itens"}`
+          : "Preparando espaço do usuário…",
+    );
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    content.append(status);
+
+    renderCreateDirectory(content);
+    if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
+    renderEntries(content);
+    content.append(
+      node(
+        documentObject,
         "p",
-        "ordax-app-panel-body",
-        "Este painel só enxerga o espaço persistente do usuário do OrdaX; caminhos do sistema e links simbólicos ficam fora desta fronteira.",
+        "ordax-files-boundary",
+        "Conteúdo persistente do usuário. O sistema e links simbólicos permanecem fora desta fronteira.",
       ),
     );
-    body.append(section);
+
+    view.append(locations, content);
+    slot.append(view);
   };
 
-  const replacePanel = () => {
-    root.querySelector(`${FILE_WINDOW_SELECTOR} [data-ordax-file-space-panel]`)?.remove();
-    renderPanel();
+  const renderView = (force = false) => {
+    if (destroyed) return;
+    const slot = findSlot();
+    if (!slot) {
+      mountedSlot = null;
+      return;
+    }
+    if (!force && slot === mountedSlot) return;
+    mountedSlot = slot;
+    paint(slot);
   };
+
+  const replaceView = () => renderView(true);
 
   const load = async (path) => {
     const ordinal = ++requestOrdinal;
     pending = true;
     message = null;
-    replacePanel();
+    creatingDirectory = false;
+    directoryDraft = "";
+    replaceView();
     try {
       const next = validateFileListing(await port.list(path));
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
     } catch {
       if (destroyed || ordinal !== requestOrdinal) return;
-      message = "Não foi possível abrir esta pasta.";
+      message = "Não foi possível abrir este local.";
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
-        replacePanel();
+        replaceView();
       }
     }
   };
@@ -148,17 +276,19 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
     const trimmed = String(name ?? "").trim();
     if (!listing || !trimmed) {
       message = "Digite um nome para a nova pasta.";
-      replacePanel();
+      replaceView();
       return;
     }
     const ordinal = ++requestOrdinal;
     pending = true;
     message = null;
-    replacePanel();
+    replaceView();
     try {
       const next = validateFileListing(await port.createDirectory(listing.path, trimmed));
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
+      creatingDirectory = false;
+      directoryDraft = "";
       message = `Pasta “${trimmed}” criada.`;
     } catch {
       if (destroyed || ordinal !== requestOrdinal) return;
@@ -166,7 +296,7 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
-        replacePanel();
+        replaceView();
       }
     }
   };
@@ -177,16 +307,56 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
       void load(open.dataset.fileOpenPath);
       return;
     }
+    const refresh = event.target.closest("[data-file-refresh]");
+    if (refresh && listing) {
+      void load(listing.path);
+      return;
+    }
+    const createToggle = event.target.closest("[data-file-create-toggle]");
+    if (createToggle) {
+      creatingDirectory = true;
+      directoryDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
+    const cancel = event.target.closest("[data-file-create-cancel]");
+    if (cancel) {
+      creatingDirectory = false;
+      directoryDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
     const create = event.target.closest("[data-file-create-directory]");
-    if (create && root.contains(create)) {
-      const panel = create.closest("[data-ordax-file-space-panel]");
-      const input = panel?.querySelector("[data-file-directory-name]");
-      void createDirectory(input?.value);
+    if (create) {
+      void createDirectory(directoryDraft);
+    }
+  };
+
+  const onInput = (event) => {
+    if (event.target.matches?.("[data-file-directory-name]")) {
+      directoryDraft = event.target.value;
+    }
+  };
+
+  const onKeyDown = (event) => {
+    if (!event.target.matches?.("[data-file-directory-name]")) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void createDirectory(directoryDraft);
+    } else if (event.key === "Escape" && !pending) {
+      creatingDirectory = false;
+      directoryDraft = "";
+      message = null;
+      replaceView();
     }
   };
 
   root.addEventListener("click", onClick);
-  const unsubscribeRender = lifecycle.subscribeRender(renderPanel);
+  root.addEventListener("input", onInput);
+  root.addEventListener("keydown", onKeyDown);
+  const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
   const unsubscribeActivation = activationPort?.subscribe((activation) => {
     if (activation.appId === "files" && activation.target) {
       void load(activation.target);
@@ -201,7 +371,14 @@ export function mountFileSpaceControls(root, fileSpace = null, appActivation = n
       unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
-      root.querySelector(`${FILE_WINDOW_SELECTOR} [data-ordax-file-space-panel]`)?.remove();
+      root.removeEventListener("input", onInput);
+      root.removeEventListener("keydown", onKeyDown);
+      const slot = findSlot();
+      if (slot?.dataset.ordaxFileSpaceView !== undefined) {
+        slot.replaceChildren();
+        delete slot.dataset.ordaxFileSpaceView;
+      }
+      mountedSlot = null;
     },
   });
 }
