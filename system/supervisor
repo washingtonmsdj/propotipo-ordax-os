@@ -42,7 +42,7 @@ STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
 RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}
-RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-12}
+RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-$SURFACE_HEALTH_TIMEOUT}
 SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}
 UPDATE_TARGET_SHA=""
 UPDATE_PHASE=idle
@@ -93,9 +93,9 @@ esac
 [ "$RELOAD_HEALTH_TIMEOUT" -ge 4 ] 2>/dev/null || RELOAD_HEALTH_TIMEOUT=8
 
 case "$RELOAD_FALLBACK_HEALTH_TIMEOUT" in
-    ''|*[!0-9]*) RELOAD_FALLBACK_HEALTH_TIMEOUT=12 ;;
+    ''|*[!0-9]*) RELOAD_FALLBACK_HEALTH_TIMEOUT=$SURFACE_HEALTH_TIMEOUT ;;
 esac
-[ "$RELOAD_FALLBACK_HEALTH_TIMEOUT" -ge 6 ] 2>/dev/null || RELOAD_FALLBACK_HEALTH_TIMEOUT=12
+[ "$RELOAD_FALLBACK_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || RELOAD_FALLBACK_HEALTH_TIMEOUT=$SURFACE_HEALTH_TIMEOUT
 
 case "$SURFACE_STALE_SECONDS" in
     ''|*[!0-9]*) SURFACE_STALE_SECONDS=90 ;;
@@ -691,6 +691,13 @@ clear_surface_health() {
     rm -f "$HEALTH_FILE" "$SURFACE_HEARTBEAT_FILE"
 }
 
+surface_health_matches() {
+    expected_sha=$1
+    healthy_sha=$(read_state_value "$HEALTH_FILE")
+    rendered_sha=$(surface_heartbeat_sha)
+    [ "$healthy_sha" = "$expected_sha" ] && [ "$rendered_sha" = "$expected_sha" ]
+}
+
 wait_for_surface_health() {
     expected_sha=$1
     seconds=${2:-12}
@@ -698,15 +705,13 @@ wait_for_surface_health() {
         if [ -n "$SURFACE_PID" ] && ! kill -0 "$SURFACE_PID" >/dev/null 2>&1; then
             return 1
         fi
-        healthy_sha=$(read_state_value "$HEALTH_FILE")
-        rendered_sha=$(surface_heartbeat_sha)
-        if [ "$healthy_sha" = "$expected_sha" ] && [ "$rendered_sha" = "$expected_sha" ]; then
+        if surface_health_matches "$expected_sha"; then
             return 0
         fi
         /bin/busybox sleep 1
         seconds=$((seconds - 1))
     done
-    return 1
+    surface_health_matches "$expected_sha"
 }
 
 recover_reload_with_surface_restart() {
@@ -960,6 +965,11 @@ check_for_update() {
                     reload_healthy=1
                     log "Surface restart fallback acknowledged healthy state"
                 fi
+            fi
+
+            if [ "$reload_healthy" -ne 1 ] && surface_health_matches "$new_sha"; then
+                reload_healthy=1
+                log "late Surface health acknowledgement arrived before rollback commit"
             fi
 
             if [ "$reload_healthy" -eq 1 ]; then
