@@ -16,7 +16,9 @@
     "unknown_fields_rejected": true,
     "duplicate_release_id_rejected": true,
     "duplicate_target_id_per_release_rejected": true,
-    "empty_catalog_allowed": true
+    "empty_catalog_allowed": true,
+    "compliance_artifacts_required": true,
+    "compliance_authorization_required": true
   },
   "security": {
     "private_release_storage_urls_exposed": false,
@@ -24,5 +26,18 @@
     "service_secrets_in_catalog_allowed": false,
     "page_may_generate_artifact_hashes": false,
     "catalog_is_release_authority": false
+  },
+  "compliance": {
+    "contract": "docs/contracts/release-compliance.json",
+    "required_per_public_release": true,
+    "public_authorization_required": true,
+    "sbom_required": true,
+    "third_party_notices_required": true,
+    "source_bundle_required": true,
+    "integrity_binding": [
+      "sha256",
+      "size"
+    ],
+    "path_policy": "same-origin"
   }
 }
