@@ -29,6 +29,7 @@ class BaseUpdateContractTests(unittest.TestCase):
     def test_activation_is_one_shot_and_keeps_known_good_default(self):
         activation = CONTRACT["activation"]
         self.assertEqual(activation["selector"], "LoaderEntryOneShot")
+        self.assertEqual(activation["entry_id"], "ordax-candidate.conf")
         self.assertEqual(activation["bootloader"], "systemd-boot")
         self.assertTrue(activation["boot_counting_required"])
         self.assertEqual(activation["candidate_tries_left"], 1)
