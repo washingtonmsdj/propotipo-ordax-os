@@ -15,6 +15,7 @@ import {
 } from "../../contracts/workspace-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
+import { SURFACE_RENDER_LIFECYCLE_SCHEMA } from "./surface-lifecycle.mjs";
 import {
   createSurfaceState,
   createWorkspaceSnapshot,
@@ -284,6 +285,7 @@ export function mountSurface(
   let identityActionPending = null;
   let identityActionMessage = null;
   let dragSession = null;
+  const renderListeners = new Set();
 
   root.innerHTML = createDesktopShellMarkup();
   const desktopClock = mountDesktopClock(root);
@@ -450,6 +452,7 @@ export function mountSurface(
     renderDock();
     renderSidebar();
     renderAreas();
+    for (const listener of [...renderListeners]) listener();
   };
 
   const dispatch = (action) => {
@@ -747,6 +750,15 @@ export function mountSurface(
   render();
 
   return Object.freeze({
+    schema: SURFACE_RENDER_LIFECYCLE_SCHEMA,
+    subscribeRender(listener) {
+      if (typeof listener !== "function") {
+        throw new TypeError("Surface render listener must be a function");
+      }
+      renderListeners.add(listener);
+      listener();
+      return () => renderListeners.delete(listener);
+    },
     destroy() {
       if (workspacePort) workspacePort.save(createWorkspaceSnapshot(state));
       desktopClock.destroy();
@@ -765,6 +777,7 @@ export function mountSurface(
       root.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("dblclick", onDoubleClick);
       root.removeEventListener("keydown", onKeyDown);
+      renderListeners.clear();
       delete root.dataset.ordaxTheme;
       root.replaceChildren();
     },
