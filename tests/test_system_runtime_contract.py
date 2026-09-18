@@ -51,6 +51,15 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("start_supervisor()", text)
         self.assertIn("terminate_supervisor()", text)
         self.assertIn("supervisor heartbeat stale", text)
+        self.assertIn("BASE_HEARTBEAT_FILE=$BASE_UPDATE_STATE_DIR/base-heartbeat.json", text)
+        self.assertIn("write_base_update_heartbeat()", text)
+        self.assertIn("ordax.base_candidate", text)
+        self.assertIn("ordax.base_slot", text)
+        self.assertIn('"$schema":"prototype-ordax.base-heartbeat/1"', text)
+        self.assertLess(
+            text.index("write_base_update_heartbeat\n"),
+            text.index("while :; do\n    start_supervisor"),
+        )
         self.assertNotIn("surface/entrypoint", text)
         self.assertNotIn("ls-remote", text)
         self.assertNotIn("http://", text)

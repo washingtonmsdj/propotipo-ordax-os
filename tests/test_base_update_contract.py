@@ -44,8 +44,26 @@ class BaseUpdateContractTests(unittest.TestCase):
             "surface_health_required",
             "same_release_sha_required",
             "promotion_only_after_all_checks",
+            "boot_id_must_match_across_base_and_surface",
         ):
             self.assertTrue(health[key], key)
+        self.assertEqual(
+            health["local_evidence"],
+            {
+                "base_heartbeat": "/state/ordax/base-update/base-heartbeat.json",
+                "surface_health": "/run/ordax-update/healthy-sha",
+                "surface_heartbeat": "/state/ordax/native-state/surface-heartbeat.json",
+                "boot_id": "/proc/sys/kernel/random/boot_id",
+                "cmdline": "/proc/cmdline",
+            },
+        )
+
+    def test_promotion_writes_recovery_before_current_commit_point(self):
+        promotion = CONTRACT["promotion"]
+        self.assertTrue(promotion["current_entry_written_after_recovery_entry"])
+        self.assertTrue(promotion["current_entry_is_promotion_commit_point"])
+        self.assertTrue(promotion["atomic_replace_required"])
+        self.assertTrue(promotion["previous_slot_preserved"])
 
     def test_failure_never_overwrites_current_kernel_in_place(self):
         failure = CONTRACT["failure"]
