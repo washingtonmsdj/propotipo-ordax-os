@@ -816,14 +816,17 @@ def main() -> int:
     parser.add_argument("--envelope", type=Path, required=True)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
+    parser.add_argument("--trust", type=Path, default=DEFAULT_TRUST)
+    parser.add_argument("--release-agent", type=Path, default=DEFAULT_RELEASE_AGENT)
+    parser.add_argument("--releases-root", type=Path, default=DEFAULT_RELEASES_ROOT)
     parser.add_argument("--ensure-existing", action="store_true")
     args = parser.parse_args()
     try:
         candidate = verified_candidate_from_release(
             args.envelope,
-            DEFAULT_TRUST,
-            DEFAULT_RELEASE_AGENT,
-            DEFAULT_RELEASES_ROOT,
+            args.trust,
+            args.release_agent,
+            args.releases_root,
         )
         owner = ensure_stage if args.ensure_existing else stage
         result = owner(
