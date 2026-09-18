@@ -216,21 +216,24 @@ export function mountAccountOverviewControls(
         : "A integração local ainda não está conectada nesta composição.",
       appearanceTracked ? "available" : "neutral",
     );
+    const queueIsDurable = syncSnapshot?.queuePersistence === "device";
     appendStateCard(
       documentObject,
       grid,
       "Fila offline",
       syncSnapshot
         ? pendingMutationCount > 0
-          ? `${pendingMutationCount} pendente`
-          : "Vazia"
+          ? `${pendingMutationCount} pendente · ${queueIsDurable ? "persistente" : "sessão"}`
+          : queueIsDurable ? "Vazia · persistente" : "Vazia · sessão"
         : SYNC_CORE_STATUS.offlineMutationQueue === "implemented"
           ? "Preparada"
           : "Indisponível",
       syncSnapshot
-        ? "A fila pertence à sessão local e só será consumida por um transporte autorizado."
+        ? queueIsDurable
+          ? "A fila sobrevive a reload/reinício neste dispositivo e continua bloqueada até existir transporte autorizado."
+          : "Este host só conseguiu manter a fila nesta sessão; nenhum dado foi enviado."
         : "Mutações locais podem aguardar conectividade sem inventar uma sessão.",
-      syncSnapshot ? "neutral" : SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "available" : "unavailable",
+      syncSnapshot ? (queueIsDurable ? "available" : "neutral") : SYNC_CORE_STATUS.offlineMutationQueue === "implemented" ? "available" : "unavailable",
     );
     section.append(grid);
     view.append(section);

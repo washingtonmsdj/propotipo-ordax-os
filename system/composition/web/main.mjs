@@ -3,6 +3,7 @@ import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebPreferenceStore } from "../../adapters/web/preferences.mjs";
 import { createWebSurfaceHost } from "../../adapters/web/runtime.mjs";
 import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
+import { createWebSyncStateStore } from "../../adapters/web/sync-state.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -19,6 +20,7 @@ if (!root) {
 const host = createWebSurfaceHost(window);
 const preferenceStore = createWebPreferenceStore(window);
 const workspaceStore = createWebWorkspaceStore(window);
+const syncStateStore = createWebSyncStateStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
 const appActivation = createAppActivationChannel();
@@ -36,6 +38,7 @@ const surface = mountSurface(
 );
 let syncMutationOrdinal = 0;
 const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
+  syncStateStore,
   createIdempotencyKey() {
     syncMutationOrdinal += 1;
     const uuid = window.crypto?.randomUUID?.();

@@ -19,6 +19,8 @@ This is **not** an account backend and does not make account continuity active. 
 
 The shared Surface now also has a local preference-sync bridge. It observes the live `ordax.preference-runtime/1` state, converts appearance changes into canonical idempotent appearance mutations and exposes only local queue/status through `ordax.sync-runtime/1`. Repeated offline theme changes compact to the newest pending value for the single stable `appearance/theme` object. This bridge does not publish anything by itself and does not advertise cloud/account continuity.
 
+Offline preference sync state is persisted behind the neutral `ordax.sync-state-store/1` boundary. Web uses browser-local storage when available; Native stores an opaque bounded payload in persistent OrdaX device state under `/var/lib/ordax`. If persistence is unavailable, the runtime degrades to session-only state and reports that honestly. The persistence adapter never decides sync semantics or transport authority.
+
 Core rules remain:
 
 - one OrdaX identity spans Web, Mobile, Desktop, USB and native-disk modes;

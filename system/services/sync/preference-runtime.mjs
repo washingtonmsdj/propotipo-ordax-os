@@ -3,12 +3,16 @@ import {
   SYNC_RUNTIME_SCHEMA,
   validateSyncRuntimeSnapshot,
 } from "../../contracts/sync-runtime.mjs";
+import { assertSyncStateStore } from "../../contracts/sync-state-store.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../preferences/appearance.mjs";
 import {
   createAppearanceSyncMutation,
   createSyncMutationQueue,
+  validateAppearanceSyncMutation,
   SYNC_CORE_STATUS,
 } from "./runtime.mjs";
+
+export const PREFERENCE_SYNC_STATE_SCHEMA = "ordax.preference-sync-state/1";
 
 function requireIdempotencyFactory(value) {
   if (typeof value !== "function") {
@@ -24,18 +28,62 @@ function requireServerRevision(value) {
   return value;
 }
 
+function recoverPersistedState(store, fallbackRevision) {
+  if (!store) {
+    return { serverRevision: fallbackRevision, mutations: [] };
+  }
+  const payload = store.load();
+  if (payload === null) {
+    return { serverRevision: fallbackRevision, mutations: [] };
+  }
+  try {
+    const value = JSON.parse(payload);
+    if (
+      !value ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      value.$schema !== PREFERENCE_SYNC_STATE_SCHEMA ||
+      !Array.isArray(value.mutations) ||
+      value.mutations.length > 1
+    ) {
+      throw new TypeError("Unsupported persisted preference sync state");
+    }
+    return {
+      serverRevision: requireServerRevision(value.serverRevision),
+      mutations: value.mutations.map(validateAppearanceSyncMutation),
+    };
+  } catch {
+    return { serverRevision: fallbackRevision, mutations: [] };
+  }
+}
+
+function serializeState(serverRevision, queue) {
+  return JSON.stringify({
+    $schema: PREFERENCE_SYNC_STATE_SCHEMA,
+    serverRevision,
+    mutations: queue.snapshot(),
+  });
+}
+
 export function createPreferenceSyncRuntime(
   preferenceRuntime,
   {
     createIdempotencyKey,
     initialServerRevision = 0,
+    syncStateStore = null,
   } = {},
 ) {
   const preferences = assertPreferenceRuntimePort(preferenceRuntime);
   const nextIdempotencyKey = requireIdempotencyFactory(createIdempotencyKey);
-  let serverRevision = requireServerRevision(initialServerRevision);
-  let queue = createSyncMutationQueue();
+  const store = syncStateStore === null ? null : assertSyncStateStore(syncStateStore);
+  const recovered = recoverPersistedState(
+    store,
+    requireServerRevision(initialServerRevision),
+  );
+  let serverRevision = recovered.serverRevision;
+  let queue = createSyncMutationQueue(recovered.mutations);
   let destroyed = false;
+  let queuePersistence = store?.scope ?? "session";
   let lastTheme = preferences.getSnapshot()[APPEARANCE_PREFERENCE_ID];
   const listeners = new Set();
 
@@ -43,8 +91,21 @@ export function createPreferenceSyncRuntime(
     transport: SYNC_CORE_STATUS.transport,
     accountContinuity: SYNC_CORE_STATUS.accountContinuity,
     pendingMutationCount: queue.snapshot().length,
+    queuePersistence,
     trackedDataClasses: ["appearance"],
   });
+
+  const persist = () => {
+    if (!store) return false;
+    try {
+      const saved = store.save(serializeState(serverRevision, queue));
+      if (saved === false) queuePersistence = "session";
+      return saved;
+    } catch {
+      queuePersistence = "session";
+      return false;
+    }
+  };
 
   const emit = () => {
     if (destroyed) return;
@@ -58,11 +119,16 @@ export function createPreferenceSyncRuntime(
       baseServerRevision: serverRevision,
       idempotencyKey: nextIdempotencyKey(),
     });
-    // Appearance is a single stable object. While transport is unavailable,
-    // only the newest local value needs to remain pending for that object.
+    // Appearance is one stable object. Keep only the newest pending local value.
     queue = createSyncMutationQueue([mutation]);
+    persist();
     emit();
   };
+
+  const recoveredPending = queue.snapshot()[0] ?? null;
+  if (recoveredPending && recoveredPending.payload.theme !== lastTheme) {
+    queueTheme(lastTheme);
+  }
 
   const unsubscribePreferences = preferences.subscribe((snapshot) => {
     const theme = snapshot[APPEARANCE_PREFERENCE_ID];
@@ -92,6 +158,7 @@ export function createPreferenceSyncRuntime(
       const removed = queue.acknowledge(idempotencyKey);
       if (!removed) return false;
       serverRevision = revision;
+      persist();
       emit();
       return true;
     },

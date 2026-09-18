@@ -22,15 +22,19 @@ POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
 HEALTH_PATH = "/__ordax/native/health"
 PREFERENCES_PATH = "/__ordax/native/preferences"
+SYNC_STATE_PATH = "/__ordax/native/sync-state"
 FILES_PATH = "/__ordax/native/files"
 METRICS_PATH = "/__ordax/native/metrics"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
+SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
 TOKEN_HEADER = "X-OrdaX-Power-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
 MAX_CONTROL_BODY = 512
 MAX_PREFERENCE_BODY = 8192
+MAX_SYNC_STATE_PAYLOAD = 65536
+MAX_SYNC_STATE_BODY = 393216
 MAX_FILE_ACTION_BODY = 2048
 MAX_FILE_ENTRIES = 1000
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
@@ -141,6 +145,60 @@ def write_preferences(preferences: dict) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, PREFERENCES_FILE)
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def valid_sync_state_payload(value: object) -> bool:
+    return (
+        value is None
+        or (
+            isinstance(value, str)
+            and len(value.encode("utf-8")) <= MAX_SYNC_STATE_PAYLOAD
+        )
+    )
+
+
+def read_sync_state_payload() -> str | None:
+    try:
+        with open(SYNC_STATE_FILE, "r", encoding="utf-8") as handle:
+            payload = handle.read(MAX_SYNC_STATE_PAYLOAD + 1)
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeError):
+        return None
+    return payload if valid_sync_state_payload(payload) else None
+
+
+def write_sync_state_payload(payload: str | None) -> None:
+    if not valid_sync_state_payload(payload):
+        raise ValueError("invalid sync state payload")
+    directory = os.path.dirname(SYNC_STATE_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    if payload is None:
+        try:
+            os.unlink(SYNC_STATE_FILE)
+        except FileNotFoundError:
+            return
+    else:
+        temporary = f"{SYNC_STATE_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+        try:
+            with open(temporary, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, SYNC_STATE_FILE)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
     try:
         directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
@@ -404,6 +462,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if parsed_path in {FILES_PATH, METRICS_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
+        if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
+            self._empty(403)
+            return
         if parsed_path == METRICS_PATH:
             try:
                 metrics = read_system_metrics(self.server.user_root)
@@ -464,6 +525,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if self.path == PREFERENCES_PATH:
             self._write_json(200, read_preferences())
             return
+        if self.path == SYNC_STATE_PATH:
+            self._write_json(200, {"payload": read_sync_state_payload()})
+            return
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
@@ -499,6 +563,21 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 write_preferences(payload)
             except (OSError, ValueError) as exc:
                 print(f"ordax-native-host: could not persist preferences: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path == SYNC_STATE_PATH:
+            body = self._read_json_body(MAX_SYNC_STATE_BODY)
+            payload = body.get("payload") if body is not None else object()
+            if not valid_sync_state_payload(payload):
+                self._empty(400)
+                return
+            try:
+                write_sync_state_payload(payload)
+            except (OSError, ValueError) as exc:
+                print(f"ordax-native-host: could not persist sync state: {exc}", file=sys.stderr, flush=True)
                 self._empty(500)
                 return
             self._empty(204)

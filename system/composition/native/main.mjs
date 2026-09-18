@@ -5,6 +5,7 @@ import { createNativeSurfaceHost } from "../../adapters/native/runtime.mjs";
 import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.mjs";
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs";
+import { createNativeSyncStateStore } from "../../adapters/native/sync-state.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
@@ -30,6 +31,14 @@ async function start() {
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
   const updateWatcher = createNativeUpdateWatcher(window);
+
+  let syncStateStore = null;
+  try {
+    syncStateStore = await createNativeSyncStateStore(window);
+  } catch (error) {
+    console.warn("OrdaX native sync state persistence unavailable", error);
+  }
+
 
   let powerActions = null;
   try {
@@ -77,6 +86,7 @@ async function start() {
   );
   let syncMutationOrdinal = 0;
   const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
+    syncStateStore,
     createIdempotencyKey() {
       syncMutationOrdinal += 1;
       const uuid = window.crypto?.randomUUID?.();
