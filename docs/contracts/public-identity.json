@@ -32,5 +32,19 @@
     "one_identity_across_product_modes": true,
     "local_only_fake_account_allowed": false,
     "telemetry_identity_reuse_allowed": false
+  },
+  "backend": {
+    "gateway_boundary": "services/public-identity/README.md",
+    "provider_adapter_preparation": "infra/supabase/identity",
+    "provider_configured": false,
+    "dedicated_or_isolated_target_required": true,
+    "conflicting_auth_user_trigger_allowed": false,
+    "migration_auto_apply_allowed": false
+  },
+  "supabase_candidate": {
+    "status": "not-configured",
+    "preflight": "infra/supabase/identity/preflight.sql",
+    "migration_root": "infra/supabase/identity/migrations",
+    "existing_shared_project_mutation_allowed": false
   }
 }
