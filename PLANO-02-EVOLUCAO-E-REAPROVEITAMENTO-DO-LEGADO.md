@@ -165,7 +165,7 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 
 1. Seleção, detalhes, navegação por teclado e leitura segura de arquivo suportado; integração “Abrir com” somente para apps realmente disponíveis. **Estado atual:** seleção única, painel de detalhes, setas/Home/End/Enter, segundo clique/ação explícita e visualização segura UTF-8 de até 256 KB estão implementados no Native; “Abrir com” continua pendente até existir app compatível real.
 2. Renomear arquivo/pasta, com validação consistente no cliente e no owner da operação. **Estado atual:** implementação em andamento com operação tipada no file-space, rename atômico sem sobrescrita, rejeição de symlink/colisão e formulário contextual na seleção.
-3. Copiar arquivo com limite explícito, conflito de nome e resultado persistido; depois ampliar para múltiplos itens/diretórios se houver necessidade.
+3. Copiar arquivo com limite explícito, conflito de nome e resultado persistido; depois ampliar para múltiplos itens/diretórios se houver necessidade. **Estado atual:** cópia de arquivo regular na mesma pasta está implementada com limite de 64 MiB, destino no-clobber, streaming, `fsync` do conteúdo e remoção automática de destino parcial em falha; escolha de outra pasta, diretórios e múltiplos itens continuam pendentes.
 4. Importar/exportar conforme o ambiente; transferência sem permissões de host indevidas.
 5. Mover e lixeira após definir recuperação, retenção e semântica entre volumes. Não disfarçar exclusão permanente como lixeira.
 
