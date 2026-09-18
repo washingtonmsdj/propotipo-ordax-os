@@ -163,6 +163,7 @@ export function mountFileSpaceControls(
           })
         : null;
     return Object.freeze({
+      path: slot.dataset.fileSpacePath ?? "",
       windowScrollTop: windowBody?.scrollTop ?? 0,
       windowScrollLeft: windowBody?.scrollLeft ?? 0,
       listScrollTop: list?.scrollTop ?? 0,
@@ -179,27 +180,30 @@ export function mountFileSpaceControls(
   };
 
   const restoreInteractionState = (slot, snapshot) => {
+    const samePath =
+      Boolean(snapshot)
+      && snapshot.path === (listing?.path ?? "");
     const windowBody = slot.closest(".ordax-window-body");
-    if (windowBody && snapshot) {
+    if (windowBody && samePath) {
       windowBody.scrollTop = snapshot.windowScrollTop;
       windowBody.scrollLeft = snapshot.windowScrollLeft;
     }
 
     const list = slot.querySelector(".ordax-files-list");
-    if (list && snapshot) {
+    if (list && samePath) {
       list.scrollTop = snapshot.listScrollTop;
       list.scrollLeft = snapshot.listScrollLeft;
     }
 
     const preview = slot.querySelector(".ordax-files-preview-content");
-    if (preview && snapshot) {
+    if (preview && samePath) {
       preview.scrollTop = snapshot.previewScrollTop;
       preview.scrollLeft = snapshot.previewScrollLeft;
     }
 
     const requested = focusRequest;
     focusRequest = null;
-    const identity = requested ?? snapshot?.focus ?? null;
+    const identity = requested ?? (samePath ? snapshot?.focus : null) ?? null;
     const target = findFocusTarget(slot, identity);
     if (!target || target.disabled) return;
 
@@ -207,7 +211,8 @@ export function mountFileSpaceControls(
     if (!(target instanceof HTMLInputElement)) return;
 
     const savedSelection =
-      snapshot?.selection
+      samePath
+      && snapshot?.selection
       && snapshot.selection.identity.kind === identity.kind
       && snapshot.selection.identity.value === identity.value
         ? snapshot.selection
@@ -767,6 +772,7 @@ export function mountFileSpaceControls(
   const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxFileSpaceView = "";
+    slot.dataset.fileSpacePath = listing?.path ?? "";
 
     const view = node(documentObject, "div", "ordax-files-view");
     const locations = node(documentObject, "nav", "ordax-files-locations");
@@ -1740,6 +1746,7 @@ export function mountFileSpaceControls(
       if (slot?.dataset.ordaxFileSpaceView !== undefined) {
         slot.replaceChildren();
         delete slot.dataset.ordaxFileSpaceView;
+        delete slot.dataset.fileSpacePath;
       }
       mountedSlot = null;
     },
