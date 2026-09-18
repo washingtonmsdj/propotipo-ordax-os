@@ -127,6 +127,19 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
 
+    def test_update_latency_is_recorded_without_external_timing(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("LAST_APPLY_DURATION_FILE=$STATE_DIR/last-apply-duration-seconds", text)
+        self.assertIn("LAST_STAGE_DURATION_FILE=$STATE_DIR/last-stage-duration-seconds", text)
+        self.assertIn("ATTEMPT_STARTED_EPOCH_FILE=$UPDATE_RUN_DIR/attempt-started-epoch", text)
+        self.assertIn("record_elapsed_seconds()", text)
+        self.assertIn('write_state_value "$ATTEMPT_STARTED_EPOCH_FILE" "$(epoch_now)"', text)
+        self.assertIn('record_elapsed_seconds "$attempt_started" "$LAST_APPLY_DURATION_FILE"', text)
+        self.assertIn('record_elapsed_seconds "$stage_started" "$LAST_STAGE_DURATION_FILE"', text)
+        self.assertIn('"lastApplyDurationSeconds":%s', text)
+        self.assertIn('"lastStageDurationSeconds":%s', text)
+        self.assertIn('"stagedReleaseSha":"%s"', text)
+
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         markdown = text.index("system/*.md)")
