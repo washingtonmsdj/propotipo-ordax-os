@@ -264,7 +264,7 @@ stage_candidate_release() {
         return 0
     fi
 
-    stage_dir=$RELEASES_DIR/.staging-$candidate_sha-$
+    stage_dir=$RELEASES_DIR/.staging-$candidate_sha-$(epoch_now)
     stage_archive=$UPDATE_RUN_DIR/release-$candidate_sha.tar
     rm -rf "$stage_dir"
     rm -f "$stage_archive"
