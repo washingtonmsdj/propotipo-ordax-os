@@ -22,6 +22,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_supervisor_polls_git_without_rebooting_for_normal_updates(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}', text)
+        self.assertIn('UPDATE_TARGET_SECONDS=${ORDAX_UPDATE_TARGET_SECONDS:-5}', text)
         self.assertIn('REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}', text)
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
         self.assertIn('STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}', text)
@@ -127,6 +128,17 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("fetch --no-tags", staging)
         self.assertNotIn("ls-remote", staging)
 
+    def test_live_reload_uses_lightweight_git_object_staging(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        staging = text.split("stage_candidate_release() {", 1)[1].split("\n}\n", 1)[0]
+        reload_fast_path = staging.split('if [ "$candidate_mode" = reload ]; then', 1)[1].split("fi", 1)[0]
+        self.assertIn('write_state_value "$STAGED_RELEASE_FILE" "$candidate_sha"', reload_fast_path)
+        self.assertIn("live-safe candidate staged in fetched Git objects", reload_fast_path)
+        self.assertIn("return 0", reload_fast_path)
+        self.assertNotIn("archive --format=tar", reload_fast_path)
+        self.assertNotIn("tar -xf", reload_fast_path)
+
+
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         markdown = text.index("system/*.md)")
@@ -223,6 +235,10 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"', text)
         self.assertIn("record_surface_health", text)
         self.assertIn("bootRefreshRequired", text)
+        self.assertIn('"prepareSeconds": update.get("prepareSeconds")', text)
+        self.assertIn('"activationSeconds": update.get("activationSeconds")', text)
+        self.assertIn('"totalSeconds": update.get("totalSeconds")', text)
+        self.assertIn('"targetSeconds": update.get("targetSeconds")', text)
         self.assertNotIn("Access-Control-Allow-Origin", text)
 
     def test_native_server_disables_static_surface_cache(self):
@@ -297,6 +313,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('"lastAppliedAt":"%s"', text)
         self.assertIn('"rejectedSha":"%s"', text)
         self.assertIn('"lastError":"%s"', text)
+        self.assertIn('"prepareSeconds":%s', text)
+        self.assertIn('"activationSeconds":%s', text)
+        self.assertIn('"totalSeconds":%s', text)
+        self.assertIn('"targetSeconds":%s', text)
+        self.assertIn("record_update_timing()", text)
+        self.assertIn('record_update_timing "$attempt_started_epoch" "$activation_started_epoch"', text)
         self.assertIn("set_update_context()", text)
         self.assertIn("clear_update_context()", text)
         self.assertIn("record_applied", text)
