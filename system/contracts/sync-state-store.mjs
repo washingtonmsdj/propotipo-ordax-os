@@ -1,6 +1,8 @@
 export const SYNC_STATE_STORE_SCHEMA = "ordax.sync-state-store/1";
 export const MAX_SYNC_STATE_PAYLOAD_BYTES = 65536;
 
+const STORE_SCOPES = new Set(["device", "session"]);
+
 export function validateSyncStatePayload(value) {
   if (value === null || value === undefined) return null;
   if (typeof value !== "string") {
@@ -15,6 +17,9 @@ export function validateSyncStatePayload(value) {
 export function assertSyncStateStore(store) {
   if (!store || typeof store !== "object" || store.schema !== SYNC_STATE_STORE_SCHEMA) {
     throw new TypeError("A compatible sync-state-store is required");
+  }
+  if (!STORE_SCOPES.has(store.scope)) {
+    throw new TypeError("Sync-state-store scope must be device or session");
   }
   if (typeof store.load !== "function" || typeof store.save !== "function") {
     throw new TypeError("Sync-state-store must implement load() and save()");
