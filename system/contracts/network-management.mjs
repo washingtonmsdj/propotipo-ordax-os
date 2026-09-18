@@ -3,11 +3,21 @@ export const NETWORK_MANAGEMENT_SCHEMA = "ordax.network-management/1";
 const INTERFACE_RE = /^[A-Za-z0-9_.:-]{1,32}$/;
 const SECURITY_MODES = new Set(["wpa-psk"]);
 const MAX_NETWORKS = 32;
+const textEncoder = new TextEncoder();
+
+function hasControlCharacter(value) {
+  return [...value].some((character) => character.codePointAt(0) < 32);
+}
 
 function optionalSsid(value, field) {
   if (value === null) return null;
-  if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-    throw new TypeError(`Network management ${field} must be null or a bounded string`);
+  if (
+    typeof value !== "string"
+    || value.length < 1
+    || textEncoder.encode(value).length > 32
+    || hasControlCharacter(value)
+  ) {
+    throw new TypeError(`Network management ${field} must be null or a valid Wi-Fi SSID`);
   }
   return value;
 }
@@ -62,8 +72,14 @@ export function validateWifiCredentials(value) {
   }
   const ssid = optionalSsid(value.ssid, "ssid");
   if (ssid === null) throw new TypeError("Wi-Fi SSID is required");
-  if (typeof value.password !== "string" || value.password.length < 8 || value.password.length > 128) {
-    throw new TypeError("Wi-Fi password must be a bounded string");
+  const passwordBytes = typeof value.password === "string" ? textEncoder.encode(value.password).length : 0;
+  if (
+    typeof value.password !== "string"
+    || passwordBytes < 8
+    || passwordBytes > 63
+    || hasControlCharacter(value.password)
+  ) {
+    throw new TypeError("Wi-Fi password must contain 8 to 63 valid bytes");
   }
   return Object.freeze({ ssid, password: value.password });
 }
