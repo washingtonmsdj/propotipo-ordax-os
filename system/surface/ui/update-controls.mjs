@@ -3,7 +3,7 @@
 // Staged-slot latency probe: no behavior change; exercises the live reload path.
 // Fast-path probe: this UI file is intentionally safe for live Surface reloads.
 const STATUS_COPY = Object.freeze({
-  running: ["Atualizado", "A Surface está executando a entrega sincronizada."],
+  running: ["Em execução", "A entrega local está em execução. O OrdaX verifica novas entregas automaticamente."],
   applied: ["Aplicando atualização", "Uma nova entrega foi recebida e está sendo ativada."],
   updating: ["Atualizando…", "O OrdaX está recebendo uma nova entrega."],
   "network-error": ["Sem conexão", "A entrega atual continua funcionando e uma nova tentativa será feita automaticamente."],
