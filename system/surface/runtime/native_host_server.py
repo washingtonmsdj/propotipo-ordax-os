@@ -543,6 +543,38 @@ def read_system_metrics(user_root: str, proc_root: str = "/proc") -> dict:
     }
 
 
+def read_power_supply_percent(path: str) -> int | None:
+    raw_capacity = read_small_text(os.path.join(path, "capacity"), 16)
+    try:
+        capacity = int(raw_capacity)
+    except ValueError:
+        capacity = -1
+    if 0 <= capacity <= 100:
+        return capacity
+
+    for current_name, full_names in (
+        ("energy_now", ("energy_full", "energy_full_design")),
+        ("charge_now", ("charge_full", "charge_full_design")),
+    ):
+        raw_current = read_small_text(os.path.join(path, current_name), 32)
+        try:
+            current = int(raw_current)
+        except ValueError:
+            continue
+        if current < 0:
+            continue
+        for full_name in full_names:
+            raw_full = read_small_text(os.path.join(path, full_name), 32)
+            try:
+                full = int(raw_full)
+            except ValueError:
+                continue
+            if full <= 0:
+                continue
+            return max(0, min(100, int(round((current * 100) / full))))
+    return None
+
+
 def read_power_status(sys_class_power_supply: str = "/sys/class/power_supply") -> dict:
     try:
         names = sorted(os.listdir(sys_class_power_supply))
@@ -557,17 +589,13 @@ def read_power_status(sys_class_power_supply: str = "/sys/class/power_supply") -
         path = os.path.join(sys_class_power_supply, name)
         if not os.path.isdir(path):
             continue
-        supply_type = read_small_text(os.path.join(path, "type"), 64)
-        if supply_type == "Battery":
+        supply_type = read_small_text(os.path.join(path, "type"), 64).strip().lower()
+        if supply_type == "battery":
             present = read_small_text(os.path.join(path, "present"), 8)
             if present == "0":
                 continue
-            raw_capacity = read_small_text(os.path.join(path, "capacity"), 16)
-            try:
-                capacity = int(raw_capacity)
-            except ValueError:
-                continue
-            if capacity < 0 or capacity > 100:
+            capacity = read_power_supply_percent(path)
+            if capacity is None:
                 continue
             raw_status = read_small_text(os.path.join(path, "status"), 64).strip().lower()
             state = {
