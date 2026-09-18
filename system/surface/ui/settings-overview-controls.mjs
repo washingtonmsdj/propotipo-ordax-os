@@ -61,6 +61,16 @@ function optionDescription(preferenceId, value) {
       ? "Contraste escuro para ambientes de pouca luz."
       : "Superfície clara e neutra como padrão do OrdaX.";
   }
+  if (preferenceId === "accessibility.contrast") {
+    return value === "high"
+      ? "Reforça separadores, texto secundário e foco da Surface."
+      : "Usa o contraste padrão do tema escolhido.";
+  }
+  if (preferenceId === "accessibility.motion") {
+    return value === "reduced"
+      ? "Remove animações e transições não essenciais."
+      : "Mantém movimento quando a preferência do ambiente também permite.";
+  }
   return String(value);
 }
 
