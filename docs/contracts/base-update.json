@@ -59,7 +59,12 @@
     "write_inactive_slot_first": true,
     "fsync_files_before_entry": true,
     "fsync_esp_before_activation": true,
-    "candidate_entry_written_last": true
+    "candidate_entry_written_last": true,
+    "materializer": "/ordax/bootstrap/release-acquisition/ordax-release-agent materialize",
+    "materialize_expected_commit_required": true,
+    "materialize_only_when_boot_refresh_pending": true,
+    "materialization_must_not_change_current_pointer": true,
+    "materialization_precedes_esp_stage": true
   },
   "health": {
     "candidate_cmdline_identity_required": true,
