@@ -1,5 +1,9 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import { assertFileSpacePort, validateFileListing } from "../../contracts/file-space.mjs";
+import {
+  assertFileSpacePort,
+  validateFileListing,
+  validateTextFile,
+} from "../../contracts/file-space.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
@@ -64,6 +68,9 @@ export function mountFileSpaceControls(
   let mountedSlot = null;
   let creatingDirectory = false;
   let directoryDraft = "";
+  let textPreview = null;
+  let previewPending = false;
+  let previewRequestOrdinal = 0;
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -152,13 +159,14 @@ export function mountFileSpaceControls(
     }
 
     for (const entry of listing.entries) {
-      const row = entry.kind === "directory"
-        ? node(documentObject, "button", "ordax-file-row")
-        : node(documentObject, "div", "ordax-file-row");
+      const row = node(documentObject, "button", "ordax-file-row");
+      row.type = "button";
       if (entry.kind === "directory") {
-        row.type = "button";
         row.dataset.fileOpenPath = joinPath(listing.path, entry.name);
         row.setAttribute("aria-label", `Abrir pasta ${entry.name}`);
+      } else {
+        row.dataset.fileReadPath = joinPath(listing.path, entry.name);
+        row.setAttribute("aria-label", `Visualizar arquivo ${entry.name}`);
       }
       row.dataset.kind = entry.kind;
 
@@ -176,6 +184,45 @@ export function mountFileSpaceControls(
       list.append(row);
     }
     container.append(list);
+  };
+
+  const renderTextPreview = (container) => {
+    if (!previewPending && !textPreview) return;
+    const preview = node(documentObject, "section", "ordax-files-preview");
+    preview.setAttribute("aria-label", "Visualização do arquivo");
+
+    if (previewPending) {
+      const loading = node(documentObject, "div", "ordax-files-preview-loading", "Abrindo arquivo…");
+      loading.setAttribute("role", "status");
+      loading.setAttribute("aria-live", "polite");
+      preview.append(loading);
+      container.append(preview);
+      return;
+    }
+
+    const header = node(documentObject, "header", "ordax-files-preview-header");
+    const identity = node(documentObject, "div", "ordax-files-preview-identity");
+    const parts = textPreview.path.split("/");
+    const name = parts[parts.length - 1] || textPreview.path;
+    identity.append(
+      node(documentObject, "strong", "ordax-files-preview-title", name),
+      node(documentObject, "span", "ordax-files-preview-meta", `${formatSize(textPreview.size)} · somente leitura`),
+    );
+    const close = node(documentObject, "button", "ordax-files-action", "Fechar");
+    close.type = "button";
+    close.dataset.filePreviewClose = "";
+    header.append(identity, close);
+
+    const content = node(documentObject, "pre", "ordax-files-preview-content", textPreview.text);
+    content.tabIndex = 0;
+    const note = node(
+      documentObject,
+      "p",
+      "ordax-files-preview-note",
+      "Visualização segura de texto UTF-8, limitada a 256 KB. O conteúdo não é executado.",
+    );
+    preview.append(header, content, note);
+    container.append(preview);
   };
 
   const paint = (slot) => {
@@ -223,6 +270,7 @@ export function mountFileSpaceControls(
     renderCreateDirectory(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
+    renderTextPreview(content);
     content.append(
       node(
         documentObject,
@@ -256,6 +304,9 @@ export function mountFileSpaceControls(
     message = null;
     creatingDirectory = false;
     directoryDraft = "";
+    textPreview = null;
+    previewPending = false;
+    previewRequestOrdinal += 1;
     replaceView();
     try {
       const next = validateFileListing(await port.list(path));
@@ -267,6 +318,34 @@ export function mountFileSpaceControls(
     } finally {
       if (!destroyed && ordinal === requestOrdinal) {
         pending = false;
+        replaceView();
+      }
+    }
+  };
+
+  const openTextFile = async (path) => {
+    const ordinal = ++previewRequestOrdinal;
+    previewPending = true;
+    textPreview = null;
+    message = null;
+    replaceView();
+    try {
+      const next = validateTextFile(await port.readTextFile(path));
+      if (destroyed || ordinal !== previewRequestOrdinal) return;
+      textPreview = next;
+    } catch (error) {
+      if (destroyed || ordinal !== previewRequestOrdinal) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      if (detail.includes("413")) {
+        message = "Este arquivo é grande demais para a visualização rápida (máximo 256 KB).";
+      } else if (detail.includes("415")) {
+        message = "A visualização rápida aceita apenas texto UTF-8 válido.";
+      } else {
+        message = "Não foi possível visualizar este arquivo.";
+      }
+    } finally {
+      if (!destroyed && ordinal === previewRequestOrdinal) {
+        previewPending = false;
         replaceView();
       }
     }
@@ -302,6 +381,20 @@ export function mountFileSpaceControls(
   };
 
   const onClick = (event) => {
+    const read = event.target.closest("[data-file-read-path]");
+    if (read && root.contains(read)) {
+      void openTextFile(read.dataset.fileReadPath);
+      return;
+    }
+    const previewClose = event.target.closest("[data-file-preview-close]");
+    if (previewClose && root.contains(previewClose)) {
+      previewRequestOrdinal += 1;
+      previewPending = false;
+      textPreview = null;
+      message = null;
+      replaceView();
+      return;
+    }
     const open = event.target.closest("[data-file-open-path]");
     if (open && root.contains(open)) {
       void load(open.dataset.fileOpenPath);
@@ -368,6 +461,7 @@ export function mountFileSpaceControls(
     destroy() {
       destroyed = true;
       requestOrdinal += 1;
+      previewRequestOrdinal += 1;
       unsubscribeActivation?.();
       unsubscribeRender();
       root.removeEventListener("click", onClick);
