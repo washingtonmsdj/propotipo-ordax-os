@@ -14,7 +14,7 @@ class FilesCurrentFolderSearchTests(unittest.TestCase):
         self.assertIn("toLocaleLowerCase(FILE_SEARCH_LOCALE)", controls)
         self.assertIn('searchInput.maxLength = 120', controls)
         self.assertIn('searchInput.placeholder = "Buscar nesta pasta"', controls)
-        self.assertIn('data.fileSearch', controls.replace("dataset", "data"))
+        self.assertIn("searchInput.dataset.fileSearch", controls)
         self.assertIn("busca nesta pasta", controls)
         self.assertIn("Nenhum item corresponde à busca nesta pasta.", controls)
         self.assertNotIn("fileSpace.search", controls)
@@ -22,10 +22,11 @@ class FilesCurrentFolderSearchTests(unittest.TestCase):
 
     def test_filter_has_clear_and_keyboard_escape_paths(self):
         controls = CONTROLS.read_text(encoding="utf-8")
-        self.assertIn("data-file-search-clear", controls)
+        self.assertIn("clearSearch.dataset.fileSearchClear", controls)
         self.assertIn('event.target.matches?.("[data-file-search]")', controls)
         self.assertIn('event.key === "Escape" && searchQuery', controls)
         self.assertIn("selectionIsVisible()", controls)
+        self.assertIn('node(documentObject, "div", "ordax-files-search")', controls)
         self.assertIn("setSelectionRange?.(caret, caret)", controls)
 
     def test_search_layout_is_responsive(self):
