@@ -35,6 +35,7 @@ FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 METRICS_PATH = "/__ordax/native/metrics"
 POWER_STATUS_PATH = "/__ordax/native/power-status"
+TIME_STATUS_PATH = "/__ordax/native/time-status"
 NETWORK_STATUS_PATH = "/__ordax/native/network-status"
 NETWORK_MANAGEMENT_PATH = "/__ordax/native/network-management"
 UPDATE_HISTORY_PATH = "/__ordax/native/update-history"
@@ -78,6 +79,7 @@ CLIENT_DIAGNOSTIC_SOURCE_RE = re.compile(r"^[A-Za-z0-9_.-]+\.mjs:[1-9][0-9]{0,5}
 POWER_ACTIONS = ("restart", "shutdown")
 DEFAULT_POWER_REQUEST_PATH = "/run/ordax-surface/power-request"
 DEFAULT_NETWORK_SESSION_DIR = "/run/ordax-surface"
+DEFAULT_TIME_SYNC_PID_FILE = "/run/ordax-surface/time-sync.pid"
 SURFACE_HOST_RECOVERY_GENERATION = 1
 RENAME_NOREPLACE = 1
 
@@ -611,6 +613,34 @@ def read_power_status(sys_class_power_supply: str = "/sys/class/power_supply") -
         "battery": battery,
         "externalPower": external_power,
     }
+
+
+def read_time_status(
+    pid_file: str = DEFAULT_TIME_SYNC_PID_FILE,
+    proc_root: str = "/proc",
+) -> dict:
+    raw_pid = read_small_text(pid_file, 32)
+    if not raw_pid.isdigit():
+        return {"automaticSync": "unavailable"}
+    pid = int(raw_pid)
+    if pid <= 1:
+        return {"automaticSync": "unavailable"}
+
+    cmdline_path = os.path.join(proc_root, str(pid), "cmdline")
+    try:
+        with open(cmdline_path, "rb") as handle:
+            cmdline = handle.read(4096)
+    except OSError:
+        return {"automaticSync": "unavailable"}
+    if not cmdline or len(cmdline) > 4096:
+        return {"automaticSync": "unavailable"}
+
+    arguments = [part for part in cmdline.split(b"\x00") if part]
+    is_ntpd = any(
+        argument == b"ntpd" or os.path.basename(os.fsdecode(argument)) == "ntpd"
+        for argument in arguments
+    )
+    return {"automaticSync": "running" if is_ntpd else "unavailable"}
 
 
 def parse_wireless_signals(text: str) -> dict[str, int]:
@@ -1530,7 +1560,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, METRICS_PATH, POWER_STATUS_PATH, TIME_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
@@ -1553,6 +1583,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(503)
                 return
             self._write_json(200, power_status)
+            return
+        if parsed_path == TIME_STATUS_PATH:
+            self._write_json(200, read_time_status())
             return
         if parsed_path == NETWORK_STATUS_PATH:
             try:
