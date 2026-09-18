@@ -21,8 +21,12 @@ import {
   readableUpdateMode,
   readableUpdatePhase,
   shortSha,
+  updateAttentionMessage,
+  updateBootLabel,
   updateIsAlerting,
   updateStatusLabel,
+  updateSummaryDetail,
+  updateSummaryLabel,
 } from "../../services/update/presentation.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -183,9 +187,11 @@ export function mountSystemOverviewControls(
       : hostSnapshot.connectivity === "offline"
         ? "attention"
         : "healthy";
-    health.textContent = alerting
-      ? "Atenção necessária"
-      : hostSnapshot.connectivity === "offline"
+    health.textContent = updateSnapshot?.bootRefreshRequired
+      ? "Atualização de base pendente"
+      : alerting
+        ? "Atenção necessária"
+        : hostSnapshot.connectivity === "offline"
         ? "Offline"
         : updateSnapshot
           ? "Operando normalmente"
@@ -224,13 +230,13 @@ export function mountSystemOverviewControls(
     appendMetricCard(documentObject, grid, {
       label: "Atualização",
       value: updateSnapshot
-        ? updateSnapshot.bootRefreshRequired
-          ? "Reinício necessário"
-          : updateStatusLabel(updateSnapshot.status)
+        ? updateSummaryLabel(updateSnapshot)
         : "Indisponível",
-      detail: updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
-        ? `Verificado: ${updateSnapshot.checkedAt}`
-        : "Sem estado de atualização publicado",
+      detail: updateSnapshot?.bootRefreshRequired
+        ? updateSummaryDetail(updateSnapshot)
+        : updateSnapshot?.checkedAt && updateSnapshot.checkedAt !== "unknown"
+          ? `Verificado: ${updateSnapshot.checkedAt}`
+          : "Sem estado de atualização publicado",
     });
 
     appendMetricCard(documentObject, grid, {
@@ -257,7 +263,7 @@ export function mountSystemOverviewControls(
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
     headingCopy.append(
-      node(documentObject, "span", "ordax-system-section-kicker", "Recursos"),
+      node(documentObject, "span", "ordax-system-section-kicker", "Uso do dispositivo"),
       node(documentObject, "h4", "ordax-system-section-title", "Memória"),
     );
     const refresh = node(
@@ -421,12 +427,7 @@ export function mountSystemOverviewControls(
     if (updateSnapshot.rejectedSha) {
       addFact("Commit bloqueado", shortSha(updateSnapshot.rejectedSha));
     }
-    addFact(
-      "Boot",
-      updateSnapshot.bootRefreshRequired
-        ? "Mudança pendente de reinício físico"
-        : "Nenhum reinício físico pendente",
-    );
+    addFact("Boot", updateBootLabel(updateSnapshot));
     section.append(facts);
 
     if (updateIsAlerting(updateSnapshot)) {
@@ -434,9 +435,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-warning",
-        updateSnapshot.bootRefreshRequired
-          ? "Existe uma atualização de boot/bootstrap pendente. O OrdaX não reiniciará a máquina automaticamente."
-          : "A entrega atual permanece preservada enquanto o atualizador tenta recuperar um estado saudável.",
+        updateAttentionMessage(updateSnapshot),
       );
       section.append(warning);
     }
