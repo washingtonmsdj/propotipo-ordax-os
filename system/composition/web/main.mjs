@@ -72,6 +72,9 @@ const settingsOverviewControls = mountSettingsOverviewControls(
   host,
   surface.preferences,
   surface,
+  null,
+  null,
+  appActivation,
 );
 const systemOverviewControls = mountSystemOverviewControls(
   root,

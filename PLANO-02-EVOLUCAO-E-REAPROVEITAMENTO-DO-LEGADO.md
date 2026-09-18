@@ -179,7 +179,7 @@ Os nomes de operações sugeridos nesta seção descrevem contratos a discutir; 
 
 **Origem:** o legado tem scan, associação, DHCP, status, redes salvas, remoção e reconexão. Há relatos específicos de Realtek e de persistência após reboot. Isso não prova suporte universal nem garante que o protótipo precise dos mesmos drivers. [L07] [L03]
 
-**MVP:** em **Ajustes → Rede**, mostrar adaptadores, estado da conexão, rede atual, força do sinal quando medida e redes encontradas. Permitir conectar, desconectar e esquecer quando suportado. Diferenciar “sem adaptador”, “Wi-Fi desligado”, “procurando”, “senha rejeitada”, “associado sem IP”, “rede local sem internet” e “conectado”.
+**MVP:** em **Ajustes → Rede**, mostrar adaptadores, estado da conexão, rede atual, força do sinal quando medida e redes encontradas. Permitir conectar, desconectar e esquecer quando suportado. Diferenciar “sem adaptador”, “Wi-Fi desligado”, “procurando”, “senha rejeitada”, “associado sem IP”, “rede local sem internet” e “conectado”. **Estado atual:** Rede é uma subseção canônica de Ajustes; o acesso rápido de Wi‑Fi encaminha para ela por `app-activation/1`, sem duplicar a configuração. A listagem técnica de capacidades do host foi removida de Ajustes e permanece responsabilidade de **Sistema → Diagnóstico**.
 
 **Redes salvas:** consentimento para salvar credencial, reconexão previsível e remoção real do segredo. Senhas ficam no armazenamento apropriado do dispositivo; não em preferências sincronizadas, URL, logs ou pacote de diagnóstico. Uma falha não deve apagar silenciosamente a rede funcional anterior.
 

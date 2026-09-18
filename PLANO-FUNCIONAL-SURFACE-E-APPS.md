@@ -466,9 +466,9 @@ Para conflitos de cópia: Manter ambos, Substituir ou Ignorar; “Aplicar aos pr
 
 Ajustes controla **como o usuário interage com o OrdaX e com as capacidades locais disponíveis**. Não administra releases, partições, conta, assinatura ou recuperação do sistema.
 
-Entrada padrão: **Aparência**. Busca “Buscar nos ajustes” filtra configurações implementadas e leva ao campo correto. Pesquisar “atualização” pode retornar um único atalho “Sistema → Atualizações”, sem criar uma seção duplicada.
+Entrada padrão: **Aparência**. **Estado atual:** Ajustes já possui os destinos internos canônicos **Aparência** e **Rede**, validados pelo próprio app e acionáveis por `app-activation/1` sem segundo roteador. O painel rápido de Wi‑Fi encaminha “Abrir Ajustes de rede” diretamente para **Ajustes → Rede**. Busca “Buscar nos ajustes” continua planejada para filtrar somente configurações implementadas e levar ao campo correto. Pesquisar “atualização” poderá retornar um único atalho “Sistema → Atualizações”, sem criar uma seção duplicada.
 
-Substituir linguagem interna como “o host expõe contratos” por descrição do efeito da opção. Informações de capacidades brutas passam para Sistema → Diagnóstico → Detalhes técnicos.
+Substituir linguagem interna como “o host expõe contratos” por descrição do efeito da opção. A listagem técnica de capacidades foi retirada de Ajustes; informações de capacidades brutas pertencem a **Sistema → Diagnóstico**.
 
 ### 7.2 Aparência
 
@@ -558,7 +558,7 @@ Substituir linguagem interna como “o host expõe contratos” por descrição 
 
 **Aceite:** conectividade muda sem recarregar; perda de rede não fecha apps locais; erro de autenticação de rede não é mostrado como senha da conta inválida.
 
-**Estado atual:** `ordax.network-status/1` continua responsável pela observação somente leitura e `ordax.network-management/1` pelo gerenciamento Wi-Fi no Native, ligado ao broker do host que reutiliza `iw`, `ip`, `wpa_supplicant`, `udhcpc` e `/state/network/wpa.conf`. **Ajustes → Rede** já oferece Procurar redes, seleção, senha protegida, Conectar, Desconectar, Esquecer e Reconectar quando a porta real está disponível. A senha existe apenas no input e no pedido transitório de conexão, é limpa da UI antes da operação e não entra em preferências, workspace, telemetria ou logs. O Web continua sem controles mutáveis quando não há adapter real. O suporte atual lista redes PSK compatíveis; redes abertas, WPA-Enterprise, WPA3-only e portal cativo permanecem fora deste incremento até contratos próprios. A bandeja fixa do shell consome somente `ordax.network-status/1`: diferencia Wi‑Fi/cabo e apresenta força aproximada do sinal Wi‑Fi, sem transportar SSID, MAC, BSSID ou credenciais. Quando a porta detalhada não existe, o indicador genérico Online/Offline continua como fallback.
+**Estado atual:** `ordax.network-status/1` continua responsável pela observação somente leitura e `ordax.network-management/1` pelo gerenciamento Wi-Fi no Native, ligado ao broker do host que reutiliza `iw`, `ip`, `wpa_supplicant`, `udhcpc` e `/state/network/wpa.conf`. **Ajustes → Rede** é agora o destino canônico do app e já oferece Procurar redes, seleção, senha protegida, Conectar, Desconectar, Esquecer e Reconectar quando a porta real está disponível. O painel rápido de Wi-Fi usa `target: "network"` para abrir essa mesma seção, sem outra tela de configuração. A senha existe apenas no input e no pedido transitório de conexão, é limpa da UI antes da operação e não entra em preferências, workspace, telemetria ou logs. O Web continua sem controles mutáveis quando não há adapter real. O suporte atual lista redes PSK compatíveis; redes abertas, WPA-Enterprise, WPA3-only e portal cativo permanecem fora deste incremento até contratos próprios. A bandeja fixa do shell consome somente `ordax.network-status/1`: diferencia Wi‑Fi/cabo e apresenta força aproximada do sinal Wi‑Fi, sem transportar SSID, MAC, BSSID ou credenciais. Quando a porta detalhada não existe, o indicador genérico Online/Offline continua como fallback.
 
 ### 7.7 Dispositivos e som
 
@@ -1031,9 +1031,9 @@ USB e Native podem compartilhar adapter, mas o nome Native não comprova o perfi
 | Entrega | Conteúdo | Dependências | Saída verificável |
 |---|---|---|---|
 | E0 / P0 | Revalidar source, inventariar capacidades, padronizar Ajustes, mapear seções e destinos únicos. | `main` atual e contratos. | Mapa de navegação e inventário factual atualizados. |
-| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema já possui subseções canônicas validadas e deep link por `app-activation/1` sem segundo roteador; persistência da subseção por área/janela e a mesma disciplina nos demais apps ainda faltam. |
+| E1 / P0 | Navegação interna compartilhada, restauração por app, estados comuns e links entre apps. | E0. | **Parcial:** Sistema e Ajustes já possuem subseções canônicas validadas e deep links por `app-activation/1` sem segundo roteador; persistência da subseção por área/janela e a mesma disciplina em Conta ainda faltam. |
 | E2 / P1 | Sistema: Visão geral, Atualizações observacionais, Armazenamento, Diagnóstico, Sobre e Energia quando suportada; remover traduções duplicadas. | E1, portas existentes. | **Parcial:** Visão geral, Atualizações, Armazenamento, Diagnóstico e Sobre já têm destinos canônicos com dados reais; rodapé abre a única seção Atualizações e a tradução comum foi centralizada. Energia completa permanece condicionada à capacidade real. |
-| E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | Preferências reais, persistidas, acessíveis nos dois temas. |
+| E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | **Parcial:** Aparência e Rede já são destinos canônicos, tema real continua persistido e a listagem técnica de capacidades foi removida de Ajustes; preferências de acessibilidade ainda faltam. |
 | E4 / P1 | Arquivos básico completo em incrementos: seleção/detalhes, leitura/abertura, importação/exportação e mutações. | E1, extensões de contrato/backend por operação. | Fluxos de usuário com dados reais e proteção da raiz. |
 | E5 / P1 | Conta com estados honestos e Sincronização local compreensível. | E1, identity/sync existentes. | Nenhuma identidade ou nuvem simulada; pendências locais explicadas. |
 | E6 / P2 | Favoritos, recentes, lixeira, miniaturas, múltiplos locais e pesquisa ampliada. | E4. | Organização/restauração de arquivos testada. |
@@ -1046,7 +1046,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 
 ### 12.2 Backlog de correções imediatas
 
-- [ ] Rótulo Ajustes consistente em rail, janela, busca e acessibilidade, mantendo `settings` como ID.
+- [x] Rótulo **Ajustes** consistente em app/rail/janela/launcher e acessibilidade, mantendo `settings` como ID estável.
 - [x] Destino canônico de Atualizações em Sistema, com rodapé apontando para ele via `app-activation/1`.
 - [x] Uma tradução/derivação compartilhada para fase, resultado e impacto de atualização em `system/services/update/presentation.mjs`.
 - [ ] Revisar “Atualizado”, “Sincronização ativa” e “Operando normalmente” para exigir evidência suficiente.
@@ -1062,7 +1062,7 @@ E2 a E5 são incrementos independentes depois da base, não motivo para um PR mo
 
 **Meta básica:** o usuário abre os quatro apps, entende limites reais, navega pelas seções entregues, personaliza o tema, realiza operações de arquivos suportadas, consulta versão/atualização/métricas, usa energia nativa confirmada e mantém estado entre recargas.
 
-Para essa meta, faltam principalmente estender a navegação interna uniforme de Sistema aos demais apps e persistir a subseção por área/janela; preferências além do tema; diagnóstico/exportação técnica mais completa; recursos P2 de Arquivos; e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
+Para essa meta, faltam principalmente estender a navegação interna uniforme a Conta e persistir a subseção por área/janela; preferências de acessibilidade e demais ajustes ainda não suportados; diagnóstico/exportação técnica mais completa; recursos P2 de Arquivos; e testes de ponta a ponta da Surface. Arquivos básico já possui as operações locais P1 principais com fronteira de raiz e falhas protegidas. Conta pode continuar sem provedor, desde que o estado seja honesto e o uso local não seja bloqueado.
 
 **Não chamar de concluído:** login real sem provedor; cloud sem transporte e autorização; gerenciador de arquivos completo sem leitura/mutações; recuperação canônica sem gates; áudio/suspensão sem prova; instalação nativa baseada apenas em imagem conceitual.
 
