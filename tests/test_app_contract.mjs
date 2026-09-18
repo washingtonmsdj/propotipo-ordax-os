@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { defineFirstPartyApp } from "../system/apps/app-contract.mjs";
+import { validateFileListing } from "../system/contracts/file-space.mjs";
 
 function baseSpec(panel) {
   return {
@@ -37,4 +38,10 @@ test("app contract rejects invalid extension identifiers", () => {
     })),
     /valid extensionId/,
   );
+});
+
+test("file-space contract accepts the logical root path", () => {
+  const listing = validateFileListing({ path: "/", entries: [] });
+  assert.equal(listing.path, "/");
+  assert.deepEqual(listing.entries, []);
 });

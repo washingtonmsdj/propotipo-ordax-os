@@ -78,6 +78,13 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('write_update_state "$current" rejected none', text)
         self.assertIn("validate_updated_tree", text)
 
+    def test_healthy_current_checkout_clears_stale_rejection(self):
+        text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
+        self.assertIn('healthy_sha=$(read_state_value "$HEALTH_FILE")', text)
+        self.assertIn('[ "$rejected_sha" = "$current" ] && [ "$healthy_sha" = "$current" ]', text)
+        self.assertIn('rm -f "$REJECTED_FILE"', text)
+        self.assertIn('cleared stale rejected state for healthy current checkout', text)
+
     def test_live_reload_requires_surface_health_acknowledgement(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
         self.assertIn("HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha", text)
