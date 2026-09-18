@@ -200,12 +200,12 @@ async function start() {
   });
   const accountOverviewControls = mountAccountOverviewControls(
     root,
-    host,
     identitySession,
     identityActions,
     surface,
     preferenceSync,
     workspaceMetadata.source,
+    appActivation,
   );
   const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
   let settingsOverviewControls;
