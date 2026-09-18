@@ -40,6 +40,19 @@ test("app contract rejects invalid extension identifiers", () => {
   );
 });
 
+test("app contract rejects obsolete identity-specific panel kinds", () => {
+  for (const kind of ["identity-session", "identity-actions"]) {
+    assert.throws(
+      () => defineFirstPartyApp(baseSpec({
+        kind,
+        label: "Legacy identity panel",
+        title: "Legacy",
+      })),
+      /unsupported panel kind/,
+    );
+  }
+});
+
 test("file-space contract accepts the logical root path", () => {
   const listing = validateFileListing({ path: "/", entries: [] });
   assert.equal(listing.path, "/");

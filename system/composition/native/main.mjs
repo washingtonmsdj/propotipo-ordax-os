@@ -70,8 +70,6 @@ async function start() {
     root,
     host,
     preferenceStore,
-    identitySession,
-    identityActions,
     workspaceStore,
     appActivation,
   );

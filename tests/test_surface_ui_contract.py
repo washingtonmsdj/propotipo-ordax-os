@@ -88,8 +88,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         power = POWER_CONTROLS.read_text(encoding="utf-8")
         self.assertIn("contracts/surface-host.mjs", surface)
         self.assertIn("contracts/preference-store.mjs", surface)
-        self.assertIn("contracts/identity-session.mjs", surface)
-        self.assertIn("contracts/identity-actions.mjs", surface)
+        self.assertNotIn("contracts/identity-session.mjs", surface)
+        self.assertNotIn("contracts/identity-actions.mjs", surface)
         self.assertIn("contracts/app-activation.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
@@ -122,18 +122,18 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("getFirstPartyApp", catalog)
         self.assertLess(len(catalog.splitlines()), 40, "catalog should stay composition-only")
 
-    def test_app_contract_is_capability_preference_session_and_action_driven(self):
+    def test_app_contract_is_capability_preference_and_extension_driven(self):
         text = APP_CONTRACT.read_text(encoding="utf-8")
         self.assertIn("requiredCapabilities", text)
         self.assertIn("isAppAvailable", text)
         self.assertIn("every((capabilityId)", text)
         self.assertIn('"preference-choice"', text)
-        self.assertIn('"identity-session"', text)
-        self.assertIn('"identity-actions"', text)
         self.assertIn('"extension"', text)
         self.assertIn("extensionId", text)
         self.assertIn("preferenceId", text)
         self.assertIn("PANEL_KINDS", text)
+        self.assertNotIn('"identity-session"', text)
+        self.assertNotIn('"identity-actions"', text)
 
     def test_files_uses_formal_shared_extension_slot(self):
         files = APP_OWNERS["files"].read_text(encoding="utf-8")
@@ -360,7 +360,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn(".ordax-rail", css)
         self.assertIn(".ordax-statusbar", css)
 
-    def test_surface_baseline_is_accessible_responsive_windowed_themeable_and_account_aware(self):
+    def test_surface_baseline_is_accessible_responsive_windowed_and_themeable(self):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         power = POWER_CONTROLS.read_text(encoding="utf-8")
@@ -374,9 +374,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('event.key.toLocaleLowerCase() === "k"', surface)
         self.assertIn("root.dataset.ordaxTheme", surface)
         self.assertIn("data-preference-id", surface)
-        self.assertIn("dataset.identityAction", surface)
-        self.assertIn("IDENTITY_LABELS", surface)
-        self.assertIn("IDENTITY_ACTION_LABELS", surface)
+        self.assertNotIn("dataset.identityAction", surface)
+        self.assertNotIn("IDENTITY_LABELS", surface)
+        self.assertNotIn("IDENTITY_ACTION_LABELS", surface)
         self.assertIn('role", "dialog"', power)
         self.assertIn('aria-live", "polite"', power)
         self.assertIn('[data-ordax-theme="dark"]', tokens)
