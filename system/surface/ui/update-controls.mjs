@@ -73,7 +73,7 @@ function readablePhase(phase) {
 
 function statusDescriptor(snapshot) {
   if (snapshot?.bootRefreshRequired) {
-    return ["Reinício necessário", "Há uma atualização de boot/bootstrap pendente. O OrdaX não reiniciará sozinho."];
+    return ["Atualização de base pendente", "Há uma atualização de boot/kernel pendente. Reiniciar manualmente agora, sozinho, não conclui essa atualização; o OrdaX fará a ativação e solicitará o reinício automaticamente quando a base estiver preparada."];
   }
   return STATUS_COPY[snapshot?.status] ?? ["Atualização automática", "O estado atual ainda não foi classificado."];
 }
