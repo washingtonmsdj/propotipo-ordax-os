@@ -45,9 +45,15 @@ export function validateUpdateStatusSnapshot(value) {
   if (!UPDATE_PHASES.has(phase)) {
     throw new TypeError(`Unsupported update phase: ${phase}`);
   }
+  const deliveryNumber = optionalNonNegativeInteger(
+    value.deliveryNumber ?? value.versionNumber,
+    0,
+    1_000_000,
+  );
   return Object.freeze({
     sourceSha: value.sourceSha,
-    versionNumber: optionalNonNegativeInteger(value.versionNumber, 0, 1_000_000),
+    deliveryNumber,
+    versionNumber: deliveryNumber,
     runtimeSurfaceSha: optionalString(value.runtimeSurfaceSha, value.sourceSha),
     targetSha: optionalString(value.targetSha, ""),
     status: value.status,
