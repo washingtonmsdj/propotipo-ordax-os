@@ -431,6 +431,7 @@ export ORDAX_SURFACE_MODE=native-graphical
     /usr/bin/python3 /srv/ordax-system/surface/runtime/native_host_server.py \
     --bind 127.0.0.1 --port 8765 --directory /srv/ordax-system \
     --user-root /var/lib/ordax-user --power-request /run/ordax-surface/power-request \
+    --telemetry-config /srv/ordax-system/services/telemetry/relay.json \
     >"$HTTP_LOG" 2>&1 &
 HTTP_PID=$!
 wait_for_native_server 10 || fallback_with_reason "native Surface HTTP/control server failed readiness check"
