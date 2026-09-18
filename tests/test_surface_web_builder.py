@@ -38,6 +38,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/surface/ui/files.css",
             "system/surface/ui/system.css",
             "system/surface/ui/system-overview-controls.mjs",
+            "system/surface/ui/view-interaction.mjs",
             "system/surface/ui/account-overview-controls.mjs",
             "system/surface/ui/account.css",
             "system/surface/ui/settings-overview-controls.mjs",
