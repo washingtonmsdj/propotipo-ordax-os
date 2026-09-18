@@ -183,6 +183,10 @@ class BaseUpdateStageTests(unittest.TestCase):
         text = MODULE_PATH.read_text(encoding="utf-8")
         self.assertNotIn('parser.add_argument("--candidate"', text)
         self.assertIn('parser.add_argument("--envelope"', text)
+        self.assertNotIn('parser.add_argument("--trust"', text)
+        self.assertNotIn('parser.add_argument("--release-agent"', text)
+        self.assertIn("DEFAULT_TRUST", text)
+        self.assertIn("DEFAULT_RELEASE_AGENT", text)
         self.assertIn('"verify-base-update-envelope"', text)
 
 
