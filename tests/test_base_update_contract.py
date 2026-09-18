@@ -182,7 +182,7 @@ class BaseUpdateContractTests(unittest.TestCase):
             set(owner["sparse_runtime_inputs"]),
             {
                 "bootstrap/base-update/stage.py",
-                "bootstrap/base-update/planner.py",
+                "bootstrap/base-update/plan.py",
                 "bootstrap/kernel/vmlinuz-6.6.52",
                 "bootstrap/initramfs/initramfs.cpio.gz",
             },
