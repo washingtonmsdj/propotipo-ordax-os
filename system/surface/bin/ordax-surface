@@ -75,6 +75,83 @@ ensure_rescue_agent() {
     return 0
 }
 
+terminate_child() {
+    pid=${1:-}
+    label=${2:-child}
+    case "$pid" in
+        ''|*[!0-9]*) return 0 ;;
+    esac
+    [ "$pid" -gt 1 ] 2>/dev/null || return 0
+    kill -0 "$pid" >/dev/null 2>&1 || return 0
+
+    kill "$pid" >/dev/null 2>&1 || true
+    remaining=2
+    while kill -0 "$pid" >/dev/null 2>&1 && [ "$remaining" -gt 0 ]; do
+        /bin/busybox sleep 1
+        remaining=$((remaining - 1))
+    done
+    if kill -0 "$pid" >/dev/null 2>&1; then
+        echo "ordax-surface: forcing stale $label pid $pid" >>"$HOST_LOG"
+        kill -KILL "$pid" >/dev/null 2>&1 || true
+    fi
+    wait "$pid" 2>/dev/null || true
+}
+
+runtime_root_processes() {
+    [ -d "$RUNTIME_ROOT" ] || return 0
+    for root_link in /proc/[0-9]*/root; do
+        [ -L "$root_link" ] || continue
+        pid=${root_link#/proc/}
+        pid=${pid%/root}
+        [ "$pid" = "$" ] && continue
+        root_target=$(/bin/busybox readlink "$root_link" 2>/dev/null || true)
+        [ "$root_target" = "$RUNTIME_ROOT" ] || continue
+        printf '%s\n' "$pid"
+    done
+}
+
+reap_stale_runtime_processes() {
+    stale_pids=$(runtime_root_processes || true)
+    [ -n "$stale_pids" ] || return 0
+
+    echo "ordax-surface: reaping stale processes rooted in graphical runtime" >>"$HOST_LOG"
+    for pid in $stale_pids; do
+        case "$pid" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        [ "$pid" -gt 1 ] 2>/dev/null || continue
+        kill "$pid" >/dev/null 2>&1 || true
+    done
+
+    /bin/busybox sleep 1
+
+    for pid in $stale_pids; do
+        case "$pid" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        [ "$pid" -gt 1 ] 2>/dev/null || continue
+        if kill -0 "$pid" >/dev/null 2>&1; then
+            echo "ordax-surface: forcing stale runtime pid $pid" >>"$HOST_LOG"
+            kill -KILL "$pid" >/dev/null 2>&1 || true
+        fi
+    done
+}
+
+clear_stale_runtime_mounts() {
+    [ -d "$RUNTIME_ROOT" ] || return 0
+    for target in \
+        "$RUNTIME_ROOT/var/lib/ordax-user" \
+        "$RUNTIME_ROOT/var/lib/ordax" \
+        "$RUNTIME_ROOT/srv/ordax-system" \
+        "$RUNTIME_ROOT/run" \
+        "$RUNTIME_ROOT/sys" \
+        "$RUNTIME_ROOT/proc" \
+        "$RUNTIME_ROOT/dev"
+    do
+        /bin/busybox umount "$target" >/dev/null 2>&1 || true
+    done
+}
+
 seatd_process_running() {
     for comm in /proc/[0-9]*/comm; do
         [ -r "$comm" ] || continue
@@ -102,21 +179,19 @@ remove_stale_seatd_socket() {
 
 cleanup() {
     if [ -n "$POWER_BROKER_PID" ]; then
-        kill "$POWER_BROKER_PID" >/dev/null 2>&1 || true
-        wait "$POWER_BROKER_PID" 2>/dev/null || true
+        terminate_child "$POWER_BROKER_PID" "power broker"
         POWER_BROKER_PID=""
     fi
     rm -f "$POWER_REQUEST" >/dev/null 2>&1 || true
     if [ -n "$GRAPHICS_PID" ]; then
-        kill "$GRAPHICS_PID" >/dev/null 2>&1 || true
-        wait "$GRAPHICS_PID" 2>/dev/null || true
+        terminate_child "$GRAPHICS_PID" "graphics host"
         GRAPHICS_PID=""
     fi
     if [ -n "$HTTP_PID" ]; then
-        kill "$HTTP_PID" >/dev/null 2>&1 || true
-        wait "$HTTP_PID" 2>/dev/null || true
+        terminate_child "$HTTP_PID" "native HTTP host"
         HTTP_PID=""
     fi
+    reap_stale_runtime_processes
     if [ "$UDEV_ACTIVE" -eq 1 ] && [ -x "$RUNTIME_ROOT/bin/udevadm" ]; then
         /bin/busybox chroot "$RUNTIME_ROOT" /bin/udevadm control --exit >/dev/null 2>&1 || true
         UDEV_ACTIVE=0
@@ -412,6 +487,8 @@ ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; conti
 [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
 [ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
+reap_stale_runtime_processes
+clear_stale_runtime_mounts
 ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
 ensure_loopback || fallback_with_reason "failed to configure IPv4 loopback for local Surface HTTP"
 ensure_shared_memory || fallback_with_reason "failed to prepare /dev/shm for wlroots/Xwayland"
@@ -447,8 +524,7 @@ host_rc=0
 while kill -0 "$GRAPHICS_PID" >/dev/null 2>&1; do
     if ! kill -0 "$HTTP_PID" >/dev/null 2>&1; then
         echo "ordax-surface: native HTTP/control server exited while graphics remained active" >>"$HOST_LOG"
-        kill "$GRAPHICS_PID" >/dev/null 2>&1 || true
-        wait "$GRAPHICS_PID" 2>/dev/null || true
+        terminate_child "$GRAPHICS_PID" "graphics host"
         GRAPHICS_PID=""
         exit 1
     fi
