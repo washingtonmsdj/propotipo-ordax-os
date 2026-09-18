@@ -47,6 +47,33 @@ class NativeCapabilityAdapterTests(unittest.TestCase):
         self.assertIn("networkStatusAvailable,", text)
         self.assertIn("createNativeSurfaceHost(window, {", text)
 
+    def test_native_optional_capability_probes_run_in_parallel(self):
+        text = NATIVE_COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn("const preferenceStorePromise = createNativePreferenceStore(window);", text)
+        self.assertIn("const optionalPortsPromise = Promise.all([", text)
+        self.assertIn("] = await optionalPortsPromise;", text)
+        for factory in (
+            "createNativeClientDiagnostics",
+            "createNativeUpdateHistory",
+            "createNativeSyncStateStore",
+            "createNativePowerActions",
+            "createNativeFileSpace",
+            "createNativeNetworkStatus",
+            "createNativeNetworkManagement",
+            "createNativeSystemMetrics",
+            "createNativePowerStatus",
+        ):
+            self.assertIn(f"() => {factory}(window)", text)
+            self.assertNotIn(f"await {factory}(window)", text)
+        self.assertLess(
+            text.index("const optionalPortsPromise = Promise.all(["),
+            text.index("const surface = mountSurface("),
+        )
+        self.assertLess(
+            text.index("] = await optionalPortsPromise;"),
+            text.index("void updateWatcher.markHealthy()"),
+        )
+
     def test_native_adapter_does_not_claim_unimplemented_account_or_sync(self):
         text = NATIVE_RUNTIME.read_text(encoding="utf-8")
         self.assertNotIn('"account.identity"', text)
