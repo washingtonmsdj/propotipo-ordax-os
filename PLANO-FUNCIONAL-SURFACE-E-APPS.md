@@ -208,6 +208,8 @@ Sistema
 
 ### 4.1 Estrutura de tela
 
+**Regra de release e bandeja persistente:** a versão apresentada ao usuário é global por entrega enquanto Surface, apps e serviços forem distribuídos em conjunto. Números próprios de componente só aparecem quando existir empacotamento independente real. Conectividade e horário são sinais essenciais do shell e permanecem visíveis em bandeja fixa; Ajustes aprofunda a configuração, mas não é a única superfície de estado.
+
 Cada app usa um cabeçalho com nome, uma navegação interna quando necessária, uma região de conteúdo e uma área discreta de feedback. Não reproduzir o título gigante do conceito em toda janela pequena. Título e espaçamento precisam funcionar em uma janela normal, maximizada e em celular.
 
 A linguagem vigente está em `DESKTOP-IDENTITY.md`: fundo mineral, texto preto/grafite, laranja de destaque, tipografia editorial para identidade e sans-serif para controles. Usar tokens semânticos. Claro e escuro são duas apresentações da mesma interface.
