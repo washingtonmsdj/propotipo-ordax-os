@@ -47,6 +47,14 @@ Update freshness is evaluated at the review timestamp through the shared update 
 
 `createDiagnosticReviewDocument()` serializes the review envelope, manifest, freshness observation and redacted report into deterministic JSON. It still does not write, download or upload anything. Physical save/export and any future support submission remain separate explicit actions.
 
+## Sanitized text summary and explicit copy
+
+`summary.mjs` creates the bounded `ordax.diagnostic-summary/1` plain-text representation intended for the explicit **Copiar resumo sanitizado** action. It reconstructs the text only from the structured review envelope; the serialized `document.text` JSON is never used as summary input. Allowlisted diagnostic text passes through the shared redaction policy again as defense in depth.
+
+The summary validates that the source manifest agrees with the structured report before presenting it. An included source must have its corresponding report section, unavailable/failed sources must not smuggle a section back into the summary, update freshness requires an update observation, and journal event count must agree with the bounded event list. Missing or empty journal data is described as an observation limitation, never as proof that the system is healthy.
+
+`system/contracts/diagnostic-copy.mjs` is deliberately narrow: it accepts only a bounded UTF-8 plain-text diagnostic summary and exposes one `copy(summary)` action. `copy.mjs` converts adapter failures to the stable `copy-failed` code without carrying exception strings. The Web adapter delegates only to `clipboard.writeText()` at explicit action time; it has no `execCommand` fallback, storage access, network request or raw-document path. Clipboard availability/permission remains a host capability rather than something the shared diagnostic service fakes.
+
 ## Explicit review controller
 
 `controller.mjs` is the narrow orchestration boundary intended for a future diagnostic UI. The Surface does not need to call collectors, freshness logic and export services separately. It asks the controller to `prepare()` a review and, only after review/confirmation, calls `exportPrepared()`.
