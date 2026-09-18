@@ -20,9 +20,13 @@ SCHEMA = "prototype-ordax.public-site-bundle/1"
 CONFIG_SCHEMA = "prototype-ordax.public-site-runtime/1"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 REMOTE_HTML_REF_RE = re.compile(r"\\b(?:src|href)\\s*=\\s*['\"]//", re.IGNORECASE)
-REMOTE_CSS_REF_RE = re.compile(
-    r"(?:url\\(\\s*['\"]?|@import\\s+(?:url\\()?\\s*['\"]?)//",
-    re.IGNORECASE,
+PROTOCOL_RELATIVE_CSS_TOKENS = (
+    "url(//",
+    "url('//",
+    'url("//',
+    "@import //",
+    "@import '//",
+    '@import "//',
 )
 REQUIRED_FILES = (
     "index.html",
@@ -86,7 +90,7 @@ def validate_source(root: Path = SOURCE) -> list[Path]:
                 raise PublicSiteError(
                     f"protocol-relative HTML reference is not allowed: {path.relative_to(root).as_posix()}"
                 )
-            if suffix == ".css" and REMOTE_CSS_REF_RE.search(text):
+            if suffix == ".css" and any(token in text.lower() for token in PROTOCOL_RELATIVE_CSS_TOKENS):
                 raise PublicSiteError(
                     f"protocol-relative CSS reference is not allowed: {path.relative_to(root).as_posix()}"
                 )
