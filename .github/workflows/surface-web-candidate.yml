@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'docs/contracts/diagnostics.json'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
@@ -26,6 +27,7 @@ on:
       - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
+      - 'system/services/diagnostics/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -47,10 +49,15 @@ on:
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
       - 'tests/test_network_management_runtime.mjs'
+      - 'tests/test_client_diagnostics.mjs'
+      - 'tests/test_diagnostic_*.mjs'
+      - 'tests/test_diagnostic_*.py'
+      - 'tests/test_diagnostics_contract.py'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   pull_request:
     paths:
+      - 'docs/contracts/diagnostics.json'
       - 'system/contracts/surface-host.mjs'
       - 'system/contracts/network-status.mjs'
       - 'system/contracts/network-management.mjs'
@@ -73,6 +80,7 @@ on:
       - 'system/services/apps/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
+      - 'system/services/diagnostics/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -94,6 +102,10 @@ on:
       - 'tests/test_network_status.mjs'
       - 'tests/test_network_management.mjs'
       - 'tests/test_network_management_runtime.mjs'
+      - 'tests/test_client_diagnostics.mjs'
+      - 'tests/test_diagnostic_*.mjs'
+      - 'tests/test_diagnostic_*.py'
+      - 'tests/test_diagnostics_contract.py'
       - 'tests/test_sync_*.mjs'
       - '.github/workflows/surface-web-candidate.yml'
   workflow_dispatch:
@@ -130,6 +142,7 @@ jobs:
             system/services/apps \
             system/services/preferences \
             system/services/sync \
+            system/services/diagnostics \
             system/apps \
             system/surface/ui \
             system/adapters/web \
@@ -154,6 +167,7 @@ jobs:
           node --test tests/test_network_management.mjs
           node --test tests/test_network_management_runtime.mjs
           node --test tests/test_client_diagnostics.mjs
+          node --test tests/test_diagnostic_*.mjs
           node --test tests/test_sync_*.mjs
 
       - name: Run Surface and Web bundle regressions
