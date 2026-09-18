@@ -11,6 +11,7 @@ NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_COMPOSITION = ROOT / "system" / "composition" / "web" / "main.mjs"
 SYSTEM_APP = ROOT / "system" / "apps" / "system" / "app.mjs"
 SYSTEM_CSS = ROOT / "system" / "surface" / "ui" / "system.css"
+UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 
 
 class SystemRuntimeStatusTests(unittest.TestCase):
@@ -36,6 +37,7 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         controls = CONTROLS.read_text(encoding="utf-8")
         system_app = SYSTEM_APP.read_text(encoding="utf-8")
         css = SYSTEM_CSS.read_text(encoding="utf-8")
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
 
         self.assertIn("contracts/update-status.mjs", controls)
         self.assertIn("contracts/update-history.mjs", controls)
@@ -51,7 +53,7 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         self.assertIn("Identidade da entrega", controls)
         self.assertIn("Distribuição conjunta · sem versão própria", controls)
         self.assertIn("não é número de PR nem versão comercial do OrdaX", controls)
-        self.assertIn("America/Bahia", controls)
+        self.assertIn("America/Bahia", presentation)
         self.assertIn("Capacidades desta execução", controls)
         self.assertIn('kind: "extension"', system_app)
         self.assertIn('extensionId: "system-overview"', system_app)
