@@ -47,6 +47,11 @@
       "security_boundary": "read-only-local-network-observability"
     },
     {
+      "id": "network.management",
+      "owner": "system/adapters/native",
+      "security_boundary": "loopback-token-host-network-broker"
+    },
+    {
       "id": "storage.secure-device",
       "owner": "system/adapters",
       "security_boundary": "device-local-secret-storage"
@@ -180,6 +185,7 @@
         "sync.safe-state",
         "network.https",
         "network.status",
+        "network.management",
         "filesystem.user-space",
         "system.metrics",
         "system.release-activation",
@@ -198,6 +204,7 @@
         "sync.safe-state",
         "network.https",
         "network.status",
+        "network.management",
         "filesystem.user-space",
         "system.metrics",
         "system.release-activation",
