@@ -177,17 +177,21 @@ def _atomic_copy(esp_root: Path, source: Path, target: Path, expected_sha256: st
         raise
 
 
-def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
-    ensure_private_parent(esp_root, target)
+def candidate_entry_payload(plan: dict) -> bytes:
     kernel = plan["stage"]["kernel"]["target_path"]
     initramfs = plan["stage"]["initramfs"]["target_path"]
     options = " ".join(plan["stage"]["kernel_options"])
-    payload = (
+    return (
         "title OrdaX Candidate\n"
         f"linux {kernel}\n"
         f"initrd {initramfs}\n"
         f"options console=tty0 {options}\n"
     ).encode("utf-8")
+
+
+def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
+    ensure_private_parent(esp_root, target)
+    payload = candidate_entry_payload(plan)
     flags = (
         os.O_WRONLY
         | os.O_CREAT
@@ -687,6 +691,124 @@ def stage(
     }
 
 
+def verify_existing_stage(
+    esp_root: Path,
+    active_slot: str,
+    candidate: dict,
+    kernel_source: Path,
+    initramfs_source: Path,
+) -> dict:
+    esp_root = esp_root.resolve()
+    if not esp_root.is_dir() or esp_root.is_symlink():
+        raise StageError("ESP root must be an existing directory")
+
+    legacy_enrollment = active_slot == "legacy"
+    planner_active_slot = "a" if legacy_enrollment else active_slot
+    plan = _planner.plan(planner_active_slot, candidate)
+
+    protected = snapshot_protected_files(esp_root)
+    if any(value is None for value in protected.values()):
+        raise StageError("known-good current/recovery entries must exist before verifying stage")
+
+    kernel_source = require_regular_source(
+        kernel_source, plan["stage"]["kernel"]["sha256"]
+    )
+    initramfs_source = require_regular_source(
+        initramfs_source, plan["stage"]["initramfs"]["sha256"]
+    )
+    kernel_target = target_path(esp_root, plan["stage"]["kernel"]["target_path"])
+    initramfs_target = target_path(esp_root, plan["stage"]["initramfs"]["target_path"])
+    entry_target = target_path(esp_root, plan["stage"]["candidate_entry"])
+
+    try:
+        entry_meta = entry_target.lstat()
+    except OSError as exc:
+        raise StageError("candidate boot entry is unavailable for verification") from exc
+    if stat.S_ISLNK(entry_meta.st_mode) or not stat.S_ISREG(entry_meta.st_mode):
+        raise StageError("candidate boot entry is unsafe")
+    try:
+        entry_bytes = entry_target.read_bytes()
+    except OSError as exc:
+        raise StageError("candidate boot entry could not be read") from exc
+    if entry_bytes != candidate_entry_payload(plan):
+        raise StageError("candidate boot entry differs from the verified release plan")
+
+    for target, expected, label in (
+        (kernel_target, plan["stage"]["kernel"]["sha256"], "staged kernel"),
+        (initramfs_target, plan["stage"]["initramfs"]["sha256"], "staged initramfs"),
+    ):
+        try:
+            metadata = target.lstat()
+        except OSError as exc:
+            raise StageError(f"{label} is unavailable") from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise StageError(f"{label} is unsafe")
+        if sha256_file(target) != expected:
+            raise StageError(f"{label} digest differs from verified release plan")
+
+    if legacy_enrollment:
+        legacy = _legacy_source_snapshot(esp_root)
+        baseline_kernel = target_path(esp_root, "/ordax/base/a/vmlinuz")
+        baseline_initramfs = target_path(esp_root, "/ordax/base/a/initrd.gz")
+        if _legacy_baseline_target_state(
+            baseline_kernel,
+            legacy[LEGACY_KERNEL.as_posix()],
+        ) != "matching":
+            raise StageError("legacy kernel baseline is not enrolled")
+        if _legacy_baseline_target_state(
+            baseline_initramfs,
+            legacy[LEGACY_INITRAMFS.as_posix()],
+        ) != "matching":
+            raise StageError("legacy initramfs baseline is not enrolled")
+
+    return {
+        "$schema": "prototype-ordax.base-update-stage-result/1",
+        "release_sha": plan["release_sha"],
+        "active_slot": active_slot,
+        "previous_slot": plan["active_slot"],
+        "candidate_slot": plan["candidate_slot"],
+        "legacy_enrollment": legacy_enrollment,
+        "legacy_current_entry_unchanged": legacy_enrollment,
+        "legacy_baseline_reused": legacy_enrollment,
+        "kernel_target": plan["stage"]["kernel"]["target_path"],
+        "initramfs_target": plan["stage"]["initramfs"]["target_path"],
+        "candidate_entry": plan["stage"]["candidate_entry"],
+        "activation_ready": True,
+        "efi_variable_written": False,
+        "reboot_requested": False,
+        "idempotent": True,
+    }
+
+
+def ensure_stage(
+    esp_root: Path,
+    active_slot: str,
+    candidate: dict,
+    kernel_source: Path,
+    initramfs_source: Path,
+) -> dict:
+    planner_active_slot = "a" if active_slot == "legacy" else active_slot
+    plan = _planner.plan(planner_active_slot, candidate)
+    entry_target = target_path(esp_root.resolve(), plan["stage"]["candidate_entry"])
+    if entry_target.exists() or entry_target.is_symlink():
+        return verify_existing_stage(
+            esp_root,
+            active_slot,
+            candidate,
+            kernel_source,
+            initramfs_source,
+        )
+    result = stage(
+        esp_root,
+        active_slot,
+        candidate,
+        kernel_source,
+        initramfs_source,
+    )
+    result["idempotent"] = False
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--esp-root", type=Path, required=True)
@@ -694,15 +816,20 @@ def main() -> int:
     parser.add_argument("--envelope", type=Path, required=True)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
+    parser.add_argument("--trust", type=Path, default=DEFAULT_TRUST)
+    parser.add_argument("--release-agent", type=Path, default=DEFAULT_RELEASE_AGENT)
+    parser.add_argument("--releases-root", type=Path, default=DEFAULT_RELEASES_ROOT)
+    parser.add_argument("--ensure-existing", action="store_true")
     args = parser.parse_args()
     try:
         candidate = verified_candidate_from_release(
             args.envelope,
-            DEFAULT_TRUST,
-            DEFAULT_RELEASE_AGENT,
-            DEFAULT_RELEASES_ROOT,
+            args.trust,
+            args.release_agent,
+            args.releases_root,
         )
-        result = stage(
+        owner = ensure_stage if args.ensure_existing else stage
+        result = owner(
             args.esp_root,
             args.active_slot,
             candidate,
