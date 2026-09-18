@@ -547,6 +547,52 @@ ensure_loopback() {
     /sbin/ip address replace 127.0.0.1/8 dev lo >>"$HOST_LOG" 2>&1 || return 1
 }
 
+sync_runtime_resolver() {
+    host_resolver=/etc/resolv.conf
+    runtime_resolver=$RUNTIME_ROOT/etc/resolv.conf
+    [ -r "$host_resolver" ] || {
+        echo "ordax-surface: host resolver is unavailable: $host_resolver" >>"$HOST_LOG"
+        return 1
+    }
+
+    mkdir -p "$RUNTIME_ROOT/etc" || return 1
+    temporary=$RUNTIME_ROOT/etc/.resolv.conf.ordax.$
+    rm -f "$temporary" >/dev/null 2>&1 || true
+
+    if ! /bin/busybox cat "$host_resolver" >"$temporary"; then
+        rm -f "$temporary" >/dev/null 2>&1 || true
+        echo "ordax-surface: failed to snapshot host resolver" >>"$HOST_LOG"
+        return 1
+    fi
+
+    resolver_size=$(/bin/busybox stat -c %s "$temporary" 2>/dev/null || printf '0')
+    case "$resolver_size" in
+        ''|*[!0-9]*) resolver_size=0 ;;
+    esac
+    if [ "$resolver_size" -le 0 ] 2>/dev/null || [ "$resolver_size" -gt 16384 ] 2>/dev/null; then
+        rm -f "$temporary" >/dev/null 2>&1 || true
+        echo "ordax-surface: host resolver size is outside the allowed range" >>"$HOST_LOG"
+        return 1
+    fi
+
+    if ! /bin/busybox grep -Eq '^[[:space:]]*nameserver[[:space:]]+[^[:space:]#]+' "$temporary"; then
+        rm -f "$temporary" >/dev/null 2>&1 || true
+        echo "ordax-surface: host resolver has no usable nameserver" >>"$HOST_LOG"
+        return 1
+    fi
+
+    chmod 644 "$temporary" || {
+        rm -f "$temporary" >/dev/null 2>&1 || true
+        return 1
+    }
+    /bin/busybox mv -f "$temporary" "$runtime_resolver" || {
+        rm -f "$temporary" >/dev/null 2>&1 || true
+        return 1
+    }
+    echo "ordax-surface: synchronized host resolver into graphical runtime" >>"$HOST_LOG"
+    return 0
+}
+
 ensure_shared_memory() {
     mkdir -p /dev/shm >>"$HOST_LOG" 2>&1 || return 1
     chmod 1777 /dev/shm >>"$HOST_LOG" 2>&1 || return 1
@@ -828,6 +874,7 @@ reap_stale_runtime_processes
 clear_stale_runtime_mounts
 ensure_runtime || fallback_with_reason "graphical runtime is unavailable after provisioning attempt"
 ensure_loopback || fallback_with_reason "failed to configure IPv4 loopback for local Surface HTTP"
+sync_runtime_resolver || echo "ordax-surface: external DNS unavailable inside graphical runtime; continuing local Surface" >>"$HOST_LOG"
 ensure_shared_memory || fallback_with_reason "failed to prepare /dev/shm for wlroots/Xwayland"
 configure_browser || fallback_with_reason "failed to configure Barkery browser runtime"
 bind_runtime_mounts || fallback_with_reason "failed to bind host resources into graphical runtime"
