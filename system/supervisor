@@ -975,10 +975,17 @@ check_for_update() {
             exit 75
             ;;
         none)
-            record_applied "$new_sha" "$APPLY_MODE"
+            rm -f "$ATTEMPT_STARTED_EPOCH_FILE"
+            write_state_value "$LAST_APPLY_DURATION_FILE" "0"
+            write_state_value "$LAST_STAGE_DURATION_FILE" "0"
+            refresh_release_history
             clear_update_context
             write_update_state "$new_sha" running none
-            log "repository update has no running-system effect"
+            if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
+                log "low-level delivery observed; application remains pending boot refresh"
+            else
+                log "repository update has no device delivery effect"
+            fi
             ;;
     esac
 }
