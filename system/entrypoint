@@ -8,6 +8,8 @@ RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
 WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
 STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PINNED_FILE=$STATE_DIR/pinned-commit
+PREVIOUS_FILE=$STATE_DIR/previous-commit
+CURRENT_FILE=$STATE_DIR/current-commit
 BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
@@ -17,12 +19,12 @@ UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
 UPDATE_LOG=$UPDATE_RUN_DIR/update.log
 HEALTH_FILE=$UPDATE_RUN_DIR/healthy-sha
-PULL_BIN=${ORDAX_PULL_BIN:-/usr/local/bin/ordax-pull}
 GIT_BIN=${ORDAX_GIT_BIN:-/usr/bin/git}
 BRANCH=${ORDAX_REPO_BRANCH:-main}
 UPDATE_INTERVAL=${ORDAX_UPDATE_INTERVAL_SECONDS:-5}
 REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
-PULL_TIMEOUT=${ORDAX_PULL_TIMEOUT_SECONDS:-45}
+FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
+GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
 SURFACE_PID=""
 
 log() {
@@ -39,18 +41,63 @@ case "$REMOTE_TIMEOUT" in
 esac
 [ "$REMOTE_TIMEOUT" -ge 5 ] 2>/dev/null || REMOTE_TIMEOUT=20
 
-case "$PULL_TIMEOUT" in
-    ''|*[!0-9]*) PULL_TIMEOUT=45 ;;
+case "$FETCH_TIMEOUT" in
+    ''|*[!0-9]*) FETCH_TIMEOUT=45 ;;
 esac
-[ "$PULL_TIMEOUT" -ge 10 ] 2>/dev/null || PULL_TIMEOUT=45
+[ "$FETCH_TIMEOUT" -ge 10 ] 2>/dev/null || FETCH_TIMEOUT=45
+
+case "$GIT_LOW_SPEED_TIME" in
+    ''|*[!0-9]*) GIT_LOW_SPEED_TIME=15 ;;
+esac
+[ "$GIT_LOW_SPEED_TIME" -ge 5 ] 2>/dev/null || GIT_LOW_SPEED_TIME=15
 
 GIT_TERMINAL_PROMPT=0
 export GIT_TERMINAL_PROMPT
 
-run_bounded() {
+run_bounded_git() {
     timeout_seconds=$1
     shift
-    /bin/busybox timeout -k 5 "$timeout_seconds" "$@"
+    /bin/busybox timeout -k 5 "$timeout_seconds"         "$GIT_BIN"         -c http.lowSpeedLimit=1         -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME"         "$@"
+}
+
+write_state_value() {
+    destination=$1
+    value=$2
+    temporary=$destination.tmp.$
+    printf '%s\n' "$value" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$destination"
+}
+
+apply_remote_checkout() {
+    previous_sha=$1
+    expected_sha=$2
+
+    if [ -n "$("$GIT_BIN" -C "$WORKTREE" status --porcelain)" ]; then
+        log "checkout has local changes; refusing automatic update"
+        return 1
+    fi
+
+    if ! run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" fetch --no-tags origin         "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >>"$UPDATE_LOG" 2>&1; then
+        log "Git fetch failed or timed out after ${FETCH_TIMEOUT}s"
+        return 1
+    fi
+
+    fetched_sha=$("$GIT_BIN" -C "$WORKTREE" rev-parse "refs/remotes/origin/$BRANCH" 2>>"$UPDATE_LOG" || true)
+    [ "$fetched_sha" = "$expected_sha" ] || {
+        log "fetched SHA mismatch: expected $expected_sha, got ${fetched_sha:-unknown}"
+        return 1
+    }
+
+    "$GIT_BIN" -C "$WORKTREE" merge-base --is-ancestor "$previous_sha" "$expected_sha" >>"$UPDATE_LOG" 2>&1 || {
+        log "remote update is not a fast-forward from $previous_sha"
+        return 1
+    }
+
+    "$GIT_BIN" -C "$WORKTREE" reset --hard "$expected_sha" >>"$UPDATE_LOG" 2>&1 || return 1
+    "$GIT_BIN" -C "$WORKTREE" sparse-checkout set --no-cone /system/ >>"$UPDATE_LOG" 2>&1 || return 1
+    write_state_value "$PREVIOUS_FILE" "$previous_sha"
+    write_state_value "$CURRENT_FILE" "$expected_sha"
+    return 0
 }
 
 /bin/busybox mkdir -p "$UPDATE_RUN_DIR" "$STATE_DIR"
@@ -259,12 +306,12 @@ check_for_update() {
         write_update_state "$current" pinned none
         return 0
     fi
-    if [ ! -x "$GIT_BIN" ] || [ ! -x "$PULL_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
+    if [ ! -x "$GIT_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
         write_update_state "$current" disabled none
         return 0
     fi
 
-    if ! remote_output=$(run_bounded "$REMOTE_TIMEOUT" "$GIT_BIN" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
+    if ! remote_output=$(run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote --heads origin "refs/heads/$BRANCH" 2>>"$UPDATE_LOG"); then
         log "remote check failed or timed out after ${REMOTE_TIMEOUT}s; keeping running Surface"
         write_update_state "$current" network-error none
         return 0
@@ -307,8 +354,8 @@ check_for_update() {
     write_update_state "$old_sha" updating none
     log "update available: $old_sha -> $remote_sha"
 
-    if ! run_bounded "$PULL_TIMEOUT" "$PULL_BIN" >>"$UPDATE_LOG" 2>&1; then
-        log "automatic ordax-pull failed or timed out after ${PULL_TIMEOUT}s; keeping running Surface"
+    if ! apply_remote_checkout "$old_sha" "$remote_sha"; then
+        log "automatic supervisor-owned Git update failed; keeping running Surface"
         write_update_state "$old_sha" pull-error none
         return 0
     fi
