@@ -26,6 +26,42 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertIn("{slot}", slots["paths"]["kernel"])
         self.assertIn("{slot}", slots["paths"]["initramfs"])
 
+    def test_legacy_transition_preserves_real_current_boot_until_health(self):
+        legacy = CONTRACT["legacy_transition"]
+        self.assertEqual(legacy["initial_layout"], "single-slot-legacy")
+        self.assertEqual(legacy["legacy_kernel"], "/ordax/vmlinuz")
+        self.assertEqual(legacy["legacy_initramfs"], "/ordax/initrd.gz")
+        self.assertEqual(legacy["previous_slot"], "a")
+        self.assertEqual(legacy["candidate_slot"], "b")
+        self.assertTrue(
+            legacy["preserve_legacy_bytes_to_previous_slot_before_candidate"]
+        )
+        self.assertTrue(legacy["baseline_copy_requires_exact_hash_identity"])
+        self.assertTrue(
+            legacy["conflicting_or_unsafe_baseline_fails_closed"]
+        )
+        self.assertTrue(
+            legacy["candidate_marker_blocks_before_baseline_mutation"]
+        )
+        self.assertTrue(
+            legacy["legacy_current_and_recovery_remain_unchanged_before_health"]
+        )
+        self.assertTrue(
+            legacy["legacy_kernel_and_initramfs_remain_unchanged_before_health"]
+        )
+        self.assertEqual(
+            legacy["failed_candidate_fallback"],
+            "unchanged-legacy-current-entry",
+        )
+        self.assertEqual(
+            legacy["successful_promotion"]["current_slot"],
+            "b",
+        )
+        self.assertEqual(
+            legacy["successful_promotion"]["recovery_slot"],
+            "a",
+        )
+
     def test_activation_is_one_shot_and_keeps_known_good_default(self):
         activation = CONTRACT["activation"]
         self.assertEqual(activation["selector"], "LoaderEntryOneShot")
