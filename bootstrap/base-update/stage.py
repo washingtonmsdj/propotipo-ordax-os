@@ -38,6 +38,10 @@ DEFAULT_RELEASES_ROOT = Path("/ordax/releases")
 MAX_ENVELOPE_BYTES = 1 << 20
 MAX_MANIFEST_BYTES = 512 << 10
 MAX_DESCRIPTOR_BYTES = 16 << 10
+LEGACY_KERNEL = Path("ordax/vmlinuz")
+LEGACY_INITRAMFS = Path("ordax/initrd.gz")
+CURRENT_ENTRY = Path("loader/entries/ordax.conf")
+RECOVERY_ENTRY = Path("loader/entries/ordax-recovery.conf")
 
 
 class StageError(RuntimeError):
@@ -216,6 +220,112 @@ def write_candidate_entry(esp_root: Path, target: Path, plan: dict) -> None:
         except OSError:
             pass
         raise
+
+
+def _read_boot_entry(path: Path, label: str) -> dict[str, list[str]]:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise StageError(f"{label} is missing") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise StageError(f"{label} must be a regular non-symlink file")
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise StageError(f"{label} cannot be read") from exc
+    if not raw or len(raw) > 16 * 1024:
+        raise StageError(f"{label} size is outside the allowed range")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise StageError(f"{label} is not UTF-8") from exc
+
+    values: dict[str, list[str]] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition(" ")
+        if not separator or not key or not value.strip():
+            raise StageError(f"{label} contains a malformed line")
+        values.setdefault(key, []).append(value.strip())
+    return values
+
+
+def _single_entry_value(values: dict[str, list[str]], key: str, label: str) -> str:
+    matches = values.get(key, [])
+    if len(matches) != 1:
+        raise StageError(f"{label} must contain exactly one {key}")
+    return matches[0]
+
+
+def _validate_legacy_entry(path: Path, mode: str, label: str) -> None:
+    values = _read_boot_entry(path, label)
+    if _single_entry_value(values, "linux", label) != "/ordax/vmlinuz":
+        raise StageError(f"{label} does not target the legacy kernel")
+    if _single_entry_value(values, "initrd", label) != "/ordax/initrd.gz":
+        raise StageError(f"{label} does not target the legacy initramfs")
+    options = _single_entry_value(values, "options", label).split()
+    if f"ordax.mode={mode}" not in options:
+        raise StageError(f"{label} has the wrong OrdaX mode")
+    for option in options:
+        if option.startswith("ordax.base_slot=") or option.startswith("ordax.base_candidate="):
+            raise StageError(f"{label} is already A/B-managed and cannot enter legacy enrollment")
+
+
+def _legacy_source_snapshot(esp_root: Path) -> dict[str, str]:
+    _validate_legacy_entry(esp_root / CURRENT_ENTRY, "normal", "legacy current entry")
+    _validate_legacy_entry(esp_root / RECOVERY_ENTRY, "recovery", "legacy recovery entry")
+
+    snapshot: dict[str, str] = {}
+    for relative, label in (
+        (LEGACY_KERNEL, "legacy kernel"),
+        (LEGACY_INITRAMFS, "legacy initramfs"),
+    ):
+        source = esp_root / relative
+        try:
+            metadata = source.lstat()
+        except OSError as exc:
+            raise StageError(f"{label} is missing") from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise StageError(f"{label} must be a regular non-symlink file")
+        if metadata.st_size <= 0:
+            raise StageError(f"{label} must not be empty")
+        snapshot[relative.as_posix()] = sha256_file(source)
+    return snapshot
+
+
+def _legacy_baseline_target_state(
+    target: Path,
+    expected_sha256: str,
+) -> str:
+    try:
+        existing = target.lstat()
+    except FileNotFoundError:
+        return "absent"
+    except OSError as exc:
+        raise StageError(f"cannot inspect legacy A/B baseline: {target.name}") from exc
+
+    if stat.S_ISLNK(existing.st_mode) or not stat.S_ISREG(existing.st_mode):
+        raise StageError(f"legacy A/B baseline is unsafe: {target.name}")
+    if sha256_file(target) != expected_sha256:
+        raise StageError(f"legacy A/B baseline conflicts with known-good bytes: {target.name}")
+    return "matching"
+
+
+def _preserve_legacy_file(
+    esp_root: Path,
+    source: Path,
+    target: Path,
+    expected_sha256: str,
+    target_state: str,
+) -> bool:
+    if target_state == "matching":
+        return True
+    if target_state != "absent":
+        raise StageError("legacy A/B baseline target state is invalid")
+    _atomic_copy(esp_root, source, target, expected_sha256)
+    return False
 
 
 def snapshot_protected_files(esp_root: Path) -> dict[str, str | None]:
@@ -471,10 +581,15 @@ def stage(
     esp_root = esp_root.resolve()
     if not esp_root.is_dir() or esp_root.is_symlink():
         raise StageError("ESP root must be an existing directory")
-    plan = _planner.plan(active_slot, candidate)
+
+    legacy_enrollment = active_slot == "legacy"
+    planner_active_slot = "a" if legacy_enrollment else active_slot
+    plan = _planner.plan(planner_active_slot, candidate)
     protected_before = snapshot_protected_files(esp_root)
     if any(value is None for value in protected_before.values()):
         raise StageError("known-good current/recovery entries must exist before staging")
+
+    legacy_before = _legacy_source_snapshot(esp_root) if legacy_enrollment else None
 
     kernel_source = require_regular_source(
         kernel_source, plan["stage"]["kernel"]["sha256"]
@@ -486,10 +601,42 @@ def stage(
     initramfs_target = target_path(esp_root, plan["stage"]["initramfs"]["target_path"])
     entry_target = target_path(esp_root, plan["stage"]["candidate_entry"])
 
-    # The candidate entry is the activation marker. Refuse to touch candidate
-    # bytes when an old marker is present; cleanup requires a separate owner.
+    # The candidate entry is the activation marker. Refuse to touch either the
+    # inactive candidate slot or the legacy baseline when an old marker exists.
     if entry_target.exists() or entry_target.is_symlink():
         raise StageError("candidate boot entry already exists")
+
+    legacy_baseline_reused = False
+    if legacy_enrollment:
+        baseline_kernel = target_path(esp_root, "/ordax/base/a/vmlinuz")
+        baseline_initramfs = target_path(esp_root, "/ordax/base/a/initrd.gz")
+        kernel_state = _legacy_baseline_target_state(
+            baseline_kernel,
+            legacy_before[LEGACY_KERNEL.as_posix()],
+        )
+        initramfs_state = _legacy_baseline_target_state(
+            baseline_initramfs,
+            legacy_before[LEGACY_INITRAMFS.as_posix()],
+        )
+        kernel_reused = _preserve_legacy_file(
+            esp_root,
+            esp_root / LEGACY_KERNEL,
+            baseline_kernel,
+            legacy_before[LEGACY_KERNEL.as_posix()],
+            kernel_state,
+        )
+        initramfs_reused = _preserve_legacy_file(
+            esp_root,
+            esp_root / LEGACY_INITRAMFS,
+            baseline_initramfs,
+            legacy_before[LEGACY_INITRAMFS.as_posix()],
+            initramfs_state,
+        )
+        legacy_baseline_reused = kernel_reused and initramfs_reused
+        if _legacy_source_snapshot(esp_root) != legacy_before:
+            raise StageError("legacy known-good source changed during A/B enrollment")
+        if snapshot_protected_files(esp_root) != protected_before:
+            raise StageError("legacy boot entries changed during A/B enrollment")
 
     _atomic_copy(
         esp_root,
@@ -519,11 +666,18 @@ def stage(
     if snapshot_protected_files(esp_root) != protected_before:
         raise StageError("protected boot entries changed while writing candidate marker")
 
+    if legacy_enrollment and _legacy_source_snapshot(esp_root) != legacy_before:
+        raise StageError("legacy known-good source changed while staging candidate")
+
     return {
         "$schema": "prototype-ordax.base-update-stage-result/1",
         "release_sha": plan["release_sha"],
-        "active_slot": plan["active_slot"],
+        "active_slot": active_slot,
+        "previous_slot": plan["active_slot"],
         "candidate_slot": plan["candidate_slot"],
+        "legacy_enrollment": legacy_enrollment,
+        "legacy_current_entry_unchanged": legacy_enrollment,
+        "legacy_baseline_reused": legacy_baseline_reused if legacy_enrollment else False,
         "kernel_target": plan["stage"]["kernel"]["target_path"],
         "initramfs_target": plan["stage"]["initramfs"]["target_path"],
         "candidate_entry": plan["stage"]["candidate_entry"],
@@ -536,7 +690,7 @@ def stage(
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--esp-root", type=Path, required=True)
-    parser.add_argument("--active-slot", choices=("a", "b"), required=True)
+    parser.add_argument("--active-slot", choices=("a", "b", "legacy"), required=True)
     parser.add_argument("--envelope", type=Path, required=True)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
