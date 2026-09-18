@@ -107,13 +107,14 @@ class NativePowerStatusTests(unittest.TestCase):
         self.assertIn('item.dataset.batteryObservation = stale ? "stale" : "current"', tray)
         self.assertIn('icon.dataset.batteryLevel = "unknown"', tray)
         self.assertIn('label.textContent = "--"', tray)
-        self.assertIn('item.title = "Bateria não detectada"', tray)
+        self.assertIn('"Bateria não detectada"', tray)
+        self.assertIn("item.hidden = false", tray)
         self.assertIn("lastSnapshot", tray)
         self.assertIn("lastSuccessAt", tray)
         self.assertIn("Dados antigos", tray)
         null_block = tray.split("if (value.battery === null)", 1)[1].split("return;", 1)[0]
-        self.assertIn("item.hidden = false", null_block)
         self.assertNotIn("item.hidden = true", null_block)
+        self.assertNotIn("item.hidden = true", tray)
 
     def test_contract_adapter_tray_and_native_composition_are_separated(self):
         contract = CONTRACT.read_text(encoding="utf-8")
@@ -146,8 +147,11 @@ class NativePowerStatusTests(unittest.TestCase):
         self.assertIn(" hidden", shell)
         self.assertIn("createNativePowerStatus", composition)
         self.assertIn("mountBatteryTrayControls", composition)
+        self.assertIn("mountBatteryQuickPanel", composition)
         self.assertIn('reportClientDiagnostic("battery-tray-status", error)', composition)
+        self.assertIn('reportClientDiagnostic("battery-quick-panel", error)', composition)
         self.assertIn("batteryTrayControls?.destroy()", composition)
+        self.assertIn("batteryQuickPanel?.destroy()", composition)
         self.assertIn('"power.status"', runtime)
         self.assertNotIn("/__ordax/native/", tray)
         self.assertNotIn("serial", tray.lower())
