@@ -62,7 +62,12 @@ export function mountNetworkQuickPanel(
     } else {
       summary.append(
         node(documentObject, "strong", "", "Rede"),
-        node(documentObject, "span", "", "Lendo estado da conexão…"),
+        node(
+          documentObject,
+          "span",
+          "",
+          statusPort ? "Lendo estado da conexão…" : "Detalhes locais de rede indisponíveis neste ambiente.",
+        ),
       );
     }
     content.append(summary);
