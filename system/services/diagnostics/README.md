@@ -37,4 +37,14 @@ The report never serializes the diagnostic store payload directly. Event fields 
 
 `createDiagnosticReportDocument()` creates a deterministic local JSON document from the already validated/redacted report. It does **not** write a file, trigger a browser download or send data remotely. Review, save/export and any future remote submission are separate explicit product actions and must remain outside the diagnostic domain model.
 
+## Explicit review collection
+
+`review.mjs` is the on-demand collection layer for a future `Sistema > Diagnóstico` review flow. Calling `createDiagnosticReview()` is itself the explicit collection action; the service does not poll, subscribe, schedule work, download files or transmit data.
+
+The collector only consumes neutral product ports for Surface state, update status, system metrics and update history, plus the provider-neutral local diagnostic journal runtime. Each source is recorded in a manifest as `included`, `unavailable` or `failed`. Operational read failures are fail-soft and expose only stable failure codes; raw exception text is never copied into the review document. If Surface state itself cannot be read, the review uses an explicit `unknown` fallback rather than inventing healthy state.
+
+Update freshness is evaluated at the review timestamp through the shared update freshness service. Freshness describes observation age only: a stale observation is not proof that the supervisor is dead, and a fresh observation is not a health verdict.
+
+`createDiagnosticReviewDocument()` serializes the review envelope, manifest, freshness observation and redacted report into deterministic JSON. It still does not write, download or upload anything. Physical save/export and any future support submission remain separate explicit actions.
+
 Concrete logging libraries, metrics stores and telemetry vendors may change later without changing these product semantics.
