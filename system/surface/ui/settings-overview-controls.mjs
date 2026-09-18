@@ -11,6 +11,11 @@ import {
   assertSurfaceHost,
   validateSurfaceSnapshot,
 } from "../../contracts/surface-host.mjs";
+import {
+  networkManagementActionMessage,
+  networkManagementFailureMessage,
+  runNetworkManagementAction,
+} from "../../services/network/management-runtime.mjs";
 import { listPreferenceDefinitions } from "../../services/preferences/catalog.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -476,63 +481,26 @@ export function mountSettingsOverviewControls(
     if (changed && !destroyed) replaceView();
   };
 
-  const networkActionMessage = (action, state) => {
-    const labels = {
-      scan: ["Procurando redes Wi-Fi…", "Redes Wi-Fi atualizadas."],
-      connect: ["Conectando ao Wi-Fi…", "Wi-Fi conectado."],
-      disconnect: ["Desconectando do Wi-Fi…", "Wi-Fi desconectado."],
-      forget: ["Esquecendo a rede salva…", "Rede Wi-Fi esquecida."],
-      reconnect: ["Reconectando ao Wi-Fi salvo…", "Wi-Fi reconectado."],
-    };
-    return labels[action]?.[state] ?? "";
-  };
-
   const runNetworkAction = async (action, { ssid = null, password = null } = {}) => {
     if (!networkManagementPort || networkManagementPending || destroyed) return;
     networkManagementPending = true;
-    networkManagementMessage = networkActionMessage(action, 0);
+    networkManagementMessage = networkManagementActionMessage(action, 0);
     replaceView();
 
     try {
-      let nextSnapshot;
-      switch (action) {
-        case "scan":
-          nextSnapshot = await networkManagementPort.scan();
-          break;
-        case "connect":
-          nextSnapshot = await networkManagementPort.connect({ ssid, password });
-          break;
-        case "disconnect":
-          nextSnapshot = await networkManagementPort.disconnect();
-          break;
-        case "forget":
-          nextSnapshot = await networkManagementPort.forget();
-          break;
-        case "reconnect":
-          nextSnapshot = await networkManagementPort.reconnect();
-          break;
-        default:
-          return;
-      }
-      networkManagementSnapshot = validateNetworkManagementSnapshot(nextSnapshot);
+      networkManagementSnapshot = validateNetworkManagementSnapshot(
+        await runNetworkManagementAction(
+          networkManagementPort,
+          action,
+          action === "connect" ? { ssid, password } : null,
+        ),
+      );
       networkManagementReadFailed = false;
-      networkManagementMessage = networkActionMessage(action, 1);
+      networkManagementMessage = networkManagementActionMessage(action, 1);
       if (action === "connect" || action === "forget") selectedNetworkSsid = null;
       void refreshNetwork();
     } catch (error) {
-      if (error?.status === 409 && action === "connect") {
-        networkManagementMessage =
-          "Não foi possível conectar. Confira a senha e se a rede ainda está disponível.";
-      } else if (error?.status === 409 && action === "reconnect") {
-        networkManagementMessage =
-          "A rede salva não pôde ser reconectada. A configuração salva foi preservada.";
-      } else if (error instanceof TypeError) {
-        networkManagementMessage =
-          "SSID ou senha fora dos limites aceitos para esta rede Wi-Fi.";
-      } else {
-        networkManagementMessage =
-          "A ação de Wi-Fi não pôde ser concluída. A rede anterior foi preservada quando aplicável.";
-      }
+      networkManagementMessage = networkManagementFailureMessage(action, error);
     } finally {
       networkManagementPending = false;
       if (!destroyed) replaceView();
