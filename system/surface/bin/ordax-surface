@@ -301,9 +301,10 @@ prepare_power_broker() {
     chmod 600 "$POWER_REQUEST" >>"$HOST_LOG" 2>&1 || return 1
 
     (
+        exec 9<>"$POWER_REQUEST" || exit 1
         while :; do
             action=""
-            if IFS= read -r action <"$POWER_REQUEST"; then
+            if IFS= read -r action <&9; then
                 case "$action" in
                     restart)
                         echo "ordax-surface: host power broker accepted restart" >>"$HOST_LOG"
