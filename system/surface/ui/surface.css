@@ -458,19 +458,19 @@ kbd {
 .ordax-window-layer {
   position: absolute;
   z-index: 50;
-  inset: 78px 0 0;
+  inset: 0;
   pointer-events: none;
 }
 
 .ordax-window {
   --ordax-window-offset: 0px;
   position: absolute;
-  top: calc(24px + var(--ordax-window-offset));
-  left: calc(50% + var(--ordax-window-offset) / 4);
-  width: min(780px, calc(100% - 64px));
-  max-height: calc(100% - 48px);
+  top: calc(50% + var(--ordax-window-offset) / 3);
+  left: calc(50% + var(--ordax-window-offset) / 2);
+  width: min(840px, calc(100% - 96px));
+  max-height: calc(100% - 96px);
   overflow: hidden;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   border: 1px solid var(--ordax-border);
   border-radius: var(--ordax-radius-md);
   background: var(--ordax-window-bg);
@@ -492,10 +492,11 @@ kbd {
 
 .ordax-window[data-maximized="true"] {
   --ordax-window-offset: 0px !important;
-  inset: 8px 12px;
+  inset: 0;
   width: auto;
   max-height: none;
   transform: none;
+  border-radius: 0;
 }
 
 .ordax-window-titlebar {
@@ -593,6 +594,11 @@ kbd {
   max-height: calc(100dvh - 220px);
   overflow: auto;
   padding: 14px;
+}
+
+.ordax-window[data-maximized="true"] .ordax-window-body {
+  height: calc(100% - 58px);
+  max-height: none;
 }
 
 .ordax-app-panel {
@@ -1123,7 +1129,7 @@ kbd {
   }
 
   .ordax-window-layer {
-    inset: 62px 0 0;
+    inset: 0;
   }
 
   .ordax-window {
@@ -1136,7 +1142,8 @@ kbd {
   }
 
   .ordax-window[data-maximized="true"] {
-    inset: 4px 6px;
+    inset: 0;
+    border-radius: 0;
   }
 
   .ordax-window-title-group small {
@@ -1200,7 +1207,6 @@ kbd {
   @keyframes ordax-enter {
     from {
       opacity: 0;
-      transform: translateY(4px);
     }
   }
 }
