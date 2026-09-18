@@ -14,7 +14,7 @@
   "requirements": {
     "canonical_public_trust_pinned": true,
     "minimal_bootstrap_all_artifacts_resolved": true,
-    "minimal_bootstrap_physical_write_allowed": true,
+    "minimal_bootstrap_remains_non_destructive": true,
     "disposable_media_proof_required": true,
     "writer_binds_generated_seed_sha256_and_size": true,
     "writer_binds_manifest_sha256": true,
