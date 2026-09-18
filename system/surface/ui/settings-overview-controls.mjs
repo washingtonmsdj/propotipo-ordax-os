@@ -36,7 +36,7 @@ const SECTION_COPY = Object.freeze({
   }),
   accessibility: Object.freeze({
     title: "Acessibilidade",
-    subtitle: "Contraste e movimento da Surface, aplicados imediatamente e persistidos por perfil local.",
+    subtitle: "Contraste, tamanho do texto e movimento da Surface, aplicados imediatamente e persistidos por perfil local.",
   }),
   network: Object.freeze({
     title: "Rede",
@@ -81,6 +81,11 @@ function optionDescription(preferenceId, value) {
     return value === "reduced"
       ? "Remove animações e transições não essenciais."
       : "Mantém movimento quando a preferência do ambiente também permite.";
+  }
+  if (preferenceId === "accessibility.text-scale") {
+    if (value === "large") return "Aumenta a tipografia da Surface mantendo o layout responsivo.";
+    if (value === "extra-large") return "Amplia ainda mais a tipografia e preserva rolagem nas áreas de conteúdo.";
+    return "Mantém a escala tipográfica padrão e respeita o zoom do navegador.";
   }
   return String(value);
 }

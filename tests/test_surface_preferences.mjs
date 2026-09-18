@@ -34,6 +34,7 @@ test("Web preference store survives a new adapter instance", () => {
     "appearance.theme": "dark",
     "accessibility.contrast": "standard",
     "accessibility.motion": "standard",
+    "accessibility.text-scale": "standard",
   });
 });
 
@@ -58,6 +59,7 @@ test("denied browser storage degrades to session memory", () => {
     "appearance.theme": "dark",
     "accessibility.contrast": "standard",
     "accessibility.motion": "standard",
+    "accessibility.text-scale": "standard",
   });
 });
 
@@ -68,6 +70,7 @@ test("persisted invalid known values recover to safe defaults", () => {
       "appearance.theme": "light",
       "accessibility.contrast": "standard",
       "accessibility.motion": "standard",
+      "accessibility.text-scale": "standard",
     },
   );
 });
@@ -87,16 +90,19 @@ test("accessibility preferences are first-class persisted definitions", () => {
   assert.equal(definitions.get("appearance.theme")?.sectionId, "appearance");
   assert.equal(definitions.get("accessibility.contrast")?.sectionId, "accessibility");
   assert.equal(definitions.get("accessibility.motion")?.sectionId, "accessibility");
+  assert.equal(definitions.get("accessibility.text-scale")?.sectionId, "accessibility");
 
   assert.deepEqual(
     createPreferenceSnapshot({
       "accessibility.contrast": "high",
       "accessibility.motion": "reduced",
+      "accessibility.text-scale": "extra-large",
     }),
     {
       "appearance.theme": "light",
       "accessibility.contrast": "high",
       "accessibility.motion": "reduced",
+      "accessibility.text-scale": "extra-large",
     },
   );
 });
@@ -106,15 +112,21 @@ test("invalid accessibility values recover or reject through the shared catalog"
     recoverPreferenceSnapshot({
       "accessibility.contrast": "impossible",
       "accessibility.motion": "unknown",
+      "accessibility.text-scale": "huge",
     }),
     {
       "appearance.theme": "light",
       "accessibility.contrast": "standard",
       "accessibility.motion": "standard",
+      "accessibility.text-scale": "standard",
     },
   );
   assert.throws(
     () => createPreferenceSnapshot({ "accessibility.motion": "unknown" }),
     /Unsupported accessibility\.motion/,
+  );
+  assert.throws(
+    () => createPreferenceSnapshot({ "accessibility.text-scale": "huge" }),
+    /Unsupported accessibility\.text-scale/,
   );
 });

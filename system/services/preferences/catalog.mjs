@@ -1,6 +1,7 @@
 import {
   accessibilityContrastPreference,
   accessibilityMotionPreference,
+  accessibilityTextScalePreference,
 } from "./accessibility.mjs";
 import { appearancePreference } from "./appearance.mjs";
 
@@ -8,6 +9,7 @@ const DEFINITIONS = Object.freeze([
   appearancePreference,
   accessibilityContrastPreference,
   accessibilityMotionPreference,
+  accessibilityTextScalePreference,
 ]);
 const BY_ID = new Map(DEFINITIONS.map((definition) => [definition.id, definition]));
 
