@@ -84,6 +84,26 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
     _add(blockers, policy.get("$schema") == TRUST_POLICY_SCHEMA, "release-trust-policy-schema-invalid")
     _add(blockers, media.get("$schema") == MEDIA_SCHEMA, "physical-media-schema-invalid")
 
+    requirements = auth.get("requirements")
+    requirements_ok = isinstance(requirements, dict) and all(
+        requirements.get(name) is True
+        for name in (
+            "canonical_public_trust_pinned",
+            "minimal_bootstrap_all_artifacts_resolved",
+            "minimal_bootstrap_remains_non_destructive",
+            "disposable_media_proof_required",
+            "writer_binds_generated_seed_sha256_and_size",
+            "writer_binds_manifest_sha256",
+            "writer_binds_public_trust_sha256",
+            "signed_release_sequence_must_never_decrease",
+            "live_usb_reenumeration_required",
+            "end_user_destructive_confirmation_required",
+            "windows_uac_required",
+            "post_write_readback_required",
+        )
+    )
+    _add(blockers, requirements_ok, "physical-authorization-requirements-invalid")
+
     partitions = media.get("partitions")
     geometry_ok = (
         isinstance(partitions, list)
@@ -127,7 +147,11 @@ def evaluate(repo_root: Path) -> dict[str, Any]:
         for group in groups
     )
     _add(blockers, minimal.get("all_artifacts_resolved") is True, "minimal-bootstrap-not-fully-resolved")
-    _add(blockers, minimal.get("physical_write_allowed") is True, "minimal-bootstrap-write-not-authorized")
+    _add(
+        blockers,
+        minimal.get("physical_write_allowed") is False,
+        "minimal-bootstrap-must-remain-non-destructive",
+    )
     _add(blockers, groups_ok, "minimal-bootstrap-has-unresolved-group")
 
     trust_sha: str | None = None
