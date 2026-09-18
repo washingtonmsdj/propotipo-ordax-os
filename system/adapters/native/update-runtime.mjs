@@ -7,6 +7,27 @@ const UPDATE_STATE_PATH = "/__ordax/native/update";
 const UPDATE_HEALTH_PATH = "/__ordax/native/health";
 const HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token";
 const DEFAULT_INTERVAL_MS = 1500;
+const MAX_RELOAD_ATTEMPTS = 4;
+
+export function buildReloadUrl(href, sourceSha, attempt = 1) {
+  if (typeof href !== "string" || href.length === 0) return "";
+  if (typeof sourceSha !== "string" || sourceSha.length === 0) return href;
+  const hashIndex = href.indexOf("#");
+  const hash = hashIndex >= 0 ? href.slice(hashIndex) : "";
+  let base = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+  const encodedSha = encodeURIComponent(sourceSha);
+  if (/([?&])source=[^&#]*/.test(base)) {
+    base = base.replace(/([?&])source=[^&#]*/, `$1source=${encodedSha}`);
+  } else {
+    base += `${base.includes("?") ? "&" : "?"}source=${encodedSha}`;
+  }
+  if (/([?&])ordax_reload=[^&#]*/.test(base)) {
+    base = base.replace(/([?&])ordax_reload=[^&#]*/, `$1ordax_reload=${attempt}`);
+  } else {
+    base += `&ordax_reload=${attempt}`;
+  }
+  return `${base}${hash}`;
+}
 
 export function shouldReloadForUpdate(previousSha, state) {
   if (!previousSha || !state || typeof state !== "object") {
@@ -40,6 +61,8 @@ export function createNativeUpdateWatcher(
   let timer = null;
   let healthRequested = false;
   let healthSubmittedSha = null;
+  let pendingReloadSha = null;
+  let reloadAttempts = 0;
   const listeners = new Set();
 
   const notify = (state) => {
@@ -54,7 +77,8 @@ export function createNativeUpdateWatcher(
       !healthRequested ||
       !snapshot ||
       snapshot.healthToken.length === 0 ||
-      healthSubmittedSha === snapshot.sourceSha
+      healthSubmittedSha === snapshot.sourceSha ||
+      pendingReloadSha === snapshot.sourceSha
     ) {
       return false;
     }
@@ -84,6 +108,34 @@ export function createNativeUpdateWatcher(
     }, intervalMs);
   };
 
+  const requestReload = () => {
+    if (!snapshot || !pendingReloadSha || reloadAttempts >= MAX_RELOAD_ATTEMPTS) return;
+    reloadAttempts += 1;
+    try {
+      if (
+        typeof windowRef.location.replace === "function" &&
+        typeof windowRef.location.href === "string"
+      ) {
+        const target = buildReloadUrl(
+          windowRef.location.href,
+          pendingReloadSha,
+          reloadAttempts,
+        );
+        if (target) {
+          windowRef.location.replace(target);
+          return;
+        }
+      }
+      windowRef.location.reload();
+    } catch {
+      try {
+        windowRef.location.reload();
+      } catch {
+        // Keep polling. A later Surface restart can still recover the page.
+      }
+    }
+  };
+
   const poll = async () => {
     try {
       const response = await windowRef.fetch(UPDATE_STATE_PATH, {
@@ -105,13 +157,30 @@ export function createNativeUpdateWatcher(
       const previousSha = observedSha;
       observedSha = snapshot.sourceSha;
       if (shouldReloadForUpdate(previousSha, snapshot)) {
-        stopped = true;
-        if (timer !== null) {
-          windowRef.clearTimeout(timer);
-          timer = null;
-        }
-        windowRef.location.reload();
+        pendingReloadSha = snapshot.sourceSha;
+        reloadAttempts = 0;
+        requestReload();
         return;
+      }
+
+      if (
+        pendingReloadSha &&
+        snapshot.sourceSha === pendingReloadSha &&
+        snapshot.applyMode === "reload" &&
+        snapshot.status === "applied"
+      ) {
+        requestReload();
+        return;
+      }
+
+      if (
+        pendingReloadSha &&
+        (snapshot.sourceSha !== pendingReloadSha ||
+          snapshot.applyMode !== "reload" ||
+          snapshot.status !== "applied")
+      ) {
+        pendingReloadSha = null;
+        reloadAttempts = 0;
       }
 
       void submitHealthIfNeeded();
