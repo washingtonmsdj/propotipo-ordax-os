@@ -13,6 +13,7 @@ SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 RUNTIME = ROOT / "system" / "adapters" / "native" / "runtime.mjs"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
+KERNEL_FRAGMENT = ROOT / "bootstrap" / "kernel" / "config" / "ordax.fragment"
 
 spec = importlib.util.spec_from_file_location("ordax_native_power_status_test", SERVER)
 native_host = importlib.util.module_from_spec(spec)
@@ -46,6 +47,42 @@ class NativePowerStatusTests(unittest.TestCase):
             for forbidden in ("bat0", "bat1", "serial", "model", "secret", "private"):
                 self.assertNotIn(forbidden, flattened)
 
+    def test_reader_derives_capacity_from_energy_or_charge_counters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._supply(
+                root,
+                "BAT0",
+                "Battery",
+                energy_now="30000000",
+                energy_full="40000000",
+                status="Discharging",
+            )
+            self.assertEqual(
+                native_host.read_power_status(str(root)),
+                {
+                    "battery": {"percent": 75, "state": "discharging"},
+                    "externalPower": None,
+                },
+            )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._supply(
+                root,
+                "BAT0",
+                "battery",
+                charge_now="2500",
+                charge_full_design="5000",
+                status="Not charging",
+            )
+            self.assertEqual(
+                native_host.read_power_status(str(root)),
+                {
+                    "battery": {"percent": 50, "state": "not-charging"},
+                    "externalPower": None,
+                },
+            )
+
     def test_reader_handles_absent_or_invalid_battery_fail_soft(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -61,6 +98,12 @@ class NativePowerStatusTests(unittest.TestCase):
                 native_host.read_power_status(temporary),
                 {"battery": None, "externalPower": None},
             )
+
+    def test_kernel_fragment_explicitly_owns_acpi_battery_support(self):
+        fragment = KERNEL_FRAGMENT.read_text(encoding="utf-8")
+        self.assertIn("CONFIG_POWER_SUPPLY=y", fragment)
+        self.assertIn("CONFIG_ACPI_AC=y", fragment)
+        self.assertIn("CONFIG_ACPI_BATTERY=y", fragment)
 
     def test_contract_adapter_tray_and_native_composition_are_separated(self):
         contract = CONTRACT.read_text(encoding="utf-8")
