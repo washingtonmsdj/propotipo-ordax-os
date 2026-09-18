@@ -13,24 +13,24 @@ function requireSuccess(response, operation) {
   return response;
 }
 
-export async function createNativeDiagnosticJournalStore(windowRef = globalThis.window) {
+export function createNativeDiagnosticJournalStore(windowRef = globalThis.window) {
   if (!windowRef || typeof windowRef.fetch !== "function") {
     throw new TypeError("Native diagnostic journal store requires window.fetch");
   }
 
-  const initialResponse = await windowRef.fetch(NATIVE_DIAGNOSTIC_JOURNAL_ENDPOINT, {
-    method: "GET",
-    cache: "no-store",
-    credentials: "same-origin",
-  });
-  requireSuccess(initialResponse, "load");
-  const initialBody = await initialResponse.json();
-  let memory = validateDiagnosticJournalPayload(initialBody?.payload ?? null);
-
+  let memory = null;
   const store = {
     schema: DIAGNOSTIC_JOURNAL_STORE_SCHEMA,
     scope: "device",
-    load() {
+    async load() {
+      const response = await windowRef.fetch(NATIVE_DIAGNOSTIC_JOURNAL_ENDPOINT, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      requireSuccess(response, "load");
+      const body = await response.json();
+      memory = validateDiagnosticJournalPayload(body?.payload ?? null);
       return memory;
     },
     async save(payload) {
