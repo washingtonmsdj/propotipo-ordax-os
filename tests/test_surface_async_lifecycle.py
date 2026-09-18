@@ -125,6 +125,19 @@ class SurfaceAsyncLifecycleTests(unittest.TestCase):
         self.assertIn("slot.dataset.fileSpacePath = listing?.path ?? \"\"", files)
         self.assertNotIn("queueMicrotask(() => input.isConnected && input.focus())", files)
 
+    def test_system_preserves_read_only_interaction_across_repaints(self):
+        controls = self.read("system-overview-controls.mjs")
+        self.assertIn("captureInteractionState", controls)
+        self.assertIn("restoreInteractionState", controls)
+        self.assertIn("windowScrollTop", controls)
+        self.assertIn("windowScrollLeft", controls)
+        self.assertIn("snapshot.section === activeSection", controls)
+        self.assertIn('kind: "section"', controls)
+        self.assertIn('kind: "metrics-refresh"', controls)
+        self.assertIn('kind: "history-refresh"', controls)
+        self.assertIn("preventScroll: true", controls)
+        self.assertIn("force && slot === mountedSlot ? captureInteractionState(slot) : null", controls)
+
     def test_existing_file_and_system_async_owners_keep_ordinal_guards(self):
         files = self.read("file-space-controls.mjs")
         system = self.read("system-overview-controls.mjs")

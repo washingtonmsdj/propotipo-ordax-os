@@ -185,6 +185,62 @@ export function mountSystemOverviewControls(
   const findSlot = () =>
     root.querySelector(`${SYSTEM_WINDOW_SELECTOR} ${SYSTEM_EXTENSION_SELECTOR}`);
 
+  const focusIdentity = (element) => {
+    if (!element || !element.dataset) return null;
+    if (element.dataset.systemSection) {
+      return Object.freeze({ kind: "section", value: element.dataset.systemSection });
+    }
+    if (element.dataset.systemOverviewRefresh !== undefined) {
+      return Object.freeze({ kind: "metrics-refresh", value: "" });
+    }
+    if (element.dataset.systemHistoryRefresh !== undefined) {
+      return Object.freeze({ kind: "history-refresh", value: "" });
+    }
+    return null;
+  };
+
+  const findFocusTarget = (slot, identity) => {
+    if (!identity) return null;
+    for (const element of slot.querySelectorAll("button")) {
+      const candidate = focusIdentity(element);
+      if (
+        candidate
+        && candidate.kind === identity.kind
+        && candidate.value === identity.value
+      ) {
+        return element;
+      }
+    }
+    return null;
+  };
+
+  const captureInteractionState = (slot) => {
+    const windowBody = slot.closest(".ordax-window-body");
+    const activeElement = documentObject.activeElement;
+    const activeInside = activeElement && slot.contains(activeElement);
+    return Object.freeze({
+      section: slot.dataset.systemSection ?? "",
+      windowScrollTop: windowBody?.scrollTop ?? 0,
+      windowScrollLeft: windowBody?.scrollLeft ?? 0,
+      focus: activeInside ? focusIdentity(activeElement) : null,
+    });
+  };
+
+  const restoreInteractionState = (slot, snapshot) => {
+    const sameSection = Boolean(snapshot) && snapshot.section === activeSection;
+    if (!sameSection) return;
+
+    const windowBody = slot.closest(".ordax-window-body");
+    if (windowBody) {
+      windowBody.scrollTop = snapshot.windowScrollTop;
+      windowBody.scrollLeft = snapshot.windowScrollLeft;
+    }
+
+    const target = findFocusTarget(slot, snapshot.focus);
+    if (!target || target.disabled) return;
+    target.focus({ preventScroll: true });
+  };
+
   const renderHeader = (view) => {
     const header = node(documentObject, "header", "ordax-system-header");
     const copy = node(documentObject, "div", "ordax-system-header-copy");
@@ -638,7 +694,7 @@ export function mountSystemOverviewControls(
     view.append(section);
   };
 
-  const paint = (slot) => {
+  const paint = (slot, interaction = null) => {
     slot.replaceChildren();
     slot.dataset.ordaxSystemOverviewView = "";
     slot.dataset.systemSection = activeSection;
@@ -661,6 +717,7 @@ export function mountSystemOverviewControls(
       renderComponentVersions(view);
     }
     slot.append(view);
+    restoreInteractionState(slot, interaction);
   };
 
   const renderView = (force = false) => {
@@ -671,8 +728,10 @@ export function mountSystemOverviewControls(
       return;
     }
     if (!force && mountedSlot === slot) return;
+    const interaction =
+      force && slot === mountedSlot ? captureInteractionState(slot) : null;
     mountedSlot = slot;
-    paint(slot);
+    paint(slot, interaction);
   };
 
   const replaceView = () => renderView(true);
