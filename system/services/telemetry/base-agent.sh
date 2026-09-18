@@ -66,6 +66,13 @@ json_number_field() {
     /bin/busybox sed -n "s/.*\\\"$field\\\":\\([0-9][0-9]*\\).*/\\1/p" "$path" 2>/dev/null | /bin/busybox head -n 1
 }
 
+json_boolean_field() {
+    field=$1
+    path=$2
+    [ -s "$path" ] || return 0
+    /bin/busybox sed -n "s/.*\\\"$field\\\":\\(true\\|false\\).*/\\1/p" "$path" 2>/dev/null | /bin/busybox head -n 1
+}
+
 config_string() {
     field=$1
     /bin/busybox sed -n "s/^[[:space:]]*\\\"$field\\\":[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p" "$CONFIG_FILE" 2>/dev/null | /bin/busybox head -n 1
@@ -185,6 +192,14 @@ while :; do
         is_sha "$target_sha" || target_sha=""
         runtime_surface_sha=$(json_field runtimeSurfaceSha "$UPDATE_STATE")
         is_sha "$runtime_surface_sha" || runtime_surface_sha=""
+        delivery_number=$(json_number_field deliveryNumber "$UPDATE_STATE")
+        case "$delivery_number" in ''|*[!0-9]*) delivery_number=0 ;; esac
+        [ "$delivery_number" -le 10000000 ] 2>/dev/null || delivery_number=0
+        boot_refresh_required=$(json_boolean_field bootRefreshRequired "$UPDATE_STATE")
+        case "$boot_refresh_required" in
+            true|false) ;;
+            *) boot_refresh_required=false ;;
+        esac
         phase=$(json_field phase "$UPDATE_STATE")
         case "$phase" in
             idle|checking|fetching|validating|activating|health-wait|rollback|blocked|error) ;;
@@ -315,7 +330,7 @@ while :; do
             device_id=$device_root:base
             rescue_generation_json=null
             [ -n "$generation" ] && rescue_generation_json=$generation
-            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","lastPowerAction":"%s","lastPowerRequestBootId":"%s","lastPowerRequestEpoch":%s,"lastPowerRequestStatus":"%s","lastPowerRequestCrossedBoot":%s,"powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":2}' "$device_id" "$source_sha" "$runtime_surface_sha" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$last_power_action" "$last_power_request_boot_id" "$last_power_request_epoch" "$last_power_request_status" "$last_power_request_crossed_boot" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
+            payload=$(printf '{"deviceId":"%s","sourceSha":"%s","runtimeSurfaceSha":"%s","deliveryNumber":%s,"bootRefreshRequired":%s,"targetSha":"%s","remoteSha":"","updateStatus":"%s","phase":"%s","applyMode":"%s","supervisorCheckedAt":"%s","supervisorStateEpoch":%s,"surfaceSourceSha":"%s","surfaceHeartbeatEpoch":%s,"attemptId":"%s","rejectedSha":"%s","healthySha":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","stagedReleaseSha":"%s","lastApplyDurationSeconds":%s,"lastStageDurationSeconds":%s,"rescueGeneration":%s,"rescueAction":"%s","surfaceState":"%s","bootId":"%s","lastError":"%s","lastPowerAction":"%s","lastPowerRequestBootId":"%s","lastPowerRequestEpoch":%s,"lastPowerRequestStatus":"%s","lastPowerRequestCrossedBoot":%s,"powerSupplyClassAvailable":%s,"batteryDetected":%s,"kernelSysrqRestartAvailable":%s,"clientDiagnosticSha":"%s","clientDiagnosticStage":"%s","clientDiagnosticName":"%s","clientDiagnosticSource":"%s","clientDiagnosticEpoch":%s,"relayVersion":3}' "$device_id" "$source_sha" "$runtime_surface_sha" "$delivery_number" "$boot_refresh_required" "$target_sha" "$update_status" "$phase" "$apply_mode" "$supervisor_checked_at" "$supervisor_state_epoch" "$surface_source_sha" "$surface_heartbeat_epoch" "$attempt_id" "$rejected_sha" "$healthy_sha" "$last_applied_sha" "$last_applied_at" "$staged_release_sha" "$last_apply_duration" "$last_stage_duration" "$rescue_generation_json" "$action" "$surface_state" "$boot_id" "$last_error" "$last_power_action" "$last_power_request_boot_id" "$last_power_request_epoch" "$last_power_request_status" "$last_power_request_crossed_boot" "$power_supply_class_available" "$battery_detected" "$kernel_sysrq_restart_available" "$client_diagnostic_sha" "$client_diagnostic_stage" "$client_diagnostic_name" "$client_diagnostic_source" "$client_diagnostic_epoch")
 
             if /bin/busybox wget -q -T "$timeout" -O /dev/null \
                 --header="Content-Type: application/json" \

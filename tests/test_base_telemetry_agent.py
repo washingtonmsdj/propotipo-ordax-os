@@ -21,6 +21,11 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn("runtimeSurfaceSha", text)
         self.assertIn('runtime_surface_sha=$(json_field runtimeSurfaceSha "$UPDATE_STATE")', text)
         self.assertIn('"runtimeSurfaceSha":"%s"', text)
+        self.assertIn('delivery_number=$(json_number_field deliveryNumber "$UPDATE_STATE")', text)
+        self.assertIn('boot_refresh_required=$(json_boolean_field bootRefreshRequired "$UPDATE_STATE")', text)
+        self.assertIn('"deliveryNumber":%s', text)
+        self.assertIn('"bootRefreshRequired":%s', text)
+        self.assertIn("json_boolean_field()", text)
         self.assertIn("phase", text)
         self.assertIn("supervisorCheckedAt", text)
         self.assertIn('supervisor_checked_at=$(json_field checkedAt "$UPDATE_STATE")', text)
@@ -63,7 +68,7 @@ class BaseTelemetryAgentContractTests(unittest.TestCase):
         self.assertIn("lastApplyDurationSeconds", text)
         self.assertIn("lastStageDurationSeconds", text)
         self.assertIn("json_number_field()", text)
-        self.assertIn('"relayVersion":2', text)
+        self.assertIn('"relayVersion":3', text)
         self.assertIn("lastError", text)
         for forbidden in (
             "kill ",
