@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -24,6 +25,9 @@ _PLAN_SPEC.loader.exec_module(_planner)
 
 ENTRY_MODE = 0o644
 COPY_CHUNK = 1024 * 1024
+VERIFICATION_SCHEMA = "prototype-ordax.base-update-verification/1"
+DEFAULT_RELEASE_AGENT = Path("/ordax/bootstrap/release-acquisition/ordax-release-agent")
+DEFAULT_TRUST = Path("/ordax/bootstrap/trust/release-ed25519.json")
 
 
 class StageError(RuntimeError):
@@ -215,6 +219,93 @@ def snapshot_protected_files(esp_root: Path) -> dict[str, str | None]:
     return result
 
 
+def _require_regular_local_file(path: Path, label: str, executable: bool = False) -> Path:
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise StageError(f"{label} is unavailable") from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise StageError(f"{label} must be a regular non-symlink file")
+    if executable and metadata.st_mode & 0o111 == 0:
+        raise StageError(f"{label} is not executable")
+    return path
+
+
+def verified_candidate_from_envelope(
+    envelope_path: Path,
+    trust_path: Path,
+    release_agent: Path,
+) -> dict:
+    envelope_path = _require_regular_local_file(envelope_path, "base update envelope")
+    trust_path = _require_regular_local_file(trust_path, "release trust anchor")
+    release_agent = _require_regular_local_file(release_agent, "release verification agent", executable=True)
+
+    try:
+        completed = subprocess.run(
+            [
+                str(release_agent),
+                "verify-base-update-envelope",
+                "--envelope",
+                str(envelope_path),
+                "--trust",
+                str(trust_path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise StageError("signed base update verification could not run") from exc
+
+    if completed.returncode != 0:
+        raise StageError("signed base update verification failed")
+    if len(completed.stdout.encode("utf-8")) > 16 * 1024:
+        raise StageError("base update verification result is oversized")
+    try:
+        verified = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise StageError("base update verification result is invalid") from exc
+    expected_fields = {
+        "$schema",
+        "status",
+        "source_repository",
+        "release_sha",
+        "key_id",
+        "kernel_sha256",
+        "kernel_size",
+        "initramfs_sha256",
+        "initramfs_size",
+    }
+    if not isinstance(verified, dict) or set(verified) != expected_fields:
+        raise StageError("base update verification result has unexpected fields")
+    if verified.get("$schema") != VERIFICATION_SCHEMA or verified.get("status") != "verified":
+        raise StageError("base update verification did not prove authenticity")
+    if verified.get("source_repository") != "washingtonmsdj/prototipo-ordax-os":
+        raise StageError("base update verification repository mismatch")
+    if not isinstance(verified.get("release_sha"), str) or not _planner.SHA40_RE.fullmatch(verified["release_sha"]):
+        raise StageError("base update verification release identity is invalid")
+    for field in ("kernel_sha256", "initramfs_sha256"):
+        value = verified.get(field)
+        if not isinstance(value, str) or not _planner.SHA256_RE.fullmatch(value):
+            raise StageError(f"base update verification {field} is invalid")
+    for field in ("kernel_size", "initramfs_size"):
+        value = verified.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise StageError(f"base update verification {field} is invalid")
+    key_id = verified.get("key_id")
+    if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+        raise StageError("base update verification key identity is invalid")
+
+    return {
+        "release_sha": verified["release_sha"],
+        "kernel_sha256": verified["kernel_sha256"],
+        "initramfs_sha256": verified["initramfs_sha256"],
+    }
+
+
 def stage(
     esp_root: Path,
     active_slot: str,
@@ -291,12 +382,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--esp-root", type=Path, required=True)
     parser.add_argument("--active-slot", choices=("a", "b"), required=True)
-    parser.add_argument("--candidate", type=Path, required=True)
+    parser.add_argument("--envelope", type=Path, required=True)
+    parser.add_argument("--trust", type=Path, default=DEFAULT_TRUST)
+    parser.add_argument("--release-agent", type=Path, default=DEFAULT_RELEASE_AGENT)
     parser.add_argument("--kernel", type=Path, required=True)
     parser.add_argument("--initramfs", type=Path, required=True)
     args = parser.parse_args()
     try:
-        candidate = json.loads(args.candidate.read_text(encoding="utf-8"))
+        candidate = verified_candidate_from_envelope(
+            args.envelope,
+            args.trust,
+            args.release_agent,
+        )
         result = stage(
             args.esp_root,
             args.active_slot,
@@ -306,7 +403,7 @@ def main() -> int:
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
-    except (OSError, json.JSONDecodeError, _planner.PlanError, StageError) as exc:
+    except (OSError, _planner.PlanError, StageError) as exc:
         print(f"base-update-stage: ERROR: {exc}", file=sys.stderr)
         return 1
 
