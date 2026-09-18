@@ -200,8 +200,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("assertUpdateHistoryPort", overview)
         self.assertIn("assertSystemMetricsPort", overview)
         self.assertIn("Histórico de atualizações", overview)
-        self.assertIn("Versão global", overview)
-        self.assertIn("Incluído nesta entrega", overview)
+        self.assertIn("Identidade da entrega", overview)
+        self.assertIn("Distribuição conjunta · sem versão própria", overview)
         self.assertIn("America/Bahia", overview)
         self.assertIn(".ordax-system-view", css)
         self.assertIn("../../surface/ui/system.css", web_html)
@@ -349,9 +349,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         contract = (ROOT / "system" / "contracts" / "update-status.mjs").read_text(encoding="utf-8")
         self.assertIn("runtimeSurfaceSha", contract)
         self.assertIn("snapshot.runtimeSurfaceSha", controls)
-        self.assertIn("snapshot?.versionNumber", controls)
+        self.assertIn("snapshot?.deliveryNumber", controls)
         self.assertIn("America/Bahia", controls)
-        self.assertIn("Runtime alinhado com a versão Git.", controls)
+        self.assertIn("Runtime alinhado com a entrega observada.", controls)
         self.assertIn("Runtime mantido no último commit com efeito na Surface.", controls)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
