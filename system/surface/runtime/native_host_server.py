@@ -1534,19 +1534,23 @@ def move_user_entry(
 
 def copy_user_file(
     user_root: str,
-    logical_path: str,
+    source_path: str,
     name: str,
+    destination_path: str,
     new_name: str,
     max_bytes: int = MAX_FILE_COPY_BYTES,
 ) -> dict:
-    if not valid_logical_file_path(logical_path):
-        raise ValueError("invalid copy directory path")
+    if not valid_logical_file_path(source_path):
+        raise ValueError("invalid copy source path")
+    if not valid_logical_file_path(destination_path):
+        raise ValueError("invalid copy destination path")
     if not valid_file_name(name) or not valid_file_name(new_name):
         raise ValueError("invalid copy name")
-    if name == new_name:
+    if source_path == destination_path and name == new_name:
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), new_name)
 
-    directory_fd = open_user_directory(user_root, logical_path)
+    source_directory_fd = open_user_directory(user_root, source_path)
+    destination_directory_fd = None
     source_fd = None
     destination_fd = None
     destination_created = False
@@ -1556,7 +1560,7 @@ def copy_user_file(
             os.O_RDONLY
             | getattr(os, "O_NOFOLLOW", 0)
             | getattr(os, "O_CLOEXEC", 0),
-            dir_fd=directory_fd,
+            dir_fd=source_directory_fd,
         )
         before = os.fstat(source_fd)
         if not stat.S_ISREG(before.st_mode):
@@ -1564,6 +1568,7 @@ def copy_user_file(
         if before.st_size > max_bytes:
             raise FileSpaceCopyTooLargeError("source file exceeds copy limit")
 
+        destination_directory_fd = open_user_directory(user_root, destination_path)
         destination_fd = os.open(
             new_name,
             os.O_WRONLY
@@ -1572,7 +1577,7 @@ def copy_user_file(
             | getattr(os, "O_NOFOLLOW", 0)
             | getattr(os, "O_CLOEXEC", 0),
             0o600,
-            dir_fd=directory_fd,
+            dir_fd=destination_directory_fd,
         )
         destination_created = True
 
@@ -1612,14 +1617,15 @@ def copy_user_file(
             raise FileSpaceCopyChangedError("source changed while being copied")
 
         os.fsync(destination_fd)
-        os.fsync(directory_fd)
+        os.fsync(destination_directory_fd)
     except Exception:
         if destination_fd is not None:
             os.close(destination_fd)
             destination_fd = None
-        if destination_created:
+        if destination_created and destination_directory_fd is not None:
             try:
-                os.unlink(new_name, dir_fd=directory_fd)
+                os.unlink(new_name, dir_fd=destination_directory_fd)
+                os.fsync(destination_directory_fd)
             except FileNotFoundError:
                 pass
         raise
@@ -1628,9 +1634,11 @@ def copy_user_file(
             os.close(destination_fd)
         if source_fd is not None:
             os.close(source_fd)
-        os.close(directory_fd)
+        if destination_directory_fd is not None:
+            os.close(destination_directory_fd)
+        os.close(source_directory_fd)
 
-    return list_user_directory(user_root, logical_path)
+    return list_user_directory(user_root, destination_path)
 
 
 def create_user_directory(user_root: str, logical_path: str, name: str) -> dict:
@@ -2199,8 +2207,9 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 elif action == "copy-file":
                     listing = copy_user_file(
                         self.server.user_root,
-                        payload.get("path"),
+                        payload.get("sourcePath"),
                         payload.get("name"),
+                        payload.get("destinationPath"),
                         payload.get("newName"),
                     )
                     status = 201
