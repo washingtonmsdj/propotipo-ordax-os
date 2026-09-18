@@ -14,6 +14,7 @@ export function createNativeSurfaceHost(
     bootControlAvailable = false,
     userFileSpaceAvailable = false,
     systemMetricsAvailable = false,
+    powerStatusAvailable = false,
     networkStatusAvailable = false,
     networkManagementAvailable = false,
   } = {},
@@ -30,6 +31,9 @@ export function createNativeSurfaceHost(
     }
     if (systemMetricsAvailable) {
       capabilityIds.push("system.metrics");
+    }
+    if (powerStatusAvailable) {
+      capabilityIds.push("power.status");
     }
     if (networkStatusAvailable) {
       capabilityIds.push("network.status");

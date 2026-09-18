@@ -24,6 +24,7 @@ const CAPABILITY_LABELS = Object.freeze({
   "filesystem.user-space": "Arquivos persistentes",
   "system.boot-control": "Energia do dispositivo",
   "system.metrics": "Métricas locais",
+  "power.status": "Estado da bateria",
   "account.identity": "Identidade autenticada",
   "sync.safe-state": "Sincronização segura",
 });

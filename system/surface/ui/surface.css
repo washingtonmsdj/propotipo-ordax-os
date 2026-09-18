@@ -1035,6 +1035,52 @@ button.ordax-tray-item {
   opacity: 1;
 }
 
+.ordax-tray-battery {
+  color: var(--ordax-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ordax-tray-battery-icon {
+  width: 28px;
+}
+
+.ordax-tray-battery-icon svg {
+  width: 28px;
+}
+
+.ordax-battery-segment {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.16;
+}
+
+.ordax-battery-bolt {
+  fill: var(--ordax-accent);
+  stroke: var(--ordax-accent);
+  opacity: 0;
+}
+
+.ordax-tray-battery-icon[data-battery-level="1"] .ordax-battery-segment-1,
+.ordax-tray-battery-icon[data-battery-level="2"] .ordax-battery-segment-1,
+.ordax-tray-battery-icon[data-battery-level="2"] .ordax-battery-segment-2,
+.ordax-tray-battery-icon[data-battery-level="3"] .ordax-battery-segment-1,
+.ordax-tray-battery-icon[data-battery-level="3"] .ordax-battery-segment-2,
+.ordax-tray-battery-icon[data-battery-level="3"] .ordax-battery-segment-3,
+.ordax-tray-battery-icon[data-battery-level="4"] .ordax-battery-segment-1,
+.ordax-tray-battery-icon[data-battery-level="4"] .ordax-battery-segment-2,
+.ordax-tray-battery-icon[data-battery-level="4"] .ordax-battery-segment-3,
+.ordax-tray-battery-icon[data-battery-level="4"] .ordax-battery-segment-4 {
+  opacity: 1;
+}
+
+.ordax-tray-battery-icon[data-battery-level="0"] {
+  color: var(--ordax-danger);
+}
+
+.ordax-tray-battery-icon[data-charging="true"] .ordax-battery-bolt {
+  opacity: 1;
+}
+
 .ordax-tray-clock {
   color: var(--ordax-text);
   font-variant-numeric: tabular-nums;

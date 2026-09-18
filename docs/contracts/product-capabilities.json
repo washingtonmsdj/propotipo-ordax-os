@@ -92,6 +92,11 @@
       "security_boundary": "read-only-device-observability"
     },
     {
+      "id": "power.status",
+      "owner": "system/adapters/native",
+      "security_boundary": "read-only-power-supply-observability"
+    },
+    {
       "id": "creator.usb-media",
       "owner": "system/adapters/desktop",
       "security_boundary": "explicit-privileged-capability"
@@ -188,6 +193,7 @@
         "network.management",
         "filesystem.user-space",
         "system.metrics",
+        "power.status",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
@@ -207,6 +213,7 @@
         "network.management",
         "filesystem.user-space",
         "system.metrics",
+        "power.status",
         "system.release-activation",
         "system.recovery",
         "system.boot-control"
