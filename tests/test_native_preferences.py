@@ -8,6 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 SURFACE_LAUNCHER = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_PREFERENCES = ROOT / "system" / "adapters" / "native" / "preferences.mjs"
+NATIVE_SYNC_STATE = ROOT / "system" / "adapters" / "native" / "sync-state.mjs"
+SYNC_STATE_CONTRACT = ROOT / "system" / "contracts" / "sync-state-store.mjs"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 
 
@@ -38,6 +40,30 @@ class NativePreferenceTests(unittest.TestCase):
             self.assertEqual(host.read_preferences(), expected)
             self.assertFalse(list(Path(directory).glob("*.tmp.*")))
 
+    def test_host_sync_state_write_is_atomic_bounded_and_round_trips(self):
+        host = load_host_server()
+        with tempfile.TemporaryDirectory() as directory:
+            host.SYNC_STATE_FILE = str(Path(directory) / "sync-state.json")
+            expected = '{"$schema":"ordax.preference-sync-state/1","serverRevision":0,"mutations":[]}'
+            self.assertTrue(host.valid_sync_state_payload(expected))
+            self.assertFalse(host.valid_sync_state_payload("x" * (host.MAX_SYNC_STATE_PAYLOAD + 1)))
+            host.write_sync_state_payload(expected)
+            self.assertEqual(host.read_sync_state_payload(), expected)
+            self.assertFalse(list(Path(directory).glob("*.tmp.*")))
+            host.write_sync_state_payload(None)
+            self.assertIsNone(host.read_sync_state_payload())
+
+    def test_native_sync_state_adapter_uses_separate_loopback_endpoint(self):
+        adapter = NATIVE_SYNC_STATE.read_text(encoding="utf-8")
+        contract = SYNC_STATE_CONTRACT.read_text(encoding="utf-8")
+        self.assertIn('SYNC_STATE_ENDPOINT = "/__ordax/native/sync-state"', adapter)
+        self.assertIn("validateSyncStatePayload", adapter)
+        self.assertIn("assertSyncStateStore", adapter)
+        self.assertIn('scope: durable ? "device" : "session"', adapter)
+        self.assertIn('ordax.sync-state-store/1', contract)
+        self.assertIn("MAX_SYNC_STATE_PAYLOAD_BYTES = 65536", contract)
+        self.assertNotIn("localStorage", adapter)
+
     def test_native_adapter_uses_loopback_state_endpoint(self):
         text = NATIVE_PREFERENCES.read_text(encoding="utf-8")
         self.assertIn('PREFERENCES_ENDPOINT = "/__ordax/native/preferences"', text)
@@ -59,6 +85,9 @@ class NativePreferenceTests(unittest.TestCase):
         text = NATIVE_COMPOSITION.read_text(encoding="utf-8")
         self.assertIn('../../adapters/native/preferences.mjs', text)
         self.assertIn("await createNativePreferenceStore(window)", text)
+        self.assertIn('../../adapters/native/sync-state.mjs', text)
+        self.assertIn("await createNativeSyncStateStore(window)", text)
+        self.assertIn("syncStateStore", text)
         self.assertNotIn('../../adapters/web/preferences.mjs', text)
         self.assertNotIn("createWebPreferenceStore", text)
 
@@ -66,6 +95,10 @@ class NativePreferenceTests(unittest.TestCase):
         text = HOST_SERVER.read_text(encoding="utf-8")
         self.assertIn('PREFERENCES_PATH = "/__ordax/native/preferences"', text)
         self.assertIn('PREFERENCES_FILE = "/var/lib/ordax/preferences.json"', text)
+        self.assertIn('SYNC_STATE_PATH = "/__ordax/native/sync-state"', text)
+        self.assertIn('SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"', text)
+        self.assertIn("read_sync_state_payload", text)
+        self.assertIn("write_sync_state_payload", text)
         self.assertIn('if self.client_address[0] != "127.0.0.1"', text)
         self.assertNotIn("Access-Control-Allow-Origin", text)
 
