@@ -530,12 +530,12 @@ func verifySystemArchiveAgainstTree(archivePath, releaseRoot string) error {
 	})
 }
 
-func verifyExistingRelease(path string, m Manifest, payload []byte) error {
+func verifyExistingRelease(path string, m Manifest, payload, envelope []byte) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return err
 	}
-	allowed := map[string]bool{"artifacts": true, "release-manifest.json": true, "system": true}
+	allowed := map[string]bool{"artifacts": true, "release-envelope.json": true, "release-manifest.json": true, "system": true}
 	for _, entry := range entries {
 		if !allowed[entry.Name()] {
 			return fmt.Errorf("existing release contains unexpected top-level entry: %s", entry.Name())
@@ -545,6 +545,11 @@ func verifyExistingRelease(path string, m Manifest, payload []byte) error {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil || !bytes.Equal(data, payload) {
 		return errors.New("existing release manifest differs from signed payload")
+	}
+	envelopePath := filepath.Join(path, "release-envelope.json")
+	storedEnvelope, err := os.ReadFile(envelopePath)
+	if err != nil || !bytes.Equal(storedEnvelope, envelope) {
+		return errors.New("existing release envelope differs from verified signed envelope")
 	}
 	artifactRoot := filepath.Join(path, "artifacts")
 	artifactEntries, err := os.ReadDir(artifactRoot)
@@ -659,7 +664,7 @@ func materialize(client *http.Client, envelopeURL, root string, trust TrustAncho
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return MaterializeReceipt{}, errors.New("release target exists but is not a safe directory")
 		}
-		if err := verifyExistingRelease(target, manifest, payload); err != nil {
+		if err := verifyExistingRelease(target, manifest, payload, envelope); err != nil {
 			return MaterializeReceipt{}, err
 		}
 		return MaterializeReceipt{"materialized", manifest.SourceCommit, target, artifactNames, true}, nil
@@ -693,7 +698,10 @@ func materialize(client *http.Client, envelopeURL, root string, trust TrustAncho
 	if err := writeSynced(filepath.Join(stage, "release-manifest.json"), payload, 0o644); err != nil {
 		return MaterializeReceipt{}, err
 	}
-	if err := verifyExistingRelease(stage, manifest, payload); err != nil {
+	if err := writeSynced(filepath.Join(stage, "release-envelope.json"), envelope, 0o644); err != nil {
+		return MaterializeReceipt{}, err
+	}
+	if err := verifyExistingRelease(stage, manifest, payload, envelope); err != nil {
 		return MaterializeReceipt{}, fmt.Errorf("verify staged release: %w", err)
 	}
 	if err := syncDir(stage); err != nil {
