@@ -30,6 +30,7 @@ const CAPABILITY_LABELS = Object.freeze({
   "system.boot-control": "Energia do dispositivo",
   "system.metrics": "Métricas locais",
   "power.status": "Estado da bateria",
+  "time.status": "Sincronização automática de horário",
   "account.identity": "Identidade autenticada",
   "sync.safe-state": "Sincronização segura",
 });
