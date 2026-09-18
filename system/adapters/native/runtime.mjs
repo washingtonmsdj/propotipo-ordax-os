@@ -15,6 +15,7 @@ export function createNativeSurfaceHost(
     userFileSpaceAvailable = false,
     systemMetricsAvailable = false,
     powerStatusAvailable = false,
+    timeStatusAvailable = false,
     networkStatusAvailable = false,
     networkManagementAvailable = false,
   } = {},
@@ -34,6 +35,9 @@ export function createNativeSurfaceHost(
     }
     if (powerStatusAvailable) {
       capabilityIds.push("power.status");
+    }
+    if (timeStatusAvailable) {
+      capabilityIds.push("time.status");
     }
     if (networkStatusAvailable) {
       capabilityIds.push("network.status");
