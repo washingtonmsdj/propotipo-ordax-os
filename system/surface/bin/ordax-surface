@@ -22,6 +22,14 @@ SESSION_DIR=/run/ordax-surface
 HTTP_LOG=$SESSION_DIR/http.log
 HOST_LOG=$SESSION_DIR/host.log
 TIME_SYNC_LOG=$SESSION_DIR/time-sync.log
+NETWORK_LOG=$SESSION_DIR/network-broker.log
+NETWORK_CONTROL=$SESSION_DIR/network-control
+NETWORK_REQUEST=$SESSION_DIR/network-request
+NETWORK_RESPONSE=$SESSION_DIR/network-response
+NETWORK_SCAN_RAW=$SESSION_DIR/network-scan.raw
+NETWORK_LINK_RAW=$SESSION_DIR/network-link.raw
+NETWORK_SAVED_SSID=$SESSION_DIR/network-saved-ssid
+NETWORK_BROKER_SOURCE=$SYSTEM_ROOT/surface/runtime/network_broker.sh
 POWER_REQUEST=$SESSION_DIR/power-request
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
@@ -31,6 +39,7 @@ RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
 GRAPHICS_PID=""
 POWER_BROKER_PID=""
+NETWORK_BROKER_PID=""
 TIME_SYNC_PID=""
 STAGING_DIR=""
 DEV_BOUND=0
@@ -47,6 +56,7 @@ chmod 700 "$SESSION_DIR" "$PERSISTENT_NATIVE_STATE" "$PERSISTENT_USER_HOME" "$RE
 : > "$HTTP_LOG"
 : > "$HOST_LOG"
 : > "$TIME_SYNC_LOG"
+: > "$NETWORK_LOG"
 
 persistent_agent_pid_matches() {
     pid=${1:-}
@@ -268,6 +278,11 @@ remove_stale_seatd_socket() {
 }
 
 cleanup() {
+    if [ -n "$NETWORK_BROKER_PID" ]; then
+        terminate_child "$NETWORK_BROKER_PID" "network broker"
+        NETWORK_BROKER_PID=""
+    fi
+    rm -f "$NETWORK_CONTROL" "$NETWORK_REQUEST" "$NETWORK_RESPONSE" "$NETWORK_SCAN_RAW" "$NETWORK_LINK_RAW" "$NETWORK_SAVED_SSID" >/dev/null 2>&1 || true
     if [ -n "$TIME_SYNC_PID" ]; then
         terminate_child "$TIME_SYNC_PID" "time sync agent"
         TIME_SYNC_PID=""
@@ -506,6 +521,24 @@ bind_runtime_mounts() {
     RUN_BOUND=1
 }
 
+start_network_broker() {
+    [ -f "$NETWORK_BROKER_SOURCE" ] || return 1
+    rm -f "$NETWORK_CONTROL" "$NETWORK_REQUEST" "$NETWORK_RESPONSE" "$NETWORK_SCAN_RAW" "$NETWORK_LINK_RAW" "$NETWORK_SAVED_SSID" >/dev/null 2>&1 || true
+    ORDAX_NETWORK_STATE_DIR=${ORDAX_NETWORK_STATE_DIR:-/state/network} \
+    ORDAX_NETWORK_SESSION_DIR="$SESSION_DIR" \
+        /bin/sh "$NETWORK_BROKER_SOURCE" >>"$NETWORK_LOG" 2>&1 &
+    NETWORK_BROKER_PID=$!
+
+    remaining=20
+    while [ "$remaining" -gt 0 ]; do
+        kill -0 "$NETWORK_BROKER_PID" >/dev/null 2>&1 || return 1
+        [ -p "$NETWORK_CONTROL" ] && return 0
+        /bin/busybox sleep 0.1
+        remaining=$((remaining - 1))
+    done
+    return 1
+}
+
 start_time_sync_agent() {
     /bin/busybox ntpd -n \
         -p time.cloudflare.com \
@@ -589,6 +622,7 @@ prepare_input_stack() {
 ensure_base_telemetry_agent || echo "ordax-surface: base telemetry bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 start_time_sync_agent || echo "ordax-surface: automatic time synchronization unavailable; continuing Surface startup" >>"$HOST_LOG"
+start_network_broker || echo "ordax-surface: native Wi-Fi management broker unavailable; continuing without network management" >>"$HOST_LOG"
 [ -f "$SYSTEM_ROOT/composition/native/index.html" ] || fallback_with_reason "native Surface composition is missing: $SYSTEM_ROOT/composition/native/index.html"
 [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
