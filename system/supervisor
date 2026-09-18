@@ -100,7 +100,7 @@ candidate_file_to_temp() {
 candidate_shell_is_valid() {
     candidate_sha=$1
     candidate_path=$2
-    temporary=$UPDATE_RUN_DIR/candidate-shell.$
+    temporary=$UPDATE_RUN_DIR/candidate-shell.tmp
 
     candidate_file_to_temp "$candidate_sha" "$candidate_path" "$temporary" || return 1
     /bin/sh -n "$temporary" >>"$UPDATE_LOG" 2>&1 || {
