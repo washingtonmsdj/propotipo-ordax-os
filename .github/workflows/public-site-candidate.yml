@@ -18,6 +18,7 @@ on:
       - 'tests/test_public_site_contract.py'
       - 'tests/test_public_release_catalog.py'
       - 'tests/test_public_identity_backend_prep.py'
+      - 'tests/test_public_identity_gateway.py'
       - '.github/workflows/public-site-candidate.yml'
   pull_request:
     paths:
@@ -35,6 +36,7 @@ on:
       - 'tests/test_public_site_contract.py'
       - 'tests/test_public_release_catalog.py'
       - 'tests/test_public_identity_backend_prep.py'
+      - 'tests/test_public_identity_gateway.py'
       - '.github/workflows/public-site-candidate.yml'
   workflow_dispatch:
 
@@ -64,6 +66,7 @@ jobs:
           python -m unittest tests.test_public_site_contract -v
           python -m unittest tests.test_public_release_catalog -v
           python -m unittest tests.test_public_identity_backend_prep -v
+          python -m unittest tests.test_public_identity_gateway -v
 
       - name: Build and verify deterministic public site
         run: |
