@@ -62,3 +62,58 @@ Relevant successful host fixes and physical proofs landed in `main` as:
 The successful boots, native power actions and round-trip live update validate the intended Git-first boundary for this prototype: ordinary Surface/native-host/runtime fixes are delivered through Git and persisted runtime state without rebuilding the kernel, initramfs, or Development Base and without rewriting the USB.
 
 Native rendering, primary input, native restart, native shutdown and live-safe automatic update application are now physically proven on this notebook. Long-run stability, suspend/resume, audio, acceleration quality, Surface-only restart for native-host changes and broader hardware coverage remain separate physical validation gates.
+
+
+## Continuation — autonomous recovery validation on 2026-09-18
+
+The same target notebook later exposed a live-update failure mode that could not be diagnosed reliably from the visible Surface alone. The screen remained on an old `d071477a` session showing `Aplicando atualização`, while newer Git commits existed remotely. The subsequent recovery work added independent observation and recovery layers and then physically proved them on the notebook.
+
+Observed through the host-base telemetry relay on the physical machine:
+
+- the stale graphical session was separated from the actual checkout/update state rather than being treated as authoritative;
+- stale Cage/Barkery/native-runtime processes left behind by a killed Surface parent are now reaped only when their `/proc/<pid>/root` matches the OrdaX graphical runtime rootfs;
+- the notebook recovered from the stale `d071477a` session and returned to a healthy current checkout without a USB reflash;
+- the persistent `ordax-rescue` agent acknowledged recovery generations from the separate Git rescue ref and later acknowledged no-op generations while the system was already healthy;
+- the persistent host-base telemetry agent reported the real checkout SHA, health SHA, last-applied SHA, update transaction state and rescue generation directly from the notebook;
+- a filesystem-backed supervisor heartbeat derived from `/run/ordax-update/state.json` began advancing in telemetry, allowing supervisor liveness to be distinguished from general device/network liveness;
+- the stable guardian / child-supervisor split landed physically: after the migration, the notebook returned to `running` with the new checkout healthy;
+- a subsequent supervisor-only update exercised the new controlled `exit 75 -> guardian refresh -> supervisor child restart` path and also returned to `running`, proving future supervisor updates no longer require the old self-exec model;
+- fetched candidate objects are now preflighted before the live checkout switch. A valid candidate was physically applied through this path and finished with `source_sha == healthy_sha == last_applied_sha`.
+
+The final physically observed state for this validation sequence was:
+
+```text
+source_sha=a578a4b84440f82cf719e8dfec40c8ef91d18047
+update_status=running
+phase=idle
+apply_mode=none
+healthy_sha=a578a4b84440f82cf719e8dfec40c8ef91d18047
+last_applied_sha=a578a4b84440f82cf719e8dfec40c8ef91d18047
+rescue_generation=12
+rescue_action=noop
+last_error=<none>
+```
+
+This extends the physically proven development path to:
+
+```text
+Git main
+ -> system/entrypoint guardian
+ -> system/supervisor
+ -> bounded candidate preflight
+ -> update transaction / health acknowledgement
+ -> system/surface/entrypoint
+ -> native Surface runtime
+
+independent recovery:
+Git ordax-rescue
+ -> persistent /state/ordax/rescue agent
+ -> closed target-bound recovery actions
+
+independent observation:
+host-base telemetry agent
+ -> Supabase ordax_os relay
+ -> checkout / update / health / rescue / supervisor heartbeat state
+```
+
+The Supabase relay is observation-only and the rescue protocol is deliberately bounded; neither is a generic remote shell or a replacement for Git source authority. This evidence does not prove the failure path for an intentionally malformed candidate, full A/B runtime activation, canonical signed release acquisition, native-disk installation or public destructive-write authorization.
