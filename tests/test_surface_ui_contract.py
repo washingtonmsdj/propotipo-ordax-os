@@ -537,7 +537,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('root.querySelector("[data-quick-battery-power]")', battery)
         self.assertIn('"Conectada"', battery)
         self.assertIn('"Desconectada"', battery)
-        self.assertIn('"Fonte de energia"', shell)
+        self.assertIn("Fonte de energia", shell)
         self.assertNotIn("/__ordax/native/", battery)
         self.assertIn("mountBatteryQuickPanel", native_main)
         self.assertIn('reportClientDiagnostic("battery-quick-panel", error)', native_main)
