@@ -29,6 +29,7 @@ const WORKSPACE_PERSIST_ACTIONS = new Set([
   "area.create",
   "area.switch",
   "app.launch",
+  "app.target",
   "window.focus",
   "window.move",
   "window.minimize",
@@ -899,6 +900,12 @@ export function mountSurface(
     schema: SURFACE_RENDER_LIFECYCLE_SCHEMA,
     preferences,
     getAppTarget(appId) {
+      const area = getActiveArea(state);
+      const windowState = area.windows.find((item) => item.appId === appId);
+      return windowState?.target ?? null;
+    },
+    setAppTarget(appId, target) {
+      dispatch({ type: "app.target", appId, target });
       const area = getActiveArea(state);
       const windowState = area.windows.find((item) => item.appId === appId);
       return windowState?.target ?? null;
