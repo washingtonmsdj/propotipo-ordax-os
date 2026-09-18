@@ -2,6 +2,7 @@ import {
   assertPowerStatusPort,
   validatePowerStatusSnapshot,
 } from "../../contracts/power-status.mjs";
+import { formatPowerReceivedAt } from "./battery-tray-controls.mjs";
 
 function stateLabel(state) {
   return {
@@ -11,6 +12,14 @@ function stateLabel(state) {
     "not-charging": "Conectada à energia",
     unknown: "Estado desconhecido",
   }[state] ?? "Estado desconhecido";
+}
+
+function powerLabel(externalPower) {
+  return externalPower === true
+    ? "Conectada"
+    : externalPower === false
+      ? "Desconectada"
+      : "Desconhecida";
 }
 
 export function mountBatteryQuickPanel(root, powerStatus) {
@@ -28,42 +37,52 @@ export function mountBatteryQuickPanel(root, powerStatus) {
 
   let destroyed = false;
   let pending = false;
+  let lastSnapshot = null;
+  let lastSuccessAt = null;
 
-  const render = (snapshot) => {
+  const render = (snapshot, { stale = false } = {}) => {
     const value = validatePowerStatusSnapshot(snapshot);
+    panel.dataset.powerObservation = stale ? "stale" : "current";
+
     if (value.battery === null) {
       percent.textContent = "--%";
-      state.textContent = "Nenhuma bateria válida foi detectada.";
-      power.textContent =
-        value.externalPower === true
-          ? "Conectada"
-          : value.externalPower === false
-            ? "Desconectada"
-            : "Desconhecida";
+      state.textContent = stale
+        ? `Nenhuma bateria válida foi detectada · dados antigos · última leitura recebida pela Surface às ${formatPowerReceivedAt(lastSuccessAt)}.`
+        : "Nenhuma bateria válida foi detectada.";
+      power.textContent = powerLabel(value.externalPower);
       return;
     }
 
     percent.textContent = `${value.battery.percent}%`;
-    state.textContent = stateLabel(value.battery.state);
-    power.textContent =
-      value.externalPower === true
-        ? "Conectada"
-        : value.externalPower === false
-          ? "Desconectada"
-          : "Desconhecida";
+    state.textContent = stale
+      ? `${stateLabel(value.battery.state)} · dados antigos · última leitura recebida pela Surface às ${formatPowerReceivedAt(lastSuccessAt)}.`
+      : stateLabel(value.battery.state);
+    power.textContent = powerLabel(value.externalPower);
+  };
+
+  const renderUnavailable = () => {
+    panel.dataset.powerObservation = "unavailable";
+    percent.textContent = "--%";
+    state.textContent = "Estado da bateria indisponível.";
+    power.textContent = "Não foi possível consultar a fonte de energia.";
   };
 
   const refresh = async () => {
     if (destroyed || pending) return;
     pending = true;
     try {
-      const snapshot = await port.read();
+      const snapshot = validatePowerStatusSnapshot(await port.read());
       if (destroyed) return;
+      lastSnapshot = snapshot;
+      lastSuccessAt = Date.now();
       render(snapshot);
     } catch {
       if (destroyed) return;
-      state.textContent = "Não foi possível atualizar o estado da bateria.";
-      power.textContent = "Desconhecida";
+      if (lastSnapshot) {
+        render(lastSnapshot, { stale: true });
+      } else {
+        renderUnavailable();
+      }
     } finally {
       if (!destroyed) pending = false;
     }
@@ -79,6 +98,9 @@ export function mountBatteryQuickPanel(root, powerStatus) {
     refresh,
     destroy() {
       destroyed = true;
+      lastSnapshot = null;
+      lastSuccessAt = null;
+      delete panel.dataset.powerObservation;
       panel.removeEventListener("ordax:quick-panel-open", onOpen);
     },
   });
