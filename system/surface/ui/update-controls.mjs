@@ -1,3 +1,4 @@
+// Fast-path probe: this UI file is intentionally safe for live Surface reloads.
 const STATUS_COPY = Object.freeze({
   running: ["Atualizado", "A Surface está executando a versão sincronizada."],
   applied: ["Aplicando atualização", "Uma nova versão foi recebida e está sendo ativada."],
