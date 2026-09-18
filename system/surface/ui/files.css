@@ -358,7 +358,7 @@
 .ordax-files-list-header,
 .ordax-file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 100px 90px;
+  grid-template-columns: minmax(180px, 1fr) 90px 86px 132px;
   min-width: 0;
   align-items: center;
   gap: 10px;
