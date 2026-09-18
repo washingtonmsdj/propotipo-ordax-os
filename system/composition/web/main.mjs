@@ -9,6 +9,7 @@ import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
+import { mountDateTimeQuickPanel } from "../../surface/ui/date-time-quick-panel.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -43,9 +44,11 @@ const surface = mountSurface(
 );
 let quickPanelControls = null;
 let networkQuickPanel = null;
+let dateTimeQuickPanel = null;
 try {
   quickPanelControls = mountSystemTrayQuickPanels(root);
   networkQuickPanel = mountNetworkQuickPanel(root, null, null);
+  dateTimeQuickPanel = mountDateTimeQuickPanel(root, null);
 } catch (error) {
   console.warn("OrdaX quick panels unavailable", error);
 }
@@ -86,6 +89,7 @@ window.addEventListener(
   () => {
     systemOverviewControls.destroy();
     networkQuickPanel?.destroy();
+    dateTimeQuickPanel?.destroy();
     quickPanelControls?.destroy();
     settingsOverviewControls.destroy();
     accountOverviewControls.destroy();
