@@ -204,21 +204,7 @@ for ($i = 0; $i -lt $ExpectedSortedNames.Count; $i++) {
 $ForbiddenSecretNames = @(
     Get-ChildItem -LiteralPath $PublicPromotionDirectory -Force -File |
         Where-Object {
-            $_.Extension -match '^\.(pem|key|p12|pfx|dpapi)Write-Host 'OFFLINE_RECOVERY_VERIFIED=YES'
-Write-Host 'PRIMARY_PUBLIC_DERIVATION_MATCH=YES'
-Write-Host 'RECOVERED_PUBLIC_DERIVATION_MATCH=YES'
-Write-Host 'RECOVERED_PRIVATE_PATH_DISTINCT=YES'
-Write-Host 'RECOVERED_SIGNING_PROOF=YES'
-Write-Host 'RECOVERED_ENVELOPE_VERIFIED=YES'
-Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
-Write-Host 'PRIVATE_KEY_PRINTED=NO'
-Write-Host 'PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO'
-Write-Host 'PUBLIC_HANDOFF_SECRET_MATERIAL=NO'
-Write-Host 'READY_TO_PIN_PUBLIC_ANCHOR=YES'
-Write-Host "PUBLIC_PROMOTION_DIRECTORY=$PublicPromotionDirectory"
-Write-Host "PUBLIC_TRUST_HANDOFF_ZIP=$PublicHandoffZipPath"
-Write-Host "PUBLIC_TRUST_HANDOFF_ZIP_SHA256=$PublicHandoffZipHash"
- -or
+            $_.Extension -match '^\.(pem|key|p12|pfx|dpapi)$' -or
             $_.Name -match '(?i)(private|secret|seed)'
         }
 )
@@ -246,5 +232,8 @@ Write-Host 'RECOVERED_ENVELOPE_VERIFIED=YES'
 Write-Host "PUBLIC_TRUST_SHA256=$TrustHash"
 Write-Host 'PRIVATE_KEY_PRINTED=NO'
 Write-Host 'PRIVATE_KEY_COPIED_TO_PUBLIC_PROMOTION=NO'
+Write-Host 'PUBLIC_HANDOFF_SECRET_MATERIAL=NO'
 Write-Host 'READY_TO_PIN_PUBLIC_ANCHOR=YES'
 Write-Host "PUBLIC_PROMOTION_DIRECTORY=$PublicPromotionDirectory"
+Write-Host "PUBLIC_TRUST_HANDOFF_ZIP=$PublicHandoffZipPath"
+Write-Host "PUBLIC_TRUST_HANDOFF_ZIP_SHA256=$PublicHandoffZipHash"
