@@ -1498,42 +1498,6 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             update_state["healthToken"] = self.server.health_token
             self._write_json(status, update_state)
             return
-        if self.path == NETWORK_MANAGEMENT_PATH:
-            supplied_token = self.headers.get(NETWORK_TOKEN_HEADER, "")
-            if not hmac.compare_digest(supplied_token, self.server.network_token):
-                self._empty(403)
-                return
-            payload = self._read_json_body(MAX_NETWORK_ACTION_BODY)
-            if payload is None:
-                self._empty(400)
-                return
-            action = payload.get("action")
-            if action not in {"scan", "connect", "disconnect", "forget", "reconnect"}:
-                self._empty(400)
-                return
-            try:
-                with self.server.network_lock:
-                    snapshot = queue_network_broker_request(
-                        self.server.network_paths,
-                        action,
-                        ssid=payload.get("ssid"),
-                        password=payload.get("password"),
-                        timeout_seconds=24.0 if action in {"connect", "reconnect"} else 12.0,
-                    )
-            except ValueError:
-                self._empty(400)
-                return
-            except RuntimeError as exc:
-                detail = getattr(exc, "network_detail", "")
-                self._empty(409 if detail in {"connect-failed", "reconnect-failed"} else 503)
-                return
-            except (FileNotFoundError, PermissionError, TimeoutError, OSError) as exc:
-                print(f"ordax-native-host: network management action failed safely: {exc}", file=sys.stderr, flush=True)
-                self._empty(503)
-                return
-            self._write_json(200, snapshot)
-            return
-
         if self.path == PREFERENCES_PATH:
             self._write_json(200, read_preferences())
             return
@@ -1582,6 +1546,42 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                 self._empty(500)
                 return
             self._empty(204)
+            return
+
+        if self.path == NETWORK_MANAGEMENT_PATH:
+            supplied_token = self.headers.get(NETWORK_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.network_token):
+                self._empty(403)
+                return
+            payload = self._read_json_body(MAX_NETWORK_ACTION_BODY)
+            if payload is None:
+                self._empty(400)
+                return
+            action = payload.get("action")
+            if action not in {"scan", "connect", "disconnect", "forget", "reconnect"}:
+                self._empty(400)
+                return
+            try:
+                with self.server.network_lock:
+                    snapshot = queue_network_broker_request(
+                        self.server.network_paths,
+                        action,
+                        ssid=payload.get("ssid"),
+                        password=payload.get("password"),
+                        timeout_seconds=24.0 if action in {"connect", "reconnect"} else 12.0,
+                    )
+            except ValueError:
+                self._empty(400)
+                return
+            except RuntimeError as exc:
+                detail = getattr(exc, "network_detail", "")
+                self._empty(409 if detail in {"connect-failed", "reconnect-failed"} else 503)
+                return
+            except (FileNotFoundError, PermissionError, TimeoutError, OSError) as exc:
+                print(f"ordax-native-host: network management action failed safely: {exc}", file=sys.stderr, flush=True)
+                self._empty(503)
+                return
+            self._write_json(200, snapshot)
             return
 
         if self.path == PREFERENCES_PATH:
