@@ -86,6 +86,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("bootRefreshRequired", text)
         self.assertNotIn("Access-Control-Allow-Origin", text)
 
+    def test_native_server_disables_static_surface_cache(self):
+        text = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
+        self.assertIn('self.send_header("Cache-Control", "no-store, max-age=0")', text)
+        self.assertIn('self.send_header("Pragma", "no-cache")', text)
+        self.assertIn('not urlsplit(self.path).path.startswith("/__ordax/native/")', text)
+
     def test_native_composition_owns_reload_watcher_and_update_center(self):
         adapter = NATIVE_UPDATE_ADAPTER.read_text(encoding="utf-8")
         composition = NATIVE_COMPOSITION.read_text(encoding="utf-8")
