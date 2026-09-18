@@ -1,0 +1,87 @@
+{
+  "$schema": "prototype-ordax.base-update/1",
+  "status": "contract-defined-implementation-pending",
+  "scope": "transactional-boot-kernel-initramfs-update",
+  "owner": "bootstrap/base-update",
+  "normal_git_hot_update_owns_this": false,
+  "requires_reboot_to_activate": true,
+  "esp": {
+    "filesystem_label": "ORDAX-ESP",
+    "filesystem": "fat32",
+    "mount_policy": "private-temporary-mount-by-owner-only"
+  },
+  "slots": {
+    "names": [
+      "a",
+      "b"
+    ],
+    "active_slot_must_not_be_modified_during_stage": true,
+    "paths": {
+      "kernel": "/ordax/base/{slot}/vmlinuz",
+      "initramfs": "/ordax/base/{slot}/initrd.gz"
+    },
+    "inactive_slot_only_for_candidate": true
+  },
+  "entries": {
+    "current": "/loader/entries/ordax.conf",
+    "recovery": "/loader/entries/ordax-recovery.conf",
+    "candidate_template": "/loader/entries/ordax-candidate+01-00.conf",
+    "candidate_kernel_options": [
+      "ordax.mode=normal",
+      "ordax.base_slot={slot}",
+      "ordax.base_candidate={release_sha}"
+    ],
+    "current_and_recovery_are_never_replaced_before_candidate_health": true
+  },
+  "activation": {
+    "selector": "LoaderEntryOneShot",
+    "bootloader": "systemd-boot",
+    "boot_counting_required": true,
+    "candidate_tries_left": 1,
+    "default_entry_unchanged_before_health": true,
+    "automatic_fallback": "existing-current-entry",
+    "reboot_required": true
+  },
+  "staging": {
+    "signed_manifest_required": true,
+    "kernel_sha256_required": true,
+    "initramfs_sha256_required": true,
+    "same_release_identity_required": true,
+    "write_inactive_slot_first": true,
+    "fsync_files_before_entry": true,
+    "fsync_esp_before_activation": true,
+    "candidate_entry_written_last": true
+  },
+  "health": {
+    "candidate_cmdline_identity_required": true,
+    "base_heartbeat_required": true,
+    "surface_health_required": true,
+    "same_release_sha_required": true,
+    "promotion_only_after_all_checks": true
+  },
+  "promotion": {
+    "current_entry_retargeted_to_candidate_slot": true,
+    "recovery_entry_retargeted_to_previous_slot": true,
+    "atomic_replace_required": true,
+    "candidate_entry_removed_after_promotion": true,
+    "previous_slot_preserved": true,
+    "active_slot_record": "/ordax/state/base/active-slot.json"
+  },
+  "failure": {
+    "current_entry_remains_unchanged": true,
+    "previous_slot_remains_bootable": true,
+    "candidate_never_promoted_without_health": true,
+    "no_whole_esp_rewrite": true,
+    "no_kernel_in_place_overwrite": true,
+    "no_remote_shell_required": true
+  },
+  "implementation_gates": [
+    "contract-tests",
+    "disposable-fat32-esp-proof",
+    "systemd-boot-entry-proof",
+    "one-shot-selection-proof",
+    "failed-candidate-fallback-proof",
+    "successful-candidate-promotion-proof",
+    "physical-notebook-proof"
+  ]
+}
