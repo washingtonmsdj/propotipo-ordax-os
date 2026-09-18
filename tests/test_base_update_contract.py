@@ -190,7 +190,14 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(owner["physical_root_bound_into_chroot"])
         self.assertTrue(owner["mount_tree_must_not_recurse_into_ordax_filesystem"])
         self.assertTrue(owner["state_root_derived_from_mountinfo_subpath"])
-        self.assertTrue(owner["physical_root_requires_release_agent_and_channel_sentinels"])
+        self.assertTrue(owner["physical_root_requires_release_channel_sentinel"])
+        self.assertTrue(
+            owner["physical_release_agent_may_be_absent_before_pinned_enrollment"]
+        )
+        self.assertNotIn(
+            "physical_root_requires_release_agent_and_channel_sentinels",
+            owner,
+        )
         self.assertTrue(owner["recursive_state_bind_forbidden"])
 
     def test_candidate_entry_uses_fixed_width_single_try_counter(self):

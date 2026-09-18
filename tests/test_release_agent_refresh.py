@@ -22,6 +22,7 @@ class ReleaseAgentRefreshTests(unittest.TestCase):
             "prototype-ordax.release-agent-refresh/1",
         )
         self.assertEqual(descriptor["status"], "development-git-migration")
+        self.assertTrue(descriptor["allow_absent_enrollment"])
         self.assertEqual(
             descriptor["target_path"],
             "/ordax/bootstrap/release-acquisition/ordax-release-agent",
@@ -58,6 +59,11 @@ class ReleaseAgentRefreshTests(unittest.TestCase):
             "git-checkout-pinned-sha256-and-size",
         )
         self.assertEqual(refresh["unknown_installed_hash"], "block")
+        self.assertTrue(refresh["absent_agent_enrollment"])
+        self.assertTrue(
+            refresh["absent_agent_enrollment_requires_explicit_descriptor_gate"]
+        )
+        self.assertTrue(refresh["existing_unknown_hash_still_blocks"])
         self.assertTrue(refresh["occurs_before_canonical_trust_enrollment"])
         self.assertFalse(refresh["physical_media_rewrite_required"])
         self.assertFalse(refresh["raw_device_write_allowed"])

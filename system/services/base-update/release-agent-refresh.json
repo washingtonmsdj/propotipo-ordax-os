@@ -3,6 +3,7 @@
   "status": "development-git-migration",
   "component": "bootstrap-release-acquisition",
   "artifact": "ordax-release-agent",
+  "allow_absent_enrollment": true,
   "allowed_from_sha256": [
     "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4"
   ],

@@ -56,6 +56,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 "status": "development-git-migration",
                 "component": "bootstrap-release-acquisition",
                 "artifact": "ordax-release-agent",
+                "allow_absent_enrollment": True,
                 "allowed_from_sha256": [sha256(b"fixture-legacy-agent")],
                 "target_sha256": fixture_agent_sha,
                 "target_size": len(fixture_agent_bytes),
@@ -300,6 +301,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                     "status": "development-git-migration",
                     "component": "bootstrap-release-acquisition",
                     "artifact": "ordax-release-agent",
+                    "allow_absent_enrollment": True,
                     "allowed_from_sha256": [sha256(legacy)],
                     "target_sha256": target_sha,
                     "target_size": len(target),
@@ -338,6 +340,81 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 second = owner.run_once(repo, state, physical, "e" * 40)
             self.assertEqual(second["releaseAgentRefreshState"], "already-current")
             self.assertEqual(agent.read_bytes(), target)
+
+    def test_missing_release_agent_is_enrolled_from_exact_pinned_asset(self):
+        class FakeResponse:
+            status = 200
+
+            def __init__(self, payload):
+                self._stream = io.BytesIO(payload)
+                self.headers = {"Content-Length": str(len(payload))}
+
+            def read(self, size=-1):
+                return self._stream.read(size)
+
+            def geturl(self):
+                return "https://objects.githubusercontent.com/ordax/agent"
+
+            def close(self):
+                self._stream.close()
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, state, physical, _trust = self.fixture(root, promoted=False)
+            agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            descriptor_path = (
+                repo / "system/services/base-update/release-agent-refresh.json"
+            )
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+            target = b"fixture-current-materialize-agent"
+            self.assertEqual(descriptor["target_sha256"], sha256(target))
+            agent.unlink()
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                return_value=FakeResponse(target),
+            ) as download:
+                status = owner.run_once(repo, state, physical, "e" * 40)
+
+            self.assertEqual(status["blocker"], "canonical-trust-not-pinned")
+            self.assertEqual(status["releaseAgentRefreshState"], "enrolled")
+            self.assertEqual(
+                status["releaseAgentSha256"],
+                descriptor["target_sha256"],
+            )
+            self.assertEqual(agent.read_bytes(), target)
+            self.assertEqual(agent.stat().st_mode & 0o777, 0o755)
+            download.assert_called_once()
+
+    def test_missing_release_agent_requires_explicit_absent_enrollment_gate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, state, physical, _trust = self.fixture(root, promoted=False)
+            agent = physical / "bootstrap/release-acquisition/ordax-release-agent"
+            agent.unlink()
+            descriptor_path = (
+                repo / "system/services/base-update/release-agent-refresh.json"
+            )
+            descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+            descriptor["allow_absent_enrollment"] = False
+            write_json(descriptor_path, descriptor)
+
+            with mock.patch.object(
+                owner,
+                "urlopen",
+                side_effect=AssertionError(
+                    "absent enrollment without explicit gate must not download"
+                ),
+            ):
+                status = owner.run_once(repo, state, physical, "e" * 40)
+
+            self.assertEqual(status["status"], "blocked")
+            self.assertEqual(
+                status["blocker"],
+                "release-agent-refresh-validation-failed",
+            )
+            self.assertFalse(agent.exists())
 
     def test_unknown_release_agent_hash_blocks_without_download_or_mutation(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -397,6 +474,7 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                     "status": "development-git-migration",
                     "component": "bootstrap-release-acquisition",
                     "artifact": "ordax-release-agent",
+                    "allow_absent_enrollment": True,
                     "allowed_from_sha256": [sha256(legacy)],
                     "target_sha256": target_sha,
                     "target_size": len(corrupt),
@@ -513,7 +591,8 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn('[ "$root_fstype" = "ext4" ]', agent)
         self.assertIn('/dev/*)', agent)
         self.assertIn('mount -t ext4 -o rw "$root_source" "$PHYSICAL_MOUNT_HOST"', agent)
-        self.assertIn(
+        self.assertNotIn("release-agent-missing", agent)
+        self.assertNotIn(
             'release_agent=$PHYSICAL_MOUNT_HOST/bootstrap/release-acquisition/ordax-release-agent',
             agent,
         )
@@ -535,7 +614,8 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn("temporary=$status_dir/.owner-status.json.preflight.$", agent)
         self.assertIn('"phase":"physical-root-preflight"', agent)
         self.assertIn("physical-mount-failed", agent)
-        self.assertIn("release-agent-missing", agent)
+        self.assertIn("release-channel-missing", agent)
+        self.assertNotIn("release-agent-missing", agent)
         self.assertNotIn(r'\\$schema', agent)
 
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):

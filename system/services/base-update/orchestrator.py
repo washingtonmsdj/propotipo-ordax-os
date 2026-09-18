@@ -361,6 +361,7 @@ def _validate_release_agent_refresh(
         "status",
         "component",
         "artifact",
+        "allow_absent_enrollment",
         "allowed_from_sha256",
         "target_sha256",
         "target_size",
@@ -382,6 +383,8 @@ def _validate_release_agent_refresh(
         raise OwnerError("release-agent refresh component is invalid")
     if descriptor.get("artifact") != "ordax-release-agent":
         raise OwnerError("release-agent refresh artifact name is invalid")
+    if descriptor.get("allow_absent_enrollment") is not True:
+        raise OwnerError("release-agent refresh must explicitly authorize absent enrollment")
     if descriptor.get("target_path") != "/ordax/bootstrap/release-acquisition/ordax-release-agent":
         raise OwnerError("release-agent refresh target path is invalid")
     if descriptor.get("mode") != "0755":
@@ -545,12 +548,40 @@ def _refresh_release_agent_if_needed(
         RELEASE_AGENT_RELATIVE.parent,
     )
     target = agent_directory / RELEASE_AGENT_RELATIVE.name
+    target_sha = refresh["target_sha256"]
+    target_size = refresh["target_size"]
+
+    try:
+        metadata = target.lstat()
+    except FileNotFoundError:
+        metadata = None
+    except OSError as exc:
+        raise OwnerError("cannot inspect physical release acquisition agent") from exc
+
+    if metadata is None:
+        if refresh.get("allow_absent_enrollment") is not True:
+            raise OwnerError("physical release acquisition agent is absent and enrollment is not authorized")
+        _download_release_agent(
+            refresh["download_url"],
+            target,
+            target_sha,
+            target_size,
+        )
+        installed_sha, installed_size = _hash_regular_file(
+            target,
+            "enrolled physical release acquisition agent",
+        )
+        if installed_sha != target_sha or installed_size != target_size:
+            raise OwnerError("enrolled release agent does not match pinned target")
+        return "enrolled", target_sha
+
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        raise OwnerError("physical release acquisition agent must be a regular non-symlink file")
+
     actual_sha, actual_size = _hash_regular_file(
         target,
         "physical release acquisition agent",
     )
-    target_sha = refresh["target_sha256"]
-    target_size = refresh["target_size"]
     if actual_sha == target_sha:
         if actual_size != target_size:
             raise OwnerError("current release agent hash matched but size binding did not")
