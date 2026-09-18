@@ -26,6 +26,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
         self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
+        self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
         self.assertIn('run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote', text)
         self.assertIn('apply_remote_checkout "$old_sha" "$remote_sha"', text)
@@ -72,6 +73,29 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             text.index('validate_candidate_tree "$expected_sha"'),
             text.index('reset --hard "$expected_sha"'),
         )
+
+    def test_common_reload_path_uses_fast_staged_preflight(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('classify_changes "$previous_sha" "$expected_sha"', text)
+        self.assertIn('validate_candidate_tree "$expected_sha" "$APPLY_MODE"', text)
+        self.assertLess(
+            text.index('classify_changes "$previous_sha" "$expected_sha"'),
+            text.index('reset --hard "$expected_sha"'),
+        )
+        candidate = text.split("validate_candidate_tree() {", 1)[1].split(
+            "surface-restart|supervisor-restart)", 1
+        )[0]
+        self.assertIn("reload)", candidate)
+        self.assertIn(
+            'candidate_path_exists "$candidate_sha" system/composition/native/main.mjs',
+            candidate,
+        )
+        self.assertNotIn("candidate_shell_is_valid", candidate)
+        self.assertIn(
+            'wait_for_surface_health "$new_sha" "$RELOAD_HEALTH_TIMEOUT"',
+            text,
+        )
+        self.assertIn('validate_updated_tree "$APPLY_MODE"', text)
 
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
