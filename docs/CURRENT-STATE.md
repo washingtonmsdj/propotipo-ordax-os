@@ -274,6 +274,8 @@ GUARDIAN_NETWORK_ACCESS=NO
 SUPERVISOR_GIT_ACCESS=YES
 INTENTIONALLY_BAD_UPDATE_ROLLBACK_PHYSICAL_PROOF=PENDING
 FULL_A_B_RUNTIME_ACTIVATION=NO
+BASE_UPDATE_A_B_CONTRACT=DEFINED
+BASE_UPDATE_PHYSICAL_WRITER=NO
 ```
 
 The temporary Supabase project is an operational relay, not product authority. It may be migrated later without changing the device identity or telemetry contract. Git `main` remains product source authority; `ordax-rescue` remains a separate, deliberately narrow recovery path.
