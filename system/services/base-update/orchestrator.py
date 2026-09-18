@@ -1113,6 +1113,12 @@ def _stage_materialized_release(
             str(kernel_source),
             "--initramfs",
             str(initramfs_source),
+            "--trust",
+            str(physical_root / PHYSICAL_TRUST_RELATIVE),
+            "--release-agent",
+            str(physical_root / RELEASE_AGENT_RELATIVE),
+            "--releases-root",
+            str(physical_root / "releases"),
             "--ensure-existing",
         ]
         try:
