@@ -538,17 +538,12 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
                 command[command.index("--envelope") + 1],
                 str(envelope),
             )
+            self.assertNotIn("--trust", command)
+            self.assertNotIn("--release-agent", command)
+            self.assertNotIn("--releases-root", command)
             self.assertEqual(
-                command[command.index("--trust") + 1],
-                str(physical / "bootstrap/trust/release-ed25519.json"),
-            )
-            self.assertEqual(
-                command[command.index("--release-agent") + 1],
-                str(physical / "bootstrap/release-acquisition/ordax-release-agent"),
-            )
-            self.assertEqual(
-                command[command.index("--releases-root") + 1],
-                str(physical / "releases"),
+                run.call_args.kwargs["env"]["ORDAX_STAGE_PHYSICAL_ROOT"],
+                str(physical),
             )
             self.assertNotIn("activate.py", " ".join(command))
             self.assertNotIn("LoaderEntryOneShot", " ".join(command))
@@ -937,9 +932,10 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn("os.replace(temporary, target)", orchestrator)
         self.assertIn("stage.py", orchestrator)
         self.assertIn("--ensure-existing", orchestrator)
-        self.assertIn("--trust", orchestrator)
-        self.assertIn("--release-agent", orchestrator)
-        self.assertIn("--releases-root", orchestrator)
+        self.assertIn("ORDAX_STAGE_PHYSICAL_ROOT", orchestrator)
+        self.assertNotIn('"--trust"', orchestrator)
+        self.assertNotIn('"--release-agent"', orchestrator)
+        self.assertNotIn('"--releases-root"', orchestrator)
         self.assertNotIn("activate.py", orchestrator)
         self.assertNotIn("promote.py", orchestrator)
         self.assertNotIn("LoaderEntryOneShot", orchestrator)
