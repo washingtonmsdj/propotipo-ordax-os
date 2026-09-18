@@ -524,6 +524,13 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn('--physical-root "$PHYSICAL_MOUNT_CHROOT"', agent)
         self.assertNotIn("--state-root /var/lib/ordax", agent)
         self.assertNotIn("--physical-root /ordax", agent)
+        self.assertIn("write_preflight_status()", agent)
+        self.assertIn('"$schema":"ordax.base-update-owner-status/1"', agent)
+        self.assertIn("temporary=$status_dir/.owner-status.json.preflight.$", agent)
+        self.assertIn('"phase":"physical-root-preflight"', agent)
+        self.assertIn("physical-mount-failed", agent)
+        self.assertIn("release-agent-missing", agent)
+        self.assertNotIn(r'\\$schema', agent)
 
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
