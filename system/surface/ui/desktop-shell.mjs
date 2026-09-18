@@ -112,10 +112,10 @@ export function createDesktopShellMarkup() {
         <div class="ordax-running-apps" data-running-apps aria-label="Aplicações abertas"></div>
         <div class="ordax-status-actions" data-update-slot></div>
         <div class="ordax-system-tray" aria-label="Estado do sistema">
-          <div class="ordax-tray-item ordax-tray-network" role="status" aria-live="polite" data-connectivity-tray>
+          <button type="button" class="ordax-tray-item ordax-tray-network" data-connectivity-tray data-launch-app="settings" aria-label="Abrir Ajustes de rede">
             <span class="ordax-tray-icon" data-connectivity-icon data-state="unknown" aria-hidden="true">${ICONS.network}</span>
             <span class="ordax-tray-label" data-connectivity-label>Conectividade desconhecida</span>
-          </div>
+          </button>
           <div class="ordax-tray-item ordax-tray-clock" title="Horário de Salvador/Bahia">
             <span class="ordax-tray-icon" aria-hidden="true">${ICONS.clock}</span>
             <time data-ordax-tray-clock>--:--</time>
