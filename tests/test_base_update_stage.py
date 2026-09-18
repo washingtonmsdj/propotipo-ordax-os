@@ -10,6 +10,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "bootstrap" / "base-update" / "stage.py"
@@ -648,6 +649,52 @@ class BaseUpdateStageTests(unittest.TestCase):
 
             with self.assertRaises(stage.StageError):
                 stage.verified_candidate_from_release(envelope, trust, agent, releases)
+
+    def test_runtime_physical_root_derives_fixed_release_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "physical"
+            root.mkdir()
+            with mock.patch.dict(
+                os.environ,
+                {"ORDAX_STAGE_PHYSICAL_ROOT": str(root)},
+                clear=False,
+            ):
+                trust, agent, releases = stage._runtime_release_authority()
+
+            self.assertEqual(
+                trust,
+                root / "bootstrap/trust/release-ed25519.json",
+            )
+            self.assertEqual(
+                agent,
+                root / "bootstrap/release-acquisition/ordax-release-agent",
+            )
+            self.assertEqual(releases, root / "releases")
+
+            link = Path(temporary) / "linked"
+            link.symlink_to(root, target_is_directory=True)
+            with mock.patch.dict(
+                os.environ,
+                {"ORDAX_STAGE_PHYSICAL_ROOT": str(link)},
+                clear=False,
+            ):
+                with self.assertRaisesRegex(
+                    stage.StageError,
+                    "must be a real directory",
+                ):
+                    stage._runtime_release_authority()
+
+    def test_runtime_physical_root_must_be_absolute(self):
+        with mock.patch.dict(
+            os.environ,
+            {"ORDAX_STAGE_PHYSICAL_ROOT": "relative-root"},
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "must be absolute",
+            ):
+                stage._runtime_release_authority()
 
     def test_stage_cli_has_no_unsigned_or_alternate_trust_input(self):
         text = MODULE_PATH.read_text(encoding="utf-8")
