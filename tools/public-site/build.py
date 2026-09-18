@@ -13,8 +13,17 @@ import sys
 import tempfile
 from pathlib import Path
 
+from public_release_catalog import (
+    PublicReleaseCatalogError,
+    load_publications,
+    validate_catalog,
+    write_catalog,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "sites" / "public"
+PUBLICATIONS = ROOT / "platform" / "releases" / "publications.json"
+PUBLIC_CATALOG_RELATIVE = Path("releases/catalog.json")
 MANIFEST_NAME = "public-site-manifest.json"
 SCHEMA = "prototype-ordax.public-site-bundle/1"
 CONFIG_SCHEMA = "prototype-ordax.public-site-runtime/1"
@@ -120,6 +129,7 @@ def build_bundle(out_dir: Path, source_commit: str, root: Path = SOURCE) -> dict
         raise PublicSiteError(f"refusing to replace non-empty output directory: {out_dir}")
 
     files = validate_source(root)
+    publications = load_publications(PUBLICATIONS)
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=".ordax-public-site-", dir=out_dir.parent))
     try:
@@ -128,6 +138,8 @@ def build_bundle(out_dir: Path, source_commit: str, root: Path = SOURCE) -> dict
             destination = stage / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, destination)
+
+        catalog = write_catalog(PUBLICATIONS, stage / PUBLIC_CATALOG_RELATIVE)
 
         records = []
         for path in sorted(
@@ -153,6 +165,13 @@ def build_bundle(out_dir: Path, source_commit: str, root: Path = SOURCE) -> dict
             "remote_runtime_dependencies": False,
             "framework_runtime_dependency": False,
             "routes": ["/", "/download/", "/login/", "/cadastro/"],
+            "public_release_catalog": {
+                "path": "/" + PUBLIC_CATALOG_RELATIVE.as_posix(),
+                "status": catalog["status"],
+                "release_count": len(catalog["releases"]),
+                "publication_source": "platform/releases/publications.json",
+                "publication_status": publications["status"],
+            },
             "files": records,
         }
         (stage / MANIFEST_NAME).write_text(
@@ -203,14 +222,29 @@ def verify_bundle(out_dir: Path) -> dict:
             raise PublicSiteError(f"bundle integrity mismatch: {relative}")
 
     validate_source(out_dir)
+    catalog_path = out_dir / PUBLIC_CATALOG_RELATIVE
+    if not catalog_path.is_file():
+        raise PublicSiteError("public release catalog is missing from bundle")
+    catalog = validate_catalog(catalog_path)
+    catalog_manifest = manifest.get("public_release_catalog")
+    if not isinstance(catalog_manifest, dict):
+        raise PublicSiteError("public release catalog manifest metadata is missing")
+    if catalog_manifest.get("path") != "/" + PUBLIC_CATALOG_RELATIVE.as_posix():
+        raise PublicSiteError("public release catalog manifest path is invalid")
+    if catalog_manifest.get("status") != catalog.get("status"):
+        raise PublicSiteError("public release catalog status mismatch")
+    if catalog_manifest.get("release_count") != len(catalog.get("releases", [])):
+        raise PublicSiteError("public release catalog count mismatch")
     return manifest
 
 
 def command_check() -> int:
     files = validate_source()
+    publications = load_publications(PUBLICATIONS)
     print("PUBLIC_SITE_SOURCE=PASS")
     print(f"PUBLIC_SITE_SOURCE_FILE_COUNT={len(files)}")
     print("PUBLIC_SITE_REMOTE_RUNTIME_DEPENDENCIES=NO")
+    print(f"PUBLIC_RELEASE_PUBLICATION_COUNT={len(publications['releases'])}")
     return 0
 
 
@@ -245,7 +279,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "build":
             return command_build(args)
         return command_verify(args)
-    except (PublicSiteError, OSError, ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (
+        PublicSiteError,
+        PublicReleaseCatalogError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ) as exc:
         print(f"PUBLIC_SITE_ERROR={exc}", file=sys.stderr)
         return 1
 
