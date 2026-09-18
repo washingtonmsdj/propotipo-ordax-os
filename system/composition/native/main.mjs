@@ -4,6 +4,7 @@ import {
 } from "../../adapters/native/client-diagnostics.mjs";
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
+import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
@@ -20,6 +21,7 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -111,6 +113,9 @@ async function start() {
   ] = await optionalPortsPromise;
 
   const localWorkspaceStore = createNativeWorkspaceStore(window);
+  const recentFiles = fileSpace === null ? null : createRecentFilesRuntime({
+    store: createNativeRecentFilesStore(window),
+  });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
@@ -222,7 +227,7 @@ async function start() {
     workspaceMetadata.source,
     appActivation,
   );
-  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
+  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface, recentFiles);
   let settingsOverviewControls;
   try {
     settingsOverviewControls = mountSettingsOverviewControls(

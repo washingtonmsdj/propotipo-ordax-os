@@ -6,7 +6,7 @@ export const MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024;
 
 const ENTRY_KINDS = new Set(["file", "directory"]);
 
-function validatePath(path) {
+export function validateFileSpacePath(path) {
   if (typeof path !== "string" || !path.startsWith("/")) {
     throw new TypeError("File-space path must be an absolute logical path");
   }
@@ -56,7 +56,7 @@ export function validateFileListing(value) {
   if (!value || typeof value !== "object" || !Array.isArray(value.entries)) {
     throw new TypeError("File-space listing is invalid");
   }
-  const path = validatePath(value.path);
+  const path = validateFileSpacePath(value.path);
   const entries = value.entries.map(validateFileEntry);
   return Object.freeze({ path, entries: Object.freeze(entries) });
 }
@@ -65,7 +65,7 @@ export function validateTextFile(value) {
   if (!value || typeof value !== "object") {
     throw new TypeError("Text-file payload must be an object");
   }
-  const path = validatePath(value.path);
+  const path = validateFileSpacePath(value.path);
   if (!Number.isInteger(value.size) || value.size < 0 || value.size > MAX_TEXT_FILE_BYTES) {
     throw new TypeError("Text-file size is outside the preview boundary");
   }
