@@ -141,6 +141,7 @@ def check_contract() -> dict:
         "CONFIG_POWER_SUPPLY",
         "CONFIG_ACPI_AC",
         "CONFIG_ACPI_BATTERY",
+        "CONFIG_MAGIC_SYSRQ",
         "CONFIG_EXT4_FS",
         "CONFIG_VFAT_FS",
         "CONFIG_IWLWIFI",
