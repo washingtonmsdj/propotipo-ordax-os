@@ -44,6 +44,13 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+function formatModifiedAt(epochMilliseconds) {
+  return new Intl.DateTimeFormat(FILE_SEARCH_LOCALE, {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(epochMilliseconds));
+}
+
 function locationIsActive(currentPath, locationPath) {
   if (locationPath === "/") return currentPath === "/";
   return currentPath === locationPath || currentPath.startsWith(`${locationPath}/`);
@@ -247,6 +254,8 @@ export function mountFileSpaceControls(
         compared = left.kind.localeCompare(right.kind, "en");
       } else if (sortKey === "size") {
         compared = left.size - right.size;
+      } else if (sortKey === "modified") {
+        compared = left.modifiedAt - right.modifiedAt;
       } else {
         compared = compareEntryNames(left, right);
       }
@@ -257,7 +266,7 @@ export function mountFileSpaceControls(
   };
 
   const changeSort = (key) => {
-    if (!["name", "type", "size"].includes(key)) return;
+    if (!["name", "type", "size", "modified"].includes(key)) return;
     if (sortKey === key) {
       sortDirection = sortDirection === "asc" ? "desc" : "asc";
     } else {
@@ -383,6 +392,7 @@ export function mountFileSpaceControls(
       sortButton("Nome", "name"),
       sortButton("Tipo", "type"),
       sortButton("Tamanho", "size"),
+      sortButton("Modificado", "modified"),
     );
     list.append(header);
 
@@ -444,6 +454,7 @@ export function mountFileSpaceControls(
         nameCell,
         node(documentObject, "span", "ordax-file-meta", entry.kind === "directory" ? "Pasta" : "Arquivo"),
         node(documentObject, "span", "ordax-file-meta", entry.kind === "directory" ? "—" : formatSize(entry.size)),
+        node(documentObject, "span", "ordax-file-meta", formatModifiedAt(entry.modifiedAt)),
       );
       list.append(row);
     }
@@ -468,6 +479,12 @@ export function mountFileSpaceControls(
         selected.kind === "directory" ? "Pasta" : `Arquivo · ${formatSize(selected.size)}`,
       ),
       node(documentObject, "span", "ordax-files-details-path", selected.path),
+      node(
+        documentObject,
+        "span",
+        "ordax-files-details-path",
+        `Modificado: ${formatModifiedAt(selected.modifiedAt)}`,
+      ),
     );
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
