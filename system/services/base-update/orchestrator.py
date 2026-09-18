@@ -540,7 +540,11 @@ def _refresh_release_agent_if_needed(
     physical_root: Path,
 ) -> tuple[str, str]:
     refresh = _validate_release_agent_refresh(repo_root)
-    target = physical_root / RELEASE_AGENT_RELATIVE
+    agent_directory = _ensure_real_directory_tree(
+        physical_root,
+        RELEASE_AGENT_RELATIVE.parent,
+    )
+    target = agent_directory / RELEASE_AGENT_RELATIVE.name
     actual_sha, actual_size = _hash_regular_file(
         target,
         "physical release acquisition agent",
