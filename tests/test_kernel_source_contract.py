@@ -25,6 +25,7 @@ class KernelSourceContractTest(unittest.TestCase):
             "CONFIG_POWER_SUPPLY=y",
             "CONFIG_ACPI_AC=y",
             "CONFIG_ACPI_BATTERY=y",
+            "CONFIG_MAGIC_SYSRQ=y",
         ):
             self.assertIn(selector + "\n", FRAGMENT, selector)
 

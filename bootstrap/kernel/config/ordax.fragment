@@ -7,6 +7,9 @@ CONFIG_PRINTK=y
 CONFIG_EARLY_PRINTK=y
 CONFIG_PRINTK_TIME=y
 
+# Host restart fallback used when firmware reboot returns without resetting.
+CONFIG_MAGIC_SYSRQ=y
+
 # Keep the pre-init boot payload compact.
 # CONFIG_KERNEL_GZIP is not set
 CONFIG_KERNEL_XZ=y
