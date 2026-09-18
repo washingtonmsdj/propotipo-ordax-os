@@ -38,6 +38,7 @@ test("update status contract normalizes optional fields", () => {
     applyMode: "initial",
   });
   assert.equal(snapshot.bootRefreshRequired, false);
+  assert.equal(snapshot.runtimeSurfaceSha, snapshot.sourceSha);
   assert.equal(snapshot.targetSha, "");
   assert.equal(snapshot.phase, "idle");
   assert.equal(snapshot.attemptId, "");
@@ -46,6 +47,17 @@ test("update status contract normalizes optional fields", () => {
   assert.equal(snapshot.rejectedSha, "");
   assert.equal(snapshot.lastError, "");
   assert.equal(snapshot.healthToken, "");
+});
+
+test("update status preserves runtime-effective Surface identity separately from Git HEAD", () => {
+  const snapshot = validateUpdateStatusSnapshot({
+    sourceSha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    runtimeSurfaceSha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    status: "running",
+    applyMode: "none",
+  });
+  assert.equal(snapshot.sourceSha, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(snapshot.runtimeSurfaceSha, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 });
 
 test("update status preserves transaction context", () => {

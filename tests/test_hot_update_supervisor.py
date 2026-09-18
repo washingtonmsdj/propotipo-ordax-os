@@ -169,6 +169,18 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn("lastAppliedAt", controls)
         self.assertIn("rejectedSha", controls)
 
+    def test_runtime_surface_sha_tracks_only_runtime_effective_updates(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("RUNTIME_SURFACE_SHA_FILE=$STATE_DIR/runtime-surface-sha", text)
+        self.assertIn("record_runtime_surface_sha()", text)
+        self.assertIn('"runtimeSurfaceSha":"%s"', text)
+        self.assertIn('record_runtime_surface_sha "$previous_sha"', text)
+        self.assertGreaterEqual(text.count('record_runtime_surface_sha "$new_sha"'), 2)
+        self.assertIn('record_runtime_surface_sha "$guard_current"', text)
+        self.assertIn('record_runtime_surface_sha "$(current_sha)"', text)
+        none_block = text.split('        none)\n', 1)[1].split('            ;;', 1)[0]
+        self.assertNotIn("record_runtime_surface_sha", none_block)
+
     def test_update_state_carries_operator_visible_metadata(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('"targetSha":"%s"', text)

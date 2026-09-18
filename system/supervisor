@@ -14,6 +14,7 @@ CURRENT_FILE=$STATE_DIR/current-commit
 BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
+RUNTIME_SURFACE_SHA_FILE=$STATE_DIR/runtime-surface-sha
 REJECTED_FILE=$STATE_DIR/rejected-commit
 SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
@@ -259,23 +260,30 @@ write_update_state() {
     checked_at=$(utc_now)
     last_applied_sha=$(read_state_value "$LAST_APPLIED_SHA_FILE")
     last_applied_at=$(read_state_value "$LAST_APPLIED_AT_FILE")
+    runtime_surface_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")
     rejected_sha=$(read_state_value "$REJECTED_FILE")
     [ -n "$last_applied_at" ] || last_applied_at=unknown
-    temporary=$UPDATE_STATE.tmp.$$
-    printf '{"sourceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s"}\n' \
-        "$source_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
+    [ -n "$runtime_surface_sha" ] || runtime_surface_sha=$source_sha
+    temporary=$UPDATE_STATE.tmp.$
+    printf '{"sourceSha":"%s","runtimeSurfaceSha":"%s","targetSha":"%s","status":"%s","phase":"%s","applyMode":"%s","attemptId":"%s","bootRefreshRequired":%s,"checkedAt":"%s","lastAppliedSha":"%s","lastAppliedAt":"%s","rejectedSha":"%s","lastError":"%s"}\n' \
+        "$source_sha" "$runtime_surface_sha" "$UPDATE_TARGET_SHA" "$status" "$UPDATE_PHASE" "$apply_mode" "$UPDATE_ATTEMPT_ID" \
         "$boot_refresh" "$checked_at" "$last_applied_sha" "$last_applied_at" "$rejected_sha" "$UPDATE_ERROR" >"$temporary"
     /bin/busybox mv -f "$temporary" "$UPDATE_STATE"
 }
 
 record_applied() {
     source_sha=$1
-    temporary=$LAST_APPLIED_SHA_FILE.tmp.$$
+    temporary=$LAST_APPLIED_SHA_FILE.tmp.$
     printf '%s\n' "$source_sha" >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_APPLIED_SHA_FILE"
-    temporary=$LAST_APPLIED_AT_FILE.tmp.$$
+    temporary=$LAST_APPLIED_AT_FILE.tmp.$
     utc_now >"$temporary"
     /bin/busybox mv -f "$temporary" "$LAST_APPLIED_AT_FILE"
+}
+
+record_runtime_surface_sha() {
+    source_sha=$1
+    write_state_value "$RUNTIME_SURFACE_SHA_FILE" "$source_sha"
 }
 
 mark_boot_refresh_required() {
@@ -383,6 +391,7 @@ rollback_update() {
     fi
     start_surface || fail_closed "rolled-back Surface could not be started"
     surface_stays_running 4 || fail_closed "rolled-back Surface did not stay running"
+    record_runtime_surface_sha "$previous_sha"
     write_update_state "$previous_sha" rolled-back "$failed_mode"
 }
 
@@ -532,6 +541,7 @@ check_for_update() {
             log "live-safe system update applied; waiting for Surface health acknowledgement"
             if wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"; then
                 record_applied "$new_sha"
+                record_runtime_surface_sha "$new_sha"
                 clear_update_context
                 write_update_state "$new_sha" running reload
                 log "updated Surface acknowledged healthy state"
@@ -549,6 +559,7 @@ check_for_update() {
                 return 0
             fi
             record_applied "$new_sha"
+            record_runtime_surface_sha "$new_sha"
             clear_update_context
             write_update_state "$new_sha" running surface-restart
             ;;
@@ -579,6 +590,9 @@ trap terminate HUP INT TERM
 [ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
 
 initial_sha=$(current_sha)
+if [ ! -s "$RUNTIME_SURFACE_SHA_FILE" ]; then
+    record_runtime_surface_sha "$initial_sha"
+fi
 clear_update_context
 write_update_state "$initial_sha" running initial
 log "starting shared OrdaX Surface with Git hot-update supervisor"
@@ -596,6 +610,7 @@ if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
         log "validating restarted supervisor and Surface for $guard_current"
         if surface_stays_running 4 && wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"; then
             record_applied "$guard_current"
+            record_runtime_surface_sha "$guard_current"
             rm -f "$SUPERVISOR_GUARD_FILE"
             clear_update_context
             write_update_state "$guard_current" running supervisor-restart
@@ -618,6 +633,7 @@ while :; do
         SURFACE_PID=""
         log "Surface exited with status $surface_rc; restarting without reboot"
         start_surface || fail_closed "Surface restart failed"
+        record_runtime_surface_sha "$(current_sha)"
     fi
 
     check_for_update

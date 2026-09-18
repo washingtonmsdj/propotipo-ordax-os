@@ -37,6 +37,7 @@ WEB_IDENTITY_ACTIONS_ADAPTER = ROOT / "system" / "adapters" / "web" / "identity-
 NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.mjs"
 NATIVE_SURFACE_HEARTBEAT_ADAPTER = ROOT / "system" / "adapters" / "native" / "surface-heartbeat.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
+UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
@@ -308,6 +309,14 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("surfaceHeartbeat.dispose()", native_main)
         self.assertNotIn("http://", adapter)
         self.assertNotIn("https://", adapter)
+
+    def test_update_center_distinguishes_git_head_from_surface_runtime(self):
+        controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        contract = (ROOT / "system" / "contracts" / "update-status.mjs").read_text(encoding="utf-8")
+        self.assertIn("runtimeSurfaceSha", contract)
+        self.assertIn("snapshot.runtimeSurfaceSha", controls)
+        self.assertIn("Runtime alinhado com a versão Git.", controls)
+        self.assertIn("Runtime mantido no último commit com efeito na Surface.", controls)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
