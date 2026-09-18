@@ -3,11 +3,13 @@ set -eu
 
 RUNTIME_ROOT=${ORDAX_BASE_RUNTIME_ROOT:-}
 HOST_REPO_ROOT=${ORDAX_BASE_HOST_REPO_ROOT:-}
+HOST_STATE_ROOT=${ORDAX_BASE_HOST_STATE_ROOT:-/state/ordax}
 INTERVAL=${ORDAX_BASE_INTERVAL_SECONDS:-30}
 MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}
 PHYSICAL_MOUNT_HOST=
 PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device
 OWNER_STATE_CHROOT=
+PREPARE_BLOCKER=
 LOG_PREFIX=ordax-base-update-agent
 
 case "$INTERVAL" in
@@ -17,6 +19,29 @@ esac
 
 log() {
     printf '%s: %s\n' "$LOG_PREFIX" "$*" >&2
+}
+
+write_preflight_status() {
+    blocker=${1:-physical-root-unavailable}
+    case "$blocker" in
+        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|physical-mountpoint-conflict|physical-mount-failed|release-agent-missing|release-channel-missing|development-state-missing|development-state-unsafe)
+            ;;
+        *) blocker=physical-root-unavailable ;;
+    esac
+
+    status_dir=$HOST_STATE_ROOT/base-update
+    /bin/busybox mkdir -p "$status_dir" 2>/dev/null || return 0
+    temporary=$status_dir/.owner-status.json.preflight.$
+    printf '%s\n' \
+        "{\"\\$schema\":\"ordax.base-update-owner-status/1\",\"status\":\"blocked\",\"phase\":\"physical-root-preflight\",\"sourceSha\":null,\"pendingBootRefreshSha\":null,\"releaseAgentRefreshState\":\"blocked\",\"releaseAgentSha256\":null,\"canonicalTrustPinned\":false,\"physicalTrustEnrolled\":false,\"trustEnrollmentState\":\"blocked\",\"signedReleaseMaterialized\":false,\"materializedReleaseSha\":null,\"releaseMaterializationState\":\"blocked\",\"kernelStaged\":false,\"candidateArmed\":false,\"rebootRequested\":false,\"promotionAttempted\":false,\"blocker\":\"$blocker\"}" \
+        >"$temporary" 2>/dev/null || {
+            /bin/busybox rm -f "$temporary" >/dev/null 2>&1 || true
+            return 0
+        }
+    /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
+    /bin/busybox mv -f "$temporary" "$status_dir/owner-status.json" >/dev/null 2>&1 || {
+        /bin/busybox rm -f "$temporary" >/dev/null 2>&1 || true
+    }
 }
 
 [ -n "$RUNTIME_ROOT" ] || {
@@ -80,8 +105,10 @@ safe_block_source() {
 }
 
 prepare_physical_root() {
+    PREPARE_BLOCKER=
     record=$(root_mount_record)
     [ -n "$record" ] || {
+        PREPARE_BLOCKER=root-mount-unavailable
         log "cannot identify development root mount"
         return 1
     }
@@ -97,14 +124,17 @@ EOF
     IFS=$old_ifs
 
     safe_root_subpath "$root_subpath" || {
+        PREPARE_BLOCKER=root-subpath-unsafe
         log "development root subpath is unsafe"
         return 1
     }
     [ "$root_fstype" = "ext4" ] || {
+        PREPARE_BLOCKER=root-filesystem-unsupported
         log "development root filesystem is not ext4"
         return 1
     }
     safe_block_source "$root_source" || {
+        PREPARE_BLOCKER=root-source-unsafe
         log "development root block source is unsafe"
         return 1
     }
@@ -126,16 +156,19 @@ EOF
         if [ "$mounted_root" != "/" ] ||
            [ "$mounted_fstype" != "ext4" ] ||
            [ "$mounted_source" != "$root_source" ]; then
+            PREPARE_BLOCKER=physical-mountpoint-conflict
             log "physical root mountpoint is occupied by an unexpected filesystem"
             return 1
         fi
     else
         if ! /bin/busybox mount -t ext4 -o rw "$root_source" "$PHYSICAL_MOUNT_HOST"; then
+            PREPARE_BLOCKER=physical-mount-failed
             log "cannot mount full ORDAX filesystem root"
             return 1
         fi
         mounted=$(mount_record_for "$PHYSICAL_MOUNT_HOST")
         [ -n "$mounted" ] || {
+            PREPARE_BLOCKER=physical-mount-failed
             log "physical root mount was not observable after mount"
             return 1
         }
@@ -144,20 +177,24 @@ EOF
     release_agent=$PHYSICAL_MOUNT_HOST/bootstrap/release-acquisition/ordax-release-agent
     release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url
     if [ ! -f "$release_agent" ] || [ -L "$release_agent" ] || [ ! -x "$release_agent" ]; then
+        PREPARE_BLOCKER=release-agent-missing
         log "physical ORDAX root does not expose the release agent"
         return 1
     fi
     if [ ! -f "$release_channel" ] || [ -L "$release_channel" ]; then
+        PREPARE_BLOCKER=release-channel-missing
         log "physical ORDAX root does not expose the release channel"
         return 1
     fi
 
     host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax
     if [ ! -d "$host_state" ] || [ -L "$host_state" ]; then
+        PREPARE_BLOCKER=development-state-missing
         log "development state alias is unavailable inside physical ORDAX root"
         return 1
     fi
     if [ -L "$PHYSICAL_MOUNT_HOST$root_subpath/state" ]; then
+        PREPARE_BLOCKER=development-state-unsafe
         log "development state parent is unsafe"
         return 1
     fi
@@ -167,29 +204,33 @@ EOF
 }
 
 while :; do
-    if [ -x "$RUNTIME_ROOT/usr/bin/python3" ] &&
-       [ -f "$RUNTIME_ROOT/srv/ordax-system/services/base-update/orchestrator.py" ] &&
-       [ -d "$RUNTIME_ROOT/srv/ordax-repo" ]; then
-        if prepare_physical_root; then
-            source_sha=""
-            if [ -x /usr/bin/git ]; then
-                source_sha=$(/usr/bin/git -C "$HOST_REPO_ROOT" rev-parse HEAD 2>/dev/null || true)
-            fi
-            case "$source_sha" in
-                [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
-                    [ "${#source_sha}" -eq 40 ] || source_sha=""
-                    ;;
-                *) source_sha="" ;;
-            esac
-
-            ORDAX_BASE_SOURCE_SHA="$source_sha" \
-                /bin/busybox chroot "$RUNTIME_ROOT" \
-                /usr/bin/python3 /srv/ordax-system/services/base-update/orchestrator.py \
-                --repo-root /srv/ordax-repo \
-                --state-root "$OWNER_STATE_CHROOT" \
-                --physical-root "$PHYSICAL_MOUNT_CHROOT" \
-                >/dev/null 2>&1 || true
+    if [ ! -x "$RUNTIME_ROOT/usr/bin/python3" ]; then
+        write_preflight_status runtime-unavailable
+    elif [ ! -f "$RUNTIME_ROOT/srv/ordax-system/services/base-update/orchestrator.py" ]; then
+        write_preflight_status owner-source-unavailable
+    elif [ ! -d "$RUNTIME_ROOT/srv/ordax-repo" ]; then
+        write_preflight_status repo-bind-unavailable
+    elif prepare_physical_root; then
+        source_sha=""
+        if [ -x /usr/bin/git ]; then
+            source_sha=$(/usr/bin/git -C "$HOST_REPO_ROOT" rev-parse HEAD 2>/dev/null || true)
         fi
+        case "$source_sha" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+                [ "${#source_sha}" -eq 40 ] || source_sha=""
+                ;;
+            *) source_sha="" ;;
+        esac
+
+        ORDAX_BASE_SOURCE_SHA="$source_sha" \
+            /bin/busybox chroot "$RUNTIME_ROOT" \
+            /usr/bin/python3 /srv/ordax-system/services/base-update/orchestrator.py \
+            --repo-root /srv/ordax-repo \
+            --state-root "$OWNER_STATE_CHROOT" \
+            --physical-root "$PHYSICAL_MOUNT_CHROOT" \
+            >/dev/null 2>&1 || true
+    else
+        write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
     fi
 
     /bin/busybox sleep "$INTERVAL"
