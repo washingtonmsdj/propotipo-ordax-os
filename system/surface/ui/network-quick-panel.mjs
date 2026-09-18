@@ -175,7 +175,7 @@ export function mountNetworkQuickPanel(
       label.append(node(documentObject, "span", "", `Senha de ${selected.ssid}`));
       const input = documentObject.createElement("input");
       input.type = "password";
-      input.autocomplete = "current-password";
+      input.autocomplete = "off";
       input.dataset.quickWifiPassword = "";
       input.dataset.quickWifiPasswordFor = selected.ssid;
       input.disabled = pending;
