@@ -72,6 +72,17 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             "https://example.invalid/release-envelope.json\n",
             encoding="ascii",
         )
+        stage_owner = self.source / "bootstrap/base-update/stage.py"
+        planner = self.source / "bootstrap/base-update/planner.py"
+        kernel = self.source / "bootstrap/kernel/vmlinuz-6.6.52"
+        initramfs = self.source / "bootstrap/initramfs/initramfs.cpio.gz"
+        stage_owner.parent.mkdir(parents=True, exist_ok=True)
+        kernel.parent.mkdir(parents=True, exist_ok=True)
+        initramfs.parent.mkdir(parents=True, exist_ok=True)
+        stage_owner.write_text("# fixture stage owner\n", encoding="utf-8")
+        planner.write_text("# fixture planner\n", encoding="utf-8")
+        kernel.write_bytes(b"fixture-kernel\n")
+        initramfs.write_bytes(b"fixture-initramfs\n")
         contracts = docs / "contracts"
         contracts.mkdir(parents=True, exist_ok=True)
         (contracts / "release-trust-policy.json").write_text(
@@ -145,6 +156,10 @@ class DevelopmentGitFlowTest(unittest.TestCase):
                 "/docs/evidence/release-trust-ceremony.json",
                 "/docs/evidence/release-trust-proof-manifest.json",
                 "/docs/evidence/release-trust-recovery-envelope.json",
+                "/bootstrap/base-update/stage.py",
+                "/bootstrap/base-update/planner.py",
+                "/bootstrap/kernel/vmlinuz-6.6.52",
+                "/bootstrap/initramfs/initramfs.cpio.gz",
             },
         )
         self.assertTrue((self.worktree / "system/entrypoint").is_file())
@@ -162,6 +177,18 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         )
         self.assertTrue(
             (self.worktree / "docs/evidence/release-trust-ceremony.json").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/base-update/stage.py").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/base-update/planner.py").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/kernel/vmlinuz-6.6.52").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/initramfs/initramfs.cpio.gz").is_file()
         )
         self.assertFalse((self.worktree / "docs/not-runtime.txt").exists())
         self.assertEqual((self.state / "current-commit").read_text().strip(), self.commit_v1)
