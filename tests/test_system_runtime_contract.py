@@ -251,6 +251,30 @@ class SystemRuntimeContractTests(unittest.TestCase):
             text.index("ensure_base_telemetry_agent ||"),
         )
 
+    def test_graphical_runtime_receives_bounded_host_dns_configuration(self):
+        text = SURFACE_RUNTIME.read_text(encoding="utf-8")
+        self.assertIn("sync_runtime_resolver()", text)
+        self.assertIn("host_resolver=/etc/resolv.conf", text)
+        self.assertIn("runtime_resolver=$RUNTIME_ROOT/etc/resolv.conf", text)
+        self.assertIn("resolver_size=", text)
+        self.assertIn("[ \"$resolver_size\" -gt 16384 ]", text)
+        self.assertIn("/bin/busybox grep -Eq", text)
+        self.assertIn("nameserver", text)
+        self.assertIn('/bin/busybox mv -f "$temporary" "$runtime_resolver"', text)
+        self.assertIn(
+            "external DNS unavailable inside graphical runtime; continuing local Surface",
+            text,
+        )
+        self.assertLess(
+            text.index('ensure_runtime || fallback_with_reason'),
+            text.index('sync_runtime_resolver ||'),
+        )
+        self.assertLess(
+            text.index('sync_runtime_resolver ||'),
+            text.index('ensure_base_update_agent ||'),
+        )
+        self.assertNotIn('mount -o bind /etc "$RUNTIME_ROOT/etc"', text)
+
     def test_wlroots_physical_prerequisites_are_prepared(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("ensure_shared_memory", text)
