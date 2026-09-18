@@ -74,6 +74,24 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(failure["no_kernel_in_place_overwrite"])
         self.assertTrue(failure["no_remote_shell_required"])
 
+    def test_staging_requires_canonical_signed_base_update_envelope(self):
+        staging = CONTRACT["staging"]
+        self.assertTrue(staging["signed_manifest_required"])
+        self.assertFalse(staging["unsigned_candidate_cli_allowed"])
+        self.assertEqual(
+            staging["envelope_schema"],
+            "prototype-ordax.base-update-envelope/1",
+        )
+        self.assertEqual(
+            staging["manifest_schema"],
+            "prototype-ordax.base-update-manifest/1",
+        )
+        self.assertEqual(
+            staging["canonical_trust_path"],
+            "/ordax/bootstrap/trust/release-ed25519.json",
+        )
+        self.assertIn("verify-base-update-envelope", staging["verifier"])
+
     def test_candidate_entry_uses_fixed_width_single_try_counter(self):
         entry = CONTRACT["entries"]["candidate_template"]
         self.assertEqual(entry, "/loader/entries/ordax-candidate+01-00.conf")
