@@ -142,6 +142,64 @@
   color: var(--ordax-muted);
 }
 
+.ordax-files-search {
+  display: flex;
+  min-width: 160px;
+  max-width: 260px;
+  flex: 0 1 230px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px 0 9px;
+  border: 1px solid var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-window-bg);
+}
+
+.ordax-files-search:focus-within {
+  border-color: var(--ordax-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ordax-focus) 28%, transparent);
+}
+
+.ordax-files-search-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ordax-text);
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.ordax-files-search-input::placeholder {
+  color: var(--ordax-muted);
+}
+
+.ordax-files-search-input:disabled {
+  opacity: 0.55;
+}
+
+.ordax-files-search-clear {
+  flex: 0 0 auto;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.66rem;
+}
+
+.ordax-files-search-clear:hover:not(:disabled),
+.ordax-files-search-clear:focus-visible:not(:disabled) {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 2px solid var(--ordax-focus);
+}
+
 .ordax-files-actions {
   display: flex;
   flex: 0 0 auto;
@@ -381,6 +439,12 @@ button.ordax-file-row:focus-visible {
   .ordax-files-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .ordax-files-search {
+    width: 100%;
+    max-width: none;
+    flex-basis: auto;
   }
 
   .ordax-files-actions {

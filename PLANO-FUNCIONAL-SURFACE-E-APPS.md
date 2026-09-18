@@ -428,7 +428,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 
 ### 6.11 Busca e detalhes
 
-**Busca inicial:** filtrar nomes na pasta atual e declarar esse escopo. Busca recursiva posterior precisa de cancelamento, limite e resultados incrementais. Busca no conteúdo de documentos é outra capacidade, posterior.
+**Busca inicial — EXISTE/P1:** filtra nomes na pasta atual, declara esse escopo no status e oferece limpeza explícita do filtro. A comparação é apenas por nome e não envia consulta ao backend. Busca recursiva posterior precisa de cancelamento, limite e resultados incrementais. Busca no conteúdo de documentos é outra capacidade, posterior.
 
 **Resultados:** nome, tipo e localização; abrir item ou revelar sua pasta; mostrar “Nenhum resultado” com opção de limpar filtros.
 

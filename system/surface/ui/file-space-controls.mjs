@@ -9,6 +9,7 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
 const FILE_EXTENSION_SELECTOR = '[data-app-extension="file-space"]';
+const FILE_SEARCH_LOCALE = "pt-BR";
 const LOCATIONS = Object.freeze([
   Object.freeze({ label: "Meu espaço", path: "/" }),
   Object.freeze({ label: "Documentos", path: "/Documentos" }),
@@ -85,6 +86,7 @@ export function mountFileSpaceControls(
   let renameDraft = "";
   let copyingPath = null;
   let copyDraft = "";
+  let searchQuery = "";
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -189,6 +191,25 @@ export function mountFileSpaceControls(
     if (focus) focusSelectedRow();
   };
 
+  const normalizedSearchQuery = () =>
+    searchQuery.trim().toLocaleLowerCase(FILE_SEARCH_LOCALE);
+
+  const visibleEntries = () => {
+    if (!listing) return [];
+    const query = normalizedSearchQuery();
+    if (!query) return listing.entries;
+    return listing.entries.filter((entry) =>
+      entry.name.toLocaleLowerCase(FILE_SEARCH_LOCALE).includes(query),
+    );
+  };
+
+  const selectionIsVisible = () => {
+    if (!listing || !selectedPath) return true;
+    return visibleEntries().some(
+      (entry) => joinPath(listing.path, entry.name) === selectedPath,
+    );
+  };
+
   const renderEntries = (container) => {
     const list = node(documentObject, "div", "ordax-files-list");
     list.setAttribute("aria-label", "Itens da pasta");
@@ -218,7 +239,21 @@ export function mountFileSpaceControls(
       return;
     }
 
-    for (const entry of listing.entries) {
+    const entries = visibleEntries();
+    if (entries.length === 0) {
+      list.append(
+        node(
+          documentObject,
+          "div",
+          "ordax-files-empty",
+          "Nenhum item corresponde à busca nesta pasta.",
+        ),
+      );
+      container.append(list);
+      return;
+    }
+
+    for (const entry of entries) {
       const path = joinPath(listing.path, entry.name);
       const selected = selectedPath === path;
       const row = node(documentObject, "button", "ordax-file-row");
@@ -411,6 +446,26 @@ export function mountFileSpaceControls(
     breadcrumb.setAttribute("aria-label", "Caminho atual");
     renderBreadcrumb(breadcrumb);
 
+    const search = node(documentObject, "div", "ordax-files-search");
+    const searchInput = node(documentObject, "input", "ordax-files-search-input");
+    searchInput.type = "search";
+    searchInput.maxLength = 120;
+    searchInput.autocomplete = "off";
+    searchInput.spellcheck = false;
+    searchInput.placeholder = "Buscar nesta pasta";
+    searchInput.value = searchQuery;
+    searchInput.dataset.fileSearch = "";
+    searchInput.disabled = pending || !listing;
+    searchInput.setAttribute("aria-label", "Buscar pelo nome nesta pasta");
+    search.append(searchInput);
+    if (searchQuery) {
+      const clearSearch = node(documentObject, "button", "ordax-files-search-clear", "Limpar");
+      clearSearch.type = "button";
+      clearSearch.dataset.fileSearchClear = "";
+      clearSearch.disabled = pending;
+      search.append(clearSearch);
+    }
+
     const actions = node(documentObject, "div", "ordax-files-actions");
     const refresh = node(documentObject, "button", "ordax-files-action", pending ? "Atualizando…" : "Atualizar");
     refresh.type = "button";
@@ -421,7 +476,7 @@ export function mountFileSpaceControls(
     create.dataset.fileCreateToggle = "";
     create.disabled = pending || !listing;
     actions.append(refresh, create);
-    toolbar.append(breadcrumb, actions);
+    toolbar.append(breadcrumb, search, actions);
     content.append(toolbar);
 
     const status = node(
@@ -431,7 +486,9 @@ export function mountFileSpaceControls(
       pending
         ? "Atualizando conteúdo…"
         : listing
-          ? `${listing.entries.length} ${listing.entries.length === 1 ? "item" : "itens"}`
+          ? normalizedSearchQuery()
+            ? `${visibleEntries().length} de ${listing.entries.length} itens · busca nesta pasta`
+            : `${listing.entries.length} ${listing.entries.length === 1 ? "item" : "itens"}`
           : "Preparando espaço do usuário…",
     );
     status.setAttribute("role", "status");
@@ -481,6 +538,7 @@ export function mountFileSpaceControls(
     previewPending = false;
     previewRequestOrdinal += 1;
     if (!preserveSelection) {
+      searchQuery = "";
       selectedPath = null;
       renamingPath = null;
       renameDraft = "";
@@ -578,6 +636,7 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
       selectedPath = nextPath;
+      if (!selectionIsVisible()) selectedPath = null;
       copyingPath = null;
       copyDraft = "";
       previewRequestOrdinal += 1;
@@ -638,6 +697,7 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== requestOrdinal) return;
       listing = next;
       selectedPath = nextPath;
+      if (!selectionIsVisible()) selectedPath = null;
       renamingPath = null;
       renameDraft = "";
       if (textPreview?.path === previousPath) {
@@ -776,6 +836,14 @@ export function mountFileSpaceControls(
       void load(open.dataset.fileOpenPath);
       return;
     }
+    const clearSearch = event.target.closest("[data-file-search-clear]");
+    if (clearSearch && root.contains(clearSearch)) {
+      searchQuery = "";
+      message = null;
+      replaceView();
+      queueMicrotask(() => findSlot()?.querySelector("[data-file-search]")?.focus());
+      return;
+    }
     const refresh = event.target.closest("[data-file-refresh]");
     if (refresh && listing) {
       void load(listing.path);
@@ -804,7 +872,29 @@ export function mountFileSpaceControls(
   };
 
   const onInput = (event) => {
-    if (event.target.matches?.("[data-file-directory-name]")) {
+    if (event.target.matches?.("[data-file-search]")) {
+      searchQuery = String(event.target.value ?? "").slice(0, 120);
+      if (!selectionIsVisible()) {
+        selectedPath = null;
+        renamingPath = null;
+        renameDraft = "";
+        copyingPath = null;
+        copyDraft = "";
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+      }
+      message = null;
+      const caret = searchQuery.length;
+      replaceView();
+      queueMicrotask(() => {
+        if (destroyed) return;
+        const input = findSlot()?.querySelector("[data-file-search]");
+        if (!input) return;
+        input.focus();
+        input.setSelectionRange?.(caret, caret);
+      });
+    } else if (event.target.matches?.("[data-file-directory-name]")) {
       directoryDraft = event.target.value;
     } else if (event.target.matches?.("[data-file-rename-name]")) {
       renameDraft = event.target.value;
@@ -814,6 +904,17 @@ export function mountFileSpaceControls(
   };
 
   const onKeyDown = (event) => {
+    if (event.target.matches?.("[data-file-search]")) {
+      if (event.key === "Escape" && searchQuery) {
+        event.preventDefault();
+        searchQuery = "";
+        message = null;
+        replaceView();
+        queueMicrotask(() => findSlot()?.querySelector("[data-file-search]")?.focus());
+      }
+      return;
+    }
+
     if (event.target.matches?.("[data-file-copy-name]")) {
       if (event.key === "Enter") {
         event.preventDefault();
