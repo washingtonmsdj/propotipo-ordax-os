@@ -1,0 +1,79 @@
+{
+  "$schema": "prototype-ordax.declared-third-party-inputs/1",
+  "status": "declared-inputs-not-sbom",
+  "purpose": "pre-release-license-and-source-compliance-preparation",
+  "limitations": {
+    "full_transitive_dependency_inventory": false,
+    "final_shipped_bytes_inventory": false,
+    "license_resolution_complete": false,
+    "usable_as_release_sbom": false
+  },
+  "inputs": [
+    {
+      "id": "linux-kernel",
+      "kind": "source-archive",
+      "source_authority": "bootstrap/kernel/source.json",
+      "version": "6.6.52",
+      "archive_url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.52.tar.xz",
+      "archive_sha256": "1591ab348399d4aa53121158525056a69c8cf0fe0e90935b0095e9a58e37b4b8",
+      "delivery_scope": ["usb", "native"],
+      "license": {
+        "status": "unresolved-in-this-inventory",
+        "spdx": null
+      }
+    },
+    {
+      "id": "alpine-development-base",
+      "kind": "base-rootfs-and-selected-packages",
+      "source_authority": "bootstrap/dev-base/_build_core.py",
+      "version": "3.22.5",
+      "branch": "v3.22",
+      "arch": "x86_64",
+      "packages": [
+        "git",
+        "ca-certificates",
+        "kmod",
+        "iproute2",
+        "iw",
+        "wpa_supplicant",
+        "zstd",
+        "linux-firmware-other",
+        "linux-firmware-rtlwifi",
+        "linux-firmware-mediatek",
+        "linux-firmware-ath9k_htc"
+      ],
+      "build_only_packages": ["zstd"],
+      "delivery_scope": ["owner-development-usb-base"],
+      "license": {
+        "status": "unresolved-in-this-inventory",
+        "spdx": null
+      }
+    },
+    {
+      "id": "alpine-native-surface-runtime",
+      "kind": "runtime-package-set",
+      "source_authority": "system/surface/bin/ordax-surface",
+      "branch": "v3.22",
+      "packages": [
+        "alpine-baselayout",
+        "busybox",
+        "ca-certificates",
+        "cage",
+        "barkery-browser",
+        "xwayland",
+        "seatd-launch",
+        "mesa-dri-gallium",
+        "mesa-egl",
+        "mesa-gbm",
+        "font-dejavu",
+        "eudev",
+        "libinput-udev"
+      ],
+      "delivery_scope": ["native-surface-runtime"],
+      "license": {
+        "status": "unresolved-in-this-inventory",
+        "spdx": null
+      }
+    }
+  ]
+}

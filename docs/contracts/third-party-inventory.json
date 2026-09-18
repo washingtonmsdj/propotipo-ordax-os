@@ -1,0 +1,20 @@
+{
+  "$schema": "prototype-ordax.third-party-inventory-contract/1",
+  "status": "canonical-prototype-contract",
+  "inventory": "platform/compliance/declared-inputs.json",
+  "rules": {
+    "declared_inputs_are_not_a_release_sbom": true,
+    "source_authorities_must_match_repository_selection": true,
+    "kernel_source_identity_must_match_bootstrap_kernel_source": true,
+    "development_base_packages_must_match_build_source": true,
+    "graphical_runtime_packages_must_match_surface_source": true,
+    "license_ids_may_not_be_invented": true,
+    "unresolved_license_status_allowed_before_public_release": true,
+    "unresolved_license_status_allowed_in_public_release_sbom": false,
+    "final_release_inventory_must_be_generated_from_shipped_bytes": true
+  },
+  "handoff_to_release_compliance": {
+    "contract": "docs/contracts/release-compliance.json",
+    "required_before_publication": true
+  }
+}
