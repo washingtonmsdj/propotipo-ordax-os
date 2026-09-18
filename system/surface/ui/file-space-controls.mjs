@@ -578,26 +578,26 @@ export function mountFileSpaceControls(
 
   const load = async (path, { recordHistory = true } = {}) => {
     const ordinal = ++requestOrdinal;
-    const preserveSelection = Boolean(listing && listing.path === path);
     pending = true;
     message = null;
-    creatingDirectory = false;
-    directoryDraft = "";
-    textPreview = null;
-    previewPending = false;
-    previewRequestOrdinal += 1;
-    if (!preserveSelection) {
-      searchQuery = "";
-      selectedPath = null;
-      renamingPath = null;
-      renameDraft = "";
-      copyingPath = null;
-      copyDraft = "";
-    }
     replaceView();
     try {
       const next = validateFileListing(await port.list(path));
-      if (destroyed || ordinal !== requestOrdinal) return;
+      if (destroyed || ordinal !== requestOrdinal) return false;
+      const changedPath = Boolean(listing && listing.path !== next.path);
+      if (changedPath) {
+        searchQuery = "";
+        selectedPath = null;
+        renamingPath = null;
+        renameDraft = "";
+        copyingPath = null;
+        copyDraft = "";
+        creatingDirectory = false;
+        directoryDraft = "";
+        previewRequestOrdinal += 1;
+        previewPending = false;
+        textPreview = null;
+      }
       listing = next;
       if (recordHistory) recordNavigation(next.path);
       if (
