@@ -18,9 +18,26 @@
     "human_sequence_only": true,
     "exact_identity_remains_source_commit": true,
     "prototype_sequence": {
-      "method": "first-parent-device-impact-count",
-      "included_paths": ["system/**", "boot/**", "bootstrap/**"],
-      "excluded_paths": ["system/*.md"]
+      "method": "anchored-first-parent-device-impact-count",
+      "epoch": {
+        "source_commit": "2361b9e74c02d97c4d907417d7e1b2836062e5e7",
+        "delivery_number": 220,
+        "reason": "preserve already-observed prototype sequence while tightening device-impact scope"
+      },
+      "included_paths": [
+        "system/**",
+        "boot/**",
+        "bootstrap/**"
+      ],
+      "excluded_paths": [
+        "system/**/*.md",
+        "boot/**/*.md",
+        "bootstrap/**/*.md",
+        "boot/**/prove_*",
+        "bootstrap/**/prove_*"
+      ],
+      "proof_and_documentation_only_changes_increment_delivery": false,
+      "proof_and_documentation_only_changes_require_boot_refresh": false
     }
   },
   "update": {
