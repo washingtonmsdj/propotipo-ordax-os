@@ -19,22 +19,28 @@ import stat
 import subprocess
 import sys
 from typing import Any
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
 TRUST_SCHEMA = "prototype-ordax.release-trust/1"
 POLICY_SCHEMA = "prototype-ordax.release-trust-policy/1"
 MINIMAL_SCHEMA = "prototype-ordax.minimal-bootstrap/4"
 STATUS_SCHEMA = "ordax.base-update-owner-status/1"
+REFRESH_SCHEMA = "prototype-ordax.release-agent-refresh/1"
 KEY_ID = "ordax-prototype-release-v1"
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MAX_JSON = 512 * 1024
 MAX_CHANNEL_BYTES = 4096
 MAX_RECEIPT_BYTES = 64 * 1024
+MAX_RELEASE_AGENT_BYTES = 32 * 1024 * 1024
+REFRESH_DOWNLOAD_TIMEOUT_SECONDS = 45
 MATERIALIZE_TIMEOUT_SECONDS = 660
 TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
 PHYSICAL_TRUST_RELATIVE = Path("bootstrap/trust/release-ed25519.json")
 RELEASE_CHANNEL_RELATIVE = Path("bootstrap/config/release-envelope-url")
 RELEASE_AGENT_RELATIVE = Path("bootstrap/release-acquisition/ordax-release-agent")
+REFRESH_DESCRIPTOR_RELATIVE = Path("system/services/base-update/release-agent-refresh.json")
 POLICY_RELATIVE = Path("docs/contracts/release-trust-policy.json")
 MINIMAL_RELATIVE = Path("docs/contracts/minimal-bootstrap.json")
 BOOT_REFRESH_RELATIVE = Path("boot-refresh-required")
@@ -310,6 +316,262 @@ def _install_public_trust(
         raise
 
 
+def _hash_regular_file(
+    path: Path,
+    label: str,
+    max_bytes: int = MAX_RELEASE_AGENT_BYTES,
+) -> tuple[str, int]:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise OwnerError(f"cannot open {label}") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise OwnerError(f"{label} must be a regular non-symlink file")
+        if metadata.st_size <= 0 or metadata.st_size > max_bytes:
+            raise OwnerError(f"{label} size is outside the allowed range")
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise OwnerError(f"{label} exceeded the allowed size while hashing")
+            digest.update(chunk)
+        if total != metadata.st_size:
+            raise OwnerError(f"{label} changed while hashing")
+        return digest.hexdigest(), total
+    finally:
+        os.close(descriptor)
+
+
+def _validate_release_agent_refresh(
+    repo_root: Path,
+) -> dict[str, Any]:
+    _payload, descriptor = _strict_json(
+        repo_root / REFRESH_DESCRIPTOR_RELATIVE,
+        "release-agent refresh descriptor",
+    )
+    expected_fields = {
+        "$schema",
+        "status",
+        "component",
+        "artifact",
+        "allowed_from_sha256",
+        "target_sha256",
+        "target_size",
+        "download_url",
+        "target_path",
+        "mode",
+        "physical_media_rewrite_required",
+        "raw_device_write_allowed",
+        "unknown_installed_hash_policy",
+        "replacement",
+    }
+    if set(descriptor) != expected_fields:
+        raise OwnerError("release-agent refresh descriptor has unexpected fields")
+    if descriptor.get("$schema") != REFRESH_SCHEMA:
+        raise OwnerError("release-agent refresh schema is invalid")
+    if descriptor.get("status") != "development-git-migration":
+        raise OwnerError("release-agent refresh status is invalid")
+    if descriptor.get("component") != "bootstrap-release-acquisition":
+        raise OwnerError("release-agent refresh component is invalid")
+    if descriptor.get("artifact") != "ordax-release-agent":
+        raise OwnerError("release-agent refresh artifact name is invalid")
+    if descriptor.get("target_path") != "/ordax/bootstrap/release-acquisition/ordax-release-agent":
+        raise OwnerError("release-agent refresh target path is invalid")
+    if descriptor.get("mode") != "0755":
+        raise OwnerError("release-agent refresh mode is invalid")
+    if descriptor.get("physical_media_rewrite_required") is not False:
+        raise OwnerError("release-agent refresh cannot require physical media rewrite")
+    if descriptor.get("raw_device_write_allowed") is not False:
+        raise OwnerError("release-agent refresh cannot authorize raw device writes")
+    if descriptor.get("unknown_installed_hash_policy") != "block":
+        raise OwnerError("release-agent refresh must block unknown installed hashes")
+    if descriptor.get("replacement") != "same-directory-temp-fsync-atomic-replace":
+        raise OwnerError("release-agent refresh replacement policy is invalid")
+
+    allowed = descriptor.get("allowed_from_sha256")
+    if (
+        not isinstance(allowed, list)
+        or not allowed
+        or len(set(allowed)) != len(allowed)
+        or any(not isinstance(value, str) or HEX64.fullmatch(value) is None for value in allowed)
+    ):
+        raise OwnerError("release-agent refresh allowed-from hashes are invalid")
+
+    target_sha = descriptor.get("target_sha256")
+    target_size = descriptor.get("target_size")
+    if not isinstance(target_sha, str) or HEX64.fullmatch(target_sha) is None:
+        raise OwnerError("release-agent refresh target hash is invalid")
+    if target_sha in allowed:
+        raise OwnerError("release-agent refresh target must not be an allowed-from legacy hash")
+    if (
+        isinstance(target_size, bool)
+        or not isinstance(target_size, int)
+        or target_size <= 0
+        or target_size > MAX_RELEASE_AGENT_BYTES
+    ):
+        raise OwnerError("release-agent refresh target size is invalid")
+
+    url = descriptor.get("download_url")
+    if not isinstance(url, str):
+        raise OwnerError("release-agent refresh URL is invalid")
+    parsed = urlsplit(url)
+    expected_path = (
+        "/washingtonmsdj/prototipo-ordax-os/releases/download/"
+        f"ordax-release-agent-{target_sha}/ordax-release-agent"
+    )
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port is not None
+        or parsed.path != expected_path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise OwnerError("release-agent refresh URL is outside the hash-addressed OrdaX channel")
+    return descriptor
+
+
+def _download_release_agent(
+    url: str,
+    target: Path,
+    expected_sha: str,
+    expected_size: int,
+) -> None:
+    parent = _require_real_directory(target.parent, "release-agent directory")
+    temporary = target.with_name(f".{target.name}.ordax-refresh-{os.getpid()}")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptor = -1
+    response = None
+    try:
+        request = Request(
+            url,
+            headers={
+                "User-Agent": "OrdaX-Release-Agent-Refresh/1",
+                "Cache-Control": "no-cache",
+            },
+        )
+        try:
+            response = urlopen(request, timeout=REFRESH_DOWNLOAD_TIMEOUT_SECONDS)
+        except OSError as exc:
+            raise OwnerError("release-agent refresh download is unavailable") from exc
+        status_code = getattr(response, "status", 200)
+        if status_code != 200:
+            raise OwnerError(f"release-agent refresh download returned HTTP {status_code}")
+        final_url = urlsplit(response.geturl())
+        if final_url.scheme != "https":
+            raise OwnerError("release-agent refresh redirect left HTTPS")
+        content_length = response.headers.get("Content-Length")
+        if content_length:
+            try:
+                announced = int(content_length)
+            except ValueError as exc:
+                raise OwnerError("release-agent refresh Content-Length is invalid") from exc
+            if announced != expected_size:
+                raise OwnerError("release-agent refresh Content-Length does not match pinned size")
+
+        descriptor = os.open(temporary, flags, 0o755)
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > expected_size or total > MAX_RELEASE_AGENT_BYTES:
+                raise OwnerError("release-agent refresh download exceeded pinned size")
+            digest.update(chunk)
+            offset = 0
+            while offset < len(chunk):
+                written = os.write(descriptor, chunk[offset:])
+                if written <= 0:
+                    raise OwnerError("short write while refreshing release agent")
+                offset += written
+        if total != expected_size:
+            raise OwnerError("release-agent refresh download size mismatch")
+        if digest.hexdigest() != expected_sha:
+            raise OwnerError("release-agent refresh download hash mismatch")
+        os.fchmod(descriptor, 0o755)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+
+        verified_sha, verified_size = _hash_regular_file(
+            temporary,
+            "temporary refreshed release agent",
+        )
+        if verified_sha != expected_sha or verified_size != expected_size:
+            raise OwnerError("temporary refreshed release agent changed before commit")
+        os.replace(temporary, target)
+        _fsync_directory(parent)
+    finally:
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+
+
+def _refresh_release_agent_if_needed(
+    repo_root: Path,
+    physical_root: Path,
+) -> tuple[str, str]:
+    refresh = _validate_release_agent_refresh(repo_root)
+    target = physical_root / RELEASE_AGENT_RELATIVE
+    actual_sha, actual_size = _hash_regular_file(
+        target,
+        "physical release acquisition agent",
+    )
+    target_sha = refresh["target_sha256"]
+    target_size = refresh["target_size"]
+    if actual_sha == target_sha:
+        if actual_size != target_size:
+            raise OwnerError("current release agent hash matched but size binding did not")
+        return "already-current", target_sha
+
+    if actual_sha not in refresh["allowed_from_sha256"]:
+        raise OwnerError(
+            "physical release acquisition agent has an unrecognized installed hash"
+        )
+
+    _download_release_agent(
+        refresh["download_url"],
+        target,
+        target_sha,
+        target_size,
+    )
+    installed_sha, installed_size = _hash_regular_file(
+        target,
+        "refreshed physical release acquisition agent",
+    )
+    if installed_sha != target_sha or installed_size != target_size:
+        raise OwnerError("refreshed release agent does not match pinned target")
+    return "refreshed", target_sha
+
+
 def _read_release_channel(physical_root: Path) -> str:
     payload = _regular_bytes(
         physical_root / RELEASE_CHANNEL_RELATIVE,
@@ -482,6 +744,8 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         "phase": "trust-enrollment",
         "sourceSha": source,
         "pendingBootRefreshSha": pending,
+        "releaseAgentRefreshState": "blocked",
+        "releaseAgentSha256": None,
         "canonicalTrustPinned": False,
         "physicalTrustEnrolled": False,
         "trustEnrollmentState": "blocked",
@@ -493,6 +757,27 @@ def run_once(repo_root: Path, state_root: Path, physical_root: Path, source_sha:
         "rebootRequested": False,
         "promotionAttempted": False,
     }
+
+    try:
+        refresh_state, refresh_sha = _refresh_release_agent_if_needed(
+            repo_root,
+            physical_root,
+        )
+        status["releaseAgentRefreshState"] = refresh_state
+        status["releaseAgentSha256"] = refresh_sha
+        status["phase"] = "trust-enrollment"
+    except OwnerError as exc:
+        message = str(exc)
+        status["phase"] = "bootstrap-component-refresh"
+        if "unrecognized installed hash" in message:
+            status["blocker"] = "release-agent-installed-hash-unrecognized"
+        elif "download" in message or "Content-Length" in message:
+            status["blocker"] = "release-agent-refresh-unavailable"
+        else:
+            status["blocker"] = "release-agent-refresh-validation-failed"
+        status["detail"] = message[:512]
+        _atomic_status(state_root, status)
+        return status
 
     try:
         trust_bytes, trust_sha = _validate_repository_authority(repo_root)
