@@ -397,7 +397,7 @@ rollback_update() {
     temporary=$REJECTED_FILE.tmp.$$
     printf '%s\n' "$failed_sha" >"$temporary"
     /bin/busybox mv -f "$temporary" "$REJECTED_FILE"
-    rm -f "$HEALTH_FILE"
+    clear_surface_health
     stop_surface
     if ! "$GIT_BIN" -C "$WORKTREE" reset --hard "$previous_sha" >>"$UPDATE_LOG" 2>&1; then
         fail_closed "automatic rollback to $previous_sha failed"
