@@ -38,6 +38,7 @@ NATIVE_POWER_ADAPTER = ROOT / "system" / "adapters" / "native" / "power-actions.
 NATIVE_SURFACE_HEARTBEAT_ADAPTER = ROOT / "system" / "adapters" / "native" / "surface-heartbeat.mjs"
 POWER_CONTROLS = SURFACE / "power-controls.mjs"
 UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
+UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
@@ -202,7 +203,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("Histórico de atualizações", overview)
         self.assertIn("Identidade da entrega", overview)
         self.assertIn("Distribuição conjunta · sem versão própria", overview)
-        self.assertIn("America/Bahia", overview)
+        self.assertIn("services/update/presentation.mjs", overview)
         self.assertIn(".ordax-system-view", css)
         self.assertIn("../../surface/ui/system.css", web_html)
         self.assertIn("../../surface/ui/system.css", native_html)
@@ -346,13 +347,15 @@ class SurfaceUiContractTests(unittest.TestCase):
 
     def test_update_center_distinguishes_git_head_from_surface_runtime(self):
         controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
+        presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
         contract = (ROOT / "system" / "contracts" / "update-status.mjs").read_text(encoding="utf-8")
         self.assertIn("runtimeSurfaceSha", contract)
-        self.assertIn("snapshot.runtimeSurfaceSha", controls)
-        self.assertIn("snapshot?.deliveryNumber", controls)
-        self.assertIn("America/Bahia", controls)
-        self.assertIn("Runtime alinhado com a entrega observada.", controls)
-        self.assertIn("Runtime mantido no último commit com efeito na Surface.", controls)
+        self.assertIn("updateSnapshot.runtimeSurfaceSha", overview)
+        self.assertIn("deliveryLabel(updateSnapshot.deliveryNumber)", overview)
+        self.assertIn("America/Bahia", presentation)
+        self.assertIn('"Surface em execução"', overview)
+        self.assertIn('target: "updates"', controls)
 
     def test_shared_preference_path_has_no_platform_storage_shortcut(self):
         paths = [
