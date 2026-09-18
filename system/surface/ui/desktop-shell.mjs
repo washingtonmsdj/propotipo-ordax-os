@@ -119,7 +119,7 @@ export function createDesktopShellMarkup() {
             <span class="ordax-tray-icon ordax-tray-network-icon" data-connectivity-icon data-state="unknown" data-network-kind="unknown" data-signal-level="0" aria-hidden="true">${ICONS.networkWifi}${ICONS.networkEthernet}${ICONS.networkOther}</span>
             <span class="ordax-tray-label" data-connectivity-label>Conectividade desconhecida</span>
           </button>
-          <div class="ordax-tray-item ordax-tray-battery" data-battery-tray hidden>
+          <div class="ordax-tray-item ordax-tray-battery" data-battery-tray role="status" aria-live="polite" hidden>
             <span class="ordax-tray-icon ordax-tray-battery-icon" data-battery-icon data-battery-level="0" data-charging="false" aria-hidden="true">${ICONS.battery}</span>
             <span class="ordax-tray-label" data-battery-label>--%</span>
           </div>
