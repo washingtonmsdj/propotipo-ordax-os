@@ -277,6 +277,94 @@
   white-space: nowrap;
 }
 
+.ordax-system-section-copy {
+  max-width: 760px;
+  margin: -5px 0 14px;
+  color: var(--ordax-muted);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.ordax-system-version-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.ordax-system-version-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+}
+
+.ordax-system-version-item strong {
+  overflow: hidden;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-system-version-item span {
+  color: var(--ordax-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.ordax-system-history {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.ordax-system-history + .ordax-system-history {
+  margin-top: 20px;
+}
+
+.ordax-system-history-title {
+  margin: 0 0 2px;
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ordax-system-history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+}
+
+.ordax-system-history-item strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-system-history-item span {
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.ordax-system-history-item small {
+  grid-column: 1 / -1;
+  color: var(--ordax-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.63rem;
+  line-height: 1.45;
+}
+
 .ordax-system-capabilities {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -348,7 +436,8 @@
   .ordax-system-summary,
   .ordax-system-resource-grid,
   .ordax-system-facts,
-  .ordax-system-capabilities {
+  .ordax-system-capabilities,
+  .ordax-system-version-grid {
     grid-template-columns: 1fr;
   }
 
@@ -371,5 +460,13 @@
   .ordax-system-fact,
   .ordax-system-fact:nth-child(even) {
     border-right: 0;
+  }
+
+  .ordax-system-history-item {
+    grid-template-columns: 1fr;
+  }
+
+  .ordax-system-history-item span {
+    white-space: normal;
   }
 }
