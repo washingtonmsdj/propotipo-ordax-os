@@ -6,6 +6,7 @@ import { createNativeSystemMetrics } from "../../adapters/native/system-metrics.
 import { createNativeUpdateWatcher } from "../../adapters/native/update-runtime.mjs";
 import { createNativeWorkspaceStore } from "../../adapters/native/workspace.mjs";
 import { createNativeSyncStateStore } from "../../adapters/native/sync-state.mjs";
+import { createNativeSurfaceHeartbeat } from "../../adapters/native/surface-heartbeat.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
@@ -126,10 +127,12 @@ async function start() {
   // The native supervisor uses this acknowledgement to keep or roll back
   // a live update without rebooting the notebook.
   void updateWatcher.markHealthy();
+  const surfaceHeartbeat = createNativeSurfaceHeartbeat(window);
 
   window.addEventListener(
     "pagehide",
     () => {
+      surfaceHeartbeat.dispose();
       powerControls.destroy();
       updateControls.destroy();
       systemOverviewControls.destroy();
