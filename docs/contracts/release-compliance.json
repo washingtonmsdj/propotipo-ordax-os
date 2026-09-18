@@ -1,0 +1,37 @@
+{
+  "$schema": "prototype-ordax.release-compliance/1",
+  "status": "required-before-public-release",
+  "release_publication_gate": true,
+  "required_artifacts": {
+    "sbom": {
+      "required": true,
+      "same_origin_path": true,
+      "sha256_required": true,
+      "size_required": true
+    },
+    "third_party_notices": {
+      "required": true,
+      "same_origin_path": true,
+      "sha256_required": true,
+      "size_required": true
+    },
+    "source_bundle": {
+      "required": true,
+      "same_origin_path": true,
+      "sha256_required": true,
+      "size_required": true,
+      "scope": "release-specific-third-party-source-compliance"
+    }
+  },
+  "rules": {
+    "compliance_authorization_required": true,
+    "fake_or_placeholder_artifacts_allowed": false,
+    "repository_wide_license_inference_allowed": false,
+    "proprietary_source_publication_implied": false,
+    "release_specific_inventory_required": true
+  },
+  "current_state": {
+    "production_release_published": false,
+    "public_release_count": 0
+  }
+}
