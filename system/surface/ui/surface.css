@@ -1077,6 +1077,19 @@ button.ordax-tray-item {
   color: var(--ordax-danger);
 }
 
+.ordax-tray-battery[data-battery-state="not-detected"],
+.ordax-tray-battery[data-battery-state="unavailable"] {
+  color: var(--ordax-muted);
+}
+
+.ordax-tray-battery-icon[data-battery-level="unknown"] {
+  color: var(--ordax-muted);
+}
+
+.ordax-tray-battery-icon[data-battery-level="unknown"] .ordax-battery-segment {
+  opacity: 0.12;
+}
+
 .ordax-tray-battery-icon[data-charging="true"] .ordax-battery-bolt {
   opacity: 1;
 }
