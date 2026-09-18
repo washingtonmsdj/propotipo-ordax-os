@@ -25,6 +25,8 @@ UPDATE_HISTORY_FILE=$STATE_DIR/native-state/update-history.tsv
 RELEASE_HISTORY_FILE=$STATE_DIR/native-state/release-history.tsv
 UPDATE_HISTORY_MAX_ENTRIES=200
 RELEASE_HISTORY_MAX_ENTRIES=80
+DELIVERY_EPOCH_SHA=2361b9e74c02d97c4d907417d7e1b2836062e5e7
+DELIVERY_EPOCH_NUMBER=220
 UPDATE_RUN_DIR=${ORDAX_UPDATE_RUN_DIR:-/run/ordax-update}
 ATTEMPT_STARTED_EPOCH_FILE=$UPDATE_RUN_DIR/attempt-started-epoch
 UPDATE_STATE=$UPDATE_RUN_DIR/state.json
@@ -433,6 +435,24 @@ current_sha() {
 
 delivery_number_for_sha() {
     source_sha=$1
+
+    if "$GIT_BIN" -C "$WORKTREE" merge-base --is-ancestor "$DELIVERY_EPOCH_SHA" "$source_sha" >/dev/null 2>&1; then
+        delta=$("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --count "$DELIVERY_EPOCH_SHA..$source_sha" -- \
+            system boot bootstrap \
+            ':(exclude,glob)system/**/*.md' \
+            ':(exclude,glob)boot/**/*.md' \
+            ':(exclude,glob)bootstrap/**/*.md' \
+            ':(exclude,glob)boot/**/prove_*' \
+            ':(exclude,glob)bootstrap/**/prove_*' 2>/dev/null || true)
+        case "$delta" in
+            ''|*[!0-9]*) printf '0' ;;
+            *) printf '%s' $((DELIVERY_EPOCH_NUMBER + delta)) ;;
+        esac
+        return 0
+    fi
+
+    # Historical fallback keeps delivery numbers that were already shown before
+    # the device-impact scope was tightened at Entrega 220.
     value=$("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --count "$source_sha" -- \
         system boot bootstrap ':(exclude)system/*.md' 2>/dev/null || true)
     case "$value" in
@@ -455,7 +475,12 @@ refresh_release_history() {
     temporary=$RELEASE_HISTORY_FILE.tmp.$
     : >"$temporary"
     for release_sha in $("$GIT_BIN" -C "$WORKTREE" rev-list --first-parent --max-count="$RELEASE_HISTORY_MAX_ENTRIES" HEAD -- \
-        system boot bootstrap ':(exclude)system/*.md' 2>/dev/null || true); do
+        system boot bootstrap \
+        ':(exclude,glob)system/**/*.md' \
+        ':(exclude,glob)boot/**/*.md' \
+        ':(exclude,glob)bootstrap/**/*.md' \
+        ':(exclude,glob)boot/**/prove_*' \
+        ':(exclude,glob)bootstrap/**/prove_*' 2>/dev/null || true); do
         release_delivery=$(delivery_number_for_sha "$release_sha")
         [ "$release_delivery" -gt 0 ] 2>/dev/null || continue
         released_at=$("$GIT_BIN" -C "$WORKTREE" show -s --format=%cI "$release_sha" 2>/dev/null || true)
@@ -796,7 +821,7 @@ classify_changes() {
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         case "$path" in
-            system/*.md)
+            system/*.md|boot/*.md|bootstrap/*.md|boot/*/prove_*|bootstrap/*/prove_*)
                 ;;
             boot/*|bootstrap/*)
                 LOW_LEVEL_CHANGED=1

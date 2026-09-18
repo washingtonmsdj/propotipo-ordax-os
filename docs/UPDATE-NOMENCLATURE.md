@@ -31,13 +31,15 @@ Um número de PR nunca é o número de uma atualização do notebook.
 
 ## Sequência de Entrega
 
-Enquanto o protótipo usa a `main` como fonte de atualização do notebook, o número de Entrega é derivado da sequência first-parent de mudanças que atingem caminhos do dispositivo:
+Enquanto o protótipo usa a `main` como fonte de atualização do notebook, o número de Entrega é derivado da sequência first-parent de mudanças que realmente atingem o dispositivo.
 
-- `system/`, exceto documentação `system/*.md`;
-- `boot/`;
-- `bootstrap/`.
+A sequência atual tem uma âncora explícita: o commit `2361b9e7…` é **Entrega 220**. Depois dessa âncora, contam mudanças em `system/`, `boot/` e `bootstrap/`, mas não contam:
 
-Mudanças exclusivas do site público, documentação geral, CI ou compliance não incrementam a Entrega do notebook.
+- arquivos Markdown nesses owners;
+- scripts `prove_*` usados apenas para evidência/CI em `boot/` ou `bootstrap/`;
+- site público, documentação geral, testes, CI ou compliance sem efeito nos bytes/runtime do notebook.
+
+A âncora preserva os números que já haviam sido observados fisicamente enquanto permite tornar a classificação mais precisa sem renumerar o histórico exibido ao usuário. Uma prova de CI não cria uma Entrega e também não deve marcar um novo boot como necessário.
 
 A sequência não usa número de Pull Request.
 

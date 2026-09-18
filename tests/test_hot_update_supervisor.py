@@ -170,9 +170,13 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         host = NATIVE_HOST_SERVER.read_text(encoding="utf-8")
         controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
         self.assertIn("delivery_number_for_sha()", text)
-        self.assertIn('rev-list --first-parent --count "$source_sha"', text)
+        self.assertIn('rev-list --first-parent --count "$DELIVERY_EPOCH_SHA..$source_sha"', text)
+        self.assertIn("DELIVERY_EPOCH_NUMBER=220", text)
         self.assertIn("system boot bootstrap", text)
-        self.assertIn(":(exclude)system/*.md", text)
+        self.assertIn(":(exclude,glob)system/**/*.md", text)
+        self.assertIn(":(exclude,glob)boot/**/*.md", text)
+        self.assertIn(":(exclude,glob)bootstrap/**/*.md", text)
+        self.assertIn(":(exclude,glob)bootstrap/**/prove_*", text)
         self.assertNotIn("Merge pull request #", text)
         self.assertNotIn("version_number_for_sha()", text)
         self.assertIn("UPDATE_HISTORY_FILE=$STATE_DIR/native-state/update-history.tsv", text)
@@ -203,7 +207,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
 
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
-        markdown = text.index("system/*.md)")
+        markdown = text.index("system/*.md|boot/*.md|bootstrap/*.md|boot/*/prove_*|bootstrap/*/prove_*)")
         next_case = text.index("boot/*|bootstrap/*)", markdown + 1)
         broad_system = text.index("system/*)", next_case + 1)
         self.assertLess(markdown, next_case)
@@ -230,6 +234,11 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("boot/*|bootstrap/*", text)
+        self.assertIn("boot/*/prove_*|bootstrap/*/prove_*", text)
+        self.assertLess(
+            text.index("boot/*/prove_*|bootstrap/*/prove_*"),
+            text.index("boot/*|bootstrap/*"),
+        )
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
         self.assertIn("boot refresh is marked pending", text)
