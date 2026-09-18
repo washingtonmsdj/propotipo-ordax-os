@@ -590,7 +590,6 @@ def read_release_history(path: str = RELEASE_HISTORY_FILE) -> list[dict]:
                 "title": title,
             }
         )
-    releases.reverse()
     return releases
 
 
