@@ -191,7 +191,7 @@ Then run the repository promoter with the exact reviewed signer binary:
 
 ```text
 python tools/release-signing/promote_public_trust.py check \
-  --promotion-dir <trust-review>\public-promotion \
+  --promotion-zip <trust-review>\OrdaX-Public-Trust-Handoff.zip \
   --verifier <toolkit>\ordax-release-signing.exe
 
 python tools/release-signing/promote_public_trust.py apply \
