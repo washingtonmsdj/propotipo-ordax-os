@@ -75,9 +75,9 @@ async function start() {
     workspaceStore,
     appActivation,
   );
-  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation);
-  const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics);
-  const systemStatusControls = mountSystemStatusControls(root, updateWatcher);
+  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface);
+  const systemMetricsControls = mountSystemMetricsControls(root, systemMetrics, surface);
+  const systemStatusControls = mountSystemStatusControls(root, updateWatcher, surface);
   const updateControls = mountUpdateControls(root, updateWatcher);
   const powerControls = mountPowerControls(root, powerActions);
 
