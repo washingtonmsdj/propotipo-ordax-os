@@ -43,12 +43,13 @@ function stateCopy(entry) {
   if (entry.state !== "connected") {
     const kindLabel =
       entry.kind === "wifi" ? "Wi-Fi" : entry.kind === "ethernet" ? "Cabo" : "Rede";
+    const stateLabel = entry.state === "unknown" ? "estado desconhecido" : "desconectado";
     return {
       kind: entry.kind,
       state: entry.state,
       signalLevel: 0,
-      label: `${kindLabel} desconectado`,
-      title: `${kindLabel}: desconectado`,
+      label: entry.state === "unknown" ? kindLabel : `${kindLabel} desconectado`,
+      title: `${kindLabel}: ${stateLabel}`,
     };
   }
   if (entry.kind === "wifi") {
