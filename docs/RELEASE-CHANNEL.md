@@ -144,13 +144,14 @@ fetch signed envelope
  -> store exact signed manifest payload
  -> rename staging -> releases/<commit>
  -> fsync releases
- -> atomically replace current symlink
+ -> stop here for A/B materialize mode
+ -> atomically replace current symlink only for install mode
  -> fsync /ordax
 ```
 
-`current` changes only after every candidate byte has passed authentication and integrity checks.
+`current` changes only after every candidate byte has passed authentication and integrity checks, and only when the caller explicitly uses the bootstrap `install` mode.
 
-An existing release may be reactivated only when its stored manifest and all artifact bytes still match; divergence fails closed.
+The A/B base-update owner uses `materialize --expected-commit <checkout>`. That mode requires the signed source commit to match the running checkout exactly and ends after immutable release materialization; it must not change `/ordax/current`. An existing release may be reused only when its stored manifest, artifact and extracted tree still match; divergence fails closed.
 
 ## Failure/offline behavior
 
