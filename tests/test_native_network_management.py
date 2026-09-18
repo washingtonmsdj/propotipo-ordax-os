@@ -166,7 +166,8 @@ class NativeNetworkManagementTests(unittest.TestCase):
         composition = COMPOSITION.read_text(encoding="utf-8")
         runtime = RUNTIME.read_text(encoding="utf-8")
         self.assertIn("createNativeNetworkManagement", composition)
-        self.assertIn("networkManagement = null", composition)
+        self.assertIn("optionalNativeProbe", composition)
+        self.assertIn("() => createNativeNetworkManagement(window)", composition)
         self.assertIn("networkManagementAvailable", composition)
         self.assertIn('"network.management"', runtime)
 
