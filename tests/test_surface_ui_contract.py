@@ -14,6 +14,7 @@ APP_OWNERS = {
     "system": APPS / "system" / "app.mjs",
 }
 APPEARANCE = PREFERENCES / "appearance.mjs"
+ACCESSIBILITY = PREFERENCES / "accessibility.mjs"
 PREFERENCE_CATALOG = PREFERENCES / "catalog.mjs"
 PREFERENCE_STORE_CONTRACT = ROOT / "system" / "contracts" / "preference-store.mjs"
 SYNC_RUNTIME_CONTRACT = ROOT / "system" / "contracts" / "sync-runtime.mjs"
@@ -76,6 +77,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             APP_CONTRACT,
             *APP_OWNERS.values(),
             APPEARANCE,
+            ACCESSIBILITY,
             PREFERENCE_CATALOG,
             PREFERENCE_STORE_CONTRACT,
             SYNC_RUNTIME_CONTRACT,
@@ -122,6 +124,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("contracts/app-activation.mjs", surface)
         self.assertIn("../../apps/catalog.mjs", surface)
         self.assertIn("../../services/preferences/appearance.mjs", surface)
+        self.assertIn("../../services/preferences/accessibility.mjs", surface)
         self.assertIn("./desktop-shell.mjs", surface)
         self.assertIn("./surface-lifecycle.mjs", surface)
         self.assertIn("SURFACE_RENDER_LIFECYCLE_SCHEMA", surface)
@@ -215,6 +218,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         settings = APP_OWNERS["settings"].read_text(encoding="utf-8")
         overview = SETTINGS_OVERVIEW_CONTROLS.read_text(encoding="utf-8")
         appearance = APPEARANCE.read_text(encoding="utf-8")
+        accessibility = ACCESSIBILITY.read_text(encoding="utf-8")
         preferences = PREFERENCE_CATALOG.read_text(encoding="utf-8")
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         css = (SURFACE / "settings.css").read_text(encoding="utf-8")
@@ -230,7 +234,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("listPreferenceDefinitions", overview)
         self.assertIn('"Ajustes"', overview)
         self.assertIn('id: "appearance"', overview)
+        self.assertIn('id: "accessibility"', overview)
         self.assertIn('id: "network"', overview)
+        self.assertIn("definition.sectionId !== sectionId", overview)
         self.assertIn("validSettingsSection", overview)
         self.assertIn("ordax-settings-navigation", css)
         self.assertNotIn("CAPABILITY_LABELS", overview)
@@ -247,9 +253,16 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('"appearance.theme"', appearance)
         self.assertIn('defaultValue: "light"', appearance)
         self.assertIn('value: "dark"', appearance)
+        self.assertIn('"accessibility.contrast"', accessibility)
+        self.assertIn('"accessibility.motion"', accessibility)
+        self.assertIn('value: "high"', accessibility)
+        self.assertIn('value: "reduced"', accessibility)
+        self.assertIn('"./accessibility.mjs"', preferences)
         self.assertIn("createPreferenceSnapshot", preferences)
         self.assertIn("setPreferenceValue", preferences)
         self.assertIn("PREFERENCE_RUNTIME_SCHEMA", surface)
+        self.assertIn("dataset.ordaxContrast", surface)
+        self.assertIn("dataset.ordaxMotion", surface)
         self.assertIn(".ordax-settings-view", css)
         self.assertIn("surface.preferences", web_main)
         self.assertIn("surface.preferences", native_main)
