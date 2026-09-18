@@ -9,9 +9,11 @@ import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
+import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
+import { mountSystemTrayQuickPanels } from "../../surface/ui/system-tray-quick-panels.mjs";
 
 const root = document.querySelector("#ordax-root");
 if (!root) {
@@ -39,6 +41,14 @@ const surface = mountSurface(
   workspaceStore,
   appActivation,
 );
+let quickPanelControls = null;
+let networkQuickPanel = null;
+try {
+  quickPanelControls = mountSystemTrayQuickPanels(root);
+  networkQuickPanel = mountNetworkQuickPanel(root, null, null);
+} catch (error) {
+  console.warn("OrdaX quick panels unavailable", error);
+}
 let syncMutationOrdinal = 0;
 const preferenceSync = createPreferenceSyncRuntime(surface.preferences, {
   syncStateStore,
@@ -75,6 +85,8 @@ window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
+    networkQuickPanel?.destroy();
+    quickPanelControls?.destroy();
     settingsOverviewControls.destroy();
     accountOverviewControls.destroy();
     preferenceSync.destroy();
