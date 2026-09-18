@@ -121,10 +121,10 @@ class NativeUserFilesTests(unittest.TestCase):
             )
             self.assertFalse((user_root / "alpha.txt").exists())
             self.assertEqual((user_root / "beta.txt").read_text(encoding="utf-8"), "alpha")
-            self.assertIn(
-                {"name": "beta.txt", "kind": "file", "size": 5},
-                renamed["entries"],
-            )
+            beta = next(entry for entry in renamed["entries"] if entry["name"] == "beta.txt")
+            self.assertEqual(beta["kind"], "file")
+            self.assertEqual(beta["size"], 5)
+            self.assertIsInstance(beta["modifiedAt"], int)
 
             (user_root / "folder-a").mkdir()
             native_host.rename_user_entry(str(user_root), "/", "folder-a", "folder-b")
@@ -170,10 +170,10 @@ class NativeUserFilesTests(unittest.TestCase):
             )
             self.assertEqual(source.read_text(encoding="utf-8"), "copy me")
             self.assertEqual((user_root / "copy.txt").read_text(encoding="utf-8"), "copy me")
-            self.assertIn(
-                {"name": "copy.txt", "kind": "file", "size": 7},
-                listing["entries"],
-            )
+            copied = next(entry for entry in listing["entries"] if entry["name"] == "copy.txt")
+            self.assertEqual(copied["kind"], "file")
+            self.assertEqual(copied["size"], 7)
+            self.assertIsInstance(copied["modifiedAt"], int)
 
             (user_root / "occupied.txt").write_text("keep", encoding="utf-8")
             with self.assertRaises(FileExistsError):
