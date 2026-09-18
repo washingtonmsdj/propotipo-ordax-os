@@ -199,5 +199,39 @@
     "occurs_before_canonical_trust_enrollment": true,
     "physical_media_rewrite_required": false,
     "raw_device_write_allowed": false
+  },
+  "runtime_staging_owner": {
+    "scope": "first-legacy-to-ab-stage-only",
+    "requires_canonical_trust": true,
+    "requires_exact_signed_release_materialized": true,
+    "signed_envelope_source": "/ordax/releases/{release_sha}/release-envelope.json",
+    "second_envelope_network_fetch": false,
+    "supported_active_layouts": [
+      "legacy"
+    ],
+    "post_transition_ab_cycle_enabled": false,
+    "esp_device": "/dev/disk/by-label/ORDAX-ESP",
+    "esp_mount": "/run/ordax-base-update/esp",
+    "esp_filesystem": "vfat",
+    "esp_mount_private_to_owner": true,
+    "esp_identity_verified_by_block_major_minor": true,
+    "stage_cli": "bootstrap/base-update/stage.py --ensure-existing",
+    "stage_cli_explicit_physical_trust": true,
+    "stage_cli_explicit_physical_release_agent": true,
+    "stage_cli_explicit_physical_releases_root": true,
+    "candidate_entry_may_be_written": true,
+    "candidate_entry_selected": false,
+    "loader_entry_one_shot_written": false,
+    "efi_variables_written": false,
+    "reboot_requested": false,
+    "activation_owner_separate": true,
+    "esp_unmount_required_before_stage_success": true,
+    "candidate_source_authority": "minimal-bootstrap-sha256-plus-signed-system-candidate-descriptor",
+    "sparse_runtime_inputs": [
+      "bootstrap/base-update/stage.py",
+      "bootstrap/base-update/plan.py",
+      "bootstrap/kernel/vmlinuz-6.6.52",
+      "bootstrap/initramfs/initramfs.cpio.gz"
+    ]
   }
 }

@@ -26,7 +26,11 @@ configure_runtime_checkout() {
         /docs/contracts/minimal-bootstrap.json \
         /docs/evidence/release-trust-ceremony.json \
         /docs/evidence/release-trust-proof-manifest.json \
-        /docs/evidence/release-trust-recovery-envelope.json
+        /docs/evidence/release-trust-recovery-envelope.json \
+        /bootstrap/base-update/stage.py \
+        /bootstrap/base-update/plan.py \
+        /bootstrap/kernel/vmlinuz-6.6.52 \
+        /bootstrap/initramfs/initramfs.cpio.gz
 }
 
 mkdir -p "$(dirname "$WORKTREE")" "$STATE_DIR"

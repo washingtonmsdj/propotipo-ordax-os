@@ -6,10 +6,12 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "bootstrap" / "base-update" / "stage.py"
@@ -328,6 +330,126 @@ class BaseUpdateStageTests(unittest.TestCase):
                 candidate_entry,
             )
 
+    def test_ensure_existing_legacy_stage_is_idempotent_only_when_everything_matches(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                current,
+                recovery,
+                legacy_kernel,
+                legacy_initrd,
+            ) = self.legacy_fixture(root)
+            first = stage.ensure_stage(
+                esp,
+                "legacy",
+                candidate,
+                kernel,
+                initrd,
+            )
+            self.assertFalse(first["idempotent"])
+
+            protected = {
+                "current": current.read_bytes(),
+                "recovery": recovery.read_bytes(),
+                "kernel": legacy_kernel.read_bytes(),
+                "initrd": legacy_initrd.read_bytes(),
+            }
+            second = stage.ensure_stage(
+                esp,
+                "legacy",
+                candidate,
+                kernel,
+                initrd,
+            )
+
+            self.assertTrue(second["idempotent"])
+            self.assertEqual(second["release_sha"], candidate["release_sha"])
+            self.assertEqual(second["active_slot"], "legacy")
+            self.assertEqual(second["candidate_slot"], "b")
+            self.assertFalse(second["efi_variable_written"])
+            self.assertFalse(second["reboot_requested"])
+            self.assertEqual(current.read_bytes(), protected["current"])
+            self.assertEqual(recovery.read_bytes(), protected["recovery"])
+            self.assertEqual(legacy_kernel.read_bytes(), protected["kernel"])
+            self.assertEqual(legacy_initrd.read_bytes(), protected["initrd"])
+
+    def test_ensure_existing_rejects_stale_or_tampered_candidate_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                current,
+                recovery,
+                _legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            stage.ensure_stage(esp, "legacy", candidate, kernel, initrd)
+            marker_path = esp / "loader/entries/ordax-candidate+01-00.conf"
+            marker_path.write_text("stale\n", encoding="utf-8")
+            current_before = current.read_bytes()
+            recovery_before = recovery.read_bytes()
+            staged_kernel_before = (esp / "ordax/base/b/vmlinuz").read_bytes()
+            staged_initrd_before = (esp / "ordax/base/b/initrd.gz").read_bytes()
+
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "candidate boot entry differs",
+            ):
+                stage.ensure_stage(
+                    esp,
+                    "legacy",
+                    candidate,
+                    kernel,
+                    initrd,
+                )
+
+            self.assertEqual(marker_path.read_text(encoding="utf-8"), "stale\n")
+            self.assertEqual(current.read_bytes(), current_before)
+            self.assertEqual(recovery.read_bytes(), recovery_before)
+            self.assertEqual(
+                (esp / "ordax/base/b/vmlinuz").read_bytes(),
+                staged_kernel_before,
+            )
+            self.assertEqual(
+                (esp / "ordax/base/b/initrd.gz").read_bytes(),
+                staged_initrd_before,
+            )
+
+    def test_ensure_existing_rejects_tampered_staged_kernel(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (
+                esp,
+                kernel,
+                initrd,
+                candidate,
+                _current,
+                _recovery,
+                _legacy_kernel,
+                _legacy_initrd,
+            ) = self.legacy_fixture(root)
+            stage.ensure_stage(esp, "legacy", candidate, kernel, initrd)
+            (esp / "ordax/base/b/vmlinuz").write_bytes(b"tampered-stage")
+
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "staged kernel digest differs",
+            ):
+                stage.ensure_stage(
+                    esp,
+                    "legacy",
+                    candidate,
+                    kernel,
+                    initrd,
+                )
+
     def test_legacy_matching_slot_a_is_idempotently_reused(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -528,6 +650,52 @@ class BaseUpdateStageTests(unittest.TestCase):
 
             with self.assertRaises(stage.StageError):
                 stage.verified_candidate_from_release(envelope, trust, agent, releases)
+
+    def test_runtime_physical_root_derives_fixed_release_authority(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "physical"
+            root.mkdir()
+            with mock.patch.dict(
+                os.environ,
+                {"ORDAX_STAGE_PHYSICAL_ROOT": str(root)},
+                clear=False,
+            ):
+                trust, agent, releases = stage._runtime_release_authority()
+
+            self.assertEqual(
+                trust,
+                root / "bootstrap/trust/release-ed25519.json",
+            )
+            self.assertEqual(
+                agent,
+                root / "bootstrap/release-acquisition/ordax-release-agent",
+            )
+            self.assertEqual(releases, root / "releases")
+
+            link = Path(temporary) / "linked"
+            link.symlink_to(root, target_is_directory=True)
+            with mock.patch.dict(
+                os.environ,
+                {"ORDAX_STAGE_PHYSICAL_ROOT": str(link)},
+                clear=False,
+            ):
+                with self.assertRaisesRegex(
+                    stage.StageError,
+                    "must be a real directory",
+                ):
+                    stage._runtime_release_authority()
+
+    def test_runtime_physical_root_must_be_absolute(self):
+        with mock.patch.dict(
+            os.environ,
+            {"ORDAX_STAGE_PHYSICAL_ROOT": "relative-root"},
+            clear=False,
+        ):
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "must be absolute",
+            ):
+                stage._runtime_release_authority()
 
     def test_stage_cli_has_no_unsigned_or_alternate_trust_input(self):
         text = MODULE_PATH.read_text(encoding="utf-8")
