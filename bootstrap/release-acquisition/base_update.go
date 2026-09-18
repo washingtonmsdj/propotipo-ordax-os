@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/ed25519"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -157,9 +156,3 @@ func verifyBaseUpdateCommand(args []string) error {
 	return printJSON(baseUpdateVerification(manifest, trust))
 }
 
-func marshalBaseUpdateManifestForSigning(manifest BaseUpdateManifest) ([]byte, error) {
-	if err := validateBaseUpdateManifest(manifest, defaultRepo); err != nil {
-		return nil, err
-	}
-	return json.Marshal(manifest)
-}
