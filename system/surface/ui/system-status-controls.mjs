@@ -3,6 +3,7 @@ import {
   validateUpdateStatusSnapshot,
 } from "../../contracts/update-status.mjs";
 
+import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 
 const STATUS_LABELS = Object.freeze({
@@ -40,11 +41,12 @@ function readableMode(mode) {
   }
 }
 
-export function mountSystemStatusControls(root, updateStatusPort) {
+export function mountSystemStatusControls(root, updateStatusPort, surfaceLifecycle = null) {
   if (!(root instanceof Element)) {
     throw new TypeError("System status controls require a Surface root Element");
   }
   const port = assertUpdateStatusPort(updateStatusPort);
+  const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   let snapshot = port.getSnapshot();
   let destroyed = false;
 
@@ -115,19 +117,17 @@ export function mountSystemStatusControls(root, updateStatusPort) {
     renderPanel();
   };
 
-  const observer = new MutationObserver(() => renderPanel());
-  observer.observe(root, { childList: true, subtree: true });
+  const unsubscribeRender = lifecycle.subscribeRender(renderPanel);
   const unsubscribe = port.subscribe((nextSnapshot) => {
     snapshot = validateUpdateStatusSnapshot(nextSnapshot);
     replacePanel();
   });
-  renderPanel();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
       unsubscribe?.();
-      observer.disconnect();
+      unsubscribeRender();
       root.querySelector(`${SYSTEM_WINDOW_SELECTOR} [data-ordax-system-status-panel]`)?.remove();
     },
   });
