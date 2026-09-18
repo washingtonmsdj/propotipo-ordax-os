@@ -42,6 +42,15 @@ class DiagnosticReportContractTests(unittest.TestCase):
         self.assertIn("snapshot.applications.slice(0, 20)", report)
         self.assertIn("[...surfaceSnapshot.capabilityIds].sort()", report)
 
+    def test_document_export_is_json_and_derived_from_redacted_report(self):
+        report = self.read_report()
+        self.assertIn("createDiagnosticReportDocument", report)
+        self.assertIn("const report = createDiagnosticReport(input);", report)
+        self.assertIn('mediaType: "application/json"', report)
+        self.assertIn("ordax-diagnostico-${reportFileStamp(report.generatedAt)}.json", report)
+        self.assertIn("JSON.stringify(report, null, 2)", report)
+        self.assertNotIn("JSON.stringify(input", report)
+
     def test_report_does_not_introduce_remote_control_or_mutation(self):
         report = self.read_report()
         lowered = report.lower()
