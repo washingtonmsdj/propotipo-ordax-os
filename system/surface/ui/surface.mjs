@@ -114,7 +114,7 @@ function createWindow(app, windowState, state, index) {
   windowNode.dataset.active = String(activeArea.activeWindowId === windowState.id);
   windowNode.dataset.maximized = String(windowState.maximized);
   const placementOrdinal = windowState.placementOrdinal ?? index + 1;
-  windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 8) * 22}px`);
+  windowNode.style.setProperty("--ordax-window-offset", `${((placementOrdinal - 1) % 5) * 18}px`);
   if (
     !windowState.maximized &&
     Number.isFinite(windowState.positionX) &&
