@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.base-update/1",
-  "status": "staging-and-one-shot-activation-proof",
+  "status": "postboot-health-and-promotion-proof",
   "scope": "transactional-boot-kernel-initramfs-update",
   "owner": "bootstrap/base-update",
   "normal_git_hot_update_owns_this": false,
@@ -58,7 +58,15 @@
     "base_heartbeat_required": true,
     "surface_health_required": true,
     "same_release_sha_required": true,
-    "promotion_only_after_all_checks": true
+    "promotion_only_after_all_checks": true,
+    "local_evidence": {
+      "base_heartbeat": "/state/ordax/base-update/base-heartbeat.json",
+      "surface_health": "/run/ordax-update/healthy-sha",
+      "surface_heartbeat": "/state/ordax/native-state/surface-heartbeat.json",
+      "boot_id": "/proc/sys/kernel/random/boot_id",
+      "cmdline": "/proc/cmdline"
+    },
+    "boot_id_must_match_across_base_and_surface": true
   },
   "promotion": {
     "current_entry_retargeted_to_candidate_slot": true,
@@ -66,7 +74,9 @@
     "atomic_replace_required": true,
     "candidate_entry_removed_after_promotion": true,
     "previous_slot_preserved": true,
-    "active_slot_record": "/ordax/state/base/active-slot.json"
+    "active_slot_record": "/ordax/state/base/active-slot.json",
+    "current_entry_written_after_recovery_entry": true,
+    "current_entry_is_promotion_commit_point": true
   },
   "failure": {
     "current_entry_remains_unchanged": true,
