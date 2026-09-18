@@ -37,6 +37,8 @@ UPDATE_PR_NUMBER_IS_PRODUCT_IDENTITY=NO
 UPDATE_RUNNING_LABEL=EM_EXECUCAO
 WEB_CLIENT_CANDIDATE=PASS
 APPEARANCE_THEME_VALUES=DARK,LIGHT
+SURFACE_ACCESSIBILITY_PREFERENCES=CONTRAST,MOTION,TEXT_SCALE
+SURFACE_TEXT_SCALE_VALUES=STANDARD,LARGE,EXTRA_LARGE
 APPEARANCE_PERSISTENCE=WEB_LOCAL_PASS
 APPEARANCE_ACCOUNT_SYNC=NO
 NATIVE_GRAPHICAL_HOST=PASS_PHYSICAL_DEVELOPMENT_USB
@@ -58,7 +60,7 @@ CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 
 `system/` is the shared product source. The native development path is physically proven through `system/entrypoint (guardian) -> system/supervisor -> system/surface/entrypoint -> system/surface/bin/ordax-surface`; repository CI also proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
 
-The shared graphical source remains under `system/surface/ui/` with platform-neutral contracts, workspace/window lifecycle and capability-driven app availability. Platform-specific behavior belongs in adapters/compositions, not in forks of the shared Surface. The normal Home now keeps technical delivery/recovery markers out of the area label; real delivery identity and update details live in Sistema. The visible settings identity is standardized as **Ajustes** while preserving the stable internal app id `settings`.
+The shared graphical source remains under `system/surface/ui/` with platform-neutral contracts, workspace/window lifecycle and capability-driven app availability. Ajustes now owns persisted Surface-level contrast, motion and text-scale preferences; text scale changes the shared typographic base without claiming host-level accessibility control. Platform-specific behavior belongs in adapters/compositions, not in forks of the shared Surface. The normal Home now keeps technical delivery/recovery markers out of the area label; real delivery identity and update details live in Sistema. The visible settings identity is standardized as **Ajustes** while preserving the stable internal app id `settings`.
 
 On the target notebook, the owner/development USB has physically proven the Git-first native host: Cage/Wayland + Barkery/WebKitGTK renders the shared Surface fullscreen; keyboard and mouse/touchpad work; authenticated native restart and shutdown work; and Git changes can be pulled and applied with a Surface reload while the notebook remains running. The temporary live-update marker appeared and then disappeared automatically in the same running session, proving the rebootless update round trip.
 
