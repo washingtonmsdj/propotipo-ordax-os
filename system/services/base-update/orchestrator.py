@@ -999,6 +999,30 @@ def _mounted_at(path: Path) -> tuple[str, str] | None:
     return None
 
 
+def _mount_points_for_identity(identity: str) -> list[tuple[str, str]]:
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(
+            encoding="utf-8",
+            errors="strict",
+        ).splitlines()
+    except (OSError, UnicodeError) as exc:
+        raise OwnerError("mount table is unavailable") from exc
+
+    mounts: list[tuple[str, str]] = []
+    for line in lines:
+        left, separator, right = line.partition(" - ")
+        if not separator:
+            continue
+        fields = left.split()
+        right_fields = right.split()
+        if len(fields) < 6 or len(right_fields) < 2:
+            continue
+        if fields[2] != identity:
+            continue
+        mounts.append((_decode_mount_path(fields[4]), right_fields[0]))
+    return mounts
+
+
 def _esp_device_identity() -> tuple[Path, str]:
     try:
         resolved = ESP_LABEL.resolve(strict=True)
@@ -1030,6 +1054,14 @@ def _run_busybox(args: list[str], timeout: int, label: str) -> subprocess.Comple
 
 def _prepare_esp_mount() -> tuple[Path, bool]:
     device, identity = _esp_device_identity()
+    other_mounts = [
+        (mount_point, fs_type)
+        for mount_point, fs_type in _mount_points_for_identity(identity)
+        if mount_point != str(ESP_MOUNT)
+    ]
+    if other_mounts:
+        raise OwnerError("ORDAX-ESP is already mounted outside the controlled staging path")
+
     parent = ESP_MOUNT.parent
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     _require_real_directory(parent, "base-update runtime directory")
