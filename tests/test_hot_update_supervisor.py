@@ -28,6 +28,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
         self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
         self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
+        self.assertIn('RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-12}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
         self.assertIn('run_bounded_git "$REMOTE_TIMEOUT" -C "$WORKTREE" ls-remote', text)
         self.assertIn('apply_remote_checkout "$old_sha" "$remote_sha"', text)
@@ -238,6 +239,19 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('wait_for_surface_health "$guard_current" "$SURFACE_HEALTH_TIMEOUT"', text)
         self.assertIn('rollback_update "$old_sha" "$new_sha" reload', text)
         self.assertIn('wait_for_surface_health "$new_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
+        self.assertIn('wait_for_surface_health "$new_sha" "$RELOAD_HEALTH_TIMEOUT"', text)
+        self.assertIn("recover_reload_with_surface_restart()", text)
+        self.assertIn('wait_for_surface_health "$expected_sha" "$RELOAD_FALLBACK_HEALTH_TIMEOUT"', text)
+        self.assertIn("live reload health acknowledgement timed out; restarting Surface once", text)
+        self.assertIn("Surface restart fallback acknowledged healthy state", text)
+        self.assertIn("Surface did not acknowledge healthy state after reload and one Surface restart", text)
+        recovery = text.split("recover_reload_with_surface_restart() {", 1)[1].split("\n}\n", 1)[0]
+        self.assertEqual(recovery.count("stop_surface"), 1)
+        self.assertEqual(recovery.count("start_surface"), 1)
+        self.assertLess(
+            text.index('recover_reload_with_surface_restart "$new_sha"'),
+            text.index('rollback_update "$old_sha" "$new_sha" reload'),
+        )
         self.assertIn("updated native Surface host did not render and acknowledge healthy state", text)
         self.assertIn("SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update", text)
 
@@ -264,6 +278,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         controls = UPDATE_CONTROLS.read_text(encoding="utf-8")
         self.assertIn('UPDATE_STATE_PATH = "/__ordax/native/update"', adapter)
         self.assertIn('UPDATE_HEALTH_PATH = "/__ordax/native/health"', adapter)
+        self.assertIn("const DEFAULT_INTERVAL_MS = 750;", adapter)
         self.assertIn('state.applyMode === "reload"', adapter)
         self.assertIn("windowRef.location.reload()", adapter)
         self.assertIn("markHealthy()", adapter)
