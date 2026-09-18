@@ -1,4 +1,5 @@
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
+import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
 import { createNativePreferenceStore } from "../../adapters/native/preferences.mjs";
@@ -73,6 +74,13 @@ async function start() {
     console.warn("OrdaX native network status unavailable", error);
   }
 
+  let networkManagement = null;
+  try {
+    networkManagement = await createNativeNetworkManagement(window);
+  } catch (error) {
+    console.warn("OrdaX native network management unavailable", error);
+  }
+
   let systemMetrics = null;
   try {
     systemMetrics = await createNativeSystemMetrics(window);
@@ -86,11 +94,13 @@ async function start() {
   const userFileSpaceAvailable = fileSpace !== null;
   const systemMetricsAvailable = systemMetrics !== null;
   const networkStatusAvailable = networkStatus !== null;
+  const networkManagementAvailable = networkManagement !== null;
   const host = createNativeSurfaceHost(window, {
     bootControlAvailable,
     userFileSpaceAvailable,
     systemMetricsAvailable,
     networkStatusAvailable,
+    networkManagementAvailable,
   });
 
   validateAccountRuntime(
