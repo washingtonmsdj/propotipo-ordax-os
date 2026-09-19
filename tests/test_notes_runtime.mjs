@@ -20,6 +20,7 @@ import {
   NOTES_HOME_PROJECT_ID,
   createNotesRuntime,
 } from "../system/services/notes/runtime.mjs";
+import { countNotesWords, createNotesStatistics } from "../system/services/notes/statistics.mjs";
 
 function memoryStore({ initial = null, scope = "device", saveResult = true } = {}) {
   let snapshot = initial;
@@ -989,3 +990,36 @@ test("native notes adapter uses the loopback endpoint and queues durable writes"
   const body = JSON.parse(calls[1].options.body);
   assert.equal(JSON.parse(body.payload).$schema, NOTES_SNAPSHOT_SCHEMA);
 });
+
+test("notes statistics count Unicode words and editor metadata without mutating notes", () => {
+  assert.equal(countNotesWords("Olá mundo — OrdaX 2026"), 4);
+  assert.equal(countNotesWords("  "), 0);
+
+  const tasks = [{ done: true }, { done: false }, { done: true }];
+  const references = [{ id: "ref-1" }, { id: "ref-2" }];
+  const snapshot = createNotesStatistics({
+    text: "Uma nota com cinco palavras",
+    tasks,
+    references,
+  });
+
+  assert.equal(snapshot.schema, "ordax.notes-statistics/1");
+  assert.equal(snapshot.words, 5);
+  assert.equal(snapshot.characters, 27);
+  assert.equal(snapshot.tasks, 3);
+  assert.equal(snapshot.completedTasks, 2);
+  assert.equal(snapshot.references, 2);
+  assert.equal(Object.isFrozen(snapshot), true);
+  assert.deepEqual(tasks, [{ done: true }, { done: false }, { done: true }]);
+});
+
+test("notes statistics count Unicode code points rather than UTF-16 units", () => {
+  const snapshot = createNotesStatistics({
+    text: "Oi 👋",
+    tasks: [],
+    references: [],
+  });
+  assert.equal(snapshot.words, 1);
+  assert.equal(snapshot.characters, 4);
+});
+
