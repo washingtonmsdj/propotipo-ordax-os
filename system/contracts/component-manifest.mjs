@@ -147,5 +147,10 @@ export function validateComponentManifests(value) {
 
 export function componentSupportsIndependentUpdate(manifest) {
   const validated = defineComponentManifest(manifest);
-  return ["component-slot", "git-app"].includes(validated.releaseMode);
+  return validated.releaseMode === "component-slot";
+}
+
+export function componentUsesGitDevelopmentUpdate(manifest) {
+  const validated = defineComponentManifest(manifest);
+  return validated.releaseMode === "git-app";
 }
