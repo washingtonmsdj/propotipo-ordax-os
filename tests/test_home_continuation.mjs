@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createHomeContinuationPresentation } from "../system/surface/ui/home-continuation.mjs";
+import { createHomePendingPresentation } from "../system/surface/ui/home-pending.mjs";
 
 function projects(overrides = {}) {
   return {
@@ -53,6 +54,49 @@ function recentFiles(overrides = {}) {
         openedAt: 100,
       },
     ],
+    ...overrides,
+  };
+}
+
+function notifications(overrides = {}) {
+  return {
+    persistence: "device",
+    policyPersistence: "device",
+    doNotDisturb: false,
+    disabledSources: [],
+    entries: [
+      {
+        id: "notification-2",
+        sourceId: "system-updates",
+        level: "warning",
+        title: "Atualização requer atenção",
+        message: "Uma atualização aguarda ação local.",
+        destination: null,
+        createdAt: 200,
+        read: false,
+      },
+      {
+        id: "notification-1",
+        sourceId: "system-updates",
+        level: "success",
+        title: "Atualização aplicada",
+        message: "A atualização anterior foi aplicada.",
+        destination: null,
+        createdAt: 100,
+        read: true,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function syncRuntime(overrides = {}) {
+  return {
+    transport: "host-required",
+    accountContinuity: "not-active",
+    pendingMutationCount: 1,
+    queuePersistence: "device",
+    trackedDataClasses: ["appearance"],
     ...overrides,
   };
 }
@@ -115,6 +159,68 @@ test("Home continuation validates owner snapshots instead of accepting malformed
         persistence: "device",
         entries: [{ path: "/x.txt", name: "wrong.txt", openedAt: 1 }],
       },
+    }),
+    TypeError,
+  );
+});
+
+test("Home pending summary aggregates only real unread notifications and queued local sync mutations", () => {
+  const presentation = createHomePendingPresentation({
+    notifications: notifications(),
+    syncRuntime: syncRuntime(),
+  });
+
+  assert.equal(presentation.visible, true);
+  assert.deepEqual(
+    presentation.items.map((item) => [item.kind, item.title, item.actionKind, item.appId, item.target]),
+    [
+      ["notifications", "1 notificação não lida", "quick-panel", null, null],
+      ["sync", "1 alteração local pendente", "app", "account", "sync"],
+    ],
+  );
+  assert.equal(presentation.items[0].panel, "notifications");
+  assert.match(presentation.items[1].detail, /transporte remoto não está ativo/);
+  assert.ok(Object.isFrozen(presentation));
+  assert.ok(Object.isFrozen(presentation.items));
+});
+
+test("Home pending summary disappears when there is no real attention state", () => {
+  const presentation = createHomePendingPresentation({
+    notifications: notifications({ entries: [] }),
+    syncRuntime: syncRuntime({ pendingMutationCount: 0 }),
+  });
+
+  assert.deepEqual(presentation, {
+    visible: false,
+    items: [],
+  });
+});
+
+test("Home pending summary is explicit about muted attention and session-only queues", () => {
+  const presentation = createHomePendingPresentation({
+    notifications: notifications({
+      persistence: "session",
+      doNotDisturb: true,
+    }),
+    syncRuntime: syncRuntime({ queuePersistence: "session" }),
+  });
+
+  assert.match(presentation.items[0].detail, /Não perturbe ativo/);
+  assert.match(presentation.items[0].detail, /histórico somente nesta sessão/);
+  assert.match(presentation.items[1].detail, /continuidade de conta não está ativa/);
+  assert.match(presentation.items[1].detail, /fila somente nesta sessão/);
+});
+
+test("Home pending summary validates canonical owner snapshots", () => {
+  assert.throws(
+    () => createHomePendingPresentation({
+      notifications: { persistence: "device", entries: [] },
+    }),
+    TypeError,
+  );
+  assert.throws(
+    () => createHomePendingPresentation({
+      syncRuntime: syncRuntime({ pendingMutationCount: -1 }),
     }),
     TypeError,
   );
