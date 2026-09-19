@@ -2,6 +2,7 @@ from pathlib import Path
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 
@@ -11,6 +12,7 @@ MODULE_PATH = ROOT / "system" / "surface" / "runtime" / "browser_session_store.p
 spec = importlib.util.spec_from_file_location("browser_session_store", MODULE_PATH)
 store = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
+sys.modules[spec.name] = store
 spec.loader.exec_module(store)
 
 
