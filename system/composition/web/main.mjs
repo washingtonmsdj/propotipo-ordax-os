@@ -108,6 +108,7 @@ const systemOverviewControls = mountSystemOverviewControls(
   surface,
   null,
   appActivation,
+  null,
   componentManager,
 );
 
