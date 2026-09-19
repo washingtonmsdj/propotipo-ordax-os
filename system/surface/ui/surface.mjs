@@ -15,7 +15,7 @@ import {
 } from "../../services/preferences/accessibility.mjs";
 import { APPEARANCE_PREFERENCE_ID } from "../../services/preferences/appearance.mjs";
 import { createDesktopShellMarkup, mountDesktopClock } from "./desktop-shell.mjs";
-import { SURFACE_RENDER_LIFECYCLE_SCHEMA } from "./surface-lifecycle.mjs";
+import { SURFACE_RENDER_LIFECYCLE_SCHEMA } from "../../contracts/surface-render-lifecycle.mjs";
 import {
   createSurfaceState,
   createWorkspaceSnapshot,
