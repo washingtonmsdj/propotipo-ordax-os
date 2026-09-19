@@ -15,11 +15,19 @@ export const componentRuntime = Object.freeze({
     surfaceLifecycle,
     projects = null,
     projectReferences = null,
-    favoritesStore = null,
-    historyStore = null,
+    createFavoritesStore = null,
+    createHistoryStore = null,
     enableShortcuts = true,
     reportDiagnostic = null,
   } = {}) {
+    if (createFavoritesStore !== null && typeof createFavoritesStore !== "function") {
+      throw new TypeError("Internet createFavoritesStore must be a function or null");
+    }
+    if (createHistoryStore !== null && typeof createHistoryStore !== "function") {
+      throw new TypeError("Internet createHistoryStore must be a function or null");
+    }
+    const favoritesStore = createFavoritesStore?.() ?? null;
+    const historyStore = createHistoryStore?.() ?? null;
     const favorites = favoritesStore === null
       ? null
       : createBrowserFavoritesRuntime({ store: favoritesStore });
