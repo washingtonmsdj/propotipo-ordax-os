@@ -1,4 +1,5 @@
 import { defineFirstPartyApp } from "../app-contract.mjs";
+import { filesComponent } from "../../services/components/manifests/apps.mjs";
 
 export const filesApp = defineFirstPartyApp({
   id: "files",
@@ -6,6 +7,7 @@ export const filesApp = defineFirstPartyApp({
   description: "Organize documentos, imagens, downloads e conteúdo persistente do usuário.",
   monogram: "AR",
   singleton: true,
+  component: filesComponent,
   requiredCapabilities: [],
   panels: [
     {

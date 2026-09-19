@@ -12,6 +12,7 @@ Current canonical service boundaries:
 - `system/services/config/` owns product/runtime configuration semantics and remains distinct from user preferences and secrets;
 - `system/services/state/` owns durable product-state evolution semantics;
 - `system/services/diagnostics/` owns local-first diagnostics policy.
+- `system/services/components/` owns the canonical component catalog plus current/previous/pending health and rollback semantics; release independence is explicit per component and never inferred from a version number.
 
 Adapters own platform integration only and must not redefine shared domain policy. Service contracts remain provider-neutral: database vendors, cloud products, browser APIs and native platform APIs are implementation choices, not product-domain authorities.
 

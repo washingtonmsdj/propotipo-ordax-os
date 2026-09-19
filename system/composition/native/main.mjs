@@ -3,6 +3,7 @@ import {
   renderedSourceSha,
 } from "../../adapters/native/client-diagnostics.mjs";
 import { createNativeBrowserSession } from "../../adapters/native/browser-session.mjs";
+import { createNativeComponentStateStore } from "../../adapters/native/component-state.mjs";
 import { createNativeBrowserFavoritesStore } from "../../adapters/native/browser-favorites.mjs";
 import { createNativeBrowserHistoryStore } from "../../adapters/native/browser-history.mjs";
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
@@ -28,6 +29,8 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { listSystemComponents } from "../../services/components/catalog.mjs";
+import { createComponentManager } from "../../services/components/manager.mjs";
 import { createBrowserFavoritesRuntime } from "../../services/internet/favorites.mjs";
 import { createBrowserHistoryRuntime } from "../../services/internet/history.mjs";
 import { createBrowserHistoryBridge } from "../../services/internet/history-bridge.mjs";
@@ -96,6 +99,10 @@ async function start() {
       () => createNativeSyncStateStore(window),
     ),
     optionalNativeProbe(
+      "OrdaX native component state persistence unavailable",
+      () => createNativeComponentStateStore(window),
+    ),
+    optionalNativeProbe(
       "OrdaX native notes persistence unavailable",
       () => createNativeNotesStore(window),
     ),
@@ -131,6 +138,7 @@ async function start() {
     diagnosticJournalStore,
     updateHistory,
     syncStateStore,
+    componentStateStore,
     notesStore,
     powerActions,
     fileSpace,
@@ -140,6 +148,10 @@ async function start() {
     powerStatus,
   ] = await optionalPortsPromise;
 
+  const componentManager = createComponentManager({
+    manifests: listSystemComponents(),
+    store: componentStateStore,
+  });
   const localWorkspaceStore = createNativeWorkspaceStore(window);
   const recentFiles = fileSpace === null ? null : createRecentFilesRuntime({
     store: createNativeRecentFilesStore(window),
@@ -352,6 +364,8 @@ async function start() {
     surface,
     updateHistory,
     appActivation,
+    null,
+    componentManager,
   );
   const updateControls = mountUpdateControls(root, updateWatcher, appActivation);
   const powerControls = mountPowerControls(root, powerActions);
@@ -394,6 +408,7 @@ async function start() {
       updateNotificationBridge.destroy();
       updateDiagnosticRecorder.dispose();
       updateWatcher.dispose();
+      componentManager.destroy();
       surface.destroy();
       notesRuntime.destroy();
       identityActions.dispose();

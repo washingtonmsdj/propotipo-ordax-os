@@ -1,4 +1,5 @@
 import { defineFirstPartyApp } from "../app-contract.mjs";
+import { notesComponent } from "../../services/components/manifests/apps.mjs";
 
 export const notesApp = defineFirstPartyApp({
   id: "notes",
@@ -6,6 +7,7 @@ export const notesApp = defineFirstPartyApp({
   description: "Escrita local, projetos, tarefas e referências disponíveis offline.",
   monogram: "NO",
   singleton: true,
+  component: notesComponent,
   requiredCapabilities: [],
   optionalCapabilities: ["filesystem.user-space"],
   panels: [

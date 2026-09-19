@@ -8,6 +8,8 @@ import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { createWebSyncStateStore } from "../../adapters/web/sync-state.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { listSystemComponents } from "../../services/components/catalog.mjs";
+import { createComponentManager } from "../../services/components/manager.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -37,6 +39,9 @@ const syncStateStore = createWebSyncStateStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
 const appActivation = createAppActivationChannel();
+const componentManager = createComponentManager({
+  manifests: listSystemComponents(),
+});
 const notifications = createNotificationsRuntime();
 const notesRuntime = createNotesRuntime({ store: createWebNotesStore(window) });
 validateAccountRuntime(
@@ -103,6 +108,8 @@ const systemOverviewControls = mountSystemOverviewControls(
   surface,
   null,
   appActivation,
+  null,
+  componentManager,
 );
 
 window.addEventListener(
@@ -118,6 +125,7 @@ window.addEventListener(
     accountOverviewControls.destroy();
     preferenceSync.destroy();
     browserSession.dispose();
+    componentManager.destroy();
     surface.destroy();
     notesRuntime.destroy();
     identityActions.dispose();

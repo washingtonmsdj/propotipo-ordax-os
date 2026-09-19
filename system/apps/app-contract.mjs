@@ -1,3 +1,5 @@
+import { defineComponentManifest } from "../contracts/component-manifest.mjs";
+
 const APP_ID_RE = /^[a-z][a-z0-9-]*$/;
 const PANEL_KINDS = new Set([
   "static",
@@ -96,12 +98,27 @@ export function defineFirstPartyApp(spec) {
       `First-party app ${spec.id} cannot require and optionally consume the same capability`,
     );
   }
+  if (!spec.component || typeof spec.component !== "object" || Array.isArray(spec.component)) {
+    throw new TypeError(`First-party app ${spec.id} is missing component identity`);
+  }
+  const component = defineComponentManifest(spec.component);
+  if (
+    component.id !== spec.id
+    || component.title !== spec.title
+    || component.kind !== "app"
+  ) {
+    throw new TypeError(
+      `First-party app ${spec.id} component identity must match its app owner`,
+    );
+  }
+
   return Object.freeze({
     id: spec.id,
     title: spec.title,
     description: spec.description,
     monogram: spec.monogram,
     singleton: spec.singleton !== false,
+    component,
     requiredCapabilities,
     optionalCapabilities,
     panels: Object.freeze(spec.panels.map((panel) => freezePanel(spec.id, panel))),
