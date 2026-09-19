@@ -199,7 +199,17 @@
       "discovery_authorizes_activation": false,
       "state_file": "/state/ordax/base-update/esp-discovery.json",
       "runtime_preflight_fail_soft": true,
-      "candidate_acquisition_continues_without_esp": true
+      "candidate_acquisition_continues_without_esp": true,
+      "readonly_layout_inspector": "system/services/base-update/esp_layout.py",
+      "readonly_layout_schema": "prototype-ordax.esp-layout/1",
+      "readonly_inspection_required_before_stage": true,
+      "supported_layouts": [
+        "legacy",
+        "ab"
+      ],
+      "candidate_presence_reported": true,
+      "inspection_authorizes_write": false,
+      "inspection_authorizes_activation": false
     }
   },
   "release_channel_enrollment": {
