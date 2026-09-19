@@ -461,7 +461,7 @@ export function mountNotesWorkspaceControls(
               documentObject,
               "small",
               "ordax-notes-project-menu-hint",
-              "Meu espaço é o projeto base e não pode ser excluído.",
+              "Meu espaço é o projeto base e não pode ser renomeado nem excluído.",
             ),
           );
         }
