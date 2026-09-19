@@ -17,6 +17,7 @@ const CSS_FILES = [
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
   'system/surface/ui/notes.css',
+  'system/surface/ui/browser.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
@@ -860,6 +861,31 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesWebReferenceHostRendered = renderedReference
       ?.querySelector('small')?.textContent === 'example.com';
 
+    renderedReference?.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    }));
+    await Promise.resolve();
+    const browserSlot = root.querySelector(
+      '[data-window-id="browser"] [data-app-extension="browser-workspace"]',
+    );
+    const browserAddress = browserSlot?.querySelector('[data-browser-address]');
+    const browserFrame = browserSlot?.querySelector('[data-browser-frame]');
+    const browserSandbox = browserFrame?.getAttribute('sandbox') ?? '';
+    result.notesReferenceOpenedInBrowser = Boolean(
+      browserSlot?.dataset.ordaxBrowserMounted === 'true',
+    );
+    result.browserAddressReceivedActivation = browserAddress?.value
+      === 'https://example.com/docs?q=1';
+    result.browserFrameReceivedActivation = browserFrame?.dataset.browserUrl
+      === 'https://example.com/docs?q=1'
+      && browserFrame?.src === 'https://example.com/docs?q=1';
+    result.browserSandboxIsolated = browserSandbox.includes('allow-scripts')
+      && browserSandbox.includes('allow-forms')
+      && !browserSandbox.includes('allow-same-origin')
+      && browserFrame?.referrerPolicy === 'no-referrer';
+
     const closePendingTitle = notesSlot?.querySelector('[data-notes-title]');
     closePendingTitle.value = 'Nota salva ao fechar';
     closePendingTitle.dispatchEvent(new Event('input', { bubbles: true }));
@@ -924,6 +950,15 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesRichTextRestored = restoredNotesBody?.textContent === 'Conteúdo salvo localmente e disponível offline.'
       && restoredNotesBody?.querySelector('strong')?.textContent === 'Conteúdo';
 
+    const restoredBrowserSlot = root?.querySelector(
+      '[data-window-id="browser"] [data-app-extension="browser-workspace"]',
+    );
+    result.browserWindowRestored = Boolean(
+      restoredBrowserSlot?.dataset.ordaxBrowserMounted === 'true',
+    );
+    result.browserTargetRestored = restoredBrowserSlot
+      ?.querySelector('[data-browser-address]')?.value === 'https://example.com/docs?q=1';
+
     const restoredAccountSlot = root?.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
     );
@@ -955,13 +990,15 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'notesWebReferenceAdded', 'notesWebReferenceHostRendered',
+      'notesReferenceOpenedInBrowser', 'browserAddressReceivedActivation',
+      'browserFrameReceivedActivation', 'browserSandboxIsolated',
       'notesWindowClosedWithPendingEdit', 'notesPendingEditRestoredAfterClose',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
       'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
-      'notesRichTextRestored',
+      'notesRichTextRestored', 'browserWindowRestored', 'browserTargetRestored',
       'accountWindowRestored', 'accountOwnerRestored', 'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
       'systemOwnerRestored', 'systemOverviewRestored',
     ];

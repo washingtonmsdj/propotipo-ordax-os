@@ -36,6 +36,7 @@ on:
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/browser/**'
       - 'system/services/files/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
@@ -74,6 +75,7 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
+      - 'tests/test_browser_navigation.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -124,6 +126,7 @@ on:
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/browser/**'
       - 'system/services/files/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
@@ -162,6 +165,7 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
+      - 'tests/test_browser_navigation.mjs'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -210,6 +214,7 @@ jobs:
             system/contracts \
             system/services/account \
             system/services/apps \
+            system/services/browser \
             system/services/files \
             system/services/notes \
             system/services/preferences \
@@ -243,6 +248,7 @@ jobs:
           node --test tests/test_file_notes_action.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
+          node --test tests/test_browser_navigation.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
