@@ -590,7 +590,7 @@ Substituir linguagem interna como “o host expõe contratos” por descrição 
 
 **Aceite:** revogar acesso impede novas leituras no backend; mudanças afetam um store comum; desligar notificações não interrompe operações de arquivos ou recuperação.
 
-**Estado:** NOVO/P2. A existência de telemetria técnica atual não prova que já há controles de consentimento, retenção ou preferência de coleta na UI.
+**Estado:** PARCIAL/P1-P2. A central local comum já existe via `ordax.notifications/1`, com histórico limitado, origem, horário, nível, ação, estado lido/dispensado e persistência Native com fallback explícito para sessão. `Não perturbe` já controla a apresentação que existe hoje: silencia badge/cor de atenção da bandeja sem apagar histórico nem estado não lido; no Native a política é persistida pelo owner de notificações via `ordax.notification-store/2`, enquanto o Web permanece somente na sessão. Atualizações é hoje o único produtor integrado à central. Som, ativação global, preferências/permissões por app, eventos de outros owners e política de consentimento/retenção continuam NOVO/P2. A existência de telemetria técnica atual não prova que já há controles de consentimento, retenção ou preferência de coleta na UI.
 
 ### 7.9 O que não deve permanecer em Ajustes
 
