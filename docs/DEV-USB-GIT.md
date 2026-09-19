@@ -118,7 +118,11 @@ A normal source change under `system/` does **not** require:
 - rebuilding the kernel;
 - rebooting the notebook unless that component genuinely requires it.
 
-A base-level change is different. Changes to the bootloader, kernel, initramfs, development-network substrate, Git client, or a driver/firmware needed before Git is reachable require a base candidate and reboot to activate. The repository checkout now carries the base-update control logic so this path can be driven from the current main without reflashing the USB by hand. The running kernel cannot replace itself in-place; the candidate is prepared in the inactive boot slot and selected on the next boot.
+A base-level change is different. Changes to the bootloader, kernel, initramfs, development-network substrate, Git client, or a driver/firmware needed before Git is reachable require a base candidate and reboot to activate. The repository checkout now carries the base-update control logic so this path can be driven from the current main without reflashing the USB by hand. The running kernel cannot replace itself in-place.
+
+For kernel/initramfs changes, main publishes an immutable candidate bound to the exact Git commit. When the running supervisor observes the matching low-level commit, it keeps the current Surface running and acquires that candidate in the background under `/state/ordax/base-update/dev-candidates/<commit>`. A temporarily unavailable candidate does not block runtime/app updates; the supervisor retries while `boot-refresh-required` remains armed.
+
+The next activation step is intentionally separate: verified Base bytes are written only to the inactive boot slot and take effect on the next boot. Bootloader and complete development-base/rootfs replacement are not yet included in the current kernel+initramfs candidate format; expanding that candidate is the remaining step toward repository-driven recovery of the whole development USB substrate.
 
 Early boot branding follows the same rule. Anything displayed only after the development base hands control to `system/` may update with the normal Git loop. A logo/splash shown before Git exists is part of the base/initramfs path and therefore changes on the next base boot. The current prototype still uses text-mode early boot; a branded graphical splash renderer has not yet been implemented.
 
