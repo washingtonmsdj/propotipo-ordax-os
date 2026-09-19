@@ -41,7 +41,7 @@ POWER_LAST_REQUEST=$POWER_STATE_DIR/last-request
 POWER_PENDING_STALE_SECONDS=120
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
-RUNTIME_ID=alpine-v3.22-cage-barkery-v1
+RUNTIME_ID=alpine-v3.22-cage-webkitgtk-v1
 RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
 RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
 HTTP_PID=""
@@ -462,8 +462,9 @@ fallback_with_reason() {
 runtime_base_is_ready() {
     [ -f "$RUNTIME_READY" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/cage" ] &&
-        [ -x "$RUNTIME_ROOT/usr/bin/barkery" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/python3" ] &&
+        [ -f "$RUNTIME_ROOT/usr/lib/girepository-1.0/Gtk-3.0.typelib" ] &&
+        [ -f "$RUNTIME_ROOT/usr/lib/girepository-1.0/WebKit2-4.1.typelib" ] &&
         [ -x "$RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
         [ -x "$RUNTIME_ROOT/bin/busybox" ]
 }
@@ -498,7 +499,8 @@ REPOSITORIES
 
     echo "ordax-surface: provisioning replaceable graphical runtime in $RUNTIME_STATE" >>"$HOST_LOG"
     if ! /sbin/apk --root "$STAGING_DIR/rootfs" --keys-dir /etc/apk/keys --no-cache --initdb add \
-        alpine-baselayout busybox ca-certificates cage barkery-browser xwayland \
+        alpine-baselayout busybox ca-certificates cage xwayland \
+        python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1 \
         seatd-launch mesa-dri-gallium mesa-egl mesa-gbm font-dejavu \
         eudev libinput-udev >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: graphical runtime provisioning failed" >>"$HOST_LOG"
@@ -508,8 +510,9 @@ REPOSITORIES
     for directory in dev proc sys run tmp root ordax srv/ordax-system srv/ordax-repo var/lib/ordax var/lib/ordax-user; do mkdir -p "$STAGING_DIR/rootfs/$directory"; done
     chmod 1777 "$STAGING_DIR/rootfs/tmp" 2>/dev/null || true
     [ -x "$STAGING_DIR/rootfs/usr/bin/cage" ] || return 1
-    [ -x "$STAGING_DIR/rootfs/usr/bin/barkery" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/python3" ] || return 1
+    [ -f "$STAGING_DIR/rootfs/usr/lib/girepository-1.0/Gtk-3.0.typelib" ] || return 1
+    [ -f "$STAGING_DIR/rootfs/usr/lib/girepository-1.0/WebKit2-4.1.typelib" ] || return 1
     [ -x "$STAGING_DIR/rootfs/usr/bin/Xwayland" ] || return 1
     [ -x "$STAGING_DIR/rootfs/sbin/udevd" ] || return 1
     [ -x "$STAGING_DIR/rootfs/bin/udevadm" ] || return 1
@@ -522,9 +525,9 @@ REPOSITORIES
 }
 
 upgrade_existing_runtime() {
-    echo "ordax-surface: extending existing graphical runtime with input discovery support" >>"$HOST_LOG"
+    echo "ordax-surface: extending existing graphical runtime with WebKit browser host support" >>"$HOST_LOG"
     if ! /sbin/apk --root "$RUNTIME_ROOT" --keys-dir /etc/apk/keys --no-cache add \
-        xwayland eudev libinput-udev >>"$HOST_LOG" 2>&1; then
+        xwayland eudev libinput-udev python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1 >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: failed to extend existing graphical runtime" >>"$HOST_LOG"
         return 1
     fi
@@ -598,7 +601,7 @@ ensure_shared_memory() {
     chmod 1777 /dev/shm >>"$HOST_LOG" 2>&1 || return 1
 }
 
-configure_browser() {
+configure_graphics_host() {
     repo_root=${SYSTEM_ROOT%/system}
     if [ "$repo_root" != "$SYSTEM_ROOT" ] && [ -x /usr/bin/git ]; then
         candidate_sha=$(/usr/bin/git -C "$repo_root" rev-parse HEAD 2>/dev/null || printf 'unknown')
@@ -611,15 +614,7 @@ configure_browser() {
                 ;;
         esac
     fi
-    mkdir -p "$RUNTIME_ROOT/etc/barkery" || return 1
-    cat >"$RUNTIME_ROOT/etc/barkery/barkery.conf" <<BARKERY
-[browser]
-start_uri = http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA
-preferred_languages = pt-BR,en-US
-
-[mqtt]
-enabled = 0
-BARKERY
+    [ -f "$SYSTEM_ROOT/surface/runtime/ordax_browser_host.py" ] || return 1
     mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA" || return 1
 }
 
@@ -868,6 +863,7 @@ start_time_sync_agent || echo "ordax-surface: automatic time synchronization una
 start_network_broker || echo "ordax-surface: native Wi-Fi management broker unavailable; continuing without network management" >>"$HOST_LOG"
 [ -f "$SYSTEM_ROOT/composition/native/index.html" ] || fallback_with_reason "native Surface composition is missing: $SYSTEM_ROOT/composition/native/index.html"
 [ -f "$SYSTEM_ROOT/surface/runtime/native_host_server.py" ] || fallback_with_reason "native Surface host server is missing: $SYSTEM_ROOT/surface/runtime/native_host_server.py"
+[ -f "$SYSTEM_ROOT/surface/runtime/ordax_browser_host.py" ] || fallback_with_reason "native browser host is missing: $SYSTEM_ROOT/surface/runtime/ordax_browser_host.py"
 [ -x /bin/busybox ] || fallback_with_reason "/bin/busybox is unavailable in the bootstrap base"
 [ -e /dev/dri/card0 ] || fallback_with_reason "DRM device /dev/dri/card0 is unavailable"
 reap_stale_runtime_processes
@@ -876,7 +872,7 @@ ensure_runtime || fallback_with_reason "graphical runtime is unavailable after p
 ensure_loopback || fallback_with_reason "failed to configure IPv4 loopback for local Surface HTTP"
 sync_runtime_resolver || echo "ordax-surface: external DNS unavailable inside graphical runtime; continuing local Surface" >>"$HOST_LOG"
 ensure_shared_memory || fallback_with_reason "failed to prepare /dev/shm for wlroots/Xwayland"
-configure_browser || fallback_with_reason "failed to configure Barkery browser runtime"
+configure_graphics_host || fallback_with_reason "failed to configure OrdaX WebKit graphics host"
 bind_runtime_mounts || fallback_with_reason "failed to bind host resources into graphical runtime"
 prepare_input_stack || fallback_with_reason "failed to prepare physical keyboard/touchpad input devices"
 remove_stale_seatd_socket || fallback_with_reason "failed to clear stale seatd socket before native host startup"
@@ -901,8 +897,11 @@ wait_for_native_server 10 || fallback_with_reason "native Surface HTTP/control s
 printf '\033[2J\033[H'
 printf 'OrdaX: iniciando Surface grafica...\n'
 
+START_URI="http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA"
 /bin/busybox chroot "$RUNTIME_ROOT" \
-    /usr/bin/seatd-launch -- /usr/bin/cage -s -- /usr/bin/barkery \
+    /usr/bin/seatd-launch -- /usr/bin/cage -s -- \
+    /usr/bin/python3 /srv/ordax-system/surface/runtime/ordax_browser_host.py \
+    --start-uri "$START_URI" --profile-root /var/lib/ordax-user/browser \
     >"$HOST_LOG" 2>&1 &
 GRAPHICS_PID=$!
 host_rc=0
@@ -920,4 +919,4 @@ GRAPHICS_PID=""
 
 [ "$host_rc" -eq 0 ] && exit 0
 
-fallback_with_reason "native Cage/Barkery host exited with status $host_rc"
+fallback_with_reason "native Cage/OrdaX WebKit host exited with status $host_rc"
