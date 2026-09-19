@@ -52,6 +52,8 @@ on:
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
       - 'tests/test_notes_runtime.mjs'
+      - 'tests/test_files_to_notes_import.mjs'
+      - 'tests/test_files_to_notes_import_contract.py'
       - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
@@ -122,6 +124,8 @@ on:
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
       - 'tests/test_notes_runtime.mjs'
+      - 'tests/test_files_to_notes_import.mjs'
+      - 'tests/test_files_to_notes_import_contract.py'
       - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
@@ -194,6 +198,7 @@ jobs:
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
           node --test tests/test_notes_runtime.mjs
+          node --test tests/test_files_to_notes_import.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
@@ -215,6 +220,7 @@ jobs:
           python -m unittest tests.test_surface_web_builder -v
           python -m unittest tests.test_recent_files_ui_contract -v
           python -m unittest tests.test_project_files_ui_contract -v
+          python -m unittest tests.test_files_to_notes_import_contract -v
           python -m unittest tests.test_notes_native -v
 
       - name: Build and verify deterministic Web client
