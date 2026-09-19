@@ -565,6 +565,51 @@ function buildCompositionProofExpression(moduleSources, styles) {
         selection.addRange(range);
         document.dispatchEvent(new Event('selectionchange'));
         notesSlot.querySelector('[data-notes-action="bold"]')?.click();
+
+        const italicStart = 'Conteúdo salvo '.length;
+        const italicEnd = italicStart + 'localmente'.length;
+        const walk = document.createTreeWalker(richBlock, NodeFilter.SHOW_TEXT);
+        let offset = 0;
+        let startNode = null;
+        let startOffset = 0;
+        let endNode = null;
+        let endOffset = 0;
+        while (walk.nextNode()) {
+          const candidate = walk.currentNode;
+          const nextOffset = offset + candidate.nodeValue.length;
+          if (!startNode && italicStart >= offset && italicStart <= nextOffset) {
+            startNode = candidate;
+            startOffset = italicStart - offset;
+          }
+          if (!endNode && italicEnd >= offset && italicEnd <= nextOffset) {
+            endNode = candidate;
+            endOffset = italicEnd - offset;
+          }
+          offset = nextOffset;
+        }
+        if (startNode && endNode) {
+          const italicRange = document.createRange();
+          italicRange.setStart(startNode, startOffset);
+          italicRange.setEnd(endNode, endOffset);
+          const selection = document.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(italicRange);
+          document.dispatchEvent(new Event('selectionchange'));
+          notesBody.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'i',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }));
+        }
+
+        const saveEvent = new KeyboardEvent('keydown', {
+          key: 's',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        result.notesSaveShortcutPreventedBrowserDialog = notesBody.dispatchEvent(saveEvent) === false;
       }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 380));
     }
@@ -574,6 +619,10 @@ function buildCompositionProofExpression(moduleSources, styles) {
       && persistedNote?.body === 'Conteúdo salvo localmente e disponível offline.';
     result.notesRichTextPersisted = persistedNote?.richBody?.blocks?.[0]?.marks
       ?.some((mark) => mark.type === 'bold' && mark.start === 0 && mark.end === 'Conteúdo'.length) === true;
+    result.notesItalicShortcutPersisted = persistedNote?.richBody?.blocks?.[0]?.marks
+      ?.some((mark) => mark.type === 'italic'
+        && mark.start === 'Conteúdo salvo '.length
+        && mark.end === 'Conteúdo salvo localmente'.length) === true;
     result.notesPlainBodyHasNoMarkup = persistedNote?.body?.includes('**') === false;
     result.notesCreatedInsideProject = persistedNote?.projectId === smokeProject?.id;
 
@@ -707,7 +756,8 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
       'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
-      'notesNewActionPresent', 'notesAutosavePersisted', 'notesRichTextPersisted', 'notesPlainBodyHasNoMarkup',
+      'notesNewActionPresent', 'notesAutosavePersisted', 'notesRichTextPersisted', 'notesItalicShortcutPersisted',
+      'notesSaveShortcutPreventedBrowserDialog', 'notesPlainBodyHasNoMarkup',
       'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
       'notesMovedToHome', 'notesProjectActionsPresent', 'notesProjectRenamed', 'notesProjectRemovedSafely',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
