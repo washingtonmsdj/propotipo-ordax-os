@@ -101,12 +101,16 @@ export function defineFirstPartyApp(spec) {
   if (!spec.component || typeof spec.component !== "object" || Array.isArray(spec.component)) {
     throw new TypeError(`First-party app ${spec.id} is missing component identity`);
   }
-  const component = defineComponentManifest({
-    ...spec.component,
-    id: spec.id,
-    title: spec.title,
-    kind: "app",
-  });
+  const component = defineComponentManifest(spec.component);
+  if (
+    component.id !== spec.id
+    || component.title !== spec.title
+    || component.kind !== "app"
+  ) {
+    throw new TypeError(
+      `First-party app ${spec.id} component identity must match its app owner`,
+    );
+  }
 
   return Object.freeze({
     id: spec.id,
