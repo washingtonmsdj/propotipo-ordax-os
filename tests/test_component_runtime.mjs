@@ -34,7 +34,7 @@ test("optional component runtime mounts and reports its own health", async () =>
       componentRuntime: {
         schema: COMPONENT_RUNTIME_SCHEMA,
         componentId: "internet",
-        version: "0.2.0",
+        version: "0.3.0",
         async mount(context) {
           mountedContext = context;
           return { destroy() { destroyed = true; } };
@@ -107,7 +107,7 @@ test("malformed mounted runtime is isolated as component failure", async () => {
       componentRuntime: {
         schema: COMPONENT_RUNTIME_SCHEMA,
         componentId: "internet",
-        version: "0.2.0",
+        version: "0.3.0",
         mount() {
           return {};
         },
