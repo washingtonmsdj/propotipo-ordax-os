@@ -86,7 +86,7 @@ class InternetBrowserContractTests(unittest.TestCase):
     def test_shared_chrome_does_not_embed_arbitrary_sites(self):
         controls = self.text(CONTROLS)
         self.assertIn('contracts/browser-session.mjs', controls)
-        self.assertIn('surface/ui/surface-lifecycle.mjs', controls)
+        self.assertIn('contracts/surface-render-lifecycle.mjs', controls)
         self.assertIn('assertBrowserSessionPort', controls)
         self.assertIn('data-browser-viewport', controls)
         self.assertNotIn('<iframe', controls.lower())
