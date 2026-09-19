@@ -31,12 +31,12 @@ on:
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
       - 'system/contracts/notes-file-importer.mjs'
+      - 'system/contracts/browser-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
-      - 'system/services/browser/**'
       - 'system/services/files/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
@@ -75,7 +75,15 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
-      - 'tests/test_browser_navigation.mjs'
+      - 'tests/test_browser_session_integration_contract.py'
+      - 'tests/test_browser_session_store.py'
+      - 'tests/test_internet_accessibility_contract.py'
+      - 'tests/test_internet_browser_contract.py'
+      - 'tests/test_internet_project_context_contract.py'
+      - 'tests/test_native_host_module_integrity.py'
+      - 'tests/test_native_request_boundary.py'
+      - 'tests/test_system_runtime_contract.py'
+      - 'tests/test_third_party_inventory.py'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -121,12 +129,12 @@ on:
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
       - 'system/contracts/notes-file-importer.mjs'
+      - 'system/contracts/browser-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
-      - 'system/services/browser/**'
       - 'system/services/files/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
@@ -165,7 +173,15 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
-      - 'tests/test_browser_navigation.mjs'
+      - 'tests/test_browser_session_integration_contract.py'
+      - 'tests/test_browser_session_store.py'
+      - 'tests/test_internet_accessibility_contract.py'
+      - 'tests/test_internet_browser_contract.py'
+      - 'tests/test_internet_project_context_contract.py'
+      - 'tests/test_native_host_module_integrity.py'
+      - 'tests/test_native_request_boundary.py'
+      - 'tests/test_system_runtime_contract.py'
+      - 'tests/test_third_party_inventory.py'
       - 'tests/test_identity_session.mjs'
       - 'tests/test_identity_actions.mjs'
       - 'tests/test_power_actions.mjs'
@@ -214,7 +230,6 @@ jobs:
             system/contracts \
             system/services/account \
             system/services/apps \
-            system/services/browser \
             system/services/files \
             system/services/notes \
             system/services/preferences \
@@ -248,7 +263,6 @@ jobs:
           node --test tests/test_file_notes_action.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
-          node --test tests/test_browser_navigation.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
@@ -273,6 +287,15 @@ jobs:
           python -m unittest tests.test_files_to_notes_import_contract -v
           python -m unittest tests.test_file_notes_action_contract -v
           python -m unittest tests.test_notes_native -v
+          python -m unittest tests.test_browser_session_integration_contract -v
+          python -m unittest tests.test_browser_session_store -v
+          python -m unittest tests.test_internet_accessibility_contract -v
+          python -m unittest tests.test_internet_browser_contract -v
+          python -m unittest tests.test_internet_project_context_contract -v
+          python -m unittest tests.test_native_host_module_integrity -v
+          python -m unittest tests.test_native_request_boundary -v
+          python -m unittest tests.test_system_runtime_contract -v
+          python -m unittest tests.test_third_party_inventory -v
 
       - name: Build and verify deterministic Web client
         run: |
