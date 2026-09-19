@@ -668,6 +668,11 @@
   line-height: 1.1;
 }
 
+.ordax-notes-title::placeholder {
+  color: color-mix(in srgb, var(--ordax-muted) 72%, transparent);
+  opacity: 1;
+}
+
 .ordax-notes-meta {
   margin: 4px 0 24px;
   color: var(--ordax-muted);
@@ -694,7 +699,7 @@
   caret-color: var(--notes-accent);
 }
 
-.ordax-notes-rich-editor:empty::before {
+.ordax-notes-rich-editor[data-notes-empty-state="true"] .ordax-notes-rich-block:first-child::before {
   content: "Comece a escrever…";
   color: var(--ordax-muted);
   pointer-events: none;
