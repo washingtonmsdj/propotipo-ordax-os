@@ -132,10 +132,13 @@ class NativeComponentSlotTests(unittest.TestCase):
                     )
 
                 runtime_path.chmod(0o444)
+                runtime_parent = runtime_path.parent
+                runtime_parent.chmod(0o755)
                 runtime_path.unlink()
                 external = root / "outside.mjs"
                 external.write_text("export default 1;\n", encoding="utf-8")
                 os.symlink(external, runtime_path)
+                runtime_parent.chmod(0o555)
                 with self.assertRaises(OSError):
                     host.read_component_slot_file(
                         str(root),
