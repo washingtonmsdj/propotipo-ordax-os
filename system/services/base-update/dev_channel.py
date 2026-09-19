@@ -83,6 +83,7 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         "source_commit",
         "tag",
         "activation",
+        "rootfs_activation",
         "manual_usb_rewrite_required",
         "kernel",
         "initramfs",
@@ -100,6 +101,8 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         raise DevBaseChannelError("development Base tag does not match requested checkout")
     if value["activation"] != "inactive-slot-next-boot":
         raise DevBaseChannelError("development Base activation policy is invalid")
+    if value["rootfs_activation"] != "materialized-only-selection-not-enabled":
+        raise DevBaseChannelError("development Base rootfs activation policy is invalid")
     if value["manual_usb_rewrite_required"] is not False:
         raise DevBaseChannelError("development Base unexpectedly requires USB rewrite")
     _validate_binding(value["kernel"], "vmlinuz", expected_commit)
