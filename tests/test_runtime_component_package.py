@@ -45,7 +45,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         component = metadata["component"]
         self.assertEqual(component["id"], "internet")
         self.assertEqual(component["version"], "0.3.0")
-        self.assertEqual(component["releaseMode"], "bundled")
+        self.assertEqual(component["releaseMode"], "git-app")
         self.assertEqual(component["restartScope"], "component")
         self.assertEqual(component["healthMode"], "runtime")
         self.assertEqual(
