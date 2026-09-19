@@ -28,8 +28,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
         self.assertIn('STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
-        self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}', text)
-        self.assertIn('INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}', text)
+        self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
+        self.assertIn('INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
         self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-$SURFACE_HEALTH_TIMEOUT}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
@@ -43,6 +43,32 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertNotIn("reboot -f", text)
         self.assertNotIn("poweroff -f", text)
 
+    def test_surface_health_recovery_is_bounded_to_seconds_not_minutes(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn(
+            'SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}',
+            text,
+        )
+        self.assertIn(
+            'INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}',
+            text,
+        )
+        self.assertIn(
+            '[ "$SURFACE_HEALTH_TIMEOUT" -ge 15 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30',
+            text,
+        )
+        self.assertIn(
+            '[ "$INITIAL_SURFACE_HEALTH_TIMEOUT" -ge 15 ] 2>/dev/null || INITIAL_SURFACE_HEALTH_TIMEOUT=30',
+            text,
+        )
+        self.assertNotIn(
+            'SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}',
+            text,
+        )
+        self.assertNotIn(
+            'INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}',
+            text,
+        )
     def test_git_update_operations_are_bounded(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn('/bin/busybox timeout -k 5 "$timeout_seconds"', text)

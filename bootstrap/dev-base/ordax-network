@@ -45,6 +45,16 @@ case "${1:-}" in
         ;;
 esac
 
+load_network_modules() {
+    # Network hardware discovery is not part of OrdaX local boot readiness.
+    # Load the supported Wi-Fi families only when the network owner actually runs.
+    for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
+        modprobe "$module" >/dev/null 2>&1 || true
+    done
+}
+
+load_network_modules
+
 cleanup_runtime_files() {
     rm -f "$CANDIDATE_CONF" "$SCAN_FILE" "$SSID_FILE"
 }
