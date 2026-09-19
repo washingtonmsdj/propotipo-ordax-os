@@ -38,6 +38,7 @@ import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-met
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
+import { mountInternetBrowserShortcuts } from "../../surface/ui/internet-browser-shortcuts.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
@@ -214,6 +215,7 @@ async function start() {
     surface,
     { projects },
   );
+  const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
   try {
@@ -346,6 +348,7 @@ async function start() {
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
       notesWorkspaceControls.destroy();
+      internetBrowserShortcuts.destroy();
       internetBrowserControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
