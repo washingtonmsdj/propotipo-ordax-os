@@ -103,6 +103,20 @@ const systemOverviewControls = mountSystemOverviewControls(
 );
 
 componentManager.setCurrentHealth("surface-shell", "healthy");
+const filesComponent = await loadOptionalComponentRuntime({
+  componentId: "files",
+  importer: () => import("../../apps/files/runtime.mjs"),
+  componentManager,
+  context: {
+    root,
+    fileSpace: null,
+    appActivation,
+    surfaceLifecycle: surface,
+  },
+  onError(error) {
+    console.warn("OrdaX Files runtime unavailable", error);
+  },
+});
 const notesComponent = await loadOptionalComponentRuntime({
   componentId: "notes",
   importer: () => import("../../apps/notes/runtime.mjs"),
@@ -136,6 +150,7 @@ window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
+    filesComponent?.destroy();
     internetComponent?.destroy();
     notesComponent?.destroy();
     networkQuickPanel?.destroy();
