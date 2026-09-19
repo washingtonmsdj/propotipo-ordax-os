@@ -14,7 +14,7 @@ import stat
 import tarfile
 import sys
 
-SCHEMA = "prototype-ordax.dev-base-candidate/2"
+SCHEMA = "prototype-ordax.dev-base-candidate/3"
 REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -269,7 +269,7 @@ def build(
         "source_commit": source_commit,
         "tag": tag,
         "activation": "inactive-slot-next-boot",
-        "rootfs_activation": "materialized-only-selection-not-enabled",
+        "rootfs_activation": "pending-one-boot-health-gated",
         "manual_usb_rewrite_required": False,
         "kernel": binding("vmlinuz", kernel_out, source_commit),
         "initramfs": binding("initrd.gz", initramfs_out, source_commit),
@@ -328,7 +328,7 @@ def validate_descriptor(value: object) -> dict:
         raise CandidateError("development Base tag is invalid")
     if value["activation"] != "inactive-slot-next-boot":
         raise CandidateError("development Base activation policy is invalid")
-    if value["rootfs_activation"] != "materialized-only-selection-not-enabled":
+    if value["rootfs_activation"] != "pending-one-boot-health-gated":
         raise CandidateError("development Base rootfs activation policy is invalid")
     if value["manual_usb_rewrite_required"] is not False:
         raise CandidateError("development Base unexpectedly requires USB rewrite")
