@@ -76,7 +76,7 @@ run_isolated_init() {
     seed=$1
     mount --make-rprivate /
     mount --bind "$seed" "$seed"
-    exec chroot "$seed" /usr/bin/env -i \
+    exec chroot "$seed" /bin/busybox env -i \
       PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
       HOME=/root \
       ORDAX_WORKTREE=/workspace/ordax \
