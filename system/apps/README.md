@@ -11,7 +11,7 @@ Each first-party app has one explicit owner:
 ```text
 system/apps/files/app.mjs
 system/apps/notes/app.mjs
-system/apps/browser/app.mjs
+system/apps/internet/app.mjs
 system/apps/settings/app.mjs
 system/apps/account/app.mjs
 system/apps/system/app.mjs
@@ -23,7 +23,7 @@ The initial owners are:
 
 - Arquivos;
 - Notas;
-- Navegador;
+- Internet;
 - Ajustes;
 - Conta;
 - Sistema.
@@ -34,7 +34,7 @@ Application availability is capability-driven. A future app that requires a capa
 
 **Notas is an app, not a Surface/system subsystem.** It is currently bundled as a first-party app and is especially useful on Native/USB because `filesystem.user-space` is available there, but its stable app identity remains `notes` and that filesystem capability is optional. This keeps the application boundary compatible with a future signed app-package/store path without pretending that a general package manager or Store already exists. Until independent app packaging/release is implemented, Notas shares the product release/version instead of inventing a separate app version.
 
-**Navegador follows the same app boundary.** Its stable app id is `browser` and it requires the shared `network.https` capability. The current implementation is a bounded, sandboxed embedded web-view baseline, not a claim of a complete standalone browser engine: remote pages remain origin-isolated from the Surface and some sites may refuse embedding through their own policies. Future browser-engine or signed Store packaging work should evolve the same app identity instead of creating a host-specific copy.
+**Internet follows the same app boundary.** Its stable app id is `internet`. The shared app owns browser chrome, workspace/tab organization and project context; Native/USB provide the optional `browser.web-content` capability through an isolated WebKit host, while Web fails closed instead of embedding arbitrary sites. Future desktop/mobile browser engines and signed Store packaging should evolve the same app identity rather than creating a host-specific copy.
 
 ## Boundary
 

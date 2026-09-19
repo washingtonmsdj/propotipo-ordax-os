@@ -2,6 +2,7 @@ import {
   createNativeClientDiagnostics,
   renderedSourceSha,
 } from "../../adapters/native/client-diagnostics.mjs";
+import { createNativeBrowserSession } from "../../adapters/native/browser-session.mjs";
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
@@ -35,8 +36,9 @@ import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/updat
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
-import { mountBrowserWorkspaceControls } from "../../surface/ui/browser-workspace-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
+import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
+import { mountInternetBrowserShortcuts } from "../../surface/ui/internet-browser-shortcuts.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
@@ -67,6 +69,7 @@ async function start() {
     throw new Error("OrdaX composition root is missing #ordax-root");
   }
 
+  const browserSession = createNativeBrowserSession(window);
   const preferenceStorePromise = createNativePreferenceStore(window);
   const optionalPortsPromise = Promise.all([
     optionalNativeProbe(
@@ -178,6 +181,7 @@ async function start() {
   const powerStatusAvailable = powerStatus !== null;
   const networkStatusAvailable = networkStatus !== null;
   const networkManagementAvailable = networkManagement !== null;
+  const browserWebContentAvailable = browserSession.getSnapshot().supported;
   const host = createNativeSurfaceHost(window, {
     bootControlAvailable,
     userFileSpaceAvailable,
@@ -185,6 +189,7 @@ async function start() {
     powerStatusAvailable,
     networkStatusAvailable,
     networkManagementAvailable,
+    browserWebContentAvailable,
   });
 
   validateAccountRuntime(
@@ -205,7 +210,13 @@ async function start() {
     surface,
     { fileSpace, appActivation },
   );
-  const browserWorkspaceControls = mountBrowserWorkspaceControls(root, surface);
+  const internetBrowserControls = mountInternetBrowserControls(
+    root,
+    browserSession,
+    surface,
+    { projects },
+  );
+  const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
   try {
@@ -339,10 +350,12 @@ async function start() {
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
-      browserWorkspaceControls.destroy();
       notesWorkspaceControls.destroy();
+      internetBrowserShortcuts.destroy();
+      internetBrowserControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
+      browserSession.dispose();
       updateNotificationBridge.destroy();
       updateDiagnosticRecorder.dispose();
       updateWatcher.dispose();

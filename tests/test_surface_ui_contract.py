@@ -10,7 +10,7 @@ APP_CONTRACT = APPS / "app-contract.mjs"
 APP_OWNERS = {
     "files": APPS / "files" / "app.mjs",
     "notes": APPS / "notes" / "app.mjs",
-    "browser": APPS / "browser" / "app.mjs",
+    "internet": APPS / "internet" / "app.mjs",
     "settings": APPS / "settings" / "app.mjs",
     "account": APPS / "account" / "app.mjs",
     "system": APPS / "system" / "app.mjs",
@@ -47,7 +47,8 @@ SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
 NOTES_RICH_EDITOR = SURFACE / "notes-rich-editor.mjs"
-BROWSER_WORKSPACE_CONTROLS = SURFACE / "browser-workspace-controls.mjs"
+INTERNET_BROWSER_CONTROLS = SURFACE / "internet-browser-controls.mjs"
+INTERNET_BROWSER_SHORTCUTS = SURFACE / "internet-browser-shortcuts.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
@@ -68,7 +69,8 @@ class SurfaceUiContractTests(unittest.TestCase):
             FILE_SPACE_CONTROLS,
             NOTES_WORKSPACE_CONTROLS,
             NOTES_RICH_EDITOR,
-            BROWSER_WORKSPACE_CONTROLS,
+            INTERNET_BROWSER_CONTROLS,
+            INTERNET_BROWSER_SHORTCUTS,
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
             SETTINGS_OVERVIEW_CONTROLS,
@@ -78,7 +80,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface.css",
             SURFACE / "files.css",
             SURFACE / "notes.css",
-            SURFACE / "browser.css",
+            SURFACE / "internet.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
             SURFACE / "settings.css",
@@ -160,7 +162,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("getAppTarget(appId)", surface)
         self.assertIn("setAppTarget(appId, target)", surface)
         self.assertIn('type: "app.target"', surface)
-        for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, BROWSER_WORKSPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, INTERNET_BROWSER_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
@@ -270,40 +272,43 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("localStorage", controls)
         self.assertNotIn("/__ordax/native/", controls)
 
-    def test_browser_uses_shared_isolated_workspace_extension(self):
-        browser = APP_OWNERS["browser"].read_text(encoding="utf-8")
-        controls = BROWSER_WORKSPACE_CONTROLS.read_text(encoding="utf-8")
-        css = (SURFACE / "browser.css").read_text(encoding="utf-8")
+    def test_internet_uses_shared_browser_session_extension(self):
+        internet = APP_OWNERS["internet"].read_text(encoding="utf-8")
+        controls = INTERNET_BROWSER_CONTROLS.read_text(encoding="utf-8")
+        shortcuts = INTERNET_BROWSER_SHORTCUTS.read_text(encoding="utf-8")
+        css = (SURFACE / "internet.css").read_text(encoding="utf-8")
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
 
-        self.assertIn('id: "browser"', browser)
-        self.assertIn('requiredCapabilities: ["network.https"]', browser)
-        self.assertIn('extensionId: "browser-workspace"', browser)
-        self.assertIn('railButton("browser", "Navegador", ICONS.browser)', shell)
-        self.assertIn('BROWSER_EXTENSION_SELECTOR', controls)
-        self.assertIn("createBrowserNavigation", controls)
+        self.assertIn('id: "internet"', internet)
+        self.assertIn('extensionId: "internet-browser"', internet)
+        self.assertIn('railButton("internet", "Internet", ICONS.internet)', shell)
+        self.assertIn("assertBrowserSessionPort", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
-        self.assertIn('getAppTarget("browser")', controls)
-        self.assertIn('setAppTarget("browser"', controls)
-        self.assertIn('"sandbox"', controls)
-        self.assertIn("allow-scripts", controls)
-        self.assertNotIn("allow-same-origin", controls)
-        self.assertIn('frame.referrerPolicy = "no-referrer"', controls)
-        self.assertNotIn("localStorage", controls)
+        self.assertIn('getAppTarget("internet")', controls)
+        self.assertIn("syncSurfaceTarget", controls)
+        self.assertIn("data-browser-viewport", controls)
+        self.assertNotIn("iframe", controls.lower())
         self.assertNotIn("/__ordax/native/", controls)
         self.assertNotIn("adapters/", controls)
-        self.assertIn(".ordax-browser-view", css)
-        self.assertIn(".ordax-browser-frame", css)
-        self.assertIn("../../surface/ui/browser.css", web_html)
-        self.assertIn("../../surface/ui/browser.css", native_html)
-        self.assertIn("mountBrowserWorkspaceControls", web_main)
-        self.assertIn("mountBrowserWorkspaceControls", native_main)
-        self.assertIn("browserWorkspaceControls.destroy()", web_main)
-        self.assertIn("browserWorkspaceControls.destroy()", native_main)
+        self.assertIn("assertBrowserSessionPort", shortcuts)
+        self.assertIn(".ordax-internet-view", css)
+        self.assertIn(".ordax-internet-project-panel", css)
+        self.assertIn("../../surface/ui/internet.css", web_html)
+        self.assertIn("../../surface/ui/internet.css", native_html)
+        self.assertIn("createWebBrowserSession", web_main)
+        self.assertIn("mountInternetBrowserControls", web_main)
+        self.assertIn("createNativeBrowserSession", native_main)
+        self.assertIn("mountInternetBrowserControls", native_main)
+        self.assertIn("mountInternetBrowserShortcuts", native_main)
+        self.assertIn("internetBrowserControls.destroy()", web_main)
+        self.assertIn("internetBrowserControls.destroy()", native_main)
+        self.assertIn("internetBrowserShortcuts.destroy()", native_main)
+        self.assertIn("browserSession.dispose()", web_main)
+        self.assertIn("browserSession.dispose()", native_main)
 
     def test_system_uses_formal_shared_overview_extension(self):
         system = APP_OWNERS["system"].read_text(encoding="utf-8")
@@ -608,7 +613,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
-        for app_id in ("files", "notes", "browser", "settings", "account", "system"):
+        for app_id in ("files", "notes", "internet", "settings", "account", "system"):
             self.assertIn(f'railButton("{app_id}"', shell)
         self.assertIn("data-power-slot", shell)
         self.assertIn("data-update-slot", shell)

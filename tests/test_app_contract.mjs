@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { defineFirstPartyApp } from "../system/apps/app-contract.mjs";
-import { browserApp } from "../system/apps/browser/app.mjs";
+import { internetApp } from "../system/apps/internet/app.mjs";
 import { notesApp } from "../system/apps/notes/app.mjs";
 import { validateFileListing } from "../system/contracts/file-space.mjs";
 
@@ -104,11 +104,11 @@ test("Notes stays a first-party app and advertises native file-space as optional
   assert.deepEqual(notesApp.optionalCapabilities, ["filesystem.user-space"]);
 });
 
-test("Browser stays a first-party app gated by secure network capability", () => {
-  assert.equal(browserApp.id, "browser");
-  assert.deepEqual(browserApp.requiredCapabilities, ["network.https"]);
-  assert.deepEqual(browserApp.optionalCapabilities, []);
-  assert.equal(browserApp.panels[0].extensionId, "browser-workspace");
+test("Internet stays a first-party app while engine availability remains host-owned", () => {
+  assert.equal(internetApp.id, "internet");
+  assert.deepEqual(internetApp.requiredCapabilities, []);
+  assert.deepEqual(internetApp.optionalCapabilities, ["browser.web-content"]);
+  assert.equal(internetApp.panels[0].extensionId, "internet-browser");
 });
 
 test("app contract rejects obsolete identity-specific panel kinds", () => {
