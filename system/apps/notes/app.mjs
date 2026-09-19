@@ -7,6 +7,7 @@ export const notesApp = defineFirstPartyApp({
   monogram: "NO",
   singleton: true,
   requiredCapabilities: [],
+  optionalCapabilities: ["filesystem.user-space"],
   panels: [
     {
       kind: "extension",
