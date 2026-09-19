@@ -758,6 +758,112 @@
   outline: none;
 }
 
+.ordax-notes-inline-media {
+  display: grid;
+  gap: 18px;
+  margin: 24px 0 10px;
+}
+
+.ordax-notes-inline-image {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ordax-window-bg) 94%, var(--notes-paper));
+}
+
+.ordax-notes-inline-image-frame {
+  display: grid;
+  min-height: 180px;
+  max-height: 430px;
+  place-items: center;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--notes-soft) 75%, transparent),
+      color-mix(in srgb, var(--ordax-subtle-bg) 84%, transparent)
+    );
+}
+
+.ordax-notes-inline-image-preview {
+  display: block;
+  width: 100%;
+  max-height: 430px;
+  object-fit: contain;
+}
+
+.ordax-notes-inline-image-placeholder {
+  max-width: 360px;
+  padding: 28px;
+  color: var(--ordax-muted);
+  font-family: var(--ordax-font-ui);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.ordax-notes-inline-image-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notes-inline-image-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  font-family: var(--ordax-font-ui);
+}
+
+.ordax-notes-inline-image-copy strong,
+.ordax-notes-inline-image-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-inline-image-copy strong {
+  font-size: 0.72rem;
+}
+
+.ordax-notes-inline-image-copy small {
+  color: var(--ordax-muted);
+  font-size: 0.61rem;
+}
+
+.ordax-notes-inline-image-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.ordax-notes-inline-image-action {
+  min-height: 29px;
+  padding: 0 8px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--ordax-font-ui);
+  font-size: 0.61rem;
+}
+
+.ordax-notes-inline-image-action:hover,
+.ordax-notes-inline-image-action:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-inline-image-remove {
+  color: var(--ordax-muted);
+}
+
 .ordax-notes-tasks {
   margin-top: 22px;
 }
