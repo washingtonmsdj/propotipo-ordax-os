@@ -250,6 +250,19 @@ class BaseUpdateContractTests(unittest.TestCase):
         )
         self.assertTrue(discovery["runtime_preflight_fail_soft"])
         self.assertTrue(discovery["candidate_acquisition_continues_without_esp"])
+        self.assertEqual(
+            discovery["readonly_layout_inspector"],
+            "system/services/base-update/esp_layout.py",
+        )
+        self.assertEqual(
+            discovery["readonly_layout_schema"],
+            "prototype-ordax.esp-layout/1",
+        )
+        self.assertTrue(discovery["readonly_inspection_required_before_stage"])
+        self.assertEqual(discovery["supported_layouts"], ["legacy", "ab"])
+        self.assertTrue(discovery["candidate_presence_reported"])
+        self.assertFalse(discovery["inspection_authorizes_write"])
+        self.assertFalse(discovery["inspection_authorizes_activation"])
 
     def test_release_channel_enrollment_is_pinned_and_non_destructive(self):
         channel = CONTRACT["release_channel_enrollment"]
