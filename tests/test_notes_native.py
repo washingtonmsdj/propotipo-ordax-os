@@ -18,6 +18,7 @@ NOTES_CONTROLS = ROOT / "system" / "surface" / "ui" / "notes-workspace-controls.
 NOTES_RICH_EDITOR = ROOT / "system" / "surface" / "ui" / "notes-rich-editor.mjs"
 NOTES_IMAGE_PREVIEWS = ROOT / "system" / "surface" / "ui" / "notes-image-previews.mjs"
 NOTES_LIST_MODEL = ROOT / "system" / "surface" / "ui" / "notes-list-model.mjs"
+NOTES_FILE_PICKER = ROOT / "system" / "surface" / "ui" / "notes-file-picker.mjs"
 NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -127,6 +128,7 @@ class NotesNativeTests(unittest.TestCase):
         rich_editor = NOTES_RICH_EDITOR.read_text(encoding="utf-8")
         image_previews = NOTES_IMAGE_PREVIEWS.read_text(encoding="utf-8")
         list_model = NOTES_LIST_MODEL.read_text(encoding="utf-8")
+        file_picker = NOTES_FILE_PICKER.read_text(encoding="utf-8")
         css = NOTES_CSS.read_text(encoding="utf-8")
         web_html = WEB_HTML.read_text(encoding="utf-8")
         native_html = NATIVE_HTML.read_text(encoding="utf-8")
@@ -195,6 +197,13 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("attach-file-reference", controls)
         self.assertIn("./notes-image-previews.mjs", controls)
         self.assertIn("./notes-list-model.mjs", controls)
+        self.assertIn("./notes-file-picker.mjs", controls)
+        self.assertIn("createNotesFilePicker", controls)
+        self.assertIn("joinNotesLogicalPath", controls)
+        self.assertIn("notesParentLogicalPath", controls)
+        self.assertNotIn("joinLogicalPath(", controls)
+        self.assertNotIn("parentLogicalPath(", controls)
+        self.assertNotIn("filePickerOrdinal", controls)
         self.assertIn("createNotesImagePreviewCache", controls)
         self.assertIn("formatNotesRelativeTime", controls)
         self.assertIn("firstNotesBodyLine", controls)
@@ -216,6 +225,14 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("releaseExcept", image_previews)
         self.assertIn("destroy", image_previews)
         self.assertNotIn("/__ordax/native/", image_previews)
+        self.assertIn("assertFileSpacePort", file_picker)
+        self.assertIn("validateFileSpacePath", file_picker)
+        self.assertIn("createNotesFilePicker", file_picker)
+        self.assertIn("requestGeneration", file_picker)
+        self.assertIn("consumeSelection", file_picker)
+        self.assertNotIn("innerHTML", file_picker)
+        self.assertNotIn("localStorage", file_picker)
+        self.assertNotIn("/__ordax/native/", file_picker)
         self.assertIn("MAX_NOTES", controls)
         self.assertIn("MAX_NOTE_PROJECTS", controls)
         self.assertIn("MAX_NOTE_TASKS", controls)
