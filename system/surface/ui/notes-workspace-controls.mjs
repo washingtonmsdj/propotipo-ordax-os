@@ -56,7 +56,7 @@ function noteMatchesQuery(note, query) {
   return haystack.includes(query.toLocaleLowerCase("pt-BR"));
 }
 
-function visibleNotes(documentState, mode, query) {
+function visibleNotes(documentState, mode, query, newestFirst = true) {
   let items = [...documentState.notes];
   if (mode === "trash") {
     items = items.filter((note) => note.deletedAt !== null);
@@ -72,7 +72,7 @@ function visibleNotes(documentState, mode, query) {
   }
   return items
     .filter((note) => noteMatchesQuery(note, query))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort((a, b) => newestFirst ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt);
 }
 
 function wrapSelection(textarea, before, after = before, fallback = "texto") {
@@ -249,6 +249,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
   let mode = "project";
   let query = "";
   let referencesOpen = true;
+  let newestFirst = true;
   let mountedSlot = null;
   let saveTimer = null;
   let pendingNoteId = null;
@@ -310,7 +311,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
   };
 
   const renderList = (view) => {
-    const items = visibleNotes(state.document, mode, query);
+    const items = visibleNotes(state.document, mode, query, newestFirst);
     view.querySelector(".ordax-notes-list-title").textContent = modeLabel();
     view.querySelector(".ordax-notes-list-count").textContent = `${items.length} ${items.length === 1 ? "nota" : "notas"}`;
     const list = view.querySelector(".ordax-notes-list");
@@ -483,7 +484,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
   };
 
   const selectFirstVisible = () => {
-    const first = visibleNotes(state.document, mode, query)[0];
+    const first = visibleNotes(state.document, mode, query, newestFirst)[0];
     if (first) runtime.selectNote(first.id);
   };
 
@@ -525,8 +526,15 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       mode = action.replace("view-", "");
       render();
       const selected = currentNote();
-      const visible = visibleNotes(state.document, mode, query);
+      const visible = visibleNotes(state.document, mode, query, newestFirst);
       if (!selected || !visible.some((item) => item.id === selected.id)) selectFirstVisible();
+      return;
+    }
+    if (action === "sort") {
+      newestFirst = !newestFirst;
+      actionNode.textContent = newestFirst ? "≡" : "≣";
+      actionNode.title = newestFirst ? "Mais recentes primeiro" : "Mais antigas primeiro";
+      renderList(mountedSlot.querySelector("[data-ordax-notes-view]"));
       return;
     }
     if (!note) return;
