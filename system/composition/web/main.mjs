@@ -12,6 +12,7 @@ import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
+import { mountBrowserWorkspaceControls } from "../../surface/ui/browser-workspace-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
@@ -48,7 +49,13 @@ const surface = mountSurface(
   workspaceStore,
   appActivation,
 );
-const notesWorkspaceControls = mountNotesWorkspaceControls(root, notesRuntime, surface);
+const notesWorkspaceControls = mountNotesWorkspaceControls(
+  root,
+  notesRuntime,
+  surface,
+  { appActivation },
+);
+const browserWorkspaceControls = mountBrowserWorkspaceControls(root, surface);
 const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
 let quickPanelControls = null;
 let networkQuickPanel = null;
@@ -100,6 +107,7 @@ window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
+    browserWorkspaceControls.destroy();
     notesWorkspaceControls.destroy();
     networkQuickPanel?.destroy();
     quickPanelControls?.destroy();
