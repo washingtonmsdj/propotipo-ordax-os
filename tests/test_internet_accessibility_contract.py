@@ -2,8 +2,8 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
-STYLES = ROOT / "system" / "components" / "internet" / "internet.css"
+CONTROLS = ROOT / "system" / "apps" / "internet" / "ui" / "browser-controls.mjs"
+STYLES = ROOT / "system" / "apps" / "internet" / "internet.css"
 
 
 def relative_luminance(color):
