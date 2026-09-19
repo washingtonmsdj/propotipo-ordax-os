@@ -145,6 +145,10 @@ class DevBaseProducerTests(unittest.TestCase):
             self.assertEqual(descriptor["source_commit"], SOURCE)
             self.assertEqual(descriptor["tag"], f"ordax-dev-base-{SOURCE}")
             self.assertEqual(descriptor["activation"], "inactive-slot-next-boot")
+            self.assertEqual(
+                descriptor["rootfs_activation"],
+                "materialized-only-selection-not-enabled",
+            )
             self.assertFalse(descriptor["manual_usb_rewrite_required"])
             self.assertEqual(descriptor["kernel"]["name"], "vmlinuz")
             self.assertEqual(descriptor["initramfs"]["name"], "initrd.gz")
@@ -225,6 +229,7 @@ class DevBaseConsumerTests(unittest.TestCase):
             "source_commit": source_commit,
             "tag": tag,
             "activation": "inactive-slot-next-boot",
+            "rootfs_activation": "materialized-only-selection-not-enabled",
             "manual_usb_rewrite_required": False,
             "kernel": {
                 "name": "vmlinuz",
