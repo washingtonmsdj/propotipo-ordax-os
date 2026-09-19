@@ -201,14 +201,14 @@ function buildShell(documentObject) {
   }
   toolbar.append(
     format,
-    button(documentObject, "ordax-notes-tool", "Negrito", "bold", "B"),
-    button(documentObject, "ordax-notes-tool ordax-notes-tool-italic", "Itálico", "italic", "I"),
+    button(documentObject, "ordax-notes-tool", "Negrito (Ctrl/Cmd+B)", "bold", "B"),
+    button(documentObject, "ordax-notes-tool ordax-notes-tool-italic", "Itálico (Ctrl/Cmd+I)", "italic", "I"),
     node(documentObject, "span", "ordax-notes-tool-separator"),
     button(documentObject, "ordax-notes-tool", "Adicionar item de checklist", "add-task", "☑"),
-    button(documentObject, "ordax-notes-tool", "Inserir link no texto", "insert-link", "↗"),
+    button(documentObject, "ordax-notes-tool", "Inserir link no texto (Ctrl/Cmd+K)", "insert-link", "↗"),
     button(documentObject, "ordax-notes-tool", "Relacionar imagem local", "insert-image", "▧"),
     node(documentObject, "span", "ordax-notes-tool-separator"),
-    button(documentObject, "ordax-notes-tool", "Desfazer", "undo", "↶"),
+    button(documentObject, "ordax-notes-tool", "Desfazer (Ctrl/Cmd+Z)", "undo", "↶"),
   );
   editor.append(toolbar);
 
@@ -825,10 +825,33 @@ export function mountNotesWorkspaceControls(
     if (first) runtime.selectNote(first.id);
   };
 
+  const promptEditorLink = (body) => {
+    const href = windowObject.prompt?.("Cole o endereço do link:");
+    if (!href) return false;
+    let valid = false;
+    try {
+      valid = WEB_PROTOCOLS.includes(new URL(href).protocol);
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      windowObject.alert?.("Use um endereço da web válido.");
+      return false;
+    }
+    if (!applyNotesRichLink(body, href)) {
+      windowObject.alert?.("Selecione um trecho da nota antes de adicionar o link.");
+      return false;
+    }
+    return true;
+  };
+
   const onClick = (event) => {
     const editorLink = event.target.closest?.("[data-notes-body] a");
     if (editorLink && mountedSlot?.contains(editorLink)) {
       event.preventDefault();
+      if (event.ctrlKey || event.metaKey) {
+        windowObject.open?.(editorLink.href, "_blank", "noopener,noreferrer");
+      }
       return;
     }
     const actionNode = event.target.closest("[data-notes-action]");
@@ -961,20 +984,7 @@ export function mountNotesWorkspaceControls(
     }
     if (action === "insert-link") {
       restoreEditorRange();
-      const href = windowObject.prompt?.("Cole o endereço do link:");
-      if (href) {
-        let valid = false;
-        try {
-          valid = WEB_PROTOCOLS.includes(new URL(href).protocol);
-        } catch {
-          valid = false;
-        }
-        if (!valid) {
-          windowObject.alert?.("Use um endereço da web válido.");
-        } else if (!applyNotesRichLink(body, href)) {
-          windowObject.alert?.("Selecione um trecho da nota antes de adicionar o link.");
-        }
-      }
+      promptEditorLink(body);
       syncEditorToolbar();
     }
     if (action === "insert-image" && filePort) {
@@ -1142,6 +1152,50 @@ export function mountNotesWorkspaceControls(
     }
   };
 
+  const onEditorKeyDown = (event) => {
+    const body = mountedSlot?.querySelector("[data-notes-body]");
+    if (!body || !(event.target === body || body.contains(event.target))) return;
+    const modifier = event.ctrlKey || event.metaKey;
+    if (!modifier || event.altKey) return;
+
+    const key = String(event.key ?? "").toLocaleLowerCase("en-US");
+    if (key === "s") {
+      event.preventDefault();
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      flushEditor();
+      syncEditorToolbar();
+      return;
+    }
+    if (key === "b") {
+      event.preventDefault();
+      toggleNotesRichInlineMark(body, "bold");
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      syncEditorToolbar();
+      return;
+    }
+    if (key === "i") {
+      event.preventDefault();
+      toggleNotesRichInlineMark(body, "italic");
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      syncEditorToolbar();
+      return;
+    }
+    if (key === "k") {
+      event.preventDefault();
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      promptEditorLink(body);
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      syncEditorToolbar();
+      return;
+    }
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      undoNotesRichEditor(body);
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      syncEditorToolbar();
+    }
+  };
+
   const onReferenceOpen = (event) => {
     const editorLink = event.target.closest?.("[data-notes-body] a");
     if (editorLink && mountedSlot?.contains(editorLink)) {
@@ -1161,6 +1215,7 @@ export function mountNotesWorkspaceControls(
   root.addEventListener("change", onChange);
   root.addEventListener("paste", onPaste);
   root.addEventListener("drop", onDrop);
+  root.addEventListener("keydown", onEditorKeyDown);
   root.addEventListener("dblclick", onReferenceOpen);
   root.addEventListener("keydown", onReferenceOpen);
   documentObject.addEventListener("selectionchange", onSelectionChange);
@@ -1183,6 +1238,7 @@ export function mountNotesWorkspaceControls(
       root.removeEventListener("change", onChange);
       root.removeEventListener("paste", onPaste);
       root.removeEventListener("drop", onDrop);
+      root.removeEventListener("keydown", onEditorKeyDown);
       root.removeEventListener("dblclick", onReferenceOpen);
       root.removeEventListener("keydown", onReferenceOpen);
       documentObject.removeEventListener("selectionchange", onSelectionChange);
