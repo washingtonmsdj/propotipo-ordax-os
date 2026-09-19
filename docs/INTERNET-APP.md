@@ -144,11 +144,14 @@ Implemented in source:
 - explicit project-owned web-reference persistence on Native/USB;
 - bounded per-reference user notes stored with the saved page;
 - automatic cleanup of saved web references when their project is removed;
-- device-local browser favorites with canonical URL identity, explicit add/remove controls and session fallback when privileged profile storage is unavailable.
+- device-local browser favorites with canonical URL identity, explicit add/remove controls and session fallback when privileged profile storage is unavailable;
+- bounded device-local browser history recorded only after completed public HTTP/HTTPS navigation transitions;
+- explicit history reopen/remove/clear controls with session fallback when privileged profile storage is unavailable;
+- restored startup tabs are baseline state rather than falsely recorded as fresh visits.
 
 Intentionally not faked yet:
 
-- collections/read-later/history persistence;
+- collections/read-later;
 - downloads;
 - website permission UI;
 - private-session lifecycle;
@@ -163,9 +166,11 @@ The concept surfaces these future controls, but disabled controls must remain ho
 
 The persisted record contains a stable reference id, project id, canonical HTTP/HTTPS URL, captured title, optional user note and created/updated timestamps. The same project/URL pair is updated in place rather than duplicated. Removing a project prunes its saved web references through the project-reference runtime. Persistence is device-scoped in the Native privileged profile and degrades honestly to session scope if durable storage is unavailable.
 
-The shared Internet UI receives only neutral project/reference and browser-favorites ports. It does not use `localStorage`, Native endpoints or adapters directly.
+The shared Internet UI receives only neutral project/reference, browser-favorites and browser-history ports. It does not use `localStorage`, Native endpoints or adapters directly.
 
 Favorites are browser-owned rather than project-owned. The Native/USB composition persists them in the privileged Surface profile through `ordax.browser-favorites/1`; arbitrary website WebViews never receive that storage capability. A favorite stores only a stable local id, canonical HTTP/HTTPS URL, captured title and timestamps. Persistence degrades explicitly to session scope if privileged profile storage is unavailable.
+
+History is independently browser-owned through `ordax.browser-history/1`. A neutral history bridge observes the browser-session port and records a visit only when a tab reaches a completed public HTTP/HTTPS URL different from that tab's previous completed URL. Existing tabs restored at Surface startup seed the bridge baseline and are not counted as new visits. History is rolling and bounded to 512 entries; clearing or pruning it never mutates WebKit's own back/forward list. Its Native store is also owned by the privileged Surface profile, not by external website WebViews.
 
 Download and offline-copy semantics remain separate operations and still need separate storage, size, provenance and permission rules.
 
