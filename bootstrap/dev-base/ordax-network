@@ -9,7 +9,25 @@ WPA_CONF=$STATE_DIR/wpa.conf
 CANDIDATE_CONF=/run/ordax-wpa-candidate.conf
 SCAN_FILE=/run/ordax-wifi-scan.tsv
 SSID_FILE=/run/ordax-wifi-ssids
+CLOCK_SYNC_TIMEOUT=${ORDAX_CLOCK_SYNC_TIMEOUT_SECONDS:-5}
+DHCP_TIMEOUT=${ORDAX_DHCP_TIMEOUT_SECONDS:-6}
+WIFI_LINK_TIMEOUT=${ORDAX_WIFI_LINK_TIMEOUT_SECONDS:-8}
 mkdir -p "$STATE_DIR" /run
+
+normalize_timeout() {
+    value=$1
+    fallback=$2
+    minimum=$3
+    case "$value" in
+        ''|*[!0-9]*) value=$fallback ;;
+    esac
+    [ "$value" -ge "$minimum" ] 2>/dev/null || value=$fallback
+    printf '%s' "$value"
+}
+
+CLOCK_SYNC_TIMEOUT=$(normalize_timeout "$CLOCK_SYNC_TIMEOUT" 5 2)
+DHCP_TIMEOUT=$(normalize_timeout "$DHCP_TIMEOUT" 6 3)
+WIFI_LINK_TIMEOUT=$(normalize_timeout "$WIFI_LINK_TIMEOUT" 8 3)
 
 force_choose=0
 case "${1:-}" in
@@ -37,17 +55,18 @@ have_ipv4() {
 }
 
 sync_clock() {
-    # GitHub HTTPS fails closed when the notebook RTC is behind the certificate
-    # validity window. NTP does not depend on TLS, so synchronize immediately
-    # after IP connectivity and before returning success to the Git bootstrap.
-    for server in time.cloudflare.com time.google.com pool.ntp.org; do
-        if /bin/busybox ntpd -q -n -p "$server" >/dev/null 2>&1; then
-            echo "ordax-network: relogio sincronizado"
-            return 0
-        fi
-    done
+    # One bounded NTP transaction owns all peers. Clock recovery is useful for
+    # HTTPS, but it may never turn an otherwise usable boot into a long stall.
+    if /bin/busybox timeout -k 1 "$CLOCK_SYNC_TIMEOUT" \
+        /bin/busybox ntpd -q -n \
+        -p time.cloudflare.com \
+        -p time.google.com \
+        -p pool.ntp.org >/dev/null 2>&1; then
+        echo "ordax-network: relogio sincronizado"
+        return 0
+    fi
 
-    echo "ordax-network: nao foi possivel sincronizar data/hora; HTTPS pode falhar" >&2
+    echo "ordax-network: sincronizacao de relogio excedeu o limite; continuando" >&2
     return 1
 }
 
@@ -63,7 +82,8 @@ finish_network() {
 try_dhcp() {
     iface=$1
     ip link set "$iface" up >/dev/null 2>&1 || return 1
-    udhcpc -n -q -t 4 -T 3 -i "$iface" >/dev/null 2>&1 || return 1
+    /bin/busybox timeout -k 1 "$DHCP_TIMEOUT" \
+        udhcpc -n -q -t 2 -T 2 -i "$iface" >/dev/null 2>&1 || return 1
     have_ipv4
 }
 
@@ -85,6 +105,10 @@ if [ "$force_choose" -eq 0 ]; then
         [ -d "$netpath/wireless" ] && continue
         net_type=$(cat "$netpath/type" 2>/dev/null || true)
         [ "$net_type" = 1 ] || continue
+        if [ -r "$netpath/carrier" ]; then
+            carrier=$(cat "$netpath/carrier" 2>/dev/null || printf '0')
+            [ "$carrier" = 1 ] || continue
+        fi
         echo "ordax-network: tentando DHCP em $iface"
         if try_dhcp "$iface"; then
             finish_network "$iface"
@@ -109,7 +133,7 @@ ip link set "$wifi" up >/dev/null 2>&1 || true
 
 wait_for_wifi_link() {
     attempts=0
-    while [ "$attempts" -lt 12 ]; do
+    while [ "$attempts" -lt "$WIFI_LINK_TIMEOUT" ]; do
         if iw dev "$wifi" link 2>/dev/null | grep -q '^Connected to '; then
             return 0
         fi
@@ -231,8 +255,8 @@ choose_scanned_ssid() {
         IFS= read -r -n 1 choice || true
         printf '\n'
     else
-        printf 'Melhor rede sera usada em 5s. Pressione 1-%s para escolher outra: ' "$count"
-        if ! IFS= read -r -n 1 -t 5 choice 2>/dev/null; then
+        printf 'Melhor rede sera usada em 2s. Pressione 1-%s para escolher outra: ' "$count"
+        if ! IFS= read -r -n 1 -t 2 choice 2>/dev/null; then
             choice=""
         fi
         printf '\n'
