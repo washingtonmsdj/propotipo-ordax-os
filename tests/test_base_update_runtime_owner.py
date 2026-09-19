@@ -809,6 +809,62 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("LoaderEntryOneShot", preflight)
         self.assertNotIn("reboot", preflight)
 
+    def test_agent_stages_ready_candidate_without_activation_or_reboot(self):
+        subprocess.run(["sh", "-n", str(AGENT)], check=True)
+        agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn(
+            "DEV_BASE_STAGED_FILE=$HOST_STATE_ROOT/base-update/dev-base-staged-sha",
+            agent,
+        )
+        self.assertIn(
+            "DEV_BASE_STAGE_RESULT_FILE=$HOST_STATE_ROOT/base-update/dev-base-stage-result.json",
+            agent,
+        )
+        self.assertIn(
+            "DEV_BASE_STAGE_LOG=$HOST_STATE_ROOT/base-update/dev-physical-stage.log",
+            agent,
+        )
+        self.assertIn("prepare_dev_base_physical_stage()", agent)
+        self.assertIn(
+            "helper=/srv/ordax-system/services/base-update/dev_physical_stage.py",
+            agent,
+        )
+        self.assertIn('ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")', agent)
+        self.assertIn(
+            'preflight_sha=$(read_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE")',
+            agent,
+        )
+        self.assertIn('[ "$preflight_sha" != "$ready_sha" ]', agent)
+        self.assertIn('--repo-root /srv/ordax-repo', agent)
+        self.assertIn('--root-source "$PHYSICAL_ROOT_SOURCE"', agent)
+        self.assertIn('--candidate-root "$candidate_root"', agent)
+        self.assertIn('--version-root "$version_root"', agent)
+        self.assertIn('--source-commit "$ready_sha"', agent)
+        self.assertIn('--mount-root "$ESP_STAGE_MOUNT_ROOT"', agent)
+        self.assertIn('"activation_performed": false', agent)
+        self.assertIn('"efi_variable_written": false', agent)
+        self.assertIn('"reboot_requested": false', agent)
+        self.assertIn(
+            'write_state_value "$DEV_BASE_STAGED_FILE" "$ready_sha"',
+            agent,
+        )
+        loop = agent.split("while :; do", 1)[1]
+        self.assertLess(
+            loop.index("prepare_esp_readonly_preflight"),
+            loop.index("prepare_dev_base_physical_stage"),
+        )
+        stage = agent.split("prepare_dev_base_physical_stage() {", 1)[1].split(
+            "\n}",
+            1,
+        )[0]
+        self.assertNotIn("activate.py", stage)
+        self.assertNotIn("promote.py", stage)
+        self.assertNotIn("LoaderEntryOneShot", stage)
+        self.assertNotIn("/sys/firmware/efi/efivars", stage)
+        self.assertNotIn("reboot -f", stage)
+        self.assertNotIn("busybox reboot", stage)
+        self.assertNotIn("power-request", stage)
+
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
         self.assertIn('BASE_UPDATE_SOURCE=$SYSTEM_ROOT/services/base-update/agent.sh', text)
