@@ -51,8 +51,8 @@ UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mj
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = ROOT / "system" / "contracts" / "surface-render-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
-NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
-NOTES_RICH_EDITOR = SURFACE / "notes-rich-editor.mjs"
+NOTES_WORKSPACE_CONTROLS = APPS / "notes" / "ui" / "workspace-controls.mjs"
+NOTES_RICH_EDITOR = APPS / "notes" / "ui" / "rich-editor.mjs"
 INTERNET_BROWSER_CONTROLS = APPS / "internet" / "ui" / "browser-controls.mjs"
 INTERNET_BROWSER_SHORTCUTS = APPS / "internet" / "ui" / "browser-shortcuts.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
@@ -85,7 +85,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
-            SURFACE / "notes.css",
+            APPS / "notes" / "notes.css",
             APPS / "internet" / "internet.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
@@ -202,7 +202,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertIn(f'id: "{app_id}"', owner)
             self.assertIn("defineFirstPartyApp", owner)
             self.assertIn("component:", owner)
-            if app_id == "internet":
+            if app_id in {"internet", "notes"}:
                 self.assertIn("./component.mjs", owner)
             else:
                 self.assertIn("../../services/components/manifests/apps.mjs", owner)
@@ -241,7 +241,7 @@ class SurfaceUiContractTests(unittest.TestCase):
     def test_notes_uses_shared_local_workspace_extension(self):
         notes = APP_OWNERS["notes"].read_text(encoding="utf-8")
         controls = NOTES_WORKSPACE_CONTROLS.read_text(encoding="utf-8")
-        css = (SURFACE / "notes.css").read_text(encoding="utf-8")
+        css = (APPS / "notes" / "notes.css").read_text(encoding="utf-8")
         web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
@@ -250,10 +250,10 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('kind: "extension"', notes)
         self.assertIn('extensionId: "notes-workspace"', notes)
         rich_editor = NOTES_RICH_EDITOR.read_text(encoding="utf-8")
-        statistics = (ROOT / "system" / "services" / "notes" / "statistics.mjs").read_text(encoding="utf-8")
+        statistics = (APPS / "notes" / "statistics.mjs").read_text(encoding="utf-8")
         self.assertIn('NOTES_EXTENSION_SELECTOR', controls)
         self.assertIn("assertNotesRuntime", controls)
-        self.assertIn("./notes-rich-editor.mjs", controls)
+        self.assertIn("./rich-editor.mjs", controls)
         self.assertIn("renderNotesRichBody", controls)
         self.assertIn("readNotesRichBody", controls)
         self.assertIn("toggleNotesRichInlineMark", controls)
@@ -293,8 +293,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('[data-notes-block-type="quote"]', css)
         self.assertIn('[data-notes-block-type="bullet"]', css)
         self.assertIn("--notes-accent: #ed4b25", css)
-        self.assertIn("../../surface/ui/notes.css", web_html)
-        self.assertIn("../../surface/ui/notes.css", native_html)
+        self.assertIn("../../apps/notes/notes.css", web_html)
+        self.assertIn("../../apps/notes/notes.css", native_html)
         self.assertIn("createWebNotesStore", web_main)
         self.assertIn("createNativeNotesStore", native_main)
         self.assertIn("mountNotesWorkspaceControls", web_main)
@@ -630,7 +630,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertIn("../../surface/ui/files.css", html)
-        self.assertIn("../../surface/ui/notes.css", html)
+        self.assertIn("../../apps/notes/notes.css", html)
         self.assertIn("../../surface/ui/system.css", html)
         self.assertIn("../../surface/ui/account.css", html)
         self.assertIn("../../surface/ui/settings.css", html)
