@@ -394,6 +394,16 @@
   outline: 0;
 }
 
+.ordax-notes-tool[data-active="true"] {
+  background: var(--notes-soft);
+  color: var(--notes-accent);
+}
+
+.ordax-notes-tool:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .ordax-notes-menu {
   position: absolute;
   z-index: 8;
@@ -510,7 +520,6 @@
 .ordax-notes-body {
   width: 100%;
   min-height: 270px;
-  resize: vertical;
   padding: 0;
   border: 0;
   outline: 0;
@@ -519,6 +528,72 @@
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.02rem;
   line-height: 1.75;
+}
+
+.ordax-notes-rich-editor {
+  cursor: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  caret-color: var(--notes-accent);
+}
+
+.ordax-notes-rich-editor:empty::before {
+  content: "Comece a escrever…";
+  color: var(--ordax-muted);
+  pointer-events: none;
+}
+
+.ordax-notes-rich-block {
+  position: relative;
+  min-height: 1.75em;
+  margin: 0 0 0.38em;
+}
+
+.ordax-notes-rich-block[data-notes-block-type="heading"] {
+  margin: 1.15em 0 0.45em;
+  font-family: var(--ordax-font-display);
+  font-size: 1.42rem;
+  font-weight: 620;
+  line-height: 1.3;
+}
+
+.ordax-notes-rich-block[data-notes-block-type="quote"] {
+  margin: 1em 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--notes-accent);
+  border-radius: 4px;
+  background: var(--notes-soft);
+  font-style: italic;
+}
+
+.ordax-notes-rich-block[data-notes-block-type="bullet"] {
+  padding-left: 1.2em;
+}
+
+.ordax-notes-rich-block[data-notes-block-type="bullet"]::before {
+  content: "•";
+  position: absolute;
+  left: 0.25em;
+  color: var(--notes-accent);
+}
+
+.ordax-notes-rich-editor strong {
+  font-weight: 700;
+}
+
+.ordax-notes-rich-editor em {
+  font-style: italic;
+}
+
+.ordax-notes-rich-editor a {
+  color: inherit;
+  text-decoration-color: var(--notes-accent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.16em;
+}
+
+.ordax-notes-rich-editor:focus-visible {
+  outline: none;
 }
 
 .ordax-notes-tasks {
