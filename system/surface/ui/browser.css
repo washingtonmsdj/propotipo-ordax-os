@@ -1,0 +1,192 @@
+.ordax-browser-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  height: 100%;
+  background: var(--ordax-window-bg);
+  color: var(--ordax-text);
+}
+
+.ordax-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+  background: color-mix(in srgb, var(--ordax-window-bg) 94%, var(--ordax-subtle-bg));
+}
+
+.ordax-browser-navigation {
+  display: flex;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.ordax-browser-action,
+.ordax-browser-go {
+  min-width: 34px;
+  min-height: 34px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--ordax-font-ui);
+}
+
+.ordax-browser-action:hover:not(:disabled),
+.ordax-browser-action:focus-visible,
+.ordax-browser-go:hover,
+.ordax-browser-go:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-browser-action:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.ordax-browser-address-form {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 6px;
+}
+
+.ordax-browser-address {
+  min-width: 0;
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 9px;
+  background: var(--ordax-subtle-bg);
+  color: var(--ordax-text);
+  font: inherit;
+  font-family: var(--ordax-font-ui);
+  font-size: 0.76rem;
+}
+
+.ordax-browser-address:focus {
+  border-color: color-mix(in srgb, var(--ordax-accent) 72%, var(--ordax-border-soft));
+  outline: 2px solid color-mix(in srgb, var(--ordax-accent) 18%, transparent);
+  outline-offset: 1px;
+}
+
+.ordax-browser-go {
+  min-width: 50px;
+  padding: 0 10px;
+  background: var(--ordax-accent);
+  border-color: var(--ordax-accent);
+  color: #fff;
+}
+
+.ordax-browser-content {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ordax-window-bg);
+}
+
+.ordax-browser-start {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  height: 100%;
+  gap: 8px;
+  padding: 28px;
+  text-align: center;
+}
+
+.ordax-browser-start[hidden] {
+  display: none;
+}
+
+.ordax-browser-start-mark {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 50%;
+  color: var(--ordax-accent);
+  font-size: 1.45rem;
+}
+
+.ordax-browser-start h2 {
+  margin: 7px 0 0;
+  font-family: var(--ordax-font-display);
+  font-size: clamp(1.45rem, 2.5vw, 2.1rem);
+  font-weight: 600;
+}
+
+.ordax-browser-start p {
+  max-width: 470px;
+  margin: 0;
+  color: var(--ordax-muted);
+  font-family: var(--ordax-font-ui);
+  font-size: 0.76rem;
+  line-height: 1.55;
+}
+
+.ordax-browser-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  border: 0;
+  background: #fff;
+}
+
+.ordax-browser-frame[hidden] {
+  display: none;
+}
+
+.ordax-browser-statusbar {
+  display: flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-top: 1px solid var(--ordax-border-soft);
+  color: var(--ordax-muted);
+  font-family: var(--ordax-font-ui);
+  font-size: 0.61rem;
+}
+
+.ordax-browser-status[data-state="error"] {
+  color: #a13222;
+}
+
+.ordax-browser-status[data-state="loading"] {
+  color: var(--ordax-text);
+}
+
+.ordax-browser-isolation {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .ordax-browser-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .ordax-browser-navigation {
+    order: 2;
+  }
+
+  .ordax-browser-address-form {
+    order: 1;
+    width: 100%;
+    flex-basis: 100%;
+  }
+
+  .ordax-browser-isolation {
+    display: none;
+  }
+}
