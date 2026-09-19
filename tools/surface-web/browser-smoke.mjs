@@ -795,6 +795,10 @@ function buildCompositionProofExpression(moduleSources, styles) {
         (item) => item.id === notesAfterProjectEdit.selectedNoteId && item.projectId === 'meu-espaco',
       ) === true;
 
+    const imageToolButton = notesSlot?.querySelector('[data-notes-action="insert-image"]');
+    result.notesImageToolPresent = Boolean(imageToolButton);
+    result.notesImageToolFailsClosedOnWeb = imageToolButton?.disabled === true;
+
     const addReferenceButton = notesSlot?.querySelector('[data-notes-action="add-reference"]');
     result.notesReferenceActionPresent = Boolean(addReferenceButton);
     addReferenceButton?.click();
@@ -878,6 +882,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesEscapeClosesTransientMenu', 'notesPlainBodyHasNoMarkup',
       'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
       'notesMovedToHome', 'notesProjectActionsPresent', 'notesProjectRenamed', 'notesProjectRemovedSafely',
+      'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
