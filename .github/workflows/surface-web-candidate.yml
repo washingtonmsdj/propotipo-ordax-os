@@ -29,6 +29,8 @@ on:
       - 'system/contracts/project-store.mjs'
       - 'system/contracts/project-web-references.mjs'
       - 'system/contracts/project-web-reference-store.mjs'
+      - 'system/contracts/browser-favorites.mjs'
+      - 'system/contracts/browser-favorites-store.mjs'
       - 'system/contracts/notifications.mjs'
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
@@ -41,6 +43,7 @@ on:
       - 'system/services/apps/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
+      - 'system/services/internet/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -60,6 +63,8 @@ on:
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
       - 'tests/test_project_web_references.mjs'
+      - 'tests/test_browser_favorites.mjs'
+      - 'tests/test_internet_favorites_contract.py'
       - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_home_continuation.mjs'
       - 'tests/test_home_continuation_contract.py'
@@ -131,6 +136,8 @@ on:
       - 'system/contracts/project-store.mjs'
       - 'system/contracts/project-web-references.mjs'
       - 'system/contracts/project-web-reference-store.mjs'
+      - 'system/contracts/browser-favorites.mjs'
+      - 'system/contracts/browser-favorites-store.mjs'
       - 'system/contracts/notifications.mjs'
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
@@ -143,6 +150,7 @@ on:
       - 'system/services/apps/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
+      - 'system/services/internet/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -162,6 +170,8 @@ on:
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
       - 'tests/test_project_web_references.mjs'
+      - 'tests/test_browser_favorites.mjs'
+      - 'tests/test_internet_favorites_contract.py'
       - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_home_continuation.mjs'
       - 'tests/test_home_continuation_contract.py'
@@ -240,6 +250,7 @@ jobs:
             system/services/apps \
             system/services/files \
             system/services/projects \
+            system/services/internet \
             system/services/notes \
             system/services/preferences \
             system/services/sync \
@@ -260,6 +271,7 @@ jobs:
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
           node --test tests/test_project_web_references.mjs
+          node --test tests/test_browser_favorites.mjs
           node --test tests/test_project_file_space_continuity.mjs
           node --test tests/test_home_continuation.mjs
           node --test tests/test_notifications.mjs
@@ -302,6 +314,7 @@ jobs:
           python -m unittest tests.test_internet_accessibility_contract -v
           python -m unittest tests.test_internet_browser_contract -v
           python -m unittest tests.test_internet_project_context_contract -v
+          python -m unittest tests.test_internet_favorites_contract -v
           python -m unittest tests.test_native_host_module_integrity -v
           python -m unittest tests.test_native_request_boundary -v
           python -m unittest tests.test_system_runtime_contract -v

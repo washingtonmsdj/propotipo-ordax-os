@@ -505,3 +505,64 @@
   .ordax-internet-toolbar [data-browser-action="downloads"] { display: none; }
   .ordax-internet-home-links { grid-template-columns: 1fr; }
 }
+
+
+.ordax-internet-collection-row[data-browser-favorites-toggle]:not(:disabled) {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.ordax-internet-favorites-list {
+  display: grid;
+  gap: 4px;
+  padding: 2px 0 5px;
+}
+
+.ordax-internet-favorites-list[hidden] {
+  display: none;
+}
+
+.ordax-internet-favorite-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 3px;
+}
+
+.ordax-internet-favorite-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-favorite-open:hover,
+.ordax-internet-favorite-open:focus-visible {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.ordax-internet-favorite-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f5b54;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ordax-internet-favorite-remove:hover,
+.ordax-internet-favorite-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+}
