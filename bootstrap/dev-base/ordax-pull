@@ -57,6 +57,12 @@ configure_runtime_checkout_at() {
     git -C "$checkout" sparse-checkout set --no-cone \
         /system/ \
         /bootstrap/base-update/ \
+        /bootstrap/dev-base/ordax-dev-init \
+        /bootstrap/dev-base/ordax-network \
+        /bootstrap/dev-base/ordax-pull \
+        /bootstrap/dev-base/ordax-rollback \
+        /bootstrap/dev-base/ordax-run \
+        /bootstrap/recovery/entrypoint \
         /bootstrap/trust/ \
         /bootstrap/config/release-envelope-url \
         /docs/contracts/base-update.json \
@@ -201,6 +207,23 @@ replace_runtime_checkout() {
     return 0
 }
 
+refresh_dev_helpers() {
+    source_sha=$1
+    helper=$WORKTREE/system/services/base-update/dev-helpers.sh
+    [ -f "$helper" ] || {
+        echo "ordax-git: helper refresh owner not present; runtime checkout remains usable" >&2
+        return 0
+    }
+    if ! ORDAX_SOURCE_SHA="$source_sha" \
+            ORDAX_WORKTREE="$WORKTREE" \
+            ORDAX_STATE_DIR="$STATE_DIR" \
+            /bin/sh "$helper"; then
+        echo "ordax-git: development Base helper refresh failed; runtime checkout remains active" >&2
+        return 0
+    fi
+    return 0
+}
+
 mkdir -p "$WORKSPACE_ROOT" "$STATE_DIR"
 rm -rf "$STAGING_PREFIX".* "$RETIRED_PREFIX".* 2>/dev/null || true
 
@@ -243,4 +266,5 @@ fi
 current=$(git -C "$WORKTREE" rev-parse HEAD)
 write_state "$CURRENT_FILE" "$current"
 rm -f "$PINNED_FILE"
+refresh_dev_helpers "$current"
 printf 'ORDAX_SOURCE_SHA=%s\n' "$current"
