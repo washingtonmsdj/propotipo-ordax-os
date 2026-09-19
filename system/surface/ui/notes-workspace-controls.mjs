@@ -1012,7 +1012,7 @@ export function mountNotesWorkspaceControls(
     const parsed = parseNotesWebHref(value);
     if (!parsed) return false;
     if (activationPort) {
-      activationPort.publish({ appId: "browser", target: parsed.href });
+      activationPort.publish({ appId: "internet", target: parsed.href });
       return true;
     }
     windowObject.open?.(parsed.href, "_blank", "noopener,noreferrer");
