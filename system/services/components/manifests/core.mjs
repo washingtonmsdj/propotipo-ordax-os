@@ -18,7 +18,7 @@ export const coreComponentManifests = Object.freeze([
     id: "surface-shell",
     title: "Surface / Shell",
     kind: "shell",
-    version: "0.1.0",
+    version: "0.2.0",
     releaseMode: "bundled",
     criticality: "system",
     failureDomain: "surface",
