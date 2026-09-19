@@ -9,7 +9,7 @@ import {
   assertProjectWebReferencePort,
   validateProjectWebUrl,
 } from "../../../contracts/project-web-references.mjs";
-import { assertSurfaceRenderLifecycle } from "../../../surface/ui/surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../../contracts/surface-render-lifecycle.mjs";
 
 const INTERNET_WINDOW_SELECTOR = '[data-window-id="internet"]';
 const INTERNET_EXTENSION_SELECTOR = '[data-app-extension="internet-browser"]';
