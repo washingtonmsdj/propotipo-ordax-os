@@ -76,7 +76,7 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
 
     def test_kernel_initramfs_and_rootfs_use_exact_commit_base_delivery_without_usb_rewrite(self):
         channel = DEV_CHANNEL.read_text(encoding="utf-8")
-        self.assertIn('SCHEMA = "prototype-ordax.dev-base-candidate/2"', channel)
+        self.assertIn('SCHEMA = "prototype-ordax.dev-base-candidate/3"', channel)
         self.assertIn('"kernel"', channel)
         self.assertIn('"initramfs"', channel)
         self.assertIn('"rootfs"', channel)
@@ -97,13 +97,29 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
             "exact-commit-development-base-rootfs-candidate",
         )
         self.assertTrue(rootfs["candidate_delivery_implemented"])
-        self.assertFalse(rootfs["activation_implemented"])
+        self.assertTrue(rootfs["activation_implemented"])
         self.assertFalse(rootfs["usb_rewrite_required"])
         self.assertTrue(rootfs["reboot_required"])
         activation = contract["development_rootfs_activation"]
         self.assertEqual(activation["artifact"], "rootfs.tar")
         self.assertEqual(activation["current_boot_root"], "/ordax/dev-base")
         self.assertIn("/ordax/dev-base/versions/<commit>", activation["target_versioned_layout"])
+        self.assertEqual(
+            activation["selector_owner"],
+            "bootstrap/dev-base/ordax-dev-init",
+        )
+        self.assertIn("ordax.base_candidate", activation["candidate_identity"])
+        self.assertIn("base heartbeat + Surface health", activation["promotion_policy"])
+
+        init = DEV_INIT.read_text(encoding="utf-8")
+        self.assertIn("select_development_rootfs()", init)
+        self.assertIn("activate_versioned_rootfs()", init)
+        self.assertIn("ordax.base_candidate", init)
+        self.assertIn("ordax.base_slot", init)
+        self.assertIn("ROOTFS_SELECTION_DIR=$STATE_DIR/base-update/rootfs", init)
+        self.assertIn('/bin/busybox pivot_root . .ordax-base', init)
+        self.assertIn('write_rootfs_slot_mapping "$base_slot" "$candidate_sha"', init)
+        self.assertIn("preservando Base seed conhecida como boa", init)
 
     def test_uefi_loader_is_repository_owned_but_gap_is_not_hidden(self):
         minimal = json.loads(MINIMAL.read_text(encoding="utf-8"))
