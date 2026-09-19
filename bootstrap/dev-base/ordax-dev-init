@@ -12,8 +12,9 @@ NETWORK_STATE_DIR=${ORDAX_NETWORK_STATE_DIR:-/state/network}
 BIN_DIR=${ORDAX_BIN_DIR:-/usr/local/bin}
 PINNED_FILE=$STATE_DIR/pinned-commit
 BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit
-REPO_URL=${ORDAX_REPO_URL:-https://github.com/washingtonmsdj/prototipo-ordax-os.git}
-BRANCH=${ORDAX_REPO_BRANCH:-main}
+BOOT_METRICS_FILE=$STATE_DIR/boot-last.tsv
+BOOT_NETWORK_LOG=$STATE_DIR/boot-network.log
+BOOT_STARTED_EPOCH=$(/bin/busybox date +%s 2>/dev/null || printf '0')
 BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}
 
 case "$BOOT_PULL_ATTEMPTS" in
@@ -39,17 +40,47 @@ write_state() {
     mv -f "$temporary" "$destination"
 }
 
-remote_branch_sha() {
-    output=$(/bin/busybox timeout -k 5 20 git -C "$WORKTREE" ls-remote --heads "$REPO_URL" "refs/heads/$BRANCH" 2>/dev/null || true)
-    set -- $output
-    value=${1:-}
-    is_commit_sha "$value" || return 1
-    printf '%s' "$value"
+local_checkout_bootable() {
+    [ -d "$WORKTREE/.git" ] || return 1
+    [ -x "$WORKTREE/system/entrypoint" ] || return 1
+    local_sha=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    is_commit_sha "$local_sha" || return 1
+    local_status=$(git -C "$WORKTREE" status --porcelain 2>/dev/null) || return 1
+    [ -z "$local_status" ]
+}
+
+record_boot_handoff() {
+    mode=$1
+    source_sha=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || printf 'unknown')
+    ended=$(/bin/busybox date +%s 2>/dev/null || printf '0')
+    elapsed=0
+    case "$BOOT_STARTED_EPOCH:$ended" in
+        *[!0-9:]*|'0:'*|*:0) elapsed=0 ;;
+        *)
+            if [ "$ended" -ge "$BOOT_STARTED_EPOCH" ] 2>/dev/null; then
+                elapsed=$((ended - BOOT_STARTED_EPOCH))
+            fi
+            ;;
+    esac
+    temporary=$BOOT_METRICS_FILE.tmp.$
+    printf '%s\t%s\t%s\t%s\n' "$mode" "$elapsed" "$source_sha" "$ended" >"$temporary"
+    mv -f "$temporary" "$BOOT_METRICS_FILE"
+}
+
+start_network_background() {
+    # A healthy local release must never wait for Wi-Fi, DHCP, NTP or Git.
+    # The supervisor will retry remote checks after connectivity appears.
+    (
+        "$BIN_DIR/ordax-network" >"$BOOT_NETWORK_LOG.tmp" 2>&1 || true
+        mv -f "$BOOT_NETWORK_LOG.tmp" "$BOOT_NETWORK_LOG" 2>/dev/null || true
+    ) &
 }
 
 run_pinned_checkout() {
     pinned=$1
     printf 'Rollback fixado em %s.\n' "$pinned"
+    start_network_background
+    record_boot_handoff rollback-local
     printf '\nIniciando ultimo OrdaX conhecido como valido...\n'
     if "$BIN_DIR/ordax-run"; then
         exit 0
@@ -110,34 +141,13 @@ for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
     modprobe "$module" >/dev/null 2>&1 || true
 done
 
-# A rollback caused by a failed boot stays pinned while main still points at
-# the rejected commit. When main advances, the base retries automatically.
+# Rollback pins start immediately. The running supervisor owns the remote retry:
+# if this was an automatic boot rejection, it releases the pin only after main
+# advances to a different commit. Manual pins remain sticky.
 if [ -s "$PINNED_FILE" ]; then
     pinned=$(cat "$PINNED_FILE")
     current=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
     if is_commit_sha "$pinned" && [ "$current" = "$pinned" ] && [ -x "$WORKTREE/system/entrypoint" ]; then
-        rejected=""
-        [ ! -s "$BOOT_REJECTED_FILE" ] || rejected=$(cat "$BOOT_REJECTED_FILE")
-        if is_commit_sha "$rejected"; then
-            if "$BIN_DIR/ordax-network"; then
-                remote=$(remote_branch_sha || true)
-                if is_commit_sha "$remote" && [ "$remote" != "$rejected" ]; then
-                    printf 'Main avancou alem do commit rejeitado; liberando rollback automatico.\n'
-                    if "$BIN_DIR/ordax-pull"; then
-                        rm -f "$BOOT_REJECTED_FILE"
-                        printf '\nIniciando OrdaX atualizado apos recuperacao...\n'
-                        if "$BIN_DIR/ordax-run"; then
-                            exit 0
-                        fi
-                        recover_previous_checkout || maintenance_shell
-                    fi
-                fi
-            fi
-            run_pinned_checkout "$pinned"
-        fi
-
-        # Manual rollback remains sticky for compatibility when there is no
-        # boot-rejected marker.
         run_pinned_checkout "$pinned"
     fi
 
@@ -145,6 +155,24 @@ if [ -s "$PINNED_FILE" ]; then
     printf 'PIN=%s HEAD=%s\n' "$pinned" "${current:-indisponivel}" >&2
     maintenance_shell
 fi
+
+# Normal boot is local-first. Network and Git are deliberately outside the
+# critical path once a clean executable checkout exists.
+if local_checkout_bootable; then
+    current=$(git -C "$WORKTREE" rev-parse HEAD)
+    printf 'Checkout local saudavel: %s\n' "$current"
+    printf 'Boot rapido: rede e atualizacoes iniciam em paralelo.\n'
+    start_network_background
+    record_boot_handoff fast-local
+    printf '\nIniciando OrdaX...\n'
+    if "$BIN_DIR/ordax-run"; then
+        exit 0
+    fi
+    printf '\nOrdaX local encerrou ou falhou ao iniciar.\n'
+    recover_previous_checkout || maintenance_shell
+fi
+
+printf 'Primeiro boot ou checkout local inconsistente; preparando runtime pela rede.\n'
 
 network_ok=0
 if "$BIN_DIR/ordax-network"; then
@@ -178,6 +206,7 @@ if [ "$pull_ok" -eq 0 ] && [ -x "$WORKTREE/system/entrypoint" ]; then
 fi
 
 if [ -x "$WORKTREE/system/entrypoint" ]; then
+    record_boot_handoff cold-network
     printf '\nIniciando OrdaX...\n'
     if "$BIN_DIR/ordax-run"; then
         exit 0
