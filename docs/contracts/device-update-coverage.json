@@ -12,7 +12,10 @@
     "known_good_local_boot_precedes_network": true,
     "normal_boot_waits_for_git": false,
     "background_update_after_healthy_local_boot": true,
-    "emergency_fix_may_originate_from_git_for_any_layer": true
+    "emergency_fix_may_originate_from_git_for_any_layer": true,
+    "network_module_loading_on_known_good_local_boot": false,
+    "network_initialization_owner": "bootstrap/dev-base/ordax-network",
+    "network_initialization_runs_outside_local_boot_critical_path": true
   },
   "layers": [
     {
