@@ -62,6 +62,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('sparse-checkout set --no-cone', text)
         for authority_path in (
             "/system/",
+            "/bootstrap/base-update/",
             "/bootstrap/trust/",
             "/bootstrap/config/release-envelope-url",
             "/docs/contracts/release-trust-policy.json",
