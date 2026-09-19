@@ -17,9 +17,13 @@ ESP_DISCOVERY_FILE=$HOST_STATE_ROOT/base-update/esp-discovery.json
 ESP_READONLY_PREFLIGHT_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight.json
 ESP_READONLY_PREFLIGHT_SHA_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight-sha
 ESP_READONLY_MOUNT_ROOT=${ORDAX_BASE_ESP_READONLY_MOUNT_ROOT:-/run/ordax-base-owner/esp-readonly}
+ESP_STAGE_MOUNT_ROOT=${ORDAX_BASE_ESP_STAGE_MOUNT_ROOT:-/run/ordax-base-owner/esp-stage}
 DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha
 DEV_BASE_READY_FILE=$HOST_STATE_ROOT/dev-base-ready-sha
 DEV_BASE_FETCHING_FILE=$HOST_STATE_ROOT/dev-base-fetching-sha
+DEV_BASE_STAGED_FILE=$HOST_STATE_ROOT/base-update/dev-base-staged-sha
+DEV_BASE_STAGE_RESULT_FILE=$HOST_STATE_ROOT/base-update/dev-base-stage-result.json
+DEV_BASE_STAGE_LOG=$HOST_STATE_ROOT/base-update/dev-physical-stage.log
 DEV_BASE_LOG=$HOST_STATE_ROOT/base-update/dev-channel.log
 PREPARE_BLOCKER=
 LOG_PREFIX=ordax-base-update-agent
@@ -450,6 +454,67 @@ prepare_esp_readonly_preflight() {
     return 0
 }
 
+prepare_dev_base_physical_stage() {
+    ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")
+    if ! is_sha "$ready_sha"; then
+        /bin/busybox rm -f "$DEV_BASE_STAGED_FILE" "$DEV_BASE_STAGE_RESULT_FILE" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    preflight_sha=$(read_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE")
+    if [ "$preflight_sha" != "$ready_sha" ] || [ ! -s "$ESP_READONLY_PREFLIGHT_FILE" ]; then
+        return 0
+    fi
+
+    staged_sha=$(read_state_value "$DEV_BASE_STAGED_FILE")
+    if [ "$staged_sha" = "$ready_sha" ] && [ -s "$DEV_BASE_STAGE_RESULT_FILE" ]; then
+        return 0
+    fi
+
+    helper=/srv/ordax-system/services/base-update/dev_physical_stage.py
+    [ -n "$PHYSICAL_ROOT_SOURCE" ] &&
+    [ -n "$OWNER_STATE_CHROOT" ] &&
+    [ -n "$OWNER_BASE_ROOT_CHROOT" ] &&
+    [ -f "$RUNTIME_ROOT$helper" ] || return 0
+
+    candidate_root=$OWNER_STATE_CHROOT/base-update/dev-candidates
+    version_root=$OWNER_BASE_ROOT_CHROOT/versions
+    directory=${DEV_BASE_STAGE_RESULT_FILE%/*}
+    /bin/busybox mkdir -p "$directory" >/dev/null 2>&1 || return 0
+    temporary=$(/bin/busybox mktemp "$directory/.dev-base-stage.XXXXXX") || return 0
+
+    /bin/busybox mkdir -p "${DEV_BASE_STAGE_LOG%/*}" >/dev/null 2>&1 || true
+    if /bin/busybox chroot "$RUNTIME_ROOT" /usr/bin/python3 "$helper" \
+        --repo-root /srv/ordax-repo \
+        --root-source "$PHYSICAL_ROOT_SOURCE" \
+        --candidate-root "$candidate_root" \
+        --version-root "$version_root" \
+        --source-commit "$ready_sha" \
+        --mount-root "$ESP_STAGE_MOUNT_ROOT" \
+        >"$temporary" 2>>"$DEV_BASE_STAGE_LOG"
+    then
+        if /bin/busybox grep -Fq "\"source_commit\": \"$ready_sha\"" "$temporary" &&
+           /bin/busybox grep -Fq '"activation_performed": false' "$temporary" &&
+           /bin/busybox grep -Fq '"efi_variable_written": false' "$temporary" &&
+           /bin/busybox grep -Fq '"reboot_requested": false' "$temporary"
+        then
+            /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
+            if /bin/busybox mv -f "$temporary" "$DEV_BASE_STAGE_RESULT_FILE"; then
+                if write_state_value "$DEV_BASE_STAGED_FILE" "$ready_sha"; then
+                    log "development Base staged in inactive ESP slot: $ready_sha"
+                    return 0
+                fi
+            fi
+        fi
+        log "development Base stage result validation failed for $ready_sha"
+    else
+        log "development Base physical staging failed for $ready_sha; current boot remains unchanged"
+    fi
+
+    /bin/busybox rm -f "$temporary" "$DEV_BASE_STAGED_FILE" "$DEV_BASE_STAGE_RESULT_FILE" >/dev/null 2>&1 || true
+    return 0
+}
+
 while :; do
     if [ ! -x "$RUNTIME_ROOT/usr/bin/python3" ]; then
         write_preflight_status runtime-unavailable
@@ -479,6 +544,7 @@ while :; do
         discover_esp_read_only
         prepare_dev_base_candidate
         prepare_esp_readonly_preflight
+        prepare_dev_base_physical_stage
     else
         write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
     fi
