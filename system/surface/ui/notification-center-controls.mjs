@@ -109,6 +109,11 @@ function ensureNotificationMarkup(root) {
   persistence.dataset.notificationPersistence = "";
   const actions = documentRef.createElement("div");
   actions.className = "ordax-notification-footer-actions";
+  const doNotDisturb = documentRef.createElement("button");
+  doNotDisturb.type = "button";
+  doNotDisturb.className = "ordax-notification-action";
+  doNotDisturb.dataset.notificationDoNotDisturb = "";
+  doNotDisturb.setAttribute("aria-pressed", "false");
   const markAllRead = documentRef.createElement("button");
   markAllRead.type = "button";
   markAllRead.className = "ordax-notification-action";
@@ -119,7 +124,7 @@ function ensureNotificationMarkup(root) {
   clearRead.className = "ordax-notification-action";
   clearRead.dataset.notificationClearRead = "";
   clearRead.textContent = "Limpar lidas";
-  actions.append(markAllRead, clearRead);
+  actions.append(doNotDisturb, markAllRead, clearRead);
   footer.append(persistence, actions);
 
   panel.append(header, empty, list, footer);
@@ -132,6 +137,7 @@ function ensureNotificationMarkup(root) {
     list,
     empty,
     persistence,
+    doNotDisturb,
     markAllRead,
     clearRead,
     remove() {
@@ -209,7 +215,17 @@ export function mountNotificationCenterControls(root, notifications, appActivati
   const center = assertNotificationsPort(notifications);
   const activation = assertAppActivationPort(appActivation);
   const markup = ensureNotificationMarkup(root);
-  const { tray, badge, panel, list, empty, persistence, markAllRead, clearRead } = markup;
+  const {
+    tray,
+    badge,
+    panel,
+    list,
+    empty,
+    persistence,
+    doNotDisturb,
+    markAllRead,
+    clearRead,
+  } = markup;
   const entryNodes = new Map();
   let snapshot = center.getSnapshot();
 
@@ -236,24 +252,41 @@ export function mountNotificationCenterControls(root, notifications, appActivati
     }
 
     const unread = snapshot.unreadCount;
-    badge.hidden = unread === 0;
+    const attentionVisible = unread > 0 && !snapshot.doNotDisturb;
+    badge.hidden = !attentionVisible;
     badge.textContent = unread > 99 ? "99+" : String(unread);
-    tray.dataset.unread = String(unread > 0);
+    tray.dataset.unread = String(attentionVisible);
+    tray.dataset.doNotDisturb = String(snapshot.doNotDisturb);
     tray.setAttribute(
       "aria-label",
-      unread > 0
-        ? `Abrir notificações — ${unread} não ${unread === 1 ? "lida" : "lidas"}`
-        : "Abrir notificações — nenhuma nova",
+      snapshot.doNotDisturb
+        ? `Abrir notificações — Não perturbe ativo; ${unread} não ${unread === 1 ? "lida" : "lidas"}`
+        : unread > 0
+          ? `Abrir notificações — ${unread} não ${unread === 1 ? "lida" : "lidas"}`
+          : "Abrir notificações — nenhuma nova",
     );
+    doNotDisturb.setAttribute("aria-pressed", String(snapshot.doNotDisturb));
+    doNotDisturb.textContent = snapshot.doNotDisturb
+      ? "Desativar Não perturbe"
+      : "Ativar Não perturbe";
     empty.hidden = snapshot.entries.length !== 0;
     markAllRead.disabled = unread === 0;
     clearRead.disabled = !snapshot.entries.some((entry) => entry.read);
-    persistence.textContent = snapshot.persistence === "device"
+    const historyPersistence = snapshot.persistence === "device"
       ? "Histórico salvo neste dispositivo"
       : "Histórico disponível somente nesta sessão";
+    const policyPersistence = snapshot.policyPersistence === "device"
+      ? "Não perturbe salvo neste dispositivo"
+      : "Não perturbe vale somente nesta sessão";
+    persistence.textContent = `${historyPersistence} · ${policyPersistence}`;
   };
 
   const onClick = (event) => {
+    const dnd = event.target.closest("[data-notification-do-not-disturb]");
+    if (dnd && panel.contains(dnd)) {
+      center.setDoNotDisturb(!snapshot.doNotDisturb);
+      return;
+    }
     const markAll = event.target.closest("[data-notification-mark-all-read]");
     if (markAll && panel.contains(markAll)) {
       center.markAllRead();

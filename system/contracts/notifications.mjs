@@ -24,6 +24,16 @@ export function validateNotificationId(value) {
   return boundedText(value, "Notification id", 128);
 }
 
+export function validateNotificationPolicy(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Notification policy must be an object");
+  }
+  if (typeof value.doNotDisturb !== "boolean") {
+    throw new TypeError("Notification doNotDisturb policy must be boolean");
+  }
+  return Object.freeze({ doNotDisturb: value.doNotDisturb });
+}
+
 export function validateNotificationDraft(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Notification draft must be an object");
@@ -89,9 +99,15 @@ export function validateNotificationsSnapshot(value) {
   if (!PERSISTENCE_SCOPES.has(value.persistence)) {
     throw new TypeError("Notifications persistence must be device or session");
   }
+  if (!PERSISTENCE_SCOPES.has(value.policyPersistence)) {
+    throw new TypeError("Notification policy persistence must be device or session");
+  }
+  const policy = validateNotificationPolicy({ doNotDisturb: value.doNotDisturb });
   const entries = validateNotificationEntries(value.entries);
   return Object.freeze({
     persistence: value.persistence,
+    policyPersistence: value.policyPersistence,
+    doNotDisturb: policy.doNotDisturb,
     unreadCount: entries.reduce((count, entry) => count + (entry.read ? 0 : 1), 0),
     entries,
   });
@@ -105,6 +121,7 @@ export function assertNotificationsPort(port) {
     "getSnapshot",
     "subscribe",
     "publish",
+    "setDoNotDisturb",
     "markRead",
     "markAllRead",
     "dismiss",

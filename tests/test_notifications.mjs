@@ -23,8 +23,9 @@ function draft(overrides = {}) {
   };
 }
 
-function memoryStore({ failSave = false } = {}) {
+function memoryStore({ failSave = false, failPolicySave = false } = {}) {
   let entries = [];
+  let policy = { doNotDisturb: false };
   return {
     schema: NOTIFICATION_STORE_SCHEMA,
     scope: "device",
@@ -35,8 +36,18 @@ function memoryStore({ failSave = false } = {}) {
       entries = next;
       return !failSave;
     },
+    loadPolicy() {
+      return policy;
+    },
+    savePolicy(next) {
+      policy = next;
+      return !failPolicySave;
+    },
     snapshot() {
       return entries;
+    },
+    policySnapshot() {
+      return policy;
     },
   };
 }
@@ -109,6 +120,8 @@ test("notification runtime keeps monotonic bounded unread history", () => {
   assert.equal(snapshot.entries.length, MAX_NOTIFICATIONS);
   assert.equal(snapshot.unreadCount, MAX_NOTIFICATIONS);
   assert.equal(snapshot.persistence, "session");
+  assert.equal(snapshot.policyPersistence, "session");
+  assert.equal(snapshot.doNotDisturb, false);
 });
 
 test("notification runtime persists read state and non-destructive dismissal", () => {
@@ -130,18 +143,41 @@ test("notification runtime persists read state and non-destructive dismissal", (
   assert.equal(store.snapshot().length, 0);
 });
 
-test("notification runtime degrades persistence to session when durable save fails", () => {
+test("Do Not Disturb persists independently without consuming unread history", () => {
+  const store = memoryStore();
+  const runtime = createNotificationsRuntime({ store, now: () => 1500 });
+  const entry = runtime.publish(draft({ title: "Durante DND" }));
+
+  runtime.setDoNotDisturb(true);
+  let snapshot = runtime.getSnapshot();
+  assert.equal(snapshot.doNotDisturb, true);
+  assert.equal(snapshot.policyPersistence, "device");
+  assert.equal(snapshot.unreadCount, 1);
+  assert.equal(snapshot.entries[0].id, entry.id);
+  assert.deepEqual(store.policySnapshot(), { doNotDisturb: true });
+
+  runtime.setDoNotDisturb(false);
+  snapshot = runtime.getSnapshot();
+  assert.equal(snapshot.doNotDisturb, false);
+  assert.equal(snapshot.unreadCount, 1, "presentation policy must not mark history read");
+  assert.throws(() => runtime.setDoNotDisturb("true"), /boolean/i);
+});
+
+test("notification runtime degrades history and policy persistence independently", () => {
   const runtime = createNotificationsRuntime({
-    store: memoryStore({ failSave: true }),
+    store: memoryStore({ failSave: true, failPolicySave: true }),
     now: () => 2000,
   });
   runtime.publish(draft());
+  runtime.setDoNotDisturb(true);
   const snapshot = runtime.getSnapshot();
   assert.equal(snapshot.persistence, "session");
+  assert.equal(snapshot.policyPersistence, "session");
+  assert.equal(snapshot.doNotDisturb, true);
   assert.equal(snapshot.entries.length, 1);
 });
 
-test("Native notification store round-trips validated records and fails closed on corruption", () => {
+test("Native notification store round-trips history and Do Not Disturb and fails closed on corruption", () => {
   const data = new Map();
   const localStorage = {
     getItem(key) {
@@ -154,20 +190,25 @@ test("Native notification store round-trips validated records and fails closed o
   const store = createNativeNotificationStore({ localStorage });
   const runtime = createNotificationsRuntime({ store, now: () => 3000 });
   runtime.publish(draft({ title: "Persistido" }));
+  runtime.setDoNotDisturb(true);
 
   const reloaded = createNotificationsRuntime({
     store: createNativeNotificationStore({ localStorage }),
     now: () => 4000,
   });
   assert.equal(reloaded.getSnapshot().persistence, "device");
+  assert.equal(reloaded.getSnapshot().policyPersistence, "device");
   assert.equal(reloaded.getSnapshot().entries[0].title, "Persistido");
+  assert.equal(reloaded.getSnapshot().doNotDisturb, true);
 
   data.set("ordax.native.notifications.v1", "{broken-json");
+  data.set("ordax.native.notification-policy.v1", "{broken-json");
   const corrupted = createNotificationsRuntime({
     store: createNativeNotificationStore({ localStorage }),
     now: () => 5000,
   });
   assert.equal(corrupted.getSnapshot().entries.length, 0);
+  assert.equal(corrupted.getSnapshot().doNotDisturb, false);
 });
 
 test("update notification bridge ignores startup state and publishes only new actionable transitions", () => {
@@ -190,20 +231,23 @@ test("update notification bridge ignores startup state and publishes only new ac
     target: "updates",
   });
 
-  updates.push(updateSnapshot({
-    status: "applied",
-    attemptId: "attempt-2",
-    lastAppliedSha: "bbbbbbbb",
-  }));
-  assert.equal(notifications.getSnapshot().entries.length, 1, "identical snapshot must not duplicate");
-
+  notifications.setDoNotDisturb(true);
   updates.push(updateSnapshot({
     status: "running",
     attemptId: "attempt-3",
     bootRefreshRequired: true,
   }));
   assert.equal(notifications.getSnapshot().entries.length, 2);
+  assert.equal(notifications.getSnapshot().unreadCount, 2);
+  assert.equal(notifications.getSnapshot().doNotDisturb, true);
   assert.equal(notifications.getSnapshot().entries[0].title, "Atualização de base pendente");
+
+  updates.push(updateSnapshot({
+    status: "running",
+    attemptId: "attempt-3",
+    bootRefreshRequired: true,
+  }));
+  assert.equal(notifications.getSnapshot().entries.length, 2, "identical snapshot must not duplicate");
 
   updates.push(updateSnapshot({
     status: "pull-error",

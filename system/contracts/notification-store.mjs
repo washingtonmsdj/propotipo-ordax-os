@@ -1,8 +1,12 @@
-import { validateNotificationEntries } from "./notifications.mjs";
+import {
+  validateNotificationEntries,
+  validateNotificationPolicy,
+} from "./notifications.mjs";
 
-export const NOTIFICATION_STORE_SCHEMA = "ordax.notification-store/1";
+export const NOTIFICATION_STORE_SCHEMA = "ordax.notification-store/2";
 
 const STORE_SCOPES = new Set(["device", "session"]);
+const DEFAULT_POLICY = Object.freeze({ doNotDisturb: false });
 
 export function assertNotificationStore(store) {
   if (!store || typeof store !== "object" || store.schema !== NOTIFICATION_STORE_SCHEMA) {
@@ -11,8 +15,10 @@ export function assertNotificationStore(store) {
   if (!STORE_SCOPES.has(store.scope)) {
     throw new TypeError("Notification-store scope must be device or session");
   }
-  if (typeof store.load !== "function" || typeof store.save !== "function") {
-    throw new TypeError("Notification-store must implement load() and save()");
+  for (const method of ["load", "save", "loadPolicy", "savePolicy"]) {
+    if (typeof store[method] !== "function") {
+      throw new TypeError(`Notification-store must implement ${method}()`);
+    }
   }
   return store;
 }
@@ -20,4 +26,9 @@ export function assertNotificationStore(store) {
 export function validateNotificationStorePayload(value) {
   if (value === null || value === undefined) return Object.freeze([]);
   return validateNotificationEntries(value);
+}
+
+export function validateNotificationPolicyPayload(value) {
+  if (value === null || value === undefined) return DEFAULT_POLICY;
+  return validateNotificationPolicy(value);
 }
