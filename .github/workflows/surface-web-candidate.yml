@@ -55,6 +55,7 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_notifications.mjs'
       - 'tests/test_notification_center_ui_contract.py'
       - 'tests/test_notes_runtime.mjs'
@@ -140,6 +141,7 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_notifications.mjs'
       - 'tests/test_notification_center_ui_contract.py'
       - 'tests/test_notes_runtime.mjs'
@@ -224,6 +226,7 @@ jobs:
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
+          node --test tests/test_project_file_space_continuity.mjs
           node --test tests/test_notifications.mjs
           node --test tests/test_notes_runtime.mjs
           node --test tests/test_notes_image_previews.mjs
