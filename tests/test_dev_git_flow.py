@@ -215,7 +215,6 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertIn("Rollback fixado", boot.stdout)
         self.assertIn("runtime-v1", boot.stdout)
         self.assertNotIn("OrdaX fixado encerrou ou falhou", boot.stdout)
-        self.assertFalse(network_marker.exists())
         self.assertFalse(pull_marker.exists())
 
         # The explicit pull is the only normal action that releases the sticky rollback.
@@ -227,19 +226,21 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             self.commit_v2,
         )
 
-    def test_failed_boot_rolls_back_and_retries_only_after_main_advances(self) -> None:
+    def test_failed_boot_rolls_back_without_putting_remote_update_on_boot_path(self) -> None:
         self._script(PULL)
         self.commit_v2 = self._commit_runtime("runtime-v2")
         self._script(PULL)
 
         bin_dir = self.root / "auto-recovery-bin"
         bin_dir.mkdir()
+        network_marker = self.root / "auto-network-called"
+        pull_marker = self.root / "auto-pull-called"
         (bin_dir / "ordax-network").write_text(
-            "#!/bin/sh\nexit 0\n",
+            f"#!/bin/sh\ntouch '{network_marker}'\nexit 0\n",
             encoding="utf-8",
         )
         (bin_dir / "ordax-pull").write_text(
-            f"#!/bin/sh\nexec /bin/sh '{PULL}'\n",
+            f"#!/bin/sh\ntouch '{pull_marker}'\nexec /bin/sh '{PULL}'\n",
             encoding="utf-8",
         )
         (bin_dir / "ordax-rollback").write_text(
@@ -267,25 +268,68 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         )
 
         recovered = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Boot rapido", recovered.stdout)
         self.assertIn("Rollback automatico ativado", recovered.stdout)
         self.assertIn("runtime-v1", recovered.stdout)
         self.assertEqual((self.state / "boot-rejected-commit").read_text().strip(), self.commit_v2)
         self.assertEqual((self.state / "pinned-commit").read_text().strip(), self.commit_v1)
+        self.assertFalse(pull_marker.exists())
         self.assertEqual(
             self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
             self.commit_v1,
         )
 
-        commit_v3 = self._commit_runtime("runtime-v3")
-        retried = self._script(DEV_INIT, env=boot_env)
-        self.assertIn("Main avancou alem do commit rejeitado", retried.stdout)
-        self.assertIn("runtime-v3", retried.stdout)
-        self.assertFalse((self.state / "boot-rejected-commit").exists())
-        self.assertFalse((self.state / "pinned-commit").exists())
-        self.assertEqual(
-            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
-            commit_v3,
+        # Even when main advances, the next boot must stay fast/local. The
+        # running supervisor owns the automatic unpin/retry after connectivity.
+        self._commit_runtime("runtime-v3")
+        pinned_boot = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Rollback fixado", pinned_boot.stdout)
+        self.assertIn("runtime-v1", pinned_boot.stdout)
+        self.assertFalse(pull_marker.exists())
+        self.assertTrue((self.state / "boot-rejected-commit").exists())
+        self.assertTrue((self.state / "pinned-commit").exists())
+
+    def test_healthy_local_checkout_starts_before_network_or_git_update(self) -> None:
+        self._script(PULL)
+
+        bin_dir = self.root / "fast-boot-bin"
+        bin_dir.mkdir()
+        pull_marker = self.root / "fast-pull-called"
+        (bin_dir / "ordax-network").write_text(
+            "#!/bin/sh\nsleep 1\nexit 0\n",
+            encoding="utf-8",
         )
+        (bin_dir / "ordax-pull").write_text(
+            f"#!/bin/sh\ntouch '{pull_marker}'\nexit 99\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-run").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{RUN}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-rollback").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{ROLLBACK}'\n",
+            encoding="utf-8",
+        )
+        for helper in bin_dir.iterdir():
+            helper.chmod(0o755)
+
+        env = self._env()
+        env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+            }
+        )
+        result = self._script(DEV_INIT, env=env)
+
+        self.assertIn("Checkout local saudavel", result.stdout)
+        self.assertIn("Boot rapido", result.stdout)
+        self.assertIn("runtime-v1", result.stdout)
+        self.assertFalse(pull_marker.exists())
+        boot_metrics = (self.state / "boot-last.tsv").read_text(encoding="utf-8")
+        self.assertTrue(boot_metrics.startswith("fast-local\t"))
 
     def test_bootstrap_network_and_git_fail_soft_but_bounded(self) -> None:
         network = NETWORK.read_text(encoding="utf-8")
@@ -294,6 +338,13 @@ class DevelopmentGitFlowTest(unittest.TestCase):
 
         self.assertIn("if ! sync_clock; then", network)
         self.assertIn("continuando com IP disponivel", network)
+        self.assertIn('CLOCK_SYNC_TIMEOUT=${ORDAX_CLOCK_SYNC_TIMEOUT_SECONDS:-5}', network)
+        self.assertIn('DHCP_TIMEOUT=${ORDAX_DHCP_TIMEOUT_SECONDS:-6}', network)
+        self.assertIn('WIFI_LINK_TIMEOUT=${ORDAX_WIFI_LINK_TIMEOUT_SECONDS:-8}', network)
+        self.assertIn('/bin/busybox timeout -k 1 "$CLOCK_SYNC_TIMEOUT"', network)
+        self.assertIn('/bin/busybox timeout -k 1 "$DHCP_TIMEOUT"', network)
+        self.assertIn('[ "$carrier" = 1 ] || continue', network)
+        self.assertIn('while [ "$attempts" -lt "$WIFI_LINK_TIMEOUT" ]', network)
         finish_network = network.split("finish_network() {", 1)[1].split("\\n}", 1)[0]
         self.assertIn("return 0", finish_network)
 
@@ -311,8 +362,21 @@ class DevelopmentGitFlowTest(unittest.TestCase):
 
         self.assertIn('BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}', dev_init)
         self.assertIn("BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit", dev_init)
+        self.assertIn("BOOT_METRICS_FILE=$STATE_DIR/boot-last.tsv", dev_init)
+        self.assertIn("local_checkout_bootable()", dev_init)
+        self.assertIn("start_network_background()", dev_init)
+        self.assertIn("record_boot_handoff()", dev_init)
         self.assertIn("recover_previous_checkout()", dev_init)
-        self.assertIn("Main avancou alem do commit rejeitado", dev_init)
+        self.assertIn("Boot rapido: rede e atualizacoes iniciam em paralelo.", dev_init)
+        self.assertLess(
+            dev_init.index("if local_checkout_bootable; then"),
+            dev_init.index("network_ok=0"),
+        )
+        fast_block = dev_init.split("if local_checkout_bootable; then", 1)[1].split(
+            "Primeiro boot ou checkout local inconsistente",
+            1,
+        )[0]
+        self.assertNotIn("ordax-pull", fast_block)
         self.assertIn('while [ "$attempt" -le "$BOOT_PULL_ATTEMPTS" ]', dev_init)
         self.assertIn("repetindo uma vez apos pausa curta", dev_init)
         self.assertIn("sleep 2", dev_init)
