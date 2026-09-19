@@ -95,6 +95,28 @@ class DevelopmentGitFlowTest(unittest.TestCase):
                 f"# fixture {name} for {marker}\n",
                 encoding="utf-8",
             )
+        dev_base = self.source / "bootstrap/dev-base"
+        dev_base.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "ordax-dev-init",
+            "ordax-network",
+            "ordax-pull",
+            "ordax-rollback",
+            "ordax-run",
+        ):
+            script = dev_base / name
+            script.write_text(
+                f"#!/bin/sh\nprintf '%s\\n' 'fixture {name} {marker}'\n",
+                encoding="utf-8",
+            )
+            script.chmod(0o755)
+        recovery = self.source / "bootstrap/recovery/entrypoint"
+        recovery.parent.mkdir(parents=True, exist_ok=True)
+        recovery.write_text(
+            f"#!/bin/sh\nprintf '%s\\n' 'fixture recovery {marker}'\n",
+            encoding="utf-8",
+        )
+        recovery.chmod(0o755)
         evidence = docs / "evidence"
         evidence.mkdir(parents=True, exist_ok=True)
         for name in (
@@ -152,6 +174,12 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             {
                 "/system/",
                 "/bootstrap/base-update/",
+                "/bootstrap/dev-base/ordax-dev-init",
+                "/bootstrap/dev-base/ordax-network",
+                "/bootstrap/dev-base/ordax-pull",
+                "/bootstrap/dev-base/ordax-rollback",
+                "/bootstrap/dev-base/ordax-run",
+                "/bootstrap/recovery/entrypoint",
                 "/bootstrap/trust/",
                 "/bootstrap/config/release-envelope-url",
                 "/docs/contracts/base-update.json",
@@ -175,6 +203,15 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertTrue(
             (self.worktree / "bootstrap/base-update/activate.py").is_file()
         )
+        for helper in (
+            "bootstrap/dev-base/ordax-dev-init",
+            "bootstrap/dev-base/ordax-network",
+            "bootstrap/dev-base/ordax-pull",
+            "bootstrap/dev-base/ordax-rollback",
+            "bootstrap/dev-base/ordax-run",
+            "bootstrap/recovery/entrypoint",
+        ):
+            self.assertTrue((self.worktree / helper).is_file(), helper)
         self.assertTrue(
             (self.worktree / "docs/contracts/base-update.json").is_file()
         )
