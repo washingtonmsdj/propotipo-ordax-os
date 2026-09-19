@@ -9,6 +9,7 @@ RECOVERY_ENTRYPOINT=/ordax/bootstrap/recovery/entrypoint
 WORKTREE=${ORDAX_WORKTREE:-/workspace/ordax}
 STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PINNED_FILE=$STATE_DIR/pinned-commit
+BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit
 PREVIOUS_FILE=$STATE_DIR/previous-commit
 CURRENT_FILE=$STATE_DIR/current-commit
 BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
@@ -16,6 +17,7 @@ LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
 RUNTIME_SURFACE_SHA_FILE=$STATE_DIR/runtime-surface-sha
 REJECTED_FILE=$STATE_DIR/rejected-commit
+DIRTY_CHECKOUT_DIR=$STATE_DIR/dirty-checkout
 SUPERVISOR_GUARD_FILE=$STATE_DIR/pending-supervisor-update
 RELEASES_DIR=${ORDAX_RELEASES_DIR:-$STATE_DIR/releases}
 STAGED_RELEASE_FILE=$STATE_DIR/staged-release-sha
@@ -123,6 +125,49 @@ write_state_value() {
     temporary=$destination.tmp.$
     printf '%s\n' "$value" >"$temporary"
     /bin/busybox mv -f "$temporary" "$destination"
+}
+
+record_dirty_checkout() {
+    /bin/busybox mkdir -p "$DIRTY_CHECKOUT_DIR"
+    chmod 700 "$DIRTY_CHECKOUT_DIR" 2>/dev/null || true
+
+    dirty_head=$("$GIT_BIN" -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    status_file=$DIRTY_CHECKOUT_DIR/last-status.txt
+    status_tmp=$status_file.tmp.$
+    {
+        printf 'head=%s\n' "${dirty_head:-unknown}"
+        "$GIT_BIN" -C "$WORKTREE" status --porcelain=v1 2>/dev/null || true
+    } >"$status_tmp"
+    /bin/busybox mv -f "$status_tmp" "$status_file"
+
+    patch_file=$DIRTY_CHECKOUT_DIR/last-tracked-changes.patch
+    patch_tmp=$patch_file.tmp.$
+    if run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" diff --binary --no-ext-diff HEAD >"$patch_tmp" 2>/dev/null; then
+        /bin/busybox mv -f "$patch_tmp" "$patch_file"
+    else
+        rm -f "$patch_tmp"
+    fi
+}
+
+repair_dirty_checkout() {
+    record_dirty_checkout
+    log "checkout has local changes; restoring disposable Git-controlled runtime cache"
+
+    if ! run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" reset --hard HEAD >>"$UPDATE_LOG" 2>&1; then
+        log "dirty checkout repair could not restore tracked files"
+        return 1
+    fi
+    if ! run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" clean -ffd >>"$UPDATE_LOG" 2>&1; then
+        log "dirty checkout repair could not remove untracked residue"
+        return 1
+    fi
+    if [ -n "$("$GIT_BIN" -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
+        log "dirty checkout remains inconsistent after automatic repair"
+        return 1
+    fi
+
+    log "dirty checkout restored; forensic status preserved under $DIRTY_CHECKOUT_DIR"
+    return 0
 }
 
 candidate_file_to_temp() {
@@ -346,10 +391,11 @@ apply_remote_checkout() {
     expected_sha=$2
     CHECKOUT_ERROR=""
 
-    if [ -n "$("$GIT_BIN" -C "$WORKTREE" status --porcelain)" ]; then
-        CHECKOUT_ERROR=local-checkout-dirty
-        log "checkout has local changes; refusing automatic update"
-        return 1
+    if [ -n "$("$GIT_BIN" -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
+        if ! repair_dirty_checkout; then
+            CHECKOUT_ERROR=local-checkout-repair-failed
+            return 1
+        fi
     fi
 
     if ! run_bounded_git "$FETCH_TIMEOUT" -C "$WORKTREE" fetch --no-tags origin         "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >>"$UPDATE_LOG" 2>&1; then
@@ -916,11 +962,21 @@ EOF
 
 check_for_update() {
     current=$(current_sha)
+    boot_rejected_sha=""
 
     if [ -s "$PINNED_FILE" ]; then
-        set_update_context blocked "" "" "pinned"
-        write_update_state "$current" pinned none
-        return 0
+        boot_rejected_sha=$(read_state_value "$BOOT_REJECTED_FILE")
+        case "$boot_rejected_sha" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*)
+                [ "${#boot_rejected_sha}" -eq 40 ] || boot_rejected_sha=""
+                ;;
+            *) boot_rejected_sha="" ;;
+        esac
+        if [ -z "$boot_rejected_sha" ]; then
+            set_update_context blocked "" "" "pinned"
+            write_update_state "$current" pinned none
+            return 0
+        fi
     fi
     if [ ! -x "$GIT_BIN" ] || [ ! -d "$WORKTREE/.git" ]; then
         set_update_context blocked "" "" "git-unavailable"
@@ -943,6 +999,16 @@ check_for_update() {
             return 0
             ;;
     esac
+
+    if [ -s "$PINNED_FILE" ]; then
+        if [ "$remote_sha" = "$boot_rejected_sha" ]; then
+            set_update_context blocked "$remote_sha" "" "boot-rollback-pinned"
+            write_update_state "$current" pinned none
+            return 0
+        fi
+        rm -f "$PINNED_FILE" "$BOOT_REJECTED_FILE"
+        log "remote main advanced beyond boot-rejected $boot_rejected_sha; releasing automatic rollback pin"
+    fi
 
     rejected_sha=$(read_state_value "$REJECTED_FILE")
 

@@ -23,6 +23,8 @@
 #define EXT4_DISK_SUPER_BYTES 1024
 #define EXT4_INCOMPAT_64BIT 0x80U
 #define EXT4_RO_COMPAT_BIGALLOC 0x200U
+#define EXT4_VALID_FS 0x0001U
+#define EXT4_ERROR_FS 0x0002U
 
 /* ext4 on-disk superblock offsets; see Documentation/filesystems/ext4/super.rst. */
 #define EXT4_SB_BLOCKS_COUNT_LO 0x04
@@ -30,6 +32,7 @@
 #define EXT4_SB_LOG_BLOCK_SIZE 0x18
 #define EXT4_SB_BLOCKS_PER_GROUP 0x20
 #define EXT4_SB_MAGIC 0x38
+#define EXT4_SB_STATE 0x3A
 #define EXT4_SB_FEATURE_INCOMPAT 0x60
 #define EXT4_SB_FEATURE_RO_COMPAT 0x64
 #define EXT4_SB_BLOCKS_COUNT_HI 0x150
@@ -56,6 +59,7 @@ struct ext4_disk_info {
     uint64_t block_size;
     uint32_t blocks_per_group;
     uint32_t first_data_block;
+    uint16_t state;
 };
 
 static void fail_errno(const char *message) {
@@ -135,6 +139,7 @@ static struct ext4_disk_info read_ext4_disk_info(int fd) {
         .block_size = 1024ULL << log_block_size,
         .blocks_per_group = read_le32(raw + EXT4_SB_BLOCKS_PER_GROUP),
         .first_data_block = read_le32(raw + EXT4_SB_FIRST_DATA_BLOCK),
+        .state = read_le16(raw + EXT4_SB_STATE),
     };
     if (info.blocks_count == 0 || info.blocks_per_group == 0) {
         fail("ext4 superblock contains invalid sizing metadata");
@@ -142,9 +147,42 @@ static struct ext4_disk_info read_ext4_disk_info(int fd) {
     return info;
 }
 
+static int check_ext4_device(const char *device) {
+    (void)require_block_device(device);
+
+    int fd = open(device, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        fail_errno("cannot open ORDAX block device for health check");
+    }
+    struct ext4_disk_info info = read_ext4_disk_info(fd);
+    if (close(fd) != 0) {
+        fail_errno("cannot close ORDAX block device after health check");
+    }
+
+    if ((info.state & EXT4_ERROR_FS) != 0) {
+        fprintf(stderr,
+                "ordax-grow-ext4: ext4 superblock is marked with filesystem errors (state=0x%04x)\n",
+                info.state);
+        printf("ORDAX_EXT4_HEALTH=ERRORS state=0x%04x\n", info.state);
+        return 3;
+    }
+
+    if ((info.state & EXT4_VALID_FS) == 0) {
+        printf("ORDAX_EXT4_HEALTH=UNCLEAN state=0x%04x journal_recovery=allowed\n", info.state);
+        return 0;
+    }
+
+    printf("ORDAX_EXT4_HEALTH=PASS state=0x%04x\n", info.state);
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc == 3 && strcmp(argv[1], "--check") == 0) {
+        return check_ext4_device(argv[2]);
+    }
     if (argc != 3) {
-        fprintf(stderr, "usage: ordax-grow-ext4 BLOCK_DEVICE MOUNTPOINT\n");
+        fprintf(stderr,
+                "usage: ordax-grow-ext4 --check BLOCK_DEVICE | BLOCK_DEVICE MOUNTPOINT\n");
         return 2;
     }
 

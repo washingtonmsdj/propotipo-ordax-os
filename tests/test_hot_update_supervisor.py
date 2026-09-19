@@ -75,6 +75,19 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('CURRENT_FILE=$STATE_DIR/current-commit', text)
         self.assertNotIn('/usr/local/bin/ordax-pull', text)
 
+    def test_dirty_runtime_checkout_is_diagnosed_and_self_healed(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("DIRTY_CHECKOUT_DIR=$STATE_DIR/dirty-checkout", text)
+        self.assertIn("record_dirty_checkout()", text)
+        self.assertIn("repair_dirty_checkout()", text)
+        self.assertIn('status --porcelain=v1', text)
+        self.assertIn('diff --binary --no-ext-diff HEAD', text)
+        self.assertIn('reset --hard HEAD', text)
+        self.assertIn('clean -ffd', text)
+        self.assertIn("restoring disposable Git-controlled runtime cache", text)
+        self.assertIn("local-checkout-repair-failed", text)
+        self.assertNotIn("refusing automatic update", text)
+
     def test_candidate_is_preflighted_before_live_checkout_switch(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("validate_candidate_tree()", text)
@@ -288,8 +301,17 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_rollback_pin_disables_automatic_pull(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("PINNED_FILE=$STATE_DIR/pinned-commit", text)
+        self.assertIn("BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit", text)
         self.assertIn('if [ -s "$PINNED_FILE" ]', text)
         self.assertIn('write_update_state "$current" pinned none', text)
+
+    def test_boot_rollback_pin_retries_only_after_remote_main_advances(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('boot_rejected_sha=$(read_state_value "$BOOT_REJECTED_FILE")', text)
+        self.assertIn('if [ "$remote_sha" = "$boot_rejected_sha" ]; then', text)
+        self.assertIn('"boot-rollback-pinned"', text)
+        self.assertIn('rm -f "$PINNED_FILE" "$BOOT_REJECTED_FILE"', text)
+        self.assertIn("remote main advanced beyond boot-rejected", text)
 
     def test_failed_update_is_rolled_back_and_rejected(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")

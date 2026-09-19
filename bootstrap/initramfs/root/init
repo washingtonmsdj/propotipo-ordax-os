@@ -27,15 +27,28 @@ case "$ORDAX_DEVICE" in
     "") rescue "ORDAX partition not found" ;;
 esac
 
+enter_recovery() {
+    reason=$1
+    echo "ordax-initramfs: $reason; opening read-only recovery" >&2
+    mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
+    cat "$RECOVERY_BOOTSTRAP_PATH" >/dev/null 2>&1 || rescue "recovery entrypoint is missing or unreadable: $RECOVERY_BOOTSTRAP_PATH"
+    exec "$RECOVERY_BOOTSTRAP_PATH"
+}
+
 case "$RECOVERY_MODE" in
     1)
-        mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX read-only"
-        cat "$RECOVERY_BOOTSTRAP_PATH" >/dev/null 2>&1 || rescue "recovery entrypoint is missing or unreadable: $RECOVERY_BOOTSTRAP_PATH"
-        exec "$RECOVERY_BOOTSTRAP_PATH"
+        enter_recovery "recovery mode requested"
         ;;
 esac
 
-mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
+health_rc=0
+/sbin/ordax-grow-ext4 --check "$ORDAX_DEVICE" || health_rc=$?
+case "$health_rc" in
+    0) ;;
+    *) enter_recovery "ORDAX filesystem requires offline repair (health rc=$health_rc)" ;;
+esac
+
+mount -t ext4 -o rw,errors=remount-ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
 if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
     echo "ordax-initramfs: warning: ORDAX filesystem could not grow to partition capacity; continuing with current verified filesystem" >&2
 fi

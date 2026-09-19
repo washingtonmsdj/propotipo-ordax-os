@@ -39,6 +39,13 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertEqual(growth["runtime_oracle"], "upstream-resize2fs-on-disposable-twin-media")
         self.assertFalse(growth["physical_write_authorized"])
 
+        health = CONTRACT["storage_health"]
+        self.assertEqual(health["pre_mount_check"], "ext4-superblock-error-flag")
+        self.assertEqual(health["normal_boot_error_policy"], "read-only-recovery")
+        self.assertEqual(health["writable_mount_error_policy"], "remount-ro")
+        self.assertEqual(health["helper_runtime_path"], "/sbin/ordax-grow-ext4")
+        self.assertFalse(health["automatic_destructive_repair"])
+
         recovery = CONTRACT["recovery"]
         self.assertEqual(recovery["main_partition_mount"], "read-only")
         self.assertFalse(recovery["filesystem_growth"])
@@ -47,7 +54,8 @@ class InitramfsSourceContractTests(unittest.TestCase):
     def test_pid1_understands_only_new_storage_handoff(self):
         self.assertIn("findfs LABEL=ORDAX", INIT)
         self.assertIn("mount -t ext4 -o ro \"$ORDAX_DEVICE\" /ordax", INIT)
-        self.assertIn("mount -t ext4 -o rw \"$ORDAX_DEVICE\" /ordax", INIT)
+        self.assertIn("mount -t ext4 -o rw,errors=remount-ro \"$ORDAX_DEVICE\" /ordax", INIT)
+        self.assertIn('/sbin/ordax-grow-ext4 --check "$ORDAX_DEVICE"', INIT)
         self.assertIn('/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax', INIT)
         self.assertIn("/ordax/bootstrap/entrypoint", INIT)
         recovery_pos = INIT.index('case "$RECOVERY_MODE" in')
@@ -97,6 +105,10 @@ class InitramfsSourceContractTests(unittest.TestCase):
         self.assertIn("EXT4_IOC_RESIZE_FS", GROW_HELPER)
         self.assertIn("BLKGETSIZE64", GROW_HELPER)
         self.assertIn("read_ext4_disk_info", GROW_HELPER)
+        self.assertIn("check_ext4_device", GROW_HELPER)
+        self.assertIn("EXT4_SB_STATE", GROW_HELPER)
+        self.assertIn("EXT4_ERROR_FS", GROW_HELPER)
+        self.assertIn("ORDAX_EXT4_HEALTH=ERRORS", GROW_HELPER)
         self.assertIn("EXT4_SB_BLOCKS_COUNT_LO", GROW_HELPER)
         self.assertIn("EXT4_SB_BLOCKS_COUNT_HI", GROW_HELPER)
         self.assertIn("EXT4_INCOMPAT_64BIT", GROW_HELPER)

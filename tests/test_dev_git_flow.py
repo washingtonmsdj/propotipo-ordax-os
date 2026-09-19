@@ -227,6 +227,66 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             self.commit_v2,
         )
 
+    def test_failed_boot_rolls_back_and_retries_only_after_main_advances(self) -> None:
+        self._script(PULL)
+        self.commit_v2 = self._commit_runtime("runtime-v2")
+        self._script(PULL)
+
+        bin_dir = self.root / "auto-recovery-bin"
+        bin_dir.mkdir()
+        (bin_dir / "ordax-network").write_text(
+            "#!/bin/sh\nexit 0\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-pull").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{PULL}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-rollback").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{ROLLBACK}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-run").write_text(
+            "#!/bin/sh\n"
+            "if grep -q runtime-v2 \"$ORDAX_WORKTREE/system/entrypoint\"; then\n"
+            "  exit 42\n"
+            "fi\n"
+            "exec /bin/sh \"$ORDAX_WORKTREE/system/entrypoint\"\n",
+            encoding="utf-8",
+        )
+        for helper in bin_dir.iterdir():
+            helper.chmod(0o755)
+
+        boot_env = self._env()
+        boot_env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+            }
+        )
+
+        recovered = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Rollback automatico ativado", recovered.stdout)
+        self.assertIn("runtime-v1", recovered.stdout)
+        self.assertEqual((self.state / "boot-rejected-commit").read_text().strip(), self.commit_v2)
+        self.assertEqual((self.state / "pinned-commit").read_text().strip(), self.commit_v1)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v1,
+        )
+
+        commit_v3 = self._commit_runtime("runtime-v3")
+        retried = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Main avancou alem do commit rejeitado", retried.stdout)
+        self.assertIn("runtime-v3", retried.stdout)
+        self.assertFalse((self.state / "boot-rejected-commit").exists())
+        self.assertFalse((self.state / "pinned-commit").exists())
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            commit_v3,
+        )
+
     def test_bootstrap_network_and_git_fail_soft_but_bounded(self) -> None:
         network = NETWORK.read_text(encoding="utf-8")
         pull = PULL.read_text(encoding="utf-8")
@@ -242,22 +302,55 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertIn("GIT_TERMINAL_PROMPT=0", pull)
         self.assertIn('timeout -k 5 "$GIT_TIMEOUT_SECONDS"', pull)
         self.assertIn("run_bounded_git clone", pull)
-        self.assertIn('run_bounded_git -C "$WORKTREE" pull --ff-only', pull)
+        self.assertIn("remote_main_sha()", pull)
+        self.assertIn("replace_runtime_checkout()", pull)
+        self.assertIn('STAGING_PREFIX=$WORKSPACE_ROOT/.ordax-staging', pull)
+        self.assertIn('RETIRED_PREFIX=$WORKSPACE_ROOT/.ordax-retired', pull)
+        self.assertIn('mv "$stage" "$WORKTREE"', pull)
+        self.assertNotIn('pull --ff-only', pull)
 
         self.assertIn('BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}', dev_init)
+        self.assertIn("BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit", dev_init)
+        self.assertIn("recover_previous_checkout()", dev_init)
+        self.assertIn("Main avancou alem do commit rejeitado", dev_init)
         self.assertIn('while [ "$attempt" -le "$BOOT_PULL_ATTEMPTS" ]', dev_init)
         self.assertIn("repetindo uma vez apos pausa curta", dev_init)
         self.assertIn("sleep 2", dev_init)
 
-    def test_pull_rejects_dirty_checkout_and_unexpected_origin(self) -> None:
+    def test_pull_replaces_dirty_or_invalid_runtime_checkout_atomically(self) -> None:
         self._script(PULL)
+
+        entrypoint = self.worktree / "system/entrypoint"
+        entrypoint.write_text("#!/bin/sh\nprintf '%s\\n' 'locally-corrupted'\n", encoding="utf-8")
         dirty = self.worktree / "system/local-change.txt"
         dirty.write_text("local\n", encoding="utf-8")
-        result = self._script(PULL, check=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("alteracoes locais", result.stderr)
 
-        dirty.unlink()
+        self.commit_v2 = self._commit_runtime("runtime-v2")
+        result = self._script(PULL)
+
+        self.assertIn("checkout local alterado", result.stderr)
+        self.assertIn("substituindo cache por clone limpo validado", result.stderr)
+        self.assertIn("checkout atomico ativado", result.stdout)
+        self.assertFalse(dirty.exists())
+        self.assertIn("runtime-v2", entrypoint.read_text(encoding="utf-8"))
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "status", "--porcelain"]).stdout,
+            "",
+        )
+        self.assertEqual(
+            (self.state / "current-commit").read_text().strip(),
+            self.commit_v2,
+        )
+        diagnostic = self.state / "dirty-checkout/last-status.txt"
+        patch = self.state / "dirty-checkout/last-tracked-changes.patch"
+        self.assertTrue(diagnostic.is_file())
+        self.assertIn("system/entrypoint", diagnostic.read_text(encoding="utf-8"))
+        self.assertIn("system/local-change.txt", diagnostic.read_text(encoding="utf-8"))
+        self.assertTrue(patch.is_file())
+        self.assertIn("locally-corrupted", patch.read_text(encoding="utf-8"))
+
+        # Even broken local Git metadata is disposable. A valid remote is cloned
+        # and swapped into place only after validation.
         self._run(
             [
                 "git",
@@ -269,9 +362,34 @@ class DevelopmentGitFlowTest(unittest.TestCase):
                 (self.root / "unexpected.git").as_uri(),
             ]
         )
-        result = self._script(PULL, check=False)
+        result = self._script(PULL)
+        self.assertIn("checkout ausente ou inconsistente", result.stderr)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "remote", "get-url", "origin"]).stdout.strip(),
+            self.remote.as_uri(),
+        )
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v2,
+        )
+
+    def test_remote_failure_preserves_last_local_checkout(self) -> None:
+        self._script(PULL)
+        before = self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip()
+        marker = self.worktree / "system/local-only.txt"
+        marker.write_text("keep-me\n", encoding="utf-8")
+
+        env = self._env()
+        env["ORDAX_REPO_URL"] = (self.root / "offline.git").as_uri()
+        result = self._script(PULL, env=env, check=False)
+
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("origin inesperado", result.stderr)
+        self.assertIn("main remota indisponivel", result.stderr)
+        self.assertTrue(marker.is_file())
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            before,
+        )
 
 
 if __name__ == "__main__":

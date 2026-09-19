@@ -39,5 +39,12 @@
     "deterministic_cpio": "newc",
     "compression": "gzip-mtime-zero",
     "physical_artifact_authorized": false
+  },
+  "storage_health": {
+    "pre_mount_check": "ext4-superblock-error-flag",
+    "normal_boot_error_policy": "read-only-recovery",
+    "writable_mount_error_policy": "remount-ro",
+    "helper_runtime_path": "/sbin/ordax-grow-ext4",
+    "automatic_destructive_repair": false
   }
 }
