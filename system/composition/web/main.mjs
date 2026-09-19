@@ -18,10 +18,15 @@ import { mountAccountOverviewControls } from "../../surface/ui/account-overview-
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { createSurfaceBootScreen } from "../../surface/ui/boot-screen.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 import { mountSystemTrayQuickPanels } from "../../surface/ui/system-tray-quick-panels.mjs";
 
+const bootScreen = createSurfaceBootScreen(document);
+
+try {
+  bootScreen.setStage("Carregando superfície…");
 const root = document.querySelector("#ordax-root");
 if (!root) {
   throw new Error("OrdaX composition root is missing #ordax-root");
@@ -103,6 +108,7 @@ const systemOverviewControls = mountSystemOverviewControls(
 );
 
 componentManager.setCurrentHealth("surface-shell", "healthy");
+bootScreen.setStage("Carregando aplicativos…");
 const notesComponent = await loadOptionalComponentRuntime({
   componentId: "notes",
   importer: () => import("../../apps/notes/runtime.mjs"),
@@ -132,6 +138,8 @@ const internetComponent = await loadOptionalComponentRuntime({
   },
 });
 
+bootScreen.ready();
+
 window.addEventListener(
   "pagehide",
   () => {
@@ -153,3 +161,8 @@ window.addEventListener(
   },
   { once: true },
 );
+
+} catch (error) {
+  bootScreen.fail("Não foi possível iniciar a interface");
+  console.error("OrdaX web composition failed", error);
+}
