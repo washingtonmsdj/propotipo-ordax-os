@@ -978,10 +978,20 @@
   display: flex;
   min-height: 38px;
   align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   padding: 0 28px;
   border-top: 1px solid var(--ordax-border-soft);
   color: var(--ordax-muted);
   font-size: 0.66rem;
+}
+
+.ordax-notes-statistics {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ordax-notes-references {
