@@ -11,6 +11,9 @@ PINNED_FILE=$STATE_DIR/pinned-commit
 DIRTY_CHECKOUT_DIR=$STATE_DIR/dirty-checkout
 GIT_TIMEOUT_SECONDS=${ORDAX_BOOT_GIT_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_BOOT_GIT_LOW_SPEED_SECONDS:-15}
+WORKSPACE_ROOT=${WORKTREE%/*}
+STAGING_PREFIX=$WORKSPACE_ROOT/.ordax-staging
+RETIRED_PREFIX=$WORKSPACE_ROOT/.ordax-retired
 
 case "$GIT_TIMEOUT_SECONDS" in
     ''|*[!0-9]*) GIT_TIMEOUT_SECONDS=45 ;;
@@ -33,21 +36,40 @@ run_bounded_git() {
         "$@"
 }
 
+is_sha() {
+    value=${1:-}
+    [ "${#value}" -eq 40 ] || return 1
+    case "$value" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+}
+
 write_state() {
     destination=$1
     value=$2
     temporary=$destination.tmp.$
-    printf '%s\n' "$value" > "$temporary"
+    printf '%s\n' "$value" >"$temporary"
     mv -f "$temporary" "$destination"
+}
+
+configure_runtime_checkout_at() {
+    checkout=$1
+    git -C "$checkout" sparse-checkout set --no-cone \
+        /system/ \
+        /bootstrap/trust/ \
+        /bootstrap/config/release-envelope-url \
+        /docs/contracts/release-trust-policy.json \
+        /docs/contracts/minimal-bootstrap.json \
+        /docs/evidence/release-trust-ceremony.json \
+        /docs/evidence/release-trust-proof-manifest.json \
+        /docs/evidence/release-trust-recovery-envelope.json
 }
 
 record_dirty_checkout() {
     mkdir -p "$DIRTY_CHECKOUT_DIR"
     chmod 700 "$DIRTY_CHECKOUT_DIR" 2>/dev/null || true
 
-    head=$(
-        git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true
-    )
+    head=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
     status_file=$DIRTY_CHECKOUT_DIR/last-status.txt
     status_tmp=$status_file.tmp.$
     {
@@ -65,76 +87,154 @@ record_dirty_checkout() {
     fi
 }
 
-repair_dirty_checkout() {
-    record_dirty_checkout
-    echo "ordax-git: checkout local alterado; restaurando cache controlado pelo Git" >&2
-
-    if ! run_bounded_git -C "$WORKTREE" reset --hard HEAD >/dev/null 2>&1; then
-        echo "ordax-git: nao foi possivel restaurar arquivos rastreados; checkout preservado" >&2
-        return 1
-    fi
-    if ! run_bounded_git -C "$WORKTREE" clean -ffd >/dev/null 2>&1; then
-        echo "ordax-git: nao foi possivel remover residuos nao rastreados; checkout preservado" >&2
-        return 1
-    fi
-    if [ -n "$(git -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
-        echo "ordax-git: checkout continua inconsistente apos restauracao automatica" >&2
-        return 1
-    fi
-
-    echo "ordax-git: checkout local restaurado; diagnostico preservado em $DIRTY_CHECKOUT_DIR" >&2
+checkout_metadata_valid() {
+    checkout=$1
+    [ -d "$checkout/.git" ] || return 1
+    head=$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)
+    is_sha "$head" || return 1
+    origin=$(git -C "$checkout" remote get-url origin 2>/dev/null || true)
+    [ "$origin" = "$REPO_URL" ] || return 1
+    branch=$(git -C "$checkout" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    [ "$branch" = "$BRANCH" ] || return 1
+    [ -x "$checkout/system/entrypoint" ] || return 1
     return 0
 }
 
-configure_runtime_checkout() {
-    git -C "$WORKTREE" sparse-checkout set --no-cone \
-        /system/ \
-        /bootstrap/trust/ \
-        /bootstrap/config/release-envelope-url \
-        /docs/contracts/release-trust-policy.json \
-        /docs/contracts/minimal-bootstrap.json \
-        /docs/evidence/release-trust-ceremony.json \
-        /docs/evidence/release-trust-proof-manifest.json \
-        /docs/evidence/release-trust-recovery-envelope.json
+checkout_is_clean() {
+    checkout=$1
+    status=$(git -C "$checkout" status --porcelain 2>/dev/null) || return 1
+    [ -z "$status" ]
 }
 
-mkdir -p "$(dirname "$WORKTREE")" "$STATE_DIR"
+remote_main_sha() {
+    output=$(run_bounded_git ls-remote --heads "$REPO_URL" "refs/heads/$BRANCH" 2>/dev/null || true)
+    set -- $output
+    value=${1:-}
+    is_sha "$value" || return 1
+    printf '%s' "$value"
+}
 
-if [ ! -d "$WORKTREE/.git" ]; then
-    echo "ordax-git: clonando runtime de $REPO_URL ($BRANCH)"
-    run_bounded_git clone \
+clone_runtime_checkout() {
+    destination=$1
+    expected_sha=$2
+
+    rm -rf "$destination"
+    echo "ordax-git: preparando checkout novo e isolado de $REPO_URL ($BRANCH)"
+    if ! run_bounded_git clone \
         --branch "$BRANCH" \
         --single-branch \
         --filter=blob:none \
         --sparse \
         "$REPO_URL" \
-        "$WORKTREE"
-    configure_runtime_checkout
-else
-    origin_url=$(git -C "$WORKTREE" remote get-url origin)
-    [ "$origin_url" = "$REPO_URL" ] || {
-        echo "ordax-git: origin inesperado: $origin_url" >&2
-        exit 1
+        "$destination"; then
+        rm -rf "$destination"
+        return 1
+    fi
+    if ! configure_runtime_checkout_at "$destination"; then
+        rm -rf "$destination"
+        return 1
+    fi
+    checkout_metadata_valid "$destination" || {
+        rm -rf "$destination"
+        return 1
+    }
+    checkout_is_clean "$destination" || {
+        rm -rf "$destination"
+        return 1
+    }
+    cloned_sha=$(git -C "$destination" rev-parse HEAD 2>/dev/null || true)
+    [ "$cloned_sha" = "$expected_sha" ] || {
+        echo "ordax-git: checkout preparado divergiu da main esperada" >&2
+        rm -rf "$destination"
+        return 1
+    }
+    return 0
+}
+
+replace_runtime_checkout() {
+    expected_sha=$1
+    reason=$2
+    stage=$STAGING_PREFIX.$$
+    retired=$RETIRED_PREFIX.$$
+    old_sha=""
+
+    if [ -d "$WORKTREE/.git" ]; then
+        old_sha=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    fi
+    case "$reason" in
+        dirty) record_dirty_checkout ;;
+    esac
+
+    clone_runtime_checkout "$stage" "$expected_sha" || {
+        echo "ordax-git: nao foi possivel preparar checkout substituto; checkout atual preservado" >&2
+        return 1
     }
 
-    current_branch=$(git -C "$WORKTREE" symbolic-ref --quiet --short HEAD || true)
-    [ "$current_branch" = "$BRANCH" ] || {
-        echo "ordax-git: branch local inesperada: ${current_branch:-detached}" >&2
-        exit 1
-    }
-
-    if [ -n "$(git -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
-        repair_dirty_checkout || exit 1
+    rm -rf "$retired"
+    if [ -e "$WORKTREE" ]; then
+        if ! mv "$WORKTREE" "$retired"; then
+            rm -rf "$stage"
+            return 1
+        fi
     fi
 
-    previous=$(git -C "$WORKTREE" rev-parse HEAD)
-    echo "ordax-git: git pull --ff-only origin $BRANCH"
-    run_bounded_git -C "$WORKTREE" pull --ff-only origin "$BRANCH"
-    configure_runtime_checkout
+    if ! mv "$stage" "$WORKTREE"; then
+        [ ! -e "$retired" ] || mv "$retired" "$WORKTREE" || true
+        rm -rf "$stage"
+        return 1
+    fi
 
+    if ! checkout_metadata_valid "$WORKTREE" || ! checkout_is_clean "$WORKTREE"; then
+        rm -rf "$WORKTREE"
+        [ ! -e "$retired" ] || mv "$retired" "$WORKTREE" || true
+        return 1
+    fi
+
+    rm -rf "$retired"
+    if is_sha "$old_sha" && [ "$old_sha" != "$expected_sha" ]; then
+        write_state "$PREVIOUS_FILE" "$old_sha"
+    fi
+    write_state "$CURRENT_FILE" "$expected_sha"
+    echo "ordax-git: checkout atomico ativado em $expected_sha"
+    return 0
+}
+
+mkdir -p "$WORKSPACE_ROOT" "$STATE_DIR"
+rm -rf "$STAGING_PREFIX".* "$RETIRED_PREFIX".* 2>/dev/null || true
+
+remote_sha=$(remote_main_sha || true)
+
+if [ -z "$remote_sha" ]; then
+    echo "ordax-git: main remota indisponivel; checkout local sera preservado" >&2
+    exit 1
+fi
+
+if ! checkout_metadata_valid "$WORKTREE"; then
+    echo "ordax-git: checkout ausente ou inconsistente; reconstruindo sem reutilizar estado Git local" >&2
+    replace_runtime_checkout "$remote_sha" invalid || exit 1
+else
     current=$(git -C "$WORKTREE" rev-parse HEAD)
-    if [ "$current" != "$previous" ]; then
-        write_state "$PREVIOUS_FILE" "$previous"
+
+    if ! checkout_is_clean "$WORKTREE"; then
+        echo "ordax-git: checkout local alterado; substituindo cache por clone limpo validado" >&2
+        replace_runtime_checkout "$remote_sha" dirty || exit 1
+    elif [ "$current" != "$remote_sha" ]; then
+        if ! run_bounded_git -C "$WORKTREE" fetch --no-tags origin \
+            "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
+            echo "ordax-git: fetch de verificacao falhou; checkout local preservado" >&2
+            exit 1
+        fi
+        run_bounded_git -C "$WORKTREE" merge-base --is-ancestor "$current" "$remote_sha" >/dev/null 2>&1 || {
+            echo "ordax-git: main remota nao e fast-forward do checkout local; substituicao bloqueada" >&2
+            exit 1
+        }
+        replace_runtime_checkout "$remote_sha" update || exit 1
+    else
+        configure_runtime_checkout_at "$WORKTREE" || {
+            echo "ordax-git: sparse checkout local inconsistente; reconstruindo cache" >&2
+            replace_runtime_checkout "$remote_sha" invalid || exit 1
+        }
+        write_state "$CURRENT_FILE" "$current"
     fi
 fi
 
