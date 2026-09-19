@@ -1,4 +1,8 @@
 import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
+import {
+  assertBrowserFavoritesPort,
+  validateBrowserFavoriteUrl,
+} from "../../contracts/browser-favorites.mjs";
 import { assertProjectCatalogPort } from "../../contracts/project-catalog.mjs";
 import {
   assertProjectWebReferencePort,
@@ -90,7 +94,7 @@ function createSidebar(documentObject) {
 
   const collections = node(documentObject, "div", "ordax-internet-collections");
   collections.append(node(documentObject, "span", "ordax-internet-section-label", "COLEÇÕES"));
-  for (const [glyph, title] of [["□", "Coleções do espaço"], ["☆", "Ler depois"], ["★", "Favoritos"]]) {
+  for (const [glyph, title] of [["□", "Coleções do espaço"], ["☆", "Ler depois"]]) {
     const row = node(documentObject, "button", "ordax-internet-collection-row");
     row.type = "button";
     row.disabled = true;
@@ -98,6 +102,19 @@ function createSidebar(documentObject) {
     row.append(node(documentObject, "span", "", glyph), node(documentObject, "span", "", title));
     collections.append(row);
   }
+  const favoritesToggle = node(documentObject, "button", "ordax-internet-collection-row");
+  favoritesToggle.type = "button";
+  favoritesToggle.dataset.browserFavoritesToggle = "";
+  favoritesToggle.setAttribute("aria-expanded", "false");
+  favoritesToggle.append(node(documentObject, "span", "", "★"));
+  const favoritesLabel = node(documentObject, "span", "", "Favoritos");
+  favoritesLabel.dataset.browserFavoritesLabel = "";
+  favoritesToggle.append(favoritesLabel);
+  collections.append(favoritesToggle);
+  const favoritesList = node(documentObject, "div", "ordax-internet-favorites-list");
+  favoritesList.dataset.browserFavoritesList = "";
+  favoritesList.hidden = true;
+  collections.append(favoritesList);
 
   const footer = node(documentObject, "div", "ordax-internet-sidebar-footer");
   footer.append(node(documentObject, "span", "", "◷  Histórico"));
@@ -250,7 +267,7 @@ export function mountInternetBrowserControls(
   root,
   browserSession,
   surfaceLifecycle,
-  { projects = null, projectReferences = null } = {},
+  { projects = null, projectReferences = null, favorites = null } = {},
 ) {
   if (!(root instanceof Element)) throw new TypeError("Internet controls require a Surface root Element");
   const port = assertBrowserSessionPort(browserSession);
@@ -259,11 +276,13 @@ export function mountInternetBrowserControls(
   const referencePort = projectReferences === null
     ? null
     : assertProjectWebReferencePort(projectReferences);
+  const favoritePort = favorites === null ? null : assertBrowserFavoritesPort(favorites);
   const documentObject = root.ownerDocument;
   const windowObject = documentObject.defaultView;
   let snapshot = port.getSnapshot();
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
   let referenceSnapshot = referencePort?.getSnapshot() ?? null;
+  let favoriteSnapshot = favoritePort?.getSnapshot() ?? null;
   let selectedProjectId = null;
   let noteDraftKey = "";
   let noteDraftValue = "";
@@ -272,6 +291,7 @@ export function mountInternetBrowserControls(
   let nextTabOrdinal = 1;
   let message = "";
   let panelCollapsed = false;
+  let favoritesExpanded = false;
   let tabQuery = "";
   let pendingTabFocusId = null;
   let handledSurfaceTarget = null;
@@ -288,6 +308,22 @@ export function mountInternetBrowserControls(
     } catch {
       return null;
     }
+  };
+
+  const activeFavoriteUrl = () => {
+    const url = activeTab()?.url;
+    if (!url) return null;
+    try {
+      return validateBrowserFavoriteUrl(url);
+    } catch {
+      return null;
+    }
+  };
+
+  const activeFavorite = () => {
+    const url = activeFavoriteUrl();
+    if (!favoriteSnapshot || !url) return null;
+    return favoriteSnapshot.favorites.find((favorite) => favorite.url === url) ?? null;
   };
 
   const activeSavedReference = () => {
@@ -609,6 +645,69 @@ export function mountInternetBrowserControls(
     }
   };
 
+  const syncFavorites = (slot) => {
+    const favorite = activeFavorite();
+    const url = activeFavoriteUrl();
+    const bookmark = slot.querySelector('[data-browser-action="bookmark"]');
+    if (bookmark) {
+      bookmark.disabled = !favoritePort || !url;
+      bookmark.textContent = favorite ? "★" : "☆";
+      bookmark.setAttribute("aria-pressed", String(Boolean(favorite)));
+      bookmark.setAttribute(
+        "aria-label",
+        favorite ? "Remover dos favoritos" : "Adicionar aos favoritos",
+      );
+      bookmark.title = !favoritePort
+        ? "Favoritos não estão disponíveis neste host."
+        : !url
+          ? "Abra uma página HTTP ou HTTPS válida para adicioná-la aos favoritos."
+          : favorite
+            ? "Remover esta página dos favoritos."
+            : "Salvar esta página nos favoritos deste dispositivo.";
+    }
+
+    const toggle = slot.querySelector("[data-browser-favorites-toggle]");
+    const label = slot.querySelector("[data-browser-favorites-label]");
+    const list = slot.querySelector("[data-browser-favorites-list]");
+    const count = favoriteSnapshot?.favorites.length ?? 0;
+    if (label) label.textContent = count > 0 ? `Favoritos · ${count}` : "Favoritos";
+    if (toggle) {
+      toggle.disabled = !favoritePort;
+      toggle.setAttribute("aria-expanded", String(Boolean(favoritePort && favoritesExpanded)));
+      toggle.title = !favoritePort
+        ? "Favoritos não estão disponíveis neste host."
+        : favoriteSnapshot?.persistence === "device"
+          ? "Favoritos salvos neste dispositivo."
+          : "Favoritos disponíveis somente nesta sessão.";
+    }
+    if (!list) return;
+    list.hidden = !favoritePort || !favoritesExpanded;
+    list.replaceChildren();
+    if (!favoritePort || !favoritesExpanded) return;
+    const favorites = favoriteSnapshot?.favorites ?? [];
+    if (favorites.length === 0) {
+      list.append(node(documentObject, "div", "ordax-internet-tab-placeholder", "Nenhum favorito salvo."));
+      return;
+    }
+    for (const entry of favorites) {
+      const row = node(documentObject, "div", "ordax-internet-favorite-row");
+      const open = node(documentObject, "button", "ordax-internet-favorite-open");
+      open.type = "button";
+      open.dataset.browserOpenFavorite = entry.id;
+      open.title = entry.url;
+      const copy = node(documentObject, "span", "ordax-internet-page-copy");
+      copy.append(node(documentObject, "strong", "", entry.title));
+      copy.append(node(documentObject, "small", "", displayHost(entry.url)));
+      open.append(node(documentObject, "span", "", "★"), copy);
+      const remove = node(documentObject, "button", "ordax-internet-favorite-remove", "×");
+      remove.type = "button";
+      remove.dataset.browserRemoveFavorite = entry.id;
+      remove.setAttribute("aria-label", `Remover ${entry.title} dos favoritos`);
+      row.append(open, remove);
+      list.append(row);
+    }
+  };
+
   const syncPanel = (slot) => {
     const panel = slot.querySelector(`#${PROJECT_PANEL_ID}`);
     panel?.toggleAttribute("hidden", panelCollapsed);
@@ -640,6 +739,7 @@ export function mountInternetBrowserControls(
     syncProjectContext(slot);
     syncCurrentPage(slot);
     syncReferenceControls(slot);
+    syncFavorites(slot);
     syncPanel(slot);
     windowObject.requestAnimationFrame(syncViewport);
     ensureTab();
@@ -650,6 +750,36 @@ export function mountInternetBrowserControls(
     if (!target || !root.contains(target)) return;
     const slot = findSlot();
     if (!slot?.contains(target)) return;
+
+    if (target.dataset.browserFavoritesToggle !== undefined) {
+      if (!favoritePort) return;
+      favoritesExpanded = !favoritesExpanded;
+      render();
+      return;
+    }
+
+    const openFavoriteId = target.dataset.browserOpenFavorite;
+    if (openFavoriteId) {
+      const favorite = favoriteSnapshot?.favorites.find((entry) => entry.id === openFavoriteId);
+      if (!favorite || !snapshot.supported) return;
+      const tab = activeTab();
+      message = "";
+      if (tab) {
+        port.navigate(tab.id, favorite.url);
+      } else {
+        port.openTab(allocateTabId(), favorite.url);
+      }
+      return;
+    }
+
+    const removeFavoriteId = target.dataset.browserRemoveFavorite;
+    if (removeFavoriteId) {
+      if (!favoritePort) return;
+      favoritePort.remove(removeFavoriteId);
+      message = "Favorito removido.";
+      render();
+      return;
+    }
 
     const projectId = target.dataset.browserProjectId;
     if (projectId) {
@@ -746,7 +876,26 @@ export function mountInternetBrowserControls(
     if (action === "forward") port.goForward(tab.id);
     if (action === "reload") port.reload(tab.id);
     if (action === "bookmark") {
-      message = "Favoritos persistentes serão conectados ao armazenamento do projeto; nada foi salvo ainda.";
+      if (!favoritePort) return;
+      const url = activeFavoriteUrl();
+      if (!url) return;
+      const existing = activeFavorite();
+      try {
+        if (existing) {
+          favoritePort.remove(existing.id);
+          message = "Favorito removido.";
+        } else {
+          favoritePort.save({
+            url,
+            title: tab.title || displayHost(url),
+          });
+          message = favoriteSnapshot?.persistence === "session"
+            ? "Favorito salvo para esta sessão."
+            : "Favorito salvo neste dispositivo.";
+        }
+      } catch (error) {
+        message = error instanceof Error ? error.message : "Não foi possível atualizar os favoritos.";
+      }
       render();
     }
   };
@@ -850,6 +999,10 @@ export function mountInternetBrowserControls(
     }
     render();
   }) ?? (() => {});
+  const unsubscribeFavorites = favoritePort?.subscribe((nextSnapshot) => {
+    favoriteSnapshot = nextSnapshot;
+    render();
+  }) ?? (() => {});
   const unsubscribeSurface = lifecycle.subscribeRender(render);
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
@@ -868,6 +1021,7 @@ export function mountInternetBrowserControls(
       unsubscribeSession();
       unsubscribeProjects();
       unsubscribeReferences();
+      unsubscribeFavorites();
       unsubscribeSurface();
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
