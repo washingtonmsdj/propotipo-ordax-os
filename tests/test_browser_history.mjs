@@ -12,8 +12,8 @@ import {
   validateBrowserHistoryStoreState,
 } from "../system/contracts/browser-history-store.mjs";
 import { createNativeBrowserHistoryStore } from "../system/adapters/native/browser-history.mjs";
-import { createBrowserHistoryBridge } from "../system/services/internet/history-bridge.mjs";
-import { createBrowserHistoryRuntime } from "../system/services/internet/history.mjs";
+import { createBrowserHistoryBridge } from "../system/apps/internet/services/history-bridge.mjs";
+import { createBrowserHistoryRuntime } from "../system/apps/internet/services/history.mjs";
 import {
   BROWSER_SESSION_SCHEMA,
   validateBrowserSnapshot,
