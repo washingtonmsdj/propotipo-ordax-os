@@ -19,7 +19,8 @@ class InternetProjectContextContractTests(unittest.TestCase):
         controls = self.text(CONTROLS)
         self.assertIn('contracts/project-catalog.mjs', controls)
         self.assertIn('assertProjectCatalogPort', controls)
-        self.assertIn('{ projects = null, projectReferences = null } = {}', controls)
+        self.assertIn('projects = null', controls)
+        self.assertIn('projectReferences = null', controls)
         self.assertIn('projectPort?.getSnapshot()', controls)
         self.assertIn('projectPort?.subscribe', controls)
         self.assertIn('projectPort.recordOpened(projectId)', controls)
@@ -31,7 +32,7 @@ class InternetProjectContextContractTests(unittest.TestCase):
         self.assertIn('{ recentFiles, projects }', native)
         self.assertIn('createProjectWebReferenceRuntime', native)
         self.assertIn('createNativeProjectWebReferenceStore', native)
-        self.assertIn('{ projects, projectReferences },', native)
+        self.assertIn('projects, projectReferences, favorites: browserFavorites', native)
         self.assertIn('projectReferences?.destroy()', native)
 
     def test_web_composition_keeps_project_context_unavailable_without_fake_storage(self):
