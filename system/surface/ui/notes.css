@@ -729,6 +729,205 @@
   outline: 0;
 }
 
+.ordax-notes-reference-choices {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 7px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 9px;
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-notes-reference-choice {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.69rem;
+  text-align: left;
+  padding: 0 9px;
+}
+
+.ordax-notes-reference-choice:hover,
+.ordax-notes-reference-choice:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-reference-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.ordax-notes-file-picker {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--ordax-border);
+  border-radius: 10px;
+  background: var(--ordax-window-bg);
+  box-shadow: 0 10px 26px color-mix(in srgb, #000 8%, transparent);
+}
+
+.ordax-notes-file-picker-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ordax-notes-file-picker-heading {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ordax-notes-file-picker-heading strong {
+  font-size: 0.74rem;
+}
+
+.ordax-notes-file-picker-heading small {
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-file-picker-close,
+.ordax-notes-file-picker-up {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ordax-notes-file-picker-close {
+  width: 28px;
+  height: 28px;
+  font-size: 1rem;
+}
+
+.ordax-notes-file-picker-up {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 0.64rem;
+}
+
+.ordax-notes-file-picker-close:hover,
+.ordax-notes-file-picker-up:hover,
+.ordax-notes-file-picker-close:focus-visible,
+.ordax-notes-file-picker-up:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 0;
+}
+
+.ordax-notes-file-picker-up:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.ordax-notes-file-picker-list {
+  display: grid;
+  max-height: 230px;
+  gap: 3px;
+  overflow: auto;
+}
+
+.ordax-notes-file-picker-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.ordax-notes-file-picker-row:hover,
+.ordax-notes-file-picker-row:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-file-picker-row[data-selected="true"] {
+  background: var(--notes-soft);
+  outline: 1px solid color-mix(in srgb, var(--notes-accent) 35%, var(--ordax-border));
+}
+
+.ordax-notes-file-picker-icon {
+  color: var(--notes-accent);
+}
+
+.ordax-notes-file-picker-name {
+  overflow: hidden;
+  font-size: 0.67rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-file-picker-kind,
+.ordax-notes-file-picker-message {
+  color: var(--ordax-muted);
+  font-size: 0.6rem;
+}
+
+.ordax-notes-file-picker-message {
+  margin: 10px 4px;
+}
+
+.ordax-notes-file-picker-attach {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--notes-accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.ordax-notes-file-picker-attach:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ordax-notes-ref-open {
+  justify-self: start;
+  min-height: 25px;
+  margin-top: 3px;
+  padding: 0 7px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.6rem;
+}
+
+.ordax-notes-ref-open:hover,
+.ordax-notes-ref-open:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
 .ordax-notes-refs-caption {
   margin: auto 3px 0;
   padding-top: 16px;

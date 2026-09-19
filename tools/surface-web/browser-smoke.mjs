@@ -547,6 +547,14 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesAutosavePersisted = persistedNote?.title === 'Nota persistida no smoke'
       && persistedNote?.body === 'Conteúdo salvo localmente e disponível offline.';
 
+    const addReferenceButton = notesSlot?.querySelector('[data-notes-action="add-reference"]');
+    result.notesReferenceActionPresent = Boolean(addReferenceButton);
+    addReferenceButton?.click();
+    await Promise.resolve();
+    const fileReferenceChoice = notesSlot?.querySelector('[data-notes-action="add-file-reference"]');
+    result.notesFileReferenceChoicePresent = Boolean(fileReferenceChoice);
+    result.notesFileReferenceFailsClosedOnWeb = fileReferenceChoice?.disabled === true;
+
     await launch('account');
     const accountSlot = root.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
@@ -612,6 +620,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
       'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewActionPresent', 'notesAutosavePersisted',
+      'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',

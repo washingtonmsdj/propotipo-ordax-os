@@ -30,6 +30,19 @@ function validId(value, label) {
   return value;
 }
 
+function validLogicalFilePath(value) {
+  const path = boundedText(value ?? "", "Reference path", 4096);
+  if (!path) return "";
+  if (!path.startsWith("/") || (path !== "/" && path.endsWith("/"))) {
+    throw new TypeError("Reference file path must be an absolute logical path");
+  }
+  const parts = path.split("/").slice(1);
+  if (parts.some((part) => !part || part === "." || part === "..")) {
+    throw new TypeError("Reference file path contains an invalid segment");
+  }
+  return path;
+}
+
 function freezeProject(value) {
   if (!value || typeof value !== "object") throw new TypeError("Note project is invalid");
   return Object.freeze({
@@ -55,6 +68,7 @@ function freezeReference(value) {
   const href = value.kind === "link"
     ? boundedText(value.href ?? "", "Reference href", 4096)
     : "";
+  const path = value.kind === "file" ? validLogicalFilePath(value.path) : "";
   if (value.kind === "link" && href && !/^https?:\/\//i.test(href)) {
     throw new TypeError("Note reference link must use http or https");
   }
@@ -64,6 +78,7 @@ function freezeReference(value) {
     title: boundedText(value.title, "Reference title", 512),
     detail: boundedText(value.detail ?? "", "Reference detail", 1024),
     href,
+    path,
   });
 }
 

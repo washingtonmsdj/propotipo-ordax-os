@@ -187,7 +187,12 @@ async function start() {
     workspaceStore,
     appActivation,
   );
-  const notesWorkspaceControls = mountNotesWorkspaceControls(root, notesRuntime, surface);
+  const notesWorkspaceControls = mountNotesWorkspaceControls(
+    root,
+    notesRuntime,
+    surface,
+    { fileSpace, appActivation },
+  );
   let quickPanelControls = null;
   try {
     quickPanelControls = mountSystemTrayQuickPanels(root);
