@@ -17,10 +17,11 @@ import shutil
 import stat
 import sys
 import tempfile
+import tarfile
 import urllib.error
 import urllib.request
 
-SCHEMA = "prototype-ordax.dev-base-candidate/2"
+SCHEMA = "prototype-ordax.dev-base-candidate/3"
 REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -28,6 +29,28 @@ MAX_MANIFEST_BYTES = 64 * 1024
 MAX_KERNEL_BYTES = 64 * 1024 * 1024
 MAX_INITRAMFS_BYTES = 128 * 1024 * 1024
 MAX_ROOTFS_BYTES = 384 * 1024 * 1024
+MAX_ROOTFS_EXPANDED_BYTES = 320 * 1024 * 1024
+MAX_ROOTFS_MEMBERS = 200_000
+ROOTFS_MARKER = ".ordax-rootfs-commit"
+REQUIRED_ROOTFS_PATHS = (
+    "bin/busybox",
+    "bin/sh",
+    "usr/bin/git",
+    "sbin/ordax-dev-init",
+    "usr/local/bin/ordax-network",
+    "usr/local/bin/ordax-pull",
+    "usr/local/bin/ordax-rollback",
+    "usr/local/bin/ordax-run",
+)
+REQUIRED_ROOTFS_DIRS = (
+    "state",
+    "workspace",
+    "home",
+    "proc",
+    "sys",
+    "dev",
+    "run",
+)
 DOWNLOAD_TIMEOUT_SECONDS = 45
 ROOTFS_DOWNLOAD_TIMEOUT_SECONDS = 180
 
@@ -101,7 +124,7 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         raise DevBaseChannelError("development Base tag does not match requested checkout")
     if value["activation"] != "inactive-slot-next-boot":
         raise DevBaseChannelError("development Base activation policy is invalid")
-    if value["rootfs_activation"] != "materialized-only-selection-not-enabled":
+    if value["rootfs_activation"] != "slot-coupled-one-shot-health-gated":
         raise DevBaseChannelError("development Base rootfs activation policy is invalid")
     if value["manual_usb_rewrite_required"] is not False:
         raise DevBaseChannelError("development Base unexpectedly requires USB rewrite")
@@ -270,6 +293,146 @@ def _fsync_dir(path: Path) -> None:
         os.close(descriptor)
 
 
+def _validate_rootfs_archive(path: Path) -> list[tarfile.TarInfo]:
+    members: list[tarfile.TarInfo] = []
+    seen: set[str] = set()
+    expanded = 0
+    try:
+        with tarfile.open(path, "r:") as archive:
+            for member in archive.getmembers():
+                name = member.name
+                relative = Path(name)
+                if (
+                    not name
+                    or relative.is_absolute()
+                    or ".." in relative.parts
+                    or name in seen
+                ):
+                    raise DevBaseChannelError(
+                        "development rootfs archive contains unsafe or duplicate path"
+                    )
+                if member.issym() or member.islnk() or not (member.isdir() or member.isreg()):
+                    raise DevBaseChannelError(
+                        f"development rootfs archive contains unsafe member: {name}"
+                    )
+                seen.add(name)
+                members.append(member)
+                if len(members) > MAX_ROOTFS_MEMBERS:
+                    raise DevBaseChannelError("development rootfs archive has too many members")
+                if member.isreg():
+                    expanded += member.size
+                    if expanded > MAX_ROOTFS_EXPANDED_BYTES:
+                        raise DevBaseChannelError(
+                            "development rootfs expanded bytes exceed channel limit"
+                        )
+    except tarfile.TarError as exc:
+        raise DevBaseChannelError("development rootfs archive is invalid") from exc
+
+    missing = sorted(set(REQUIRED_ROOTFS_PATHS) - seen)
+    if missing:
+        raise DevBaseChannelError(
+            f"development rootfs archive is missing required files: {missing}"
+        )
+    directories = {member.name for member in members if member.isdir()}
+    missing_dirs = sorted(set(REQUIRED_ROOTFS_DIRS) - directories)
+    if missing_dirs:
+        raise DevBaseChannelError(
+            f"development rootfs archive is missing required directories: {missing_dirs}"
+        )
+    return members
+
+
+def verify_versioned_rootfs(
+    path: Path,
+    source_commit: str,
+) -> None:
+    candidate_tag(source_commit)
+    if path.is_symlink() or not path.is_dir():
+        raise DevBaseChannelError("versioned development rootfs is unsafe")
+    marker = path / ROOTFS_MARKER
+    if marker.is_symlink() or not marker.is_file():
+        raise DevBaseChannelError("versioned development rootfs marker is missing")
+    try:
+        marker_value = marker.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError) as exc:
+        raise DevBaseChannelError("versioned development rootfs marker is unreadable") from exc
+    if marker_value != source_commit:
+        raise DevBaseChannelError("versioned development rootfs marker does not match commit")
+
+    for relative in REQUIRED_ROOTFS_PATHS:
+        target = path / relative
+        try:
+            metadata = target.lstat()
+        except OSError as exc:
+            raise DevBaseChannelError(
+                f"versioned development rootfs required file is missing: {relative}"
+            ) from exc
+        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+            raise DevBaseChannelError(
+                f"versioned development rootfs required file is unsafe: {relative}"
+            )
+        if metadata.st_mode & 0o111 == 0:
+            raise DevBaseChannelError(
+                f"versioned development rootfs required file is not executable: {relative}"
+            )
+
+    for relative in (*REQUIRED_ROOTFS_DIRS, ".ordax-base"):
+        target = path / relative
+        if target.is_symlink() or not target.is_dir():
+            raise DevBaseChannelError(
+                f"versioned development rootfs mountpoint is unsafe: {relative}"
+            )
+
+
+def materialize_versioned_rootfs(
+    candidate_path: Path,
+    source_commit: str,
+    version_root: Path,
+) -> tuple[Path, bool]:
+    manifest = verify_materialized(candidate_path, source_commit)
+    archive_path = candidate_path / manifest["rootfs"]["name"]
+    _validate_rootfs_archive(archive_path)
+
+    version_root.mkdir(parents=True, exist_ok=True)
+    if version_root.is_symlink() or not version_root.is_dir():
+        raise DevBaseChannelError("development rootfs version store is unsafe")
+    target = version_root / source_commit
+    if target.exists():
+        verify_versioned_rootfs(target, source_commit)
+        return target, True
+
+    temporary = Path(
+        tempfile.mkdtemp(prefix=f".rootfs-{source_commit}-", dir=version_root)
+    )
+    committed = False
+    try:
+        with tarfile.open(archive_path, "r:") as archive:
+            members = _validate_rootfs_archive(archive_path)
+            archive.extractall(temporary, members=members, filter="data")
+
+        (temporary / ".ordax-base").mkdir(mode=0o700, exist_ok=False)
+        _write_synced(
+            temporary / ROOTFS_MARKER,
+            (source_commit + "\n").encode("ascii"),
+            0o600,
+        )
+        verify_versioned_rootfs(temporary, source_commit)
+        _fsync_dir(temporary)
+        if hasattr(os, "sync"):
+            os.sync()
+        os.rename(temporary, target)
+        committed = True
+        _fsync_dir(version_root)
+    except FileExistsError:
+        pass
+    finally:
+        if not committed and temporary.exists():
+            shutil.rmtree(temporary)
+
+    verify_versioned_rootfs(target, source_commit)
+    return target, False
+
+
 def verify_materialized(path: Path, expected_commit: str) -> dict:
     if path.is_symlink() or not path.is_dir():
         raise DevBaseChannelError("materialized development Base directory is unsafe")
@@ -393,14 +556,28 @@ def main() -> int:
         type=Path,
         default=Path("/state/ordax/base-update/dev-candidates"),
     )
+    parser.add_argument("--version-root", type=Path)
     args = parser.parse_args()
     try:
         path, reused = acquire(args.source_commit, args.destination_root)
+        if args.version_root is not None:
+            version_root = args.version_root
+        elif Path("/.ordax-base/versions").is_dir():
+            version_root = Path("/.ordax-base/versions")
+        else:
+            version_root = Path("/versions")
+        rootfs_path, rootfs_reused = materialize_versioned_rootfs(
+            path,
+            args.source_commit,
+            version_root,
+        )
         print(json.dumps({
             "status": "ready",
             "source_commit": args.source_commit,
             "path": str(path),
             "reused": reused,
+            "rootfs_path": str(rootfs_path),
+            "rootfs_reused": rootfs_reused,
         }, sort_keys=True))
         return 0
     except DevBaseCandidateUnavailable as exc:

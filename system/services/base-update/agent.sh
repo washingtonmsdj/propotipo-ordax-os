@@ -11,6 +11,11 @@ PHYSICAL_MOUNT_HOST=
 PHYSICAL_BIND_HOST=
 PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device
 OWNER_STATE_CHROOT=
+OWNER_BASE_ROOT_CHROOT=
+DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha
+DEV_BASE_READY_FILE=$HOST_STATE_ROOT/dev-base-ready-sha
+DEV_BASE_FETCHING_FILE=$HOST_STATE_ROOT/dev-base-fetching-sha
+DEV_BASE_LOG=$HOST_STATE_ROOT/base-update/dev-channel.log
 PREPARE_BLOCKER=
 LOG_PREFIX=ordax-base-update-agent
 
@@ -21,6 +26,47 @@ esac
 
 log() {
     printf '%s: %s\n' "$LOG_PREFIX" "$*" >&2
+}
+
+is_sha() {
+    value=${1:-}
+    [ "${#value}" -eq 40 ] || return 1
+    case "$value" in
+        ''|*[!0-9a-f]*) return 1 ;;
+    esac
+    return 0
+}
+
+read_state_value() {
+    path=$1
+    [ -s "$path" ] || return 0
+    /bin/busybox head -n 1 "$path" 2>/dev/null || true
+}
+
+write_state_value() {
+    path=$1
+    value=$2
+    directory=${path%/*}
+    temporary=$path.tmp.$$
+    /bin/busybox mkdir -p "$directory" || return 1
+    printf '%s\n' "$value" >"$temporary" || return 1
+    /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
+    /bin/busybox mv -f "$temporary" "$path"
+}
+
+seed_root_subpath() {
+    value=$1
+    case "$value" in
+        */versions/*)
+            suffix=${value##*/versions/}
+            prefix=${value%/versions/*}
+            if is_sha "$suffix" && [ -n "$prefix" ]; then
+                printf '%s' "$prefix"
+                return 0
+            fi
+            ;;
+    esac
+    printf '%s' "$value"
 }
 
 write_preflight_status() {
@@ -257,19 +303,76 @@ EOF
         }
     fi
 
-    host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax
+    seed_subpath=$(seed_root_subpath "$root_subpath")
+    safe_root_subpath "$seed_subpath" || {
+        PREPARE_BLOCKER=root-subpath-unsafe
+        log "development seed root subpath is unsafe"
+        return 1
+    }
+
+    host_state=$PHYSICAL_MOUNT_HOST$seed_subpath/state/ordax
     if [ ! -d "$host_state" ] || [ -L "$host_state" ]; then
         PREPARE_BLOCKER=development-state-missing
-        log "development state alias is unavailable inside physical ORDAX root"
+        log "development state alias is unavailable inside physical seed Base"
         return 1
     fi
-    if [ -L "$PHYSICAL_MOUNT_HOST$root_subpath/state" ]; then
+    if [ -L "$PHYSICAL_MOUNT_HOST$seed_subpath/state" ]; then
         PREPARE_BLOCKER=development-state-unsafe
         log "development state parent is unsafe"
         return 1
     fi
 
-    OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$root_subpath/state/ordax
+    OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath/state/ordax
+    OWNER_BASE_ROOT_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath
+    return 0
+}
+
+prepare_dev_base_candidate() {
+    request_sha=$(read_state_value "$DEV_BASE_REQUEST_FILE")
+    [ -n "$request_sha" ] || return 0
+    if ! is_sha "$request_sha"; then
+        log "ignoring invalid development Base request identity"
+        /bin/busybox rm -f "$DEV_BASE_REQUEST_FILE" "$DEV_BASE_FETCHING_FILE" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")
+    if [ "$ready_sha" = "$request_sha" ]; then
+        /bin/busybox rm -f "$DEV_BASE_REQUEST_FILE" "$DEV_BASE_FETCHING_FILE" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    channel=/srv/ordax-system/services/base-update/dev_channel.py
+    if [ ! -f "$RUNTIME_ROOT$channel" ]; then
+        log "development Base channel source is unavailable in replaceable runtime"
+        return 0
+    fi
+    [ -n "$OWNER_STATE_CHROOT" ] && [ -n "$OWNER_BASE_ROOT_CHROOT" ] || return 0
+
+    destination=$OWNER_STATE_CHROOT/base-update/dev-candidates
+    version_root=$OWNER_BASE_ROOT_CHROOT/versions
+    write_state_value "$DEV_BASE_FETCHING_FILE" "$request_sha" || return 0
+    /bin/busybox mkdir -p "${DEV_BASE_LOG%/*}" >/dev/null 2>&1 || true
+
+    if /bin/busybox chroot "$RUNTIME_ROOT" \
+        /usr/bin/python3 "$channel" \
+        --source-commit "$request_sha" \
+        --destination-root "$destination" \
+        --version-root "$version_root" \
+        >>"$DEV_BASE_LOG" 2>&1
+    then
+        write_state_value "$DEV_BASE_READY_FILE" "$request_sha" || true
+        /bin/busybox rm -f "$DEV_BASE_REQUEST_FILE" >/dev/null 2>&1 || true
+        log "development Base candidate and versioned rootfs ready: $request_sha"
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            log "development Base candidate not published yet for $request_sha; request remains armed"
+        else
+            log "development Base candidate preparation failed for $request_sha; current runtime remains active"
+        fi
+    fi
+    /bin/busybox rm -f "$DEV_BASE_FETCHING_FILE" >/dev/null 2>&1 || true
     return 0
 }
 
@@ -299,6 +402,7 @@ while :; do
             --state-root "$OWNER_STATE_CHROOT" \
             --physical-root "$PHYSICAL_MOUNT_CHROOT" \
             >/dev/null 2>&1 || true
+        prepare_dev_base_candidate
     else
         write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
     fi

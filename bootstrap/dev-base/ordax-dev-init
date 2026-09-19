@@ -16,6 +16,10 @@ BOOT_METRICS_FILE=$STATE_DIR/boot-last.tsv
 BOOT_NETWORK_LOG=$STATE_DIR/boot-network.log
 BOOT_STARTED_EPOCH=$(/bin/busybox date +%s 2>/dev/null || printf '0')
 BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}
+ROOTFS_SELECTION_DIR=$STATE_DIR/base-update/rootfs
+ROOTFS_VERSIONS_ROOT=${ORDAX_DEV_VERSION_ROOT:-/versions}
+ROOTFS_SELECTED=${ORDAX_DEV_ROOT_SELECTED:-0}
+ROOTFS_SELECTED_COMMIT=${ORDAX_DEV_ROOT_COMMIT:-seed}
 
 case "$BOOT_PULL_ATTEMPTS" in
     ''|*[!0-9]*) BOOT_PULL_ATTEMPTS=2 ;;
@@ -35,7 +39,7 @@ is_commit_sha() {
 write_state() {
     destination=$1
     value=$2
-    temporary=$destination.tmp.$
+    temporary=$destination.tmp.$$
     printf '%s\n' "$value" >"$temporary"
     mv -f "$temporary" "$destination"
 }
@@ -130,8 +134,163 @@ maintenance_shell() {
     exec /bin/sh
 }
 
+cmdline_value() {
+    key=$1
+    found=""
+    for token in $(cat /proc/cmdline 2>/dev/null || true); do
+        case "$token" in
+            "$key="*)
+                value=${token#*=}
+                [ -z "$found" ] || return 1
+                found=$value
+                ;;
+        esac
+    done
+    [ -n "$found" ] || return 1
+    printf '%s' "$found"
+}
+
+rootfs_version_valid() {
+    source_sha=$1
+    is_commit_sha "$source_sha" || return 1
+    root=$ROOTFS_VERSIONS_ROOT/$source_sha
+    [ -d "$root" ] && [ ! -L "$root" ] || return 1
+    [ -f "$root/.ordax-rootfs-commit" ] && [ ! -L "$root/.ordax-rootfs-commit" ] || return 1
+    marker=$(cat "$root/.ordax-rootfs-commit" 2>/dev/null || true)
+    [ "$marker" = "$source_sha" ] || return 1
+    for required in bin/busybox bin/sh usr/bin/git sbin/ordax-dev-init usr/local/bin/ordax-run; do
+        [ -x "$root/$required" ] && [ ! -L "$root/$required" ] || return 1
+    done
+    return 0
+}
+
+write_rootfs_slot_mapping() {
+    slot=$1
+    source_sha=$2
+    case "$slot" in
+        a|b) ;;
+        *) return 1 ;;
+    esac
+    is_commit_sha "$source_sha" || return 1
+    mkdir -p "$ROOTFS_SELECTION_DIR"
+    write_state "$ROOTFS_SELECTION_DIR/slot-$slot" "$source_sha"
+}
+
+activate_versioned_rootfs() {
+    source_sha=$1
+    slot=$2
+    mode=$3
+    root=$ROOTFS_VERSIONS_ROOT/$source_sha
+
+    rootfs_version_valid "$source_sha" || return 1
+    mkdir -p "$root/.ordax-base"
+    /bin/busybox mount -o bind "$root" "$root" || return 1
+
+    for shared in state workspace home proc sys dev; do
+        mkdir -p "$root/$shared"
+        /bin/busybox mount -o bind "/$shared" "$root/$shared" || return 1
+    done
+
+    ORDAX_DEV_ROOT_SELECTED=1
+    ORDAX_DEV_ROOT_COMMIT=$source_sha
+    ORDAX_DEV_ROOT_SLOT=$slot
+    ORDAX_DEV_ROOT_MODE=$mode
+    ORDAX_DEV_VERSION_ROOT=/.ordax-base/versions
+    export ORDAX_DEV_ROOT_SELECTED ORDAX_DEV_ROOT_COMMIT ORDAX_DEV_ROOT_SLOT
+    export ORDAX_DEV_ROOT_MODE ORDAX_DEV_VERSION_ROOT
+
+    cd "$root" || return 1
+    /bin/busybox pivot_root . .ordax-base || return 1
+    cd /
+    if exec /sbin/ordax-dev-init; then
+        return 0
+    fi
+    if [ "$mode" = "candidate" ]; then
+        candidate_root_failure "init da Base candidata falhou apos a troca de raiz"
+    fi
+    printf 'Base versionada nao conseguiu reiniciar o init; entrando em manutencao local.\n' >&2
+    maintenance_shell
+}
+
+candidate_root_failure() {
+    message=$1
+    printf '\nFalha ao ativar Base candidata: %s\n' "$message" >&2
+    printf 'A candidata nao sera considerada saudavel; reiniciando para o slot conhecido como bom.\n' >&2
+    /bin/busybox sync >/dev/null 2>&1 || true
+    /bin/busybox sleep 1
+    /bin/busybox reboot -f >/dev/null 2>&1 || maintenance_shell
+    maintenance_shell
+}
+
+select_development_rootfs() {
+    if [ "$ROOTFS_SELECTED" = "1" ]; then
+        is_commit_sha "$ROOTFS_SELECTED_COMMIT" || {
+            printf 'Identidade da Base selecionada e invalida; usando recuperacao local.\n' >&2
+            maintenance_shell
+        }
+        ROOTFS_VERSIONS_ROOT=/.ordax-base/versions
+        ORDAX_DEV_VERSION_ROOT=$ROOTFS_VERSIONS_ROOT
+        export ROOTFS_VERSIONS_ROOT ORDAX_DEV_VERSION_ROOT
+        return 0
+    fi
+
+    candidate_sha=$(cmdline_value ordax.base_candidate 2>/dev/null || true)
+    base_slot=$(cmdline_value ordax.base_slot 2>/dev/null || true)
+
+    # The normal seed boot must stay local-first and must not require access to
+    # the version store. Only an explicit OrdaX A/B slot/candidate context owns
+    # rootfs selection and its persistent mapping.
+    if [ -z "$candidate_sha" ] && [ -z "$base_slot" ]; then
+        ORDAX_DEV_ROOT_COMMIT=seed
+        ORDAX_DEV_ROOT_MODE=seed
+        ORDAX_DEV_VERSION_ROOT=/versions
+        export ORDAX_DEV_ROOT_COMMIT ORDAX_DEV_ROOT_MODE ORDAX_DEV_VERSION_ROOT
+        return 0
+    fi
+
+    mkdir -p "$ROOTFS_SELECTION_DIR" "$ROOTFS_VERSIONS_ROOT"
+
+    if [ -n "$candidate_sha" ]; then
+        is_commit_sha "$candidate_sha" || candidate_root_failure "identidade de commit invalida"
+        case "$base_slot" in
+            a|b) ;;
+            *) candidate_root_failure "slot A/B ausente ou invalido" ;;
+        esac
+        rootfs_version_valid "$candidate_sha" || candidate_root_failure "rootfs exato nao esta materializado"
+        write_rootfs_slot_mapping "$base_slot" "$candidate_sha" \
+            || candidate_root_failure "nao foi possivel registrar o rootfs do slot"
+        printf 'Base candidata %s preparada no slot %s; iniciando ensaio unico.\n' "$candidate_sha" "$base_slot"
+        activate_versioned_rootfs "$candidate_sha" "$base_slot" candidate \
+            || candidate_root_failure "troca de raiz falhou"
+        return 0
+    fi
+
+    case "$base_slot" in
+        a|b)
+            mapping=$ROOTFS_SELECTION_DIR/slot-$base_slot
+            if [ -s "$mapping" ] && [ ! -L "$mapping" ]; then
+                mapped_sha=$(cat "$mapping" 2>/dev/null || true)
+                if rootfs_version_valid "$mapped_sha"; then
+                    printf 'Base versionada conhecida como boa: %s (slot %s).\n' "$mapped_sha" "$base_slot"
+                    activate_versioned_rootfs "$mapped_sha" "$base_slot" current || {
+                        printf 'Base versionada nao pode ser ativada; preservando Base seed conhecida como boa.\n' >&2
+                    }
+                    return 0
+                fi
+                printf 'Mapeamento do slot %s nao e utilizavel; preservando Base seed conhecida como boa.\n' "$base_slot" >&2
+            fi
+            ;;
+    esac
+
+    ORDAX_DEV_ROOT_COMMIT=seed
+    ORDAX_DEV_ROOT_MODE=seed
+    ORDAX_DEV_VERSION_ROOT=/versions
+    export ORDAX_DEV_ROOT_COMMIT ORDAX_DEV_ROOT_MODE ORDAX_DEV_VERSION_ROOT
+}
+
 mkdir -p "$WORKSPACE_DIR" "$STATE_DIR" "$NETWORK_STATE_DIR" /home /run /tmp /root
 chmod 1777 /tmp 2>/dev/null || true
+select_development_rootfs
 
 printf '\033[2J\033[H'
 printf 'OrdaX Development Base\n'

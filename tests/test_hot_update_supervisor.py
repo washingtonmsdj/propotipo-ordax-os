@@ -12,6 +12,7 @@ NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 UPDATE_CONTROLS = ROOT / "system" / "surface" / "ui" / "update-controls.mjs"
 SYSTEM_OVERVIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
+BASE_UPDATE_AGENT = ROOT / "system" / "services" / "base-update" / "agent.sh"
 
 
 class HotUpdateSupervisorContractTests(unittest.TestCase):
@@ -350,54 +351,39 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             text,
         )
 
-    def test_low_level_git_update_prefetches_exact_commit_base_without_blocking_surface(self):
-        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
-        self.assertIn("DEV_BASE_READY_FILE=$STATE_DIR/dev-base-ready-sha", text)
-        self.assertIn("DEV_BASE_FETCHING_FILE=$STATE_DIR/dev-base-fetching-sha", text)
+    def test_low_level_git_update_requests_exact_commit_base_without_host_python_dependency(self):
+        supervisor = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        owner = BASE_UPDATE_AGENT.read_text(encoding="utf-8")
+
+        self.assertIn("DEV_BASE_READY_FILE=$STATE_DIR/dev-base-ready-sha", supervisor)
+        self.assertIn("DEV_BASE_REQUEST_FILE=$STATE_DIR/dev-base-request-sha", supervisor)
+        self.assertIn("request_dev_base_candidate()", supervisor)
+        self.assertIn('request_dev_base_candidate "$new_sha"', supervisor)
+        self.assertIn('request_dev_base_candidate "$pending_boot_sha"', supervisor)
         self.assertIn(
-            "DEV_BASE_CANDIDATE_ROOT=$STATE_DIR/base-update/dev-candidates",
-            text,
+            'write_state_value "$DEV_BASE_REQUEST_FILE" "$source_sha"',
+            supervisor,
         )
-        self.assertIn(
-            "DEV_BASE_CHANNEL=$WORKTREE/system/services/base-update/dev_channel.py",
-            text,
-        )
-        self.assertIn("prepare_dev_base_candidate_async()", text)
-        self.assertIn(
-            'prepare_dev_base_candidate_async "$new_sha"',
-            text,
-        )
-        self.assertIn(
-            'prepare_dev_base_candidate_async "$pending_boot_sha"',
-            text,
-        )
-        self.assertIn(
-            '/usr/bin/python3 "$DEV_BASE_CHANNEL"',
-            text,
-        )
-        self.assertIn(
-            '--source-commit "$source_sha"',
-            text,
-        )
-        self.assertIn(
-            '--destination-root "$DEV_BASE_CANDIDATE_ROOT"',
-            text,
-        )
-        self.assertIn(
-            'development Base candidate not published yet',
-            text,
-        )
-        self.assertIn(
-            'runtime remains healthy',
-            text,
-        )
-        background = text.split(
-            "prepare_dev_base_candidate_async() {",
+        self.assertNotIn('/usr/bin/python3 "$DEV_BASE_CHANNEL"', supervisor)
+        self.assertNotIn("DEV_BASE_CANDIDATE_ROOT=", supervisor)
+        self.assertNotIn("DEV_BASE_CHANNEL=", supervisor)
+
+        self.assertIn("prepare_dev_base_candidate()", owner)
+        self.assertIn('DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha', owner)
+        self.assertIn('/usr/bin/python3 "$channel"', owner)
+        self.assertIn('--source-commit "$request_sha"', owner)
+        self.assertIn('--destination-root "$destination"', owner)
+        self.assertIn('--version-root "$version_root"', owner)
+        self.assertIn("candidate not published yet", owner)
+        self.assertIn("current runtime remains active", owner)
+
+        request = supervisor.split("request_dev_base_candidate() {", 1)[1].split(
+            "\n}",
             1,
-        )[1].split("\n}", 1)[0]
-        self.assertIn(") &", background)
-        self.assertNotIn("reboot", background)
-        self.assertNotIn("poweroff", background)
+        )[0]
+        self.assertNotIn("python3", request)
+        self.assertNotIn("reboot", request)
+        self.assertNotIn("poweroff", request)
 
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
@@ -409,7 +395,10 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         )
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
-        self.assertIn("Base candidate acquisition runs in background", text)
+        self.assertIn(
+            "Base candidate acquisition is delegated to the replaceable base-update owner",
+            text,
+        )
 
     def test_rollback_pin_disables_automatic_pull(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")

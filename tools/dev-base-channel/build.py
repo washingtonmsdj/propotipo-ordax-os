@@ -14,7 +14,7 @@ import stat
 import tarfile
 import sys
 
-SCHEMA = "prototype-ordax.dev-base-candidate/2"
+SCHEMA = "prototype-ordax.dev-base-candidate/3"
 REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -24,6 +24,7 @@ MAX_ROOTFS_BYTES = 384 * 1024 * 1024
 MAX_ROOTFS_EXPANDED_BYTES = 320 * 1024 * 1024
 ROOTFS_PROVENANCE_SCHEMA = "prototype-ordax.dev-base/1"
 REQUIRED_ROOTFS_PATHS = (
+    "bin/busybox",
     "bin/sh",
     "usr/bin/git",
     "sbin/ordax-dev-init",
@@ -31,6 +32,15 @@ REQUIRED_ROOTFS_PATHS = (
     "usr/local/bin/ordax-pull",
     "usr/local/bin/ordax-rollback",
     "usr/local/bin/ordax-run",
+)
+REQUIRED_ROOTFS_DIRS = (
+    "state",
+    "workspace",
+    "home",
+    "proc",
+    "sys",
+    "dev",
+    "run",
 )
 
 
@@ -134,6 +144,10 @@ def validate_rootfs_source(rootfs_dir: Path, source_commit: str) -> Path:
             raise CandidateError(f"development rootfs required file is missing: {relative}")
         if path.stat().st_mode & 0o111 == 0:
             raise CandidateError(f"development rootfs required file is not executable: {relative}")
+    for relative in REQUIRED_ROOTFS_DIRS:
+        path = rootfs / relative
+        if path.is_symlink() or not path.is_dir():
+            raise CandidateError(f"development rootfs required directory is missing: {relative}")
     return rootfs
 
 
@@ -170,7 +184,9 @@ def verify_rootfs_tar(path: Path) -> None:
     names: list[str] = []
     total = 0
     required = set(REQUIRED_ROOTFS_PATHS)
+    required_dirs = set(REQUIRED_ROOTFS_DIRS)
     seen: set[str] = set()
+    seen_dirs: set[str] = set()
     try:
         with tarfile.open(path, "r:") as archive:
             for member in archive.getmembers():
@@ -188,6 +204,7 @@ def verify_rootfs_tar(path: Path) -> None:
                 if member.uid != 0 or member.gid != 0 or member.uname or member.gname or member.mtime != 0:
                     raise CandidateError("development rootfs tar metadata is not deterministic")
                 if member.isdir():
+                    seen_dirs.add(name)
                     continue
                 if not member.isreg():
                     raise CandidateError(f"development rootfs tar contains unsafe member: {name}")
@@ -201,6 +218,11 @@ def verify_rootfs_tar(path: Path) -> None:
     missing = sorted(required - seen)
     if missing:
         raise CandidateError(f"development rootfs tar is missing required files: {missing}")
+    missing_dirs = sorted(required_dirs - seen_dirs)
+    if missing_dirs:
+        raise CandidateError(
+            f"development rootfs tar is missing required directories: {missing_dirs}"
+        )
 
 def binding(name: str, path: Path, source_commit: str) -> dict:
     tag = f"ordax-dev-base-{source_commit}"
@@ -269,7 +291,7 @@ def build(
         "source_commit": source_commit,
         "tag": tag,
         "activation": "inactive-slot-next-boot",
-        "rootfs_activation": "materialized-only-selection-not-enabled",
+        "rootfs_activation": "slot-coupled-one-shot-health-gated",
         "manual_usb_rewrite_required": False,
         "kernel": binding("vmlinuz", kernel_out, source_commit),
         "initramfs": binding("initrd.gz", initramfs_out, source_commit),
@@ -328,7 +350,7 @@ def validate_descriptor(value: object) -> dict:
         raise CandidateError("development Base tag is invalid")
     if value["activation"] != "inactive-slot-next-boot":
         raise CandidateError("development Base activation policy is invalid")
-    if value["rootfs_activation"] != "materialized-only-selection-not-enabled":
+    if value["rootfs_activation"] != "slot-coupled-one-shot-health-gated":
         raise CandidateError("development Base rootfs activation policy is invalid")
     if value["manual_usb_rewrite_required"] is not False:
         raise CandidateError("development Base unexpectedly requires USB rewrite")
