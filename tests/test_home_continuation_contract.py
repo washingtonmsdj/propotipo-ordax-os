@@ -3,6 +3,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOME = ROOT / "system" / "surface" / "ui" / "home-continuation.mjs"
+COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
+WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
 
 class HomeContinuationContractTests(unittest.TestCase):
@@ -48,6 +50,33 @@ class HomeContinuationContractTests(unittest.TestCase):
         self.assertIn("unsubscribeRecent?.()", source)
         self.assertIn("unsubscribeProjects?.()", source)
         self.assertIn("destroyed = true", source)
+
+    def test_native_composition_mounts_home_after_surface_and_disposes_it(self):
+        composition = COMPOSITION.read_text(encoding="utf-8")
+        self.assertIn('from "../../surface/ui/home-continuation.mjs"', composition)
+        self.assertIn(
+            "const homeContinuation = mountHomeContinuation(root, { projects, recentFiles });",
+            composition,
+        )
+        self.assertIn("homeContinuation.dispose();", composition)
+        self.assertLess(
+            composition.index("const surface = mountSurface("),
+            composition.index("const homeContinuation = mountHomeContinuation("),
+        )
+        self.assertLess(
+            composition.index("homeContinuation.dispose();"),
+            composition.index("surface.destroy();"),
+        )
+
+    def test_surface_candidate_owns_home_continuation_regressions(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertGreaterEqual(workflow.count("tests/test_home_continuation.mjs"), 3)
+        self.assertGreaterEqual(workflow.count("tests/test_home_continuation_contract.py"), 3)
+        self.assertIn("node --test tests/test_home_continuation.mjs", workflow)
+        self.assertIn(
+            "python -m unittest tests.test_home_continuation_contract -v",
+            workflow,
+        )
 
 
 if __name__ == "__main__":
