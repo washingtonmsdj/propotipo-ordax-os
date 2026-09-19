@@ -14,6 +14,9 @@ function baseSpec(panel) {
     monogram: "EX",
     singleton: true,
     component: {
+      id: "example",
+      title: "Example",
+      kind: "app",
       version: "0.1.0",
       releaseMode: "bundled",
       criticality: "optional",
