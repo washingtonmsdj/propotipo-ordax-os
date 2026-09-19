@@ -7,7 +7,7 @@ const RELEASE_MODES = new Set(["base-ab", "component-slot", "bundled"]);
 const CRITICALITIES = new Set(["boot-critical", "system", "optional"]);
 const FAILURE_DOMAINS = new Set(["boot", "surface", "service", "app"]);
 const RESTART_SCOPES = new Set(["reboot", "surface", "component", "none"]);
-const HEALTH_MODES = new Set(["boot", "surface", "process", "none"]);
+const HEALTH_MODES = new Set(["boot", "surface", "process", "runtime", "none"]);
 
 function text(value, label, max = 120) {
   if (typeof value !== "string" || value.includes("\0")) {
