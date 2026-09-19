@@ -133,6 +133,7 @@ export function mountFileSpaceControls(
   let projectDraft = "";
   let renamingProjectId = null;
   let projectRenameDraft = "";
+  let failedProjectResume = null;
   let notesImportPending = false;
 
   const findSlot = () =>
@@ -1163,9 +1164,31 @@ export function mountFileSpaceControls(
         renamingProjectId = null;
         projectRenameDraft = "";
       }
+      if (failedProjectResume?.projectId === projectId) {
+        failedProjectResume = null;
+      }
       message = "Projeto removido do catálogo. Nenhum arquivo foi apagado.";
     } catch {
       message = "Não foi possível remover este projeto do catálogo.";
+    }
+    replaceView();
+  };
+
+  const clearFailedProjectResume = (projectId) => {
+    if (!projectPort || !failedProjectResume || failedProjectResume.projectId !== projectId) return;
+    const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
+    if (!project || project.lastFilePath !== failedProjectResume.path) {
+      failedProjectResume = null;
+      message = "A referência do último arquivo mudou. Nada foi alterado.";
+      replaceView();
+      return;
+    }
+    try {
+      projectSnapshot = projectPort.clearLastFile(projectId);
+      failedProjectResume = null;
+      message = "Referência do último arquivo esquecida. Nenhum arquivo foi apagado.";
+    } catch {
+      message = "Não foi possível esquecer a referência do último arquivo.";
     }
     replaceView();
   };
@@ -1183,6 +1206,7 @@ export function mountFileSpaceControls(
     projectDraft = "";
     renamingProjectId = null;
     projectRenameDraft = "";
+    failedProjectResume = null;
     renamingPath = null;
     copyingPath = null;
     previewRequestOrdinal += 1;
@@ -1330,6 +1354,22 @@ export function mountFileSpaceControls(
         resumeProjectButton.disabled = pending || previewPending;
         resumeProjectButton.title = currentProject.lastFilePath;
         actions.append(resumeProjectButton);
+        if (
+          failedProjectResume?.projectId === currentProject.id
+          && failedProjectResume.path === currentProject.lastFilePath
+        ) {
+          const forgetProjectButton = node(
+            documentObject,
+            "button",
+            "ordax-files-action",
+            "Esquecer último arquivo",
+          );
+          forgetProjectButton.type = "button";
+          forgetProjectButton.dataset.fileProjectForgetStale = currentProject.id;
+          forgetProjectButton.disabled = pending || previewPending;
+          forgetProjectButton.title = "Remove somente a referência de continuidade; o arquivo não é apagado";
+          actions.append(forgetProjectButton);
+        }
       }
       const renameProjectButton = node(documentObject, "button", "ordax-files-action", "Renomear projeto");
       renameProjectButton.type = "button";
@@ -1424,6 +1464,7 @@ export function mountFileSpaceControls(
         projectDraft = "";
         renamingProjectId = null;
         projectRenameDraft = "";
+        failedProjectResume = null;
         previewRequestOrdinal += 1;
         previewPending = false;
         textPreview = null;
@@ -1470,8 +1511,9 @@ export function mountFileSpaceControls(
     replaceView();
   };
 
-  const openTextFile = async (path, { source = "direct" } = {}) => {
+  const openTextFile = async (path, { source = "direct", projectId = null } = {}) => {
     const ordinal = ++previewRequestOrdinal;
+    failedProjectResume = null;
     previewPending = true;
     textPreview = null;
     message = null;
@@ -1493,6 +1535,10 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== previewRequestOrdinal) return;
       const status = operationStatus(error);
       if (source === "project-resume") {
+        const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
+        if (project?.lastFilePath === path && project.path === listing?.path) {
+          failedProjectResume = Object.freeze({ projectId: project.id, path });
+        }
         if (status === 404) {
           message = "O último arquivo deste projeto não está mais disponível. O projeto foi preservado.";
         } else if (status === 413) {
@@ -1961,8 +2007,13 @@ export function mountFileSpaceControls(
       const projectId = projectResume.dataset.fileProjectResume;
       const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
       if (project?.lastFilePath && project.path === listing.path) {
-        void openTextFile(project.lastFilePath, { source: "project-resume" });
+        void openTextFile(project.lastFilePath, { source: "project-resume", projectId: project.id });
       }
+      return;
+    }
+    const projectForgetStale = event.target.closest("[data-file-project-forget-stale]");
+    if (projectForgetStale && root.contains(projectForgetStale) && projectPort && !previewPending) {
+      clearFailedProjectResume(projectForgetStale.dataset.fileProjectForgetStale);
       return;
     }
     const projectRenameStart = event.target.closest("[data-file-project-rename-start]");
@@ -2535,6 +2586,14 @@ export function mountFileSpaceControls(
     ) {
       renamingProjectId = null;
       projectRenameDraft = "";
+    }
+    if (failedProjectResume) {
+      const project = projectSnapshot.projects.find(
+        (candidate) => candidate.id === failedProjectResume.projectId,
+      );
+      if (!project || project.lastFilePath !== failedProjectResume.path) {
+        failedProjectResume = null;
+      }
     }
     replaceView();
   });
