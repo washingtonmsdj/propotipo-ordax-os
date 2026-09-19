@@ -8,6 +8,29 @@ STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PREVIOUS_FILE=$STATE_DIR/previous-commit
 CURRENT_FILE=$STATE_DIR/current-commit
 PINNED_FILE=$STATE_DIR/pinned-commit
+GIT_TIMEOUT_SECONDS=${ORDAX_BOOT_GIT_TIMEOUT_SECONDS:-45}
+GIT_LOW_SPEED_TIME=${ORDAX_BOOT_GIT_LOW_SPEED_SECONDS:-15}
+
+case "$GIT_TIMEOUT_SECONDS" in
+    ''|*[!0-9]*) GIT_TIMEOUT_SECONDS=45 ;;
+esac
+[ "$GIT_TIMEOUT_SECONDS" -ge 10 ] 2>/dev/null || GIT_TIMEOUT_SECONDS=45
+
+case "$GIT_LOW_SPEED_TIME" in
+    ''|*[!0-9]*) GIT_LOW_SPEED_TIME=15 ;;
+esac
+[ "$GIT_LOW_SPEED_TIME" -ge 5 ] 2>/dev/null || GIT_LOW_SPEED_TIME=15
+
+GIT_TERMINAL_PROMPT=0
+export GIT_TERMINAL_PROMPT
+
+run_bounded_git() {
+    timeout -k 5 "$GIT_TIMEOUT_SECONDS" \
+        git \
+        -c http.lowSpeedLimit=1 \
+        -c "http.lowSpeedTime=$GIT_LOW_SPEED_TIME" \
+        "$@"
+}
 
 write_state() {
     destination=$1
@@ -33,7 +56,7 @@ mkdir -p "$(dirname "$WORKTREE")" "$STATE_DIR"
 
 if [ ! -d "$WORKTREE/.git" ]; then
     echo "ordax-git: clonando runtime de $REPO_URL ($BRANCH)"
-    git clone \
+    run_bounded_git clone \
         --branch "$BRANCH" \
         --single-branch \
         --filter=blob:none \
@@ -61,7 +84,7 @@ else
 
     previous=$(git -C "$WORKTREE" rev-parse HEAD)
     echo "ordax-git: git pull --ff-only origin $BRANCH"
-    git -C "$WORKTREE" pull --ff-only origin "$BRANCH"
+    run_bounded_git -C "$WORKTREE" pull --ff-only origin "$BRANCH"
     configure_runtime_checkout
 
     current=$(git -C "$WORKTREE" rev-parse HEAD)
