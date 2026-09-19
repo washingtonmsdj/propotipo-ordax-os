@@ -11,7 +11,7 @@ import {
   validateBrowserFavoritesStoreState,
 } from "../system/contracts/browser-favorites-store.mjs";
 import { createNativeBrowserFavoritesStore } from "../system/adapters/native/browser-favorites.mjs";
-import { createBrowserFavoritesRuntime } from "../system/services/internet/favorites.mjs";
+import { createBrowserFavoritesRuntime } from "../system/apps/internet/services/favorites.mjs";
 
 function favoriteStore({ scope = "device", failSave = false } = {}) {
   let state = createEmptyBrowserFavoritesStoreState();
