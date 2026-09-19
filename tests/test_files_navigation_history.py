@@ -2,8 +2,8 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "file-space-controls.mjs"
-CSS = ROOT / "system" / "surface" / "ui" / "files.css"
+CONTROLS = ROOT / "system" / "apps" / "files" / "ui" / "file-space-controls.mjs"
+CSS = ROOT / "system" / "apps" / "files" / "files.css"
 
 
 class FilesNavigationHistoryTests(unittest.TestCase):
