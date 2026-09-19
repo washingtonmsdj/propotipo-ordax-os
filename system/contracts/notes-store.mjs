@@ -92,9 +92,8 @@ export function validateNotesRichBody(value) {
 
 export function createNotesRichBodyFromPlainText(value) {
   const text = boundedText(value ?? "", "Note body");
-  const lines = text.split("\n");
   return validateNotesRichBody({
-    blocks: lines.map((line) => ({ type: "paragraph", text: line, marks: [] })),
+    blocks: [{ type: "paragraph", text, marks: [] }],
   });
 }
 
