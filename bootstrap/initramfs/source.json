@@ -46,5 +46,16 @@
     "writable_mount_error_policy": "remount-ro",
     "helper_runtime_path": "/sbin/ordax-grow-ext4",
     "automatic_destructive_repair": false
+  },
+  "rootfs_selection": {
+    "helper_source": "bootstrap/initramfs/rootfs_select.c",
+    "helper_runtime_path": "/sbin/ordax-rootfs-select",
+    "physical_state_root": "/ordax/dev-base/state/ordax/base-update/rootfs",
+    "physical_version_root": "/ordax/dev-base/versions",
+    "legacy_fallback": "/ordax/dev-base",
+    "pending_attempts": 1,
+    "health_promotion": "next-boot-after-surface-health",
+    "failure_policy": "reject-pending-and-fallback",
+    "network_required": false
   }
 }
