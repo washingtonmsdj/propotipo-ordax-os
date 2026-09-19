@@ -742,6 +742,34 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertIn('version_root=$OWNER_BASE_ROOT_CHROOT/versions', agent)
         self.assertNotIn("reboot -f", agent)
 
+    def test_agent_publishes_read_only_esp_discovery_without_blocking_candidate_acquisition(self):
+        subprocess.run(["sh", "-n", str(AGENT)], check=True)
+        agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn(
+            "ESP_DISCOVERY_FILE=$HOST_STATE_ROOT/base-update/esp-discovery.json",
+            agent,
+        )
+        self.assertIn("PHYSICAL_ROOT_SOURCE=$root_source", agent)
+        self.assertIn("discover_esp_read_only()", agent)
+        self.assertIn(
+            "discovery=/srv/ordax-system/services/base-update/esp_discovery.py",
+            agent,
+        )
+        self.assertIn('--root-source "$PHYSICAL_ROOT_SOURCE"', agent)
+        self.assertIn('mv -f "$temporary" "$ESP_DISCOVERY_FILE"', agent)
+        self.assertIn('rm -f "$temporary" "$ESP_DISCOVERY_FILE"', agent)
+        loop = agent.split("while :; do", 1)[1]
+        self.assertLess(
+            loop.index("discover_esp_read_only"),
+            loop.index("prepare_dev_base_candidate"),
+        )
+        discovery = agent.split("discover_esp_read_only() {", 1)[1].split("\n}", 1)[0]
+        self.assertNotIn("mount ", discovery)
+        self.assertNotIn("stage.py", discovery)
+        self.assertNotIn("activate.py", discovery)
+        self.assertNotIn("LoaderEntryOneShot", discovery)
+        self.assertNotIn("reboot", discovery)
+
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
         self.assertIn('BASE_UPDATE_SOURCE=$SYSTEM_ROOT/services/base-update/agent.sh', text)

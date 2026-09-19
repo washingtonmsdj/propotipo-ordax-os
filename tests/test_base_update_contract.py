@@ -244,6 +244,12 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertFalse(discovery["discovery_mounts_esp"])
         self.assertFalse(discovery["discovery_authorizes_write"])
         self.assertFalse(discovery["discovery_authorizes_activation"])
+        self.assertEqual(
+            discovery["state_file"],
+            "/state/ordax/base-update/esp-discovery.json",
+        )
+        self.assertTrue(discovery["runtime_preflight_fail_soft"])
+        self.assertTrue(discovery["candidate_acquisition_continues_without_esp"])
 
     def test_release_channel_enrollment_is_pinned_and_non_destructive(self):
         channel = CONTRACT["release_channel_enrollment"]
