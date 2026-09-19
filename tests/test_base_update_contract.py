@@ -231,6 +231,20 @@ class BaseUpdateContractTests(unittest.TestCase):
         )
         self.assertTrue(owner["recursive_state_bind_forbidden"])
 
+    def test_esp_discovery_is_same_disk_bound_and_read_only(self):
+        discovery = CONTRACT["runtime_owner"]["esp_discovery"]
+        self.assertEqual(discovery["filesystem_label"], "ORDAX-ESP")
+        self.assertEqual(
+            discovery["label_path"],
+            "/dev/disk/by-label/ORDAX-ESP",
+        )
+        self.assertTrue(discovery["direct_block_partition_required"])
+        self.assertTrue(discovery["same_parent_disk_as_root_required"])
+        self.assertTrue(discovery["sysfs_identity_required"])
+        self.assertFalse(discovery["discovery_mounts_esp"])
+        self.assertFalse(discovery["discovery_authorizes_write"])
+        self.assertFalse(discovery["discovery_authorizes_activation"])
+
     def test_release_channel_enrollment_is_pinned_and_non_destructive(self):
         channel = CONTRACT["release_channel_enrollment"]
         self.assertEqual(
