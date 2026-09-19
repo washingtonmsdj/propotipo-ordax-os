@@ -2,6 +2,42 @@
 set -eu
 
 SYSTEM_ROOT=${ORDAX_SYSTEM_ROOT:-}
+[ -n "$SYSTEM_ROOT" ] || {
+    echo "ordax-surface: ORDAX_SYSTEM_ROOT is empty" >&2
+    exit 1
+}
+REPO_ROOT=${SYSTEM_ROOT%/system}
+[ "$REPO_ROOT" != "$SYSTEM_ROOT" ] || {
+    echo "ordax-surface: repository root cannot be derived from ORDAX_SYSTEM_ROOT" >&2
+    exit 1
+}
+RUNTIME_CONTRACT=${ORDAX_NATIVE_SURFACE_RUNTIME_CONTRACT:-$REPO_ROOT/docs/contracts/native-surface-runtime.env}
+[ -r "$RUNTIME_CONTRACT" ] || {
+    echo "ordax-surface: Native Surface runtime contract is unavailable: $RUNTIME_CONTRACT" >&2
+    exit 1
+}
+. "$RUNTIME_CONTRACT"
+[ "${ORDAX_NATIVE_SURFACE_RUNTIME_SCHEMA:-}" = "ordax.native-surface-runtime/1" ] || {
+    echo "ordax-surface: unsupported Native Surface runtime contract" >&2
+    exit 1
+}
+for required_runtime_value in \
+    ORDAX_NATIVE_SURFACE_RUNTIME_ID \
+    ORDAX_NATIVE_SURFACE_REPOSITORY_MAIN \
+    ORDAX_NATIVE_SURFACE_REPOSITORY_COMMUNITY \
+    ORDAX_NATIVE_SURFACE_INSTALL_PACKAGES \
+    ORDAX_NATIVE_SURFACE_UPGRADE_PACKAGES \
+    ORDAX_NATIVE_SURFACE_BASE_EXECUTABLES \
+    ORDAX_NATIVE_SURFACE_BASE_FILES \
+    ORDAX_NATIVE_SURFACE_FULL_EXECUTABLES \
+    ORDAX_NATIVE_SURFACE_FULL_FILES; do
+    eval "required_runtime_content=\${$required_runtime_value:-}"
+    [ -n "$required_runtime_content" ] || {
+        echo "ordax-surface: runtime contract is missing $required_runtime_value" >&2
+        exit 1
+    }
+done
+
 SOURCE_SHA=unknown
 STATE_ROOT=${ORDAX_STATE_DIR:-/state/ordax}
 PERSISTENT_NATIVE_STATE=$STATE_ROOT/native-state
@@ -41,12 +77,15 @@ POWER_LAST_REQUEST=$POWER_STATE_DIR/last-request
 POWER_PENDING_STALE_SECONDS=120
 SEATD_SOCKET=/run/seatd.sock
 RUNTIME_STATE=$STATE_ROOT/runtime/native-surface
-RUNTIME_ID=alpine-v3.22-cage-webkitgtk-v1
+RUNTIME_ID=$ORDAX_NATIVE_SURFACE_RUNTIME_ID
 RUNTIME_ROOT=$RUNTIME_STATE/$RUNTIME_ID/rootfs
 RUNTIME_READY=$RUNTIME_STATE/$RUNTIME_ID/ready
-LEGACY_RUNTIME_ID=alpine-v3.22-cage-barkery-v1
-LEGACY_RUNTIME_ROOT=$RUNTIME_STATE/$LEGACY_RUNTIME_ID/rootfs
-LEGACY_RUNTIME_READY=$RUNTIME_STATE/$LEGACY_RUNTIME_ID/ready
+RUNTIME_INSTALL_PACKAGES=$ORDAX_NATIVE_SURFACE_INSTALL_PACKAGES
+RUNTIME_UPGRADE_PACKAGES=$ORDAX_NATIVE_SURFACE_UPGRADE_PACKAGES
+RUNTIME_BASE_EXECUTABLES=$ORDAX_NATIVE_SURFACE_BASE_EXECUTABLES
+RUNTIME_BASE_FILES=$ORDAX_NATIVE_SURFACE_BASE_FILES
+RUNTIME_FULL_EXECUTABLES=$ORDAX_NATIVE_SURFACE_FULL_EXECUTABLES
+RUNTIME_FULL_FILES=$ORDAX_NATIVE_SURFACE_FULL_FILES
 RUNTIME_INSTALL_TIMEOUT=${ORDAX_RUNTIME_INSTALL_TIMEOUT_SECONDS:-180}
 RUNTIME_UPGRADE_TIMEOUT=${ORDAX_RUNTIME_UPGRADE_TIMEOUT_SECONDS:-120}
 HTTP_PID=""
@@ -348,7 +387,6 @@ clear_runtime_mounts_at() {
 
 clear_stale_runtime_mounts() {
     clear_runtime_mounts_at "$RUNTIME_ROOT"
-    clear_runtime_mounts_at "$LEGACY_RUNTIME_ROOT"
 }
 
 seatd_process_running() {
@@ -486,36 +524,39 @@ fallback_with_reason() {
     console_fallback
 }
 
+runtime_paths_are_ready() {
+    root=$1
+    executables=$2
+    files=$3
+    [ -d "$root" ] || return 1
+    for relative in $executables; do
+        [ -x "$root/$relative" ] || return 1
+    done
+    for relative in $files; do
+        [ -f "$root/$relative" ] || return 1
+    done
+    return 0
+}
+
+runtime_ready_marker_matches() {
+    [ -f "$RUNTIME_READY" ] || return 1
+    marker=$(cat "$RUNTIME_READY" 2>/dev/null || true)
+    [ "$marker" = "$RUNTIME_ID" ]
+}
+
 runtime_base_is_ready() {
-    [ -f "$RUNTIME_READY" ] &&
-        [ -x "$RUNTIME_ROOT/usr/bin/cage" ] &&
-        [ -x "$RUNTIME_ROOT/usr/bin/python3" ] &&
-        [ -f "$RUNTIME_ROOT/usr/lib/girepository-1.0/Gtk-3.0.typelib" ] &&
-        [ -f "$RUNTIME_ROOT/usr/lib/girepository-1.0/WebKit2-4.1.typelib" ] &&
-        [ -x "$RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
-        [ -x "$RUNTIME_ROOT/bin/busybox" ]
+    runtime_ready_marker_matches &&
+        runtime_paths_are_ready "$RUNTIME_ROOT" "$RUNTIME_BASE_EXECUTABLES" "$RUNTIME_BASE_FILES"
 }
 
 runtime_is_ready() {
-    runtime_base_is_ready &&
-        [ -x "$RUNTIME_ROOT/usr/bin/Xwayland" ] &&
-        [ -x "$RUNTIME_ROOT/sbin/udevd" ] &&
-        [ -x "$RUNTIME_ROOT/bin/udevadm" ] &&
-        [ -f "$RUNTIME_ROOT/usr/lib/udev/rules.d/60-input-id.rules" ]
+    runtime_ready_marker_matches &&
+        runtime_paths_are_ready "$RUNTIME_ROOT" "$RUNTIME_FULL_EXECUTABLES" "$RUNTIME_FULL_FILES"
 }
 
 staged_runtime_is_ready() {
     staged_root=$1
-    [ -x "$staged_root/usr/bin/cage" ] &&
-        [ -x "$staged_root/usr/bin/python3" ] &&
-        [ -f "$staged_root/usr/lib/girepository-1.0/Gtk-3.0.typelib" ] &&
-        [ -f "$staged_root/usr/lib/girepository-1.0/WebKit2-4.1.typelib" ] &&
-        [ -x "$staged_root/usr/bin/Xwayland" ] &&
-        [ -x "$staged_root/sbin/udevd" ] &&
-        [ -x "$staged_root/bin/udevadm" ] &&
-        [ -f "$staged_root/usr/lib/udev/rules.d/60-input-id.rules" ] &&
-        [ -x "$staged_root/usr/bin/seatd-launch" ] &&
-        [ -x "$staged_root/bin/busybox" ]
+    runtime_paths_are_ready "$staged_root" "$RUNTIME_FULL_EXECUTABLES" "$RUNTIME_FULL_FILES"
 }
 
 commit_staged_runtime() {
@@ -535,46 +576,6 @@ commit_staged_runtime() {
     return 0
 }
 
-legacy_runtime_can_seed() {
-    [ -f "$LEGACY_RUNTIME_READY" ] &&
-        [ -d "$LEGACY_RUNTIME_ROOT" ] &&
-        [ -x "$LEGACY_RUNTIME_ROOT/usr/bin/cage" ] &&
-        [ -x "$LEGACY_RUNTIME_ROOT/usr/bin/python3" ] &&
-        [ -x "$LEGACY_RUNTIME_ROOT/usr/bin/seatd-launch" ] &&
-        [ -x "$LEGACY_RUNTIME_ROOT/bin/busybox" ]
-}
-
-migrate_legacy_runtime() {
-    legacy_runtime_can_seed || return 1
-    [ -x /sbin/apk ] || return 1
-    clear_runtime_mounts_at "$LEGACY_RUNTIME_ROOT"
-    mkdir -p "$RUNTIME_STATE"
-    STAGING_DIR=$RUNTIME_STATE/.staging-$$
-    rm -rf "$STAGING_DIR"
-    mkdir -p "$STAGING_DIR"
-    printf 'OrdaX: migrando runtime grafico local...\n'
-    echo "ordax-surface: seeding WebKit runtime from $LEGACY_RUNTIME_ID" >>"$HOST_LOG"
-
-    if ! /bin/busybox cp -a "$LEGACY_RUNTIME_ROOT" "$STAGING_DIR/rootfs" >>"$HOST_LOG" 2>&1; then
-        echo "ordax-surface: failed to copy legacy graphical runtime seed" >>"$HOST_LOG"
-        rm -rf "$STAGING_DIR"
-        STAGING_DIR=""
-        return 1
-    fi
-
-    if ! run_bounded_apk "$RUNTIME_UPGRADE_TIMEOUT" \
-        --root "$STAGING_DIR/rootfs" --keys-dir /etc/apk/keys --no-cache add \
-        xwayland eudev libinput-udev python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1 \
-        >>"$HOST_LOG" 2>&1; then
-        echo "ordax-surface: legacy runtime migration timed out or failed" >>"$HOST_LOG"
-        rm -rf "$STAGING_DIR"
-        STAGING_DIR=""
-        return 1
-    fi
-
-    commit_staged_runtime
-}
-
 install_runtime() {
     [ -x /sbin/apk ] || { echo "ordax-surface: /sbin/apk is unavailable in the Git bootstrap base" >>"$HOST_LOG"; return 1; }
     [ -d /etc/apk/keys ] || { echo "ordax-surface: Alpine trusted keys are unavailable" >>"$HOST_LOG"; return 1; }
@@ -590,19 +591,16 @@ install_runtime() {
         mkdir -p "$STAGING_DIR/rootfs/etc/ssl/certs"
         cp /etc/ssl/certs/ca-certificates.crt "$STAGING_DIR/rootfs/etc/ssl/certs/"
     fi
-    cat >"$STAGING_DIR/rootfs/etc/apk/repositories" <<'REPOSITORIES'
-https://dl-cdn.alpinelinux.org/alpine/v3.22/main
-https://dl-cdn.alpinelinux.org/alpine/v3.22/community
-REPOSITORIES
+    {
+        printf '%s\n' "$ORDAX_NATIVE_SURFACE_REPOSITORY_MAIN"
+        printf '%s\n' "$ORDAX_NATIVE_SURFACE_REPOSITORY_COMMUNITY"
+    } >"$STAGING_DIR/rootfs/etc/apk/repositories"
 
     printf 'OrdaX: preparando novo runtime grafico...\n'
     echo "ordax-surface: provisioning replaceable graphical runtime in $RUNTIME_STATE" >>"$HOST_LOG"
     if ! run_bounded_apk "$RUNTIME_INSTALL_TIMEOUT" \
         --root "$STAGING_DIR/rootfs" --keys-dir /etc/apk/keys --no-cache --initdb add \
-        alpine-baselayout busybox ca-certificates cage xwayland \
-        python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1 \
-        seatd-launch mesa-dri-gallium mesa-egl mesa-gbm font-dejavu \
-        eudev libinput-udev >>"$HOST_LOG" 2>&1; then
+        $RUNTIME_INSTALL_PACKAGES >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: graphical runtime provisioning timed out or failed" >>"$HOST_LOG"
         rm -rf "$STAGING_DIR"
         STAGING_DIR=""
@@ -617,7 +615,7 @@ upgrade_existing_runtime() {
     echo "ordax-surface: extending existing graphical runtime with WebKit browser host support" >>"$HOST_LOG"
     if ! run_bounded_apk "$RUNTIME_UPGRADE_TIMEOUT" \
         --root "$RUNTIME_ROOT" --keys-dir /etc/apk/keys --no-cache add \
-        xwayland eudev libinput-udev python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1 >>"$HOST_LOG" 2>&1; then
+        $RUNTIME_UPGRADE_PACKAGES >>"$HOST_LOG" 2>&1; then
         echo "ordax-surface: graphical runtime upgrade timed out or failed" >>"$HOST_LOG"
         return 1
     fi
@@ -629,10 +627,6 @@ ensure_runtime() {
     if runtime_base_is_ready; then
         upgrade_existing_runtime || return 1
         return 0
-    fi
-    if migrate_legacy_runtime; then
-        runtime_is_ready
-        return $?
     fi
     install_runtime || return 1
     runtime_is_ready
@@ -949,7 +943,6 @@ prepare_input_stack() {
     echo "ordax-surface: eudev input classification complete" >>"$HOST_LOG"
 }
 
-[ -n "$SYSTEM_ROOT" ] || fallback_with_reason "ORDAX_SYSTEM_ROOT is empty"
 reconcile_stale_power_request || echo "ordax-surface: stale power request reconciliation failed safely" >>"$HOST_LOG"
 ensure_base_telemetry_agent || echo "ordax-surface: base telemetry bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
 ensure_rescue_agent || echo "ordax-surface: rescue agent bootstrap failed; continuing Surface startup" >>"$HOST_LOG"
