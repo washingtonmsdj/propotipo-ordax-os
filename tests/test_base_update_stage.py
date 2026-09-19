@@ -163,6 +163,43 @@ class BaseUpdateStageTests(unittest.TestCase):
             self.assertIn("ordax.base_slot=b", entry)
             self.assertIn("ordax.base_candidate=" + "a" * 40, entry)
 
+    def test_ensure_stage_reuses_exact_existing_candidate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            esp, kernel, initrd, candidate = self.fixture(root)
+
+            first = stage.ensure_stage(esp, "a", candidate, kernel, initrd)
+            second = stage.ensure_stage(esp, "a", candidate, kernel, initrd)
+
+            self.assertFalse(first["idempotent"])
+            self.assertTrue(second["idempotent"])
+            self.assertEqual(first["release_sha"], second["release_sha"])
+            self.assertEqual(first["candidate_slot"], second["candidate_slot"])
+            self.assertEqual(
+                (esp / "ordax/base/b/vmlinuz").read_bytes(),
+                kernel.read_bytes(),
+            )
+            self.assertEqual(
+                (esp / "ordax/base/b/initrd.gz").read_bytes(),
+                initrd.read_bytes(),
+            )
+
+    def test_ensure_stage_refuses_divergent_existing_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            esp, kernel, initrd, candidate = self.fixture(root)
+            stage.ensure_stage(esp, "a", candidate, kernel, initrd)
+            marker = esp / "loader/entries/ordax-candidate+01-00.conf"
+            marker.write_text("tampered marker\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(
+                stage.StageError,
+                "candidate boot entry differs",
+            ):
+                stage.ensure_stage(esp, "a", candidate, kernel, initrd)
+
+            self.assertEqual(marker.read_text(encoding="utf-8"), "tampered marker\n")
+
     def test_existing_candidate_marker_blocks_before_inactive_slot_is_touched(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
