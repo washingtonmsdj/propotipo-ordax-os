@@ -42,6 +42,15 @@ REQUIRED_ROOTFS_PATHS = (
     "usr/local/bin/ordax-rollback",
     "usr/local/bin/ordax-run",
 )
+REQUIRED_ROOTFS_DIRS = (
+    "state",
+    "workspace",
+    "home",
+    "proc",
+    "sys",
+    "dev",
+    "run",
+)
 DOWNLOAD_TIMEOUT_SECONDS = 45
 ROOTFS_DOWNLOAD_TIMEOUT_SECONDS = 180
 
@@ -324,6 +333,12 @@ def _validate_rootfs_archive(path: Path) -> list[tarfile.TarInfo]:
         raise DevBaseChannelError(
             f"development rootfs archive is missing required files: {missing}"
         )
+    directories = {member.name for member in members if member.isdir()}
+    missing_dirs = sorted(set(REQUIRED_ROOTFS_DIRS) - directories)
+    if missing_dirs:
+        raise DevBaseChannelError(
+            f"development rootfs archive is missing required directories: {missing_dirs}"
+        )
     return members
 
 
@@ -361,7 +376,7 @@ def verify_versioned_rootfs(
                 f"versioned development rootfs required file is not executable: {relative}"
             )
 
-    for relative in ("state", "workspace", "home", "proc", "sys", "dev", "run", ".ordax-base"):
+    for relative in (*REQUIRED_ROOTFS_DIRS, ".ordax-base"):
         target = path / relative
         if target.is_symlink() or not target.is_dir():
             raise DevBaseChannelError(
