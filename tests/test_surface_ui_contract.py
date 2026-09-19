@@ -197,7 +197,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertIn(f'id: "{app_id}"', owner)
             self.assertIn("defineFirstPartyApp", owner)
             self.assertIn("component:", owner)
-            self.assertIn('releaseMode: "bundled"', owner)
+            self.assertIn("../../services/components/manifests/apps.mjs", owner)
             self.assertIn(f'./{app_id}/app.mjs', catalog)
         self.assertIn("listFirstPartyApps", catalog)
         self.assertIn("getFirstPartyApp", catalog)
