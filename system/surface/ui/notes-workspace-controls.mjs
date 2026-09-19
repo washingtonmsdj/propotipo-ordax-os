@@ -20,6 +20,11 @@ import {
   notesImageReferenceKey,
 } from "./notes-image-previews.mjs";
 import {
+  firstNotesBodyLine,
+  formatNotesRelativeTime,
+  visibleNotes,
+} from "./notes-list-model.mjs";
+import {
   applyNotesRichLink,
   captureNotesRichSelection,
   createNotesRichEditor,
@@ -57,77 +62,6 @@ function button(documentObject, className, label, action, text = label) {
   element.setAttribute("aria-label", label);
   element.title = label;
   return element;
-}
-
-function formatRelativeTime(timestamp, now = Date.now()) {
-  const delta = Math.max(0, now - timestamp);
-  if (delta < 60000) return "Agora";
-  if (delta < 86400000) {
-    const hours = Math.max(1, Math.floor(delta / 3600000));
-    return `${hours} h`;
-  }
-  if (delta < 2 * 86400000) return "Ontem";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(timestamp));
-}
-
-function hostFromHref(href) {
-  try {
-    return new URL(href).hostname;
-  } catch {
-    return href;
-  }
-}
-
-function joinLogicalPath(path, name) {
-  const base = validateFileSpacePath(path);
-  return validateFileSpacePath(base === "/" ? `/${name}` : `${base}/${name}`);
-}
-
-function parentLogicalPath(path) {
-  const valid = validateFileSpacePath(path);
-  if (valid === "/") return "/";
-  const parts = valid.split("/").filter(Boolean);
-  parts.pop();
-  return parts.length ? `/${parts.join("/")}` : "/";
-}
-
-function firstBodyLine(body) {
-  return body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "Nota sem conteúdo";
-}
-
-function noteMatchesQuery(note, query) {
-  if (!query) return true;
-  const haystack = [
-    note.title,
-    note.body,
-    ...note.tasks.map((task) => task.text),
-    ...note.references.flatMap((reference) => [
-      reference.title,
-      reference.detail,
-      reference.href,
-      reference.path ?? "",
-    ]),
-  ].join("\n").toLocaleLowerCase("pt-BR");
-  return haystack.includes(query.toLocaleLowerCase("pt-BR"));
-}
-
-function visibleNotes(documentState, mode, query, newestFirst = true) {
-  let items = [...documentState.notes];
-  if (mode === "trash") {
-    items = items.filter((note) => note.deletedAt !== null);
-  } else {
-    items = items.filter((note) => note.deletedAt === null);
-    if (mode === "favorites") items = items.filter((note) => note.favorite);
-    if (mode === "recent") {
-      items = items.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30);
-    }
-    if (mode === "project") {
-      items = items.filter((note) => note.projectId === documentState.selectedProjectId);
-    }
-  }
-  return items
-    .filter((note) => noteMatchesQuery(note, query))
-    .sort((a, b) => newestFirst ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt);
 }
 
 function buildShell(documentObject) {
@@ -539,9 +473,9 @@ export function mountNotesWorkspaceControls(
       const copy = node(documentObject, "span", "ordax-notes-row-copy");
       copy.append(
         node(documentObject, "strong", "", note.title || "Sem título"),
-        node(documentObject, "small", "", firstBodyLine(note.body)),
+        node(documentObject, "small", "", firstNotesBodyLine(note.body)),
       );
-      const time = node(documentObject, "time", "ordax-notes-row-time", formatRelativeTime(note.updatedAt));
+      const time = node(documentObject, "time", "ordax-notes-row-time", formatNotesRelativeTime(note.updatedAt));
       row.append(icon, copy, time);
       list.append(row);
     }
