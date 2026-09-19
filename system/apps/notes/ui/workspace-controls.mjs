@@ -9,8 +9,8 @@ import {
 import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
-} from "../runtime.mjs";
-import { createNotesStatistics } from "../statistics.mjs";
+} from "../domain/runtime.mjs";
+import { createNotesStatistics } from "../domain/statistics.mjs";
 import {
   createNotesImagePreviewCache,
   isNotesImageFileName,
