@@ -28,6 +28,62 @@ test("app contract accepts a bounded extension slot", () => {
   assert.equal(Object.isFrozen(app.panels[0]), true);
 });
 
+test("app contract models optional host capabilities without changing availability requirements", () => {
+  const spec = baseSpec({
+    kind: "extension",
+    extensionId: "example-workspace",
+    label: "Example",
+    title: "Example",
+    body: "Fallback",
+  });
+  spec.requiredCapabilities = ["surface.render"];
+  spec.optionalCapabilities = ["filesystem.user-space"];
+  const app = defineFirstPartyApp(spec);
+
+  assert.deepEqual(app.requiredCapabilities, ["surface.render"]);
+  assert.deepEqual(app.optionalCapabilities, ["filesystem.user-space"]);
+  assert.equal(Object.isFrozen(app.optionalCapabilities), true);
+});
+
+test("app contract defaults optional capabilities to an empty frozen list", () => {
+  const app = defineFirstPartyApp(baseSpec({
+    kind: "extension",
+    extensionId: "example-workspace",
+    label: "Example",
+    title: "Example",
+    body: "Fallback",
+  }));
+  assert.deepEqual(app.optionalCapabilities, []);
+  assert.equal(Object.isFrozen(app.optionalCapabilities), true);
+});
+
+test("app contract rejects duplicated and overlapping optional capabilities", () => {
+  const panel = {
+    kind: "extension",
+    extensionId: "example-workspace",
+    label: "Example",
+    title: "Example",
+    body: "Fallback",
+  };
+
+  assert.throws(
+    () => defineFirstPartyApp({
+      ...baseSpec(panel),
+      optionalCapabilities: ["filesystem.user-space", "filesystem.user-space"],
+    }),
+    /invalid optional capabilities/,
+  );
+
+  assert.throws(
+    () => defineFirstPartyApp({
+      ...baseSpec(panel),
+      requiredCapabilities: ["filesystem.user-space"],
+      optionalCapabilities: ["filesystem.user-space"],
+    }),
+    /cannot require and optionally consume the same capability/,
+  );
+});
+
 test("app contract rejects invalid extension identifiers", () => {
   assert.throws(
     () => defineFirstPartyApp(baseSpec({
