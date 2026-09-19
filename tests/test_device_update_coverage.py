@@ -97,7 +97,8 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
             "exact-commit-development-base-rootfs-candidate",
         )
         self.assertTrue(rootfs["candidate_delivery_implemented"])
-        self.assertTrue(rootfs["activation_implemented"])
+        self.assertFalse(rootfs["activation_implemented"])
+        self.assertTrue(rootfs["selector_implemented"])
         self.assertFalse(rootfs["usb_rewrite_required"])
         self.assertTrue(rootfs["reboot_required"])
         activation = contract["development_rootfs_activation"]
@@ -110,6 +111,8 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
         )
         self.assertIn("ordax.base_candidate", activation["candidate_identity"])
         self.assertIn("base heartbeat + Surface health", activation["promotion_policy"])
+        self.assertIn("A/B boot slot", activation["next_gate"])
+        self.assertIn("not yet consumed", activation["current_limit"])
 
         init = DEV_INIT.read_text(encoding="utf-8")
         self.assertIn("select_development_rootfs()", init)
