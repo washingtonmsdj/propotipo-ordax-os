@@ -91,7 +91,7 @@ As prioridades são de implementação, não de exposição: uma tela P2 não de
 |---|---|---|
 | Identidade visual | Documento `DESKTOP-IDENTITY.md`, canvas mineral, laranja, rail, composição geométrica, temas claro/escuro. | Refinar consistência, responsividade, acessibilidade e retirar textos de investigação da experiência normal. |
 | Área de trabalho | Relógio/data, lançador com busca, quatro apps, atalhos para pastas, áreas e persistência do workspace. | Navegação uniforme por subseções, restauração de estado interno dos apps e testes de fluxo completos. |
-| Arquivos | Adapter nativo delimitado, navegação/breadcrumbs, seleção, preview UTF-8, criar pasta, renomear, duplicar/copiar, mover, importar/exportar, busca local, ordenação, metadado Modificado real, Recentes locais limitados/deduplicados e retomada da última pasta validada após reload pelo workspace existente. | Favoritos, lixeira, múltiplos itens/diretórios e “Abrir com” para apps compatíveis ainda faltam; retomada contextual além da pasta atual permanece em F4. |
+| Arquivos | Adapter nativo delimitado, navegação/breadcrumbs, seleção, preview UTF-8, criar pasta, renomear, duplicar/copiar, mover, importar/exportar, busca local, ordenação, metadado Modificado real, Recentes locais limitados/deduplicados, retomada da última pasta validada após reload pelo workspace existente e catálogo local de Projetos com referências não destrutivas a pastas validadas. | Favoritos, lixeira, múltiplos itens/diretórios e “Abrir com” para apps compatíveis ainda faltam; retomada serializada de conteúdo/atividade por app permanece em C05. |
 | Ajustes | Catálogo de preferências com `appearance.theme`, valores `light`/`dark`, persistência e integração com núcleo local de sync. | Subseções e demais preferências; automático, wallpaper, acessibilidade e configurações de hardware não estão demonstrados. |
 | Conta | Portas de sessão/ações, apresentação do estado de identidade, núcleo de sync, fila local e metadata de áreas/apps. | Provedor real de identidade, perfil editável, segurança da conta, registro/revogação de sessões e transporte autenticado. |
 | Sistema | Visão geral, commit, estado de atualização, memória, espaço do usuário, tempo ligado e atualização de leitura. | Navegação por subseções, histórico completo, ações manuais por contratos, inventário detalhado e exportação de diagnóstico. |
@@ -136,6 +136,7 @@ Os itens condicionais aparecem somente quando há capacidade utilizável; FUTURO
 Arquivos
 ├─ Meu espaço                         [entrada padrão]
 ├─ Recentes
+├─ Projetos                         [Native, contexto local]
 ├─ Favoritos
 ├─ Documentos
 ├─ Imagens
@@ -322,7 +323,7 @@ Preservar o bloqueio atual de acesso ao sistema e escapes por links simbólicos.
 
 **Topo:** Voltar/Avançar, subir um nível, breadcrumbs, busca no local, Atualizar e Nova pasta. Voltar/Avançar/Subir agora existem com histórico local delimitado por janela; a busca atual filtra nomes somente na pasta aberta. Mostrar só operações implementadas.
 
-**Navegação interna:** Meu espaço; Recentes; Favoritos; Documentos; Imagens; Downloads; locais adicionais e Lixeira quando disponíveis.
+**Navegação interna:** Meu espaço; Recentes; Projetos quando o catálogo local estiver disponível; Favoritos; Documentos; Imagens; Downloads; locais adicionais e Lixeira quando disponíveis.
 
 **Conteúdo:** lista com Nome, Tipo, Tamanho e Modificado real; os quatro campos podem ordenar localmente em ordem crescente/decrescente, mantendo pastas agrupadas antes dos arquivos. `modifiedAt` vem do metadata real do filesystem e é formatado apenas para apresentação. Modo grade/miniaturas vem após leitura segura de conteúdo.
 
@@ -1036,7 +1037,7 @@ USB e Native podem compartilhar adapter, mas o nome Native não comprova o perfi
 | E3 / P1 | Ajustes: Aparência e acessibilidade da Surface; retirar diagnóstico técnico da tela comum. | E1, catálogo/store. | **Parcial avançado:** Aparência, Acessibilidade e Rede são destinos canônicos; tema, contraste, tamanho do texto e movimento são preferências reais/persistidas; a listagem técnica de capacidades foi removida de Ajustes. Preferências adicionais continuam condicionadas a necessidade real e suporte do produto. |
 | E4 / P1 | Arquivos básico completo em incrementos: seleção/detalhes, leitura/abertura, importação/exportação e mutações. | E1, extensões de contrato/backend por operação. | Fluxos de usuário com dados reais e proteção da raiz. |
 | E5 / P1 | Conta com estados honestos e Sincronização local compreensível. | E1, identity/sync existentes. | **Parcial:** Visão geral e Sincronização são destinos canônicos; identidade indisponível continua honesta; fila/metadata locais são explicados sem anunciar nuvem. Provedor real e transporte autenticado continuam pendentes. |
-| E6 / P2 | Favoritos, recentes, lixeira, miniaturas, múltiplos locais e pesquisa ampliada. | E4. | **Parcial:** Recentes locais de Arquivos está implementado com índice limitado/deduplicado, busca, abertura, revelar na pasta, remoção/limpeza não destrutivas e persistência `device`/`session` explícita; Arquivos também retoma após reload a última pasta que foi listada e validada com sucesso, reutilizando o `target` do workspace. Favoritos, lixeira, miniaturas, múltiplos locais, pesquisa ampliada e retomada contextual mais ampla continuam pendentes. |
+| E6 / P2 | Favoritos, recentes, lixeira, miniaturas, múltiplos locais e pesquisa ampliada. | E4. | **Parcial:** Recentes locais de Arquivos está implementado com índice limitado/deduplicado, busca, abertura, revelar na pasta, remoção/limpeza não destrutivas e persistência `device`/`session` explícita; Arquivos também retoma após reload a última pasta que foi listada e validada com sucesso, reutilizando o `target` do workspace. Favoritos, lixeira, miniaturas, múltiplos locais e pesquisa ampliada continuam pendentes. O catálogo local de Projetos foi entregue no recorte F4; retomada serializada de conteúdo/atividade por app continua separada em C05. |
 | E7 / P2 | Comandos de atualização, histórico, diagnóstico/exportação e armazenamento detalhado. | E2, portas de comando/observação específicas. | Manutenção real com dados atuais e revisão de ações. |
 | E8 / P2 | Integração de identidade, perfil, sessões, segurança e transporte de sync. | Serviço/provedor decidido e autorização de servidor. | Continuidade ponta a ponta entre duas sessões/dispositivos autorizados. |
 | E9 / P2 | Hardware, rede, áudio e energia avançada; recuperação local por perfil. | Adapters e validação física específica. | Cada capacidade só aparece onde foi implementada e validada. |
