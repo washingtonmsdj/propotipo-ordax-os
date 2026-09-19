@@ -16,6 +16,7 @@ const CSS_FILES = [
   'system/surface/ui/surface.css',
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
+  'system/surface/ui/notes.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
