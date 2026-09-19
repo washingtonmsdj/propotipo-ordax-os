@@ -400,8 +400,8 @@ export function pastePlainTextIntoNotesEditor(editor, event) {
   const text = event.clipboardData?.getData("text/plain") ?? "";
   event.preventDefault();
 
-  const currentLength = readNotesRichBody(editor).blocks
-    .reduce((sum, block) => sum + block.text.length, 0);
+  const blockBreaks = Math.max(0, editor.children.length - 1);
+  const currentLength = (editor.textContent ?? "").length + blockBreaks;
   const remaining = Math.max(0, MAX_NOTE_TEXT_CHARS - currentLength);
   const bounded = text.slice(0, remaining);
   if (!bounded) return true;
