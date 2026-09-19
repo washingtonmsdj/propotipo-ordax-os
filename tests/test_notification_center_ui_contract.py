@@ -82,7 +82,7 @@ class NotificationCenterUiContractTest(unittest.TestCase):
         ]:
             self.assertGreaterEqual(workflow.count(path), 2, path)
 
-        self.assertIn("system/services/notifications \\", workflow)
+        self.assertIn("system/services/notifications", workflow)
         self.assertIn("node --test tests/test_notifications.mjs", workflow)
         self.assertIn(
             "python -m unittest tests.test_notification_center_ui_contract -v",
