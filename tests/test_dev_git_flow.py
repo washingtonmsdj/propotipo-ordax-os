@@ -83,6 +83,18 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             '{"bootstrap":"fixture"}\n',
             encoding="utf-8",
         )
+        (contracts / "base-update.json").write_text(
+            '{"base_update":"fixture"}\n',
+            encoding="utf-8",
+        )
+        base_update = self.source / "bootstrap/base-update"
+        base_update.mkdir(parents=True, exist_ok=True)
+        for name in ("plan.py", "stage.py", "activate.py", "promote.py"):
+            script = base_update / name
+            script.write_text(
+                f"# fixture {name} for {marker}\n",
+                encoding="utf-8",
+            )
         evidence = docs / "evidence"
         evidence.mkdir(parents=True, exist_ok=True)
         for name in (
@@ -139,8 +151,10 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             sparse_paths,
             {
                 "/system/",
+                "/bootstrap/base-update/",
                 "/bootstrap/trust/",
                 "/bootstrap/config/release-envelope-url",
+                "/docs/contracts/base-update.json",
                 "/docs/contracts/release-trust-policy.json",
                 "/docs/contracts/minimal-bootstrap.json",
                 "/docs/evidence/release-trust-ceremony.json",
@@ -154,6 +168,15 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         )
         self.assertTrue(
             (self.worktree / "bootstrap/config/release-envelope-url").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/base-update/stage.py").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "bootstrap/base-update/activate.py").is_file()
+        )
+        self.assertTrue(
+            (self.worktree / "docs/contracts/base-update.json").is_file()
         )
         self.assertTrue(
             (self.worktree / "docs/contracts/release-trust-policy.json").is_file()

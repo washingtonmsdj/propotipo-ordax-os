@@ -56,8 +56,10 @@ configure_runtime_checkout_at() {
     checkout=$1
     git -C "$checkout" sparse-checkout set --no-cone \
         /system/ \
+        /bootstrap/base-update/ \
         /bootstrap/trust/ \
         /bootstrap/config/release-envelope-url \
+        /docs/contracts/base-update.json \
         /docs/contracts/release-trust-policy.json \
         /docs/contracts/minimal-bootstrap.json \
         /docs/evidence/release-trust-ceremony.json \
