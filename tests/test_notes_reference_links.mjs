@@ -5,7 +5,7 @@ import {
   createNotesLinkReference,
   notesWebReferenceHost,
   parseNotesWebHref,
-} from "../system/surface/ui/notes-reference-links.mjs";
+} from "../system/apps/notes/ui/reference-links.mjs";
 
 test("web reference parser accepts only canonical http and https URLs", () => {
   assert.deepEqual(
