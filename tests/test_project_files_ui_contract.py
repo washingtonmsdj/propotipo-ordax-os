@@ -17,6 +17,7 @@ class ProjectFilesUiContractTests(unittest.TestCase):
         self.assertIn("dataset.fileProjectName", controls)
         self.assertIn("dataset.fileProjectCreate", controls)
         self.assertIn("dataset.fileProjectResume", controls)
+        self.assertIn("dataset.fileProjectForgetStale", controls)
         self.assertIn("dataset.fileProjectRenameStart", controls)
         self.assertIn("dataset.fileProjectRenameName", controls)
         self.assertIn("dataset.fileProjectRenameConfirm", controls)
@@ -25,6 +26,7 @@ class ProjectFilesUiContractTests(unittest.TestCase):
         self.assertIn("projectPort.rename(renamingProjectId, projectRenameDraft)", controls)
         self.assertIn("projectPort.recordOpened(projectId)", controls)
         self.assertIn("projectPort.recordFileOpened(project.id, next.path)", controls)
+        self.assertIn("projectPort.clearLastFile(projectId)", controls)
         self.assertIn("projectPort.remove(projectId)", controls)
         self.assertNotIn("localStorage", controls)
         self.assertNotIn("/__ordax/native/", controls)
@@ -51,6 +53,7 @@ class ProjectFilesUiContractTests(unittest.TestCase):
         )[0]
         self.assertIn("renamingProjectId = null;", changed_path_block)
         self.assertIn('projectRenameDraft = "";', changed_path_block)
+        self.assertIn("failedProjectResume = null;", changed_path_block)
 
     def test_successful_text_open_records_project_file_only_after_validation(self):
         controls = CONTROLS.read_text(encoding="utf-8")
@@ -88,14 +91,59 @@ class ProjectFilesUiContractTests(unittest.TestCase):
         )[0]
         self.assertIn("project?.lastFilePath && project.path === listing.path", click_block)
         self.assertIn(
-            'openTextFile(project.lastFilePath, { source: "project-resume" })',
+            'openTextFile(project.lastFilePath, { source: "project-resume", projectId: project.id })',
             click_block,
         )
         self.assertNotIn("recordFileOpened", click_block)
-        self.assertNotIn("remove(", click_block)
+        self.assertNotIn("projectPort.remove", click_block)
         self.assertNotIn("renameEntry(", click_block)
         self.assertIn("O último arquivo deste projeto não está mais disponível. O projeto foi preservado.", controls)
         self.assertIn("Não foi possível retomar o último arquivo deste projeto. O projeto foi preservado.", controls)
+
+    def test_stale_project_resume_recovery_is_exact_reference_guarded_and_non_destructive(self):
+        controls = CONTROLS.read_text(encoding="utf-8")
+        self.assertIn('"Esquecer último arquivo"', controls)
+        self.assertIn(
+            "failedProjectResume = Object.freeze({ projectId: project.id, path });",
+            controls,
+        )
+        self.assertIn(
+            "failedProjectResume.path === currentProject.lastFilePath",
+            controls,
+        )
+        recovery_block = controls.split(
+            "  const clearFailedProjectResume = (projectId) => {", 1
+        )[1].split(
+            "  const enterRecentMode =", 1
+        )[0]
+        guard = "project.lastFilePath !== failedProjectResume.path"
+        clear = "projectPort.clearLastFile(projectId)"
+        self.assertIn(guard, recovery_block)
+        self.assertIn(clear, recovery_block)
+        self.assertLess(recovery_block.index(guard), recovery_block.index(clear))
+        self.assertIn("A referência do último arquivo mudou. Nada foi alterado.", recovery_block)
+        self.assertIn("Referência do último arquivo esquecida. Nenhum arquivo foi apagado.", recovery_block)
+        self.assertNotIn("port.renameEntry(", recovery_block)
+        self.assertNotIn("port.moveEntry(", recovery_block)
+        self.assertNotIn("port.copyFile(", recovery_block)
+        self.assertNotIn("projectPort.remove(", recovery_block)
+
+    def test_stale_project_resume_recovery_expires_when_project_snapshot_changes(self):
+        controls = CONTROLS.read_text(encoding="utf-8")
+        subscription_block = controls.split(
+            "  const unsubscribeProjects = projectPort?.subscribe((snapshot) => {", 1
+        )[1].split(
+            "  const unsubscribeRender =", 1
+        )[0]
+        self.assertIn("failedProjectResume", subscription_block)
+        self.assertIn("project.lastFilePath !== failedProjectResume.path", subscription_block)
+        self.assertIn("failedProjectResume = null;", subscription_block)
+        open_block = controls.split("  const openTextFile = async", 1)[1].split(
+            "  const activateSelectedPath =", 1
+        )[0]
+        self.assertIn("failedProjectResume = null;", open_block)
+        self.assertIn('if (source === "project-resume")', open_block)
+        self.assertIn("project?.lastFilePath === path && project.path === listing?.path", open_block)
 
     def test_native_composition_injects_project_runtime_only_into_files_owner(self):
         composition = COMPOSITION.read_text(encoding="utf-8")
