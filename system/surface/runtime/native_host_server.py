@@ -36,6 +36,7 @@ DIAGNOSTIC_JOURNAL_PATH = "/__ordax/native/diagnostic-journal"
 FILES_PATH = "/__ordax/native/files"
 FILE_CONTENT_PATH = "/__ordax/native/file-content"
 FILE_EXPORT_PATH = "/__ordax/native/file-export"
+IMAGE_PREVIEW_PATH = "/__ordax/native/image-preview"
 FILE_IMPORT_PATH = "/__ordax/native/file-import"
 METRICS_PATH = "/__ordax/native/metrics"
 POWER_STATUS_PATH = "/__ordax/native/power-status"
@@ -77,7 +78,17 @@ MAX_FILE_ENTRIES = 1000
 MAX_TEXT_FILE_BYTES = 256 * 1024
 MAX_FILE_COPY_BYTES = 64 * 1024 * 1024
 MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024
+MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 * 1024
 MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024
+IMAGE_PREVIEW_TYPES = {
+    ".avif": "image/avif",
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 MAX_UPDATE_HISTORY_BYTES = 256 * 1024
 MAX_RELEASE_HISTORY_ENTRIES = 80
 MAX_APPLICATION_HISTORY_ENTRIES = 200
@@ -1348,6 +1359,10 @@ class FileSpaceExportChangedError(Exception):
     pass
 
 
+class FileSpaceImagePreviewTypeError(Exception):
+    pass
+
+
 class FileSpaceImportTooLargeError(Exception):
     pass
 
@@ -1471,6 +1486,23 @@ def read_user_export_file(
         return name, bytes(content)
     finally:
         os.close(descriptor)
+
+
+def read_user_image_preview(
+    user_root: str,
+    logical_path: str,
+    max_bytes: int = MAX_IMAGE_PREVIEW_BYTES,
+) -> tuple[str, str, bytes]:
+    name, payload = read_user_export_file(
+        user_root,
+        logical_path,
+        max_bytes=max_bytes,
+    )
+    extension = os.path.splitext(name)[1].lower()
+    mime = IMAGE_PREVIEW_TYPES.get(extension)
+    if mime is None:
+        raise FileSpaceImagePreviewTypeError("unsupported image preview type")
+    return name, mime, payload
 
 
 def import_user_file(
@@ -2019,6 +2051,15 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _write_image_preview(self, mime: str, payload: bytes) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _empty(self, status: int) -> None:
         self.send_response(status)
         self.send_header("Content-Length", "0")
@@ -2051,7 +2092,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         parsed_path = urlsplit(self.path).path
-        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, IMAGE_PREVIEW_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path in {SYNC_STATE_PATH, NOTES_PATH} and self.client_address[0] != "127.0.0.1":
@@ -2105,6 +2146,38 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if parsed_path == UPDATE_HISTORY_PATH:
             self._write_json(200, read_update_history())
             return
+        if parsed_path == IMAGE_PREVIEW_PATH:
+            try:
+                logical_path = requested_file_path(self.path, IMAGE_PREVIEW_PATH)
+                _name, mime, payload = read_user_image_preview(
+                    self.server.user_root,
+                    logical_path,
+                )
+            except FileSpaceExportTooLargeError:
+                self._empty(413)
+                return
+            except FileSpaceExportChangedError:
+                self._empty(412)
+                return
+            except FileSpaceImagePreviewTypeError:
+                self._empty(415)
+                return
+            except ValueError:
+                self._empty(400)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(f"ordax-native-host: could not preview user image: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._write_image_preview(mime, payload)
+            return
+
         if parsed_path == FILE_EXPORT_PATH:
             try:
                 logical_path = requested_file_path(self.path, FILE_EXPORT_PATH)
