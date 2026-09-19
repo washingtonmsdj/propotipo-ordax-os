@@ -101,7 +101,7 @@ test("canonical component catalog has one unique owner identity per app and serv
     assert.ok(ids.includes(required), required);
   }
   const internet = components.find((component) => component.id === "internet");
-  assert.equal(internet.version, "0.3.0");
+  assert.equal(internet.version, "0.4.0");
   assert.equal(internet.releaseMode, "bundled");
   assert.equal(internet.owner, "system/apps/internet");
   const notes = components.find((component) => component.id === "notes");
