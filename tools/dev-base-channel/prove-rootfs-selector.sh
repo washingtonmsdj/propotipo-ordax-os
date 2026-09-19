@@ -38,7 +38,10 @@ install_busybox_root() {
   mkdir -p     "$root/bin"     "$root/sbin"     "$root/usr/bin"     "$root/usr/local/bin"     "$root/state/ordax"     "$root/state/network"     "$root/workspace/ordax/system"     "$root/home"     "$root/proc"     "$root/sys"     "$root/dev"     "$root/run"     "$root/tmp"     "$root/root"     "$root/versions"
   cp "$BUSYBOX" "$root/bin/busybox"
   cp "$BUSYBOX" "$root/bin/sh"
-  chmod 0755 "$root/bin/busybox" "$root/bin/sh"
+  for applet in cat chmod dirname mkdir mv sleep; do
+    cp "$BUSYBOX" "$root/bin/$applet"
+  done
+  chmod 0755 "$root/bin/"*
 }
 
 install_seed_root() {
