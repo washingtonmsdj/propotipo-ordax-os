@@ -3,6 +3,7 @@ import {
   renderedSourceSha,
 } from "../../adapters/native/client-diagnostics.mjs";
 import { createNativeBrowserSession } from "../../adapters/native/browser-session.mjs";
+import { createNativeBrowserFavoritesStore } from "../../adapters/native/browser-favorites.mjs";
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
@@ -26,6 +27,7 @@ import { createWebIdentityActions } from "../../adapters/web/identity-actions.mj
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { createBrowserFavoritesRuntime } from "../../services/internet/favorites.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
 import { createProjectWebReferenceRuntime } from "../../services/projects/web-references.mjs";
@@ -146,6 +148,9 @@ async function start() {
     store: createNativeProjectWebReferenceStore(window),
     projects,
   });
+  const browserFavorites = createBrowserFavoritesRuntime({
+    store: createNativeBrowserFavoritesStore(window),
+  });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
@@ -220,7 +225,7 @@ async function start() {
     root,
     browserSession,
     surface,
-    { projects, projectReferences },
+    { projects, projectReferences, favorites: browserFavorites },
   );
   const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
@@ -359,6 +364,7 @@ async function start() {
       notesWorkspaceControls.destroy();
       internetBrowserShortcuts.destroy();
       internetBrowserControls.destroy();
+      browserFavorites.destroy();
       projectReferences?.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
