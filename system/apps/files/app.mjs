@@ -6,6 +6,16 @@ export const filesApp = defineFirstPartyApp({
   description: "Organize documentos, imagens, downloads e conteúdo persistente do usuário.",
   monogram: "AR",
   singleton: true,
+  component: {
+    version: "0.1.0",
+    releaseMode: "bundled",
+    criticality: "optional",
+    failureDomain: "app",
+    restartScope: "surface",
+    healthMode: "surface",
+    owner: "system/apps/files",
+    dependencies: ["surface-shell"],
+  },
   requiredCapabilities: [],
   panels: [
     {
