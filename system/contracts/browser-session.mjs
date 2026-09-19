@@ -49,6 +49,7 @@ export function assertBrowserSessionPort(value) {
   const methods = [
     "getSnapshot",
     "subscribe",
+    "subscribeShortcuts",
     "openTab",
     "closeTab",
     "activateTab",
@@ -79,6 +80,10 @@ export function createUnavailableBrowserSession(reason = "Navegação integrada 
     getSnapshot: () => snapshot,
     subscribe(listener) {
       if (typeof listener !== "function") throw new TypeError("Browser listener must be a function");
+      return () => {};
+    },
+    subscribeShortcuts(listener) {
+      if (typeof listener !== "function") throw new TypeError("Browser shortcut listener must be a function");
       return () => {};
     },
     openTab: noop,
