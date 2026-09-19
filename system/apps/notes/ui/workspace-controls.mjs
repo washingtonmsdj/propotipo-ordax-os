@@ -1075,7 +1075,10 @@ export function mountNotesWorkspaceControls(
 
   const focusNotesSearch = () => {
     const search = mountedSlot?.querySelector("[data-notes-search]");
-    if (!(search instanceof HTMLInputElement)) return false;
+    if (
+      typeof windowObject.HTMLInputElement !== "function"
+      || !(search instanceof windowObject.HTMLInputElement)
+    ) return false;
     search.focus();
     search.select();
     return true;
@@ -1467,11 +1470,13 @@ export function mountNotesWorkspaceControls(
     if (modifier && !event.altKey && !event.shiftKey) {
       const key = String(event.key ?? "").toLocaleLowerCase("en-US");
       if (key === "n") {
-        if (createNewNote()) event.preventDefault();
+        event.preventDefault();
+        createNewNote();
         return;
       }
       if (key === "f") {
-        if (focusNotesSearch()) event.preventDefault();
+        event.preventDefault();
+        focusNotesSearch();
         return;
       }
     }
