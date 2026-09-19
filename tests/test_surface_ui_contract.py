@@ -181,7 +181,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertIn("subscribeRender", text, path)
             self.assertNotIn("MutationObserver", text, path)
         internet_controls = INTERNET_BROWSER_CONTROLS.read_text(encoding="utf-8")
-        self.assertIn("surface/ui/surface-lifecycle.mjs", internet_controls)
+        self.assertIn("contracts/surface-render-lifecycle.mjs", internet_controls)
         self.assertIn("assertSurfaceRenderLifecycle", internet_controls)
         self.assertIn("subscribeRender", internet_controls)
         self.assertNotIn("MutationObserver", internet_controls)
