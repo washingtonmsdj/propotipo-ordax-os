@@ -1,6 +1,6 @@
 # Current State
 
-Status date: 2026-09-18
+Status date: 2026-09-19
 
 This is the canonical handoff snapshot. Architecture/contracts win if another document conflicts with it. Detailed historical evidence remains under `docs/evidence/`; this file records the current boundary without treating CI proof, development-hardware proof and product-release authorization as interchangeable.
 
@@ -32,6 +32,10 @@ SHARED_WORKSPACE_WINDOW_MODEL=IMPLEMENTED
 FIRST_PARTY_APP_REGISTRY=FILES,NOTES,INTERNET,SETTINGS,ACCOUNT,SYSTEM
 SETTINGS_VISIBLE_LABEL=AJUSTES
 SURFACE_HOME_TECHNICAL_UPDATE_MARKERS=REMOVED
+PRODUCT_VERSION=0.1.0
+PRODUCT_VERSION_LABEL=v0.1.0
+PRODUCT_MATURITY=PROTOTYPE
+PRODUCT_V1_RESERVED_FOR_STABLE_RELEASE=YES
 UPDATE_HUMAN_IDENTITY=DELIVERY_NUMBER
 UPDATE_PR_NUMBER_IS_PRODUCT_IDENTITY=NO
 UPDATE_RUNNING_LABEL=EM_EXECUCAO
@@ -57,6 +61,9 @@ REAL_SYSTEM_BUNDLE_REPRODUCIBLE=PASS
 GRAPHICAL_SURFACE_COMPLETE=NO
 CANONICAL_SYSTEM_RUNTIME_COMPLETE=NO
 ```
+
+
+The first formal human product version is **OrdaX Prototype v0.1.0**. Product version, Entrega and Git SHA now have separate meanings: v0.1.0 identifies the prototype product milestone, Entrega identifies the notebook-facing delivery sequence, and the SHA remains the exact technical build identity. First-party apps such as Notes and Internet continue to share the product version while they are bundled with OrdaX; they do not receive invented independent versions before signed app packaging/release exists. v1.0 remains reserved for the stable product rather than being inferred from prototype maturity or delivery count.
 
 `system/` is the shared product source. The native development path is physically proven through `system/entrypoint (guardian) -> system/supervisor -> system/surface/entrypoint -> system/surface/bin/ordax-surface`; repository CI also proves that the actual `system/` tree can be bundled deterministically as `system.tar`.
 
