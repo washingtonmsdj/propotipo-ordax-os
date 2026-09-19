@@ -7,6 +7,7 @@ export const internetApp = defineFirstPartyApp({
   monogram: "IN",
   singleton: true,
   requiredCapabilities: [],
+  optionalCapabilities: ["browser.web-content"],
   panels: [
     {
       kind: "extension",
