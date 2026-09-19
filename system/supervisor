@@ -437,8 +437,10 @@ apply_remote_checkout() {
     fi
     if ! "$GIT_BIN" -C "$WORKTREE" sparse-checkout set --no-cone \
             /system/ \
+            /bootstrap/base-update/ \
             /bootstrap/trust/ \
             /bootstrap/config/release-envelope-url \
+            /docs/contracts/base-update.json \
             /docs/contracts/release-trust-policy.json \
             /docs/contracts/minimal-bootstrap.json \
             /docs/evidence/release-trust-ceremony.json \
@@ -931,8 +933,12 @@ classify_changes() {
         case "$path" in
             system/*.md|boot/*.md|bootstrap/*.md|boot/*/prove_*|bootstrap/*/prove_*)
                 ;;
-            boot/*|bootstrap/*)
+            bootstrap/kernel/*|bootstrap/initramfs/*)
                 LOW_LEVEL_CHANGED=1
+                ;;
+            bootstrap/base-update/*)
+                ;;
+            boot/*|bootstrap/*)
                 ;;
             system/entrypoint|system/supervisor)
                 supervisor_changed=1
