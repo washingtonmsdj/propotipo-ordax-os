@@ -10,7 +10,7 @@ import {
   MAX_NOTE_TEXT_CHARS,
   NOTES_STORE_SCHEMA,
 } from "../system/contracts/notes-store.mjs";
-import { createNotesRuntime } from "../system/apps/notes/runtime.mjs";
+import { createNotesRuntime } from "../system/apps/notes/domain/runtime.mjs";
 import { createNotesFileImporter } from "../system/services/files/notes-import.mjs";
 
 function fileSpace(readTextFile, calls = []) {
