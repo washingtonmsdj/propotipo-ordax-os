@@ -19,8 +19,8 @@ import { createNativeNotesStore } from "../system/adapters/native/notes.mjs";
 import {
   NOTES_HOME_PROJECT_ID,
   createNotesRuntime,
-} from "../system/services/notes/runtime.mjs";
-import { countNotesWords, createNotesStatistics } from "../system/services/notes/statistics.mjs";
+} from "../system/apps/notes/runtime.mjs";
+import { countNotesWords, createNotesStatistics } from "../system/apps/notes/statistics.mjs";
 
 function memoryStore({ initial = null, scope = "device", saveResult = true } = {}) {
   let snapshot = initial;
