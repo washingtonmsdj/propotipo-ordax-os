@@ -364,6 +364,7 @@ async function start() {
     surface,
     updateHistory,
     appActivation,
+    null,
     componentManager,
   );
   const updateControls = mountUpdateControls(root, updateWatcher, appActivation);
