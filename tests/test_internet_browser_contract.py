@@ -17,6 +17,8 @@ SURFACE_LAUNCHER = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 WEB_COMPOSITION = ROOT / "system" / "composition" / "web"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
+INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
+APP_COMPONENTS = ROOT / "system" / "services" / "components" / "manifests" / "apps.mjs"
 
 
 class InternetBrowserContractTests(unittest.TestCase):
@@ -228,13 +230,23 @@ class InternetBrowserContractTests(unittest.TestCase):
         for mode_id in ("web", "mobile", "desktop"):
             self.assertNotIn("browser.web-content", modes[mode_id]["baseline_capabilities"])
 
-    def test_both_compositions_mount_the_shared_internet_shell(self):
+    def test_both_compositions_load_internet_as_optional_component_runtime(self):
+        runtime = self.text(INTERNET_RUNTIME)
+        manifests = self.text(APP_COMPONENTS)
+        self.assertIn('componentId: "internet"', runtime)
+        self.assertIn('version: "0.2.0"', runtime)
+        self.assertIn('version: "0.2.0"', manifests)
+        self.assertIn('restartScope: "component"', manifests)
+        self.assertIn('healthMode: "runtime"', manifests)
+        self.assertIn('mountInternetBrowserControls', runtime)
         for composition in (WEB_COMPOSITION, NATIVE_COMPOSITION):
             html = self.text(composition / "index.html")
             main = self.text(composition / "main.mjs")
             self.assertIn('../../surface/ui/internet.css', html)
-            self.assertIn('mountInternetBrowserControls', main)
+            self.assertIn('import("../../components/internet/runtime.mjs")', main)
+            self.assertIn('loadOptionalComponentRuntime', main)
             self.assertIn('browserSession', main)
+            self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', main)
 
 
 if __name__ == "__main__":
