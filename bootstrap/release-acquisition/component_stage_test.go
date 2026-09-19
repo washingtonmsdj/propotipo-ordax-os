@@ -29,7 +29,7 @@ func componentPackageBytes(t *testing.T, sourceCommit, version string) []byte {
 			ID: "internet", Title: "Internet", Kind: "app", Version: version,
 			ReleaseMode: "bundled", Criticality: "optional", FailureDomain: "app",
 			RestartScope: "component", HealthMode: "runtime",
-			Owner: "system/apps/internet", Dependencies: []string{"surface-shell"},
+			Owner: "runtime-component-test/internet", Dependencies: []string{"surface-shell"},
 		},
 		SelfContainedSourceGraph:          true,
 		RemoteRuntimeDependencies:         false,
