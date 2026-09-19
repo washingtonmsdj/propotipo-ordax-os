@@ -9,14 +9,15 @@ import {
 } from "../../contracts/notes-store.mjs";
 
 export const NOTES_RUNTIME_SCHEMA = "ordax.notes-runtime/1";
+export const NOTES_HOME_PROJECT_ID = "meu-espaco";
 
 function defaultSnapshot(now = Date.now()) {
   return validateNotesSnapshot({
     $schema: NOTES_SNAPSHOT_SCHEMA,
-    selectedProjectId: "meu-espaco",
+    selectedProjectId: NOTES_HOME_PROJECT_ID,
     selectedNoteId: null,
     projects: [
-      { id: "meu-espaco", name: "Meu espaço", createdAt: now, updatedAt: now },
+      { id: NOTES_HOME_PROJECT_ID, name: "Meu espaço", createdAt: now, updatedAt: now },
     ],
     notes: [],
   });
@@ -101,6 +102,12 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     return index;
   };
 
+  const requireProjectIndex = (draft, projectId) => {
+    const index = draft.projects.findIndex((project) => project.id === projectId);
+    if (index < 0) throw new RangeError(`Unknown note project: ${projectId}`);
+    return index;
+  };
+
   const runtime = {
     schema: NOTES_RUNTIME_SCHEMA,
     getSnapshot() {
@@ -170,6 +177,58 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       draft.selectedNoteId = null;
       return commit(draft);
     },
+    renameProject(projectId, name) {
+      const cleanName = String(name ?? "").trim();
+      if (!cleanName) return runtime.getSnapshot();
+      const draft = thaw(snapshot);
+      const index = requireProjectIndex(draft, projectId);
+      draft.projects[index] = {
+        ...draft.projects[index],
+        name: cleanName.slice(0, 160),
+        updatedAt: now(),
+      };
+      return commit(draft);
+    },
+    moveNote(noteId, projectId) {
+      const draft = thaw(snapshot);
+      const noteIndex = requireNoteIndex(draft, noteId);
+      requireProjectIndex(draft, projectId);
+      if (draft.notes[noteIndex].projectId === projectId) return runtime.getSnapshot();
+      draft.notes[noteIndex] = {
+        ...draft.notes[noteIndex],
+        projectId,
+        updatedAt: now(),
+      };
+      if (draft.selectedNoteId === noteId) {
+        draft.selectedProjectId = projectId;
+      }
+      return commit(draft);
+    },
+    removeProject(projectId) {
+      if (projectId === NOTES_HOME_PROJECT_ID) return runtime.getSnapshot();
+      const draft = thaw(snapshot);
+      const projectIndex = requireProjectIndex(draft, projectId);
+      const stamp = now();
+      requireProjectIndex(draft, NOTES_HOME_PROJECT_ID);
+      draft.notes = draft.notes.map((note) => (
+        note.projectId === projectId
+          ? { ...note, projectId: NOTES_HOME_PROJECT_ID, updatedAt: stamp }
+          : note
+      ));
+      draft.projects.splice(projectIndex, 1);
+      if (draft.selectedProjectId === projectId) {
+        draft.selectedProjectId = NOTES_HOME_PROJECT_ID;
+        if (
+          draft.selectedNoteId === null
+          || !draft.notes.some((note) => note.id === draft.selectedNoteId && note.deletedAt === null)
+        ) {
+          draft.selectedNoteId = draft.notes.find(
+            (note) => note.projectId === NOTES_HOME_PROJECT_ID && note.deletedAt === null,
+          )?.id ?? null;
+        }
+      }
+      return commit(draft);
+    },
     updateNote(noteId, patch) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
@@ -230,6 +289,15 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       draft.notes[index].updatedAt = now();
       return commit(draft);
     },
+    removeTask(noteId, taskId) {
+      const draft = thaw(snapshot);
+      const index = requireNoteIndex(draft, noteId);
+      const before = draft.notes[index].tasks.length;
+      draft.notes[index].tasks = draft.notes[index].tasks.filter((task) => task.id !== taskId);
+      if (draft.notes[index].tasks.length === before) return runtime.getSnapshot();
+      draft.notes[index].updatedAt = now();
+      return commit(draft);
+    },
     addReference(noteId, reference) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
@@ -263,7 +331,21 @@ export function assertNotesRuntime(runtime) {
   if (!runtime || runtime.schema !== NOTES_RUNTIME_SCHEMA) {
     throw new TypeError("A compatible notes runtime is required");
   }
-  for (const method of ["getSnapshot", "subscribe", "selectProject", "selectNote", "createNote", "updateNote"]) {
+  for (const method of [
+    "getSnapshot",
+    "subscribe",
+    "selectProject",
+    "selectNote",
+    "createNote",
+    "createProject",
+    "renameProject",
+    "removeProject",
+    "moveNote",
+    "updateNote",
+    "addTask",
+    "updateTask",
+    "removeTask",
+  ]) {
     if (typeof runtime[method] !== "function") throw new TypeError(`Notes runtime must implement ${method}()`);
   }
   return runtime;
