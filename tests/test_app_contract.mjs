@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { defineFirstPartyApp } from "../system/apps/app-contract.mjs";
+import { notesApp } from "../system/apps/notes/app.mjs";
 import { validateFileListing } from "../system/contracts/file-space.mjs";
 
 function baseSpec(panel) {
@@ -94,6 +95,12 @@ test("app contract rejects invalid extension identifiers", () => {
     })),
     /valid extensionId/,
   );
+});
+
+test("Notes stays a first-party app and advertises native file-space as optional", () => {
+  assert.equal(notesApp.id, "notes");
+  assert.deepEqual(notesApp.requiredCapabilities, []);
+  assert.deepEqual(notesApp.optionalCapabilities, ["filesystem.user-space"]);
 });
 
 test("app contract rejects obsolete identity-specific panel kinds", () => {
