@@ -36,6 +36,14 @@ TOP_LEVEL_NETWORK_SCHEMES = frozenset({"http", "https"})
 RESOURCE_NETWORK_SCHEMES = frozenset({"http", "https", "ws", "wss"})
 INTERNAL_RESOURCE_SCHEMES = frozenset({"about", "blob", "data"})
 LOCAL_HOST_SUFFIXES = (".localhost", ".local", ".home.arpa")
+HOST_SHORTCUTS = (
+    ("<Primary>l", "focus-address", True),
+    ("<Primary>t", "new-tab", True),
+    ("<Primary>w", "close-tab", False),
+    ("<Primary>r", "reload", False),
+    ("<Alt>Left", "back", False),
+    ("<Alt>Right", "forward", False),
+)
 
 
 def public_network_uri(uri: str, schemes: frozenset[str]) -> bool:
@@ -126,6 +134,7 @@ class OrdaXBrowserHost:
         self.active_tab_id: str | None = None
         self.viewport = {"visible": False, "x": 0, "y": 0, "width": 0, "height": 0}
         self.restoring_session = False
+        self.accelerator_callbacks = []
 
         os.makedirs(self.profile_root, mode=0o700, exist_ok=True)
         profile_data = os.path.join(self.profile_root, "default", "data")
@@ -158,9 +167,25 @@ class OrdaXBrowserHost:
         self.window.set_default_size(1366, 768)
         self.window.add(self.overlay)
         self.window.connect("destroy", self.on_window_destroy)
+        self.accel_group = Gtk.AccelGroup()
+        self.window.add_accel_group(self.accel_group)
+        for accelerator, action, focus_surface in HOST_SHORTCUTS:
+            self.register_shortcut(accelerator, action, focus_surface)
         self.window.fullscreen()
         self.window.show_all()
         self.restore_session()
+
+    def emit_host_event(self, payload: dict) -> None:
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        script = (
+            "window.dispatchEvent(new CustomEvent('ordax-browser-host',{detail:"
+            + encoded
+            + "}));"
+        )
+        try:
+            self.surface_view.run_javascript(script, None, None, None)
+        except Exception as exc:  # pragma: no cover - native runtime diagnostic
+            print(f"ordax-browser-host: failed to emit host event: {exc}", file=sys.stderr, flush=True)
 
     def emit_snapshot(self) -> None:
         snapshot = {
@@ -169,16 +194,26 @@ class OrdaXBrowserHost:
             "activeTabId": self.active_tab_id,
             "tabs": [tab.snapshot() for tab in self.tabs.values()],
         }
-        payload = json.dumps({"type": "snapshot", "snapshot": snapshot}, ensure_ascii=False, separators=(",", ":"))
-        script = (
-            "window.dispatchEvent(new CustomEvent('ordax-browser-host',{detail:"
-            + payload
-            + "}));"
+        self.emit_host_event({"type": "snapshot", "snapshot": snapshot})
+
+    def register_shortcut(self, accelerator: str, action: str, focus_surface: bool) -> None:
+        keyval, modifiers = Gtk.accelerator_parse(accelerator)
+        if not keyval:
+            raise RuntimeError(f"invalid browser accelerator {accelerator!r}")
+
+        def callback(*_args) -> bool:
+            if focus_surface:
+                self.surface_view.grab_focus()
+            self.emit_host_event({"type": "shortcut", "action": action})
+            return True
+
+        self.accelerator_callbacks.append(callback)
+        self.accel_group.connect(
+            keyval,
+            modifiers,
+            Gtk.AccelFlags.VISIBLE,
+            callback,
         )
-        try:
-            self.surface_view.run_javascript(script, None, None, None)
-        except Exception as exc:  # pragma: no cover - native runtime diagnostic
-            print(f"ordax-browser-host: failed to emit snapshot: {exc}", file=sys.stderr, flush=True)
 
     def decode_message(self, result: object) -> dict | None:
         try:
