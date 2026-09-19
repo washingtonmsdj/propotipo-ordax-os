@@ -24,7 +24,7 @@ class InternetFavoritesContractTests(unittest.TestCase):
         self.assertIn('favoritePort.remove(', controls)
         self.assertIn('dataset.browserFavoritesToggle', controls)
         self.assertIn('dataset.browserOpenFavorite', controls)
-        self.assertIn('data-browser-action="bookmark"', controls)
+        self.assertIn('iconButton(documentObject, "☆", "Adicionar aos favoritos", "bookmark")', controls)
         self.assertNotIn('localStorage', controls)
         self.assertNotIn('sessionStorage', controls)
         self.assertNotIn('/__ordax/native/', controls)
