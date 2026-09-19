@@ -23,7 +23,7 @@ const CSS_FILES = [
   'system/surface/ui/settings.css',
 ];
 const COMPONENT_ASSET_FILES = Object.freeze({
-  'system/components/internet/internet.css': 'text/css',
+  'system/apps/internet/internet.css': 'text/css',
 });
 
 function parseArgs(argv) {
