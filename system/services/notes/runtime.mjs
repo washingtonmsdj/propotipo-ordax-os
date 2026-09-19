@@ -47,6 +47,32 @@ function thaw(snapshot) {
   };
 }
 
+function richBodiesEqual(left, right) {
+  if (left === right) return true;
+  if (!left || !right || left.blocks.length !== right.blocks.length) return false;
+  return left.blocks.every((block, blockIndex) => {
+    const other = right.blocks[blockIndex];
+    if (
+      block.type !== other.type
+      || block.text !== other.text
+      || block.marks.length !== other.marks.length
+    ) {
+      return false;
+    }
+    return block.marks.every((mark, markIndex) => {
+      const otherMark = other.marks[markIndex];
+      return mark.type === otherMark.type
+        && mark.start === otherMark.start
+        && mark.end === otherMark.end
+        && mark.href === otherMark.href;
+    });
+  });
+}
+
+function mutationPatch(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 export function createNotesRuntime({ store = null, now = () => Date.now() } = {}) {
   let memoryStore = null;
   if (store === null) {
@@ -133,15 +159,22 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     selectProject(projectId) {
       const draft = thaw(snapshot);
       if (!draft.projects.some((project) => project.id === projectId)) return runtime.getSnapshot();
-      draft.selectedProjectId = projectId;
       const next = draft.notes.find((note) => note.projectId === projectId && note.deletedAt === null);
-      draft.selectedNoteId = next?.id ?? null;
+      const nextNoteId = next?.id ?? null;
+      if (draft.selectedProjectId === projectId && draft.selectedNoteId === nextNoteId) {
+        return runtime.getSnapshot();
+      }
+      draft.selectedProjectId = projectId;
+      draft.selectedNoteId = nextNoteId;
       return commit(draft);
     },
     selectNote(noteId) {
       const draft = thaw(snapshot);
       const note = draft.notes.find((candidate) => candidate.id === noteId);
       if (!note) return runtime.getSnapshot();
+      if (draft.selectedProjectId === note.projectId && draft.selectedNoteId === note.id) {
+        return runtime.getSnapshot();
+      }
       draft.selectedProjectId = note.projectId;
       draft.selectedNoteId = note.id;
       return commit(draft);
@@ -189,9 +222,11 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       if (!cleanName) return runtime.getSnapshot();
       const draft = thaw(snapshot);
       const index = requireProjectIndex(draft, projectId);
+      const nextName = cleanName.slice(0, 160);
+      if (draft.projects[index].name === nextName) return runtime.getSnapshot();
       draft.projects[index] = {
         ...draft.projects[index],
-        name: cleanName.slice(0, 160),
+        name: nextName,
         updatedAt: now(),
       };
       return commit(draft);
@@ -242,18 +277,38 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const index = requireNoteIndex(draft, noteId);
       const current = draft.notes[index];
       if (current.deletedAt !== null) return runtime.getSnapshot();
-      const next = { ...current, updatedAt: now() };
-      if (Object.prototype.hasOwnProperty.call(patch, "title")) {
-        next.title = String(patch.title ?? "").slice(0, 1024);
+
+      const input = mutationPatch(patch);
+      let nextTitle = current.title;
+      let nextBody = current.body;
+      let nextRichBody = current.richBody;
+
+      if (Object.prototype.hasOwnProperty.call(input, "title")) {
+        nextTitle = String(input.title ?? "").slice(0, 1024);
       }
-      if (Object.prototype.hasOwnProperty.call(patch, "richBody")) {
-        next.richBody = validateNotesRichBody(patch.richBody);
-        next.body = notesRichBodyToPlainText(next.richBody);
-      } else if (Object.prototype.hasOwnProperty.call(patch, "body")) {
-        next.body = String(patch.body ?? "").slice(0, 65536);
-        next.richBody = createNotesRichBodyFromPlainText(next.body);
+      if (Object.prototype.hasOwnProperty.call(input, "richBody")) {
+        nextRichBody = validateNotesRichBody(input.richBody);
+        nextBody = notesRichBodyToPlainText(nextRichBody);
+      } else if (Object.prototype.hasOwnProperty.call(input, "body")) {
+        nextBody = String(input.body ?? "").slice(0, 65536);
+        nextRichBody = createNotesRichBodyFromPlainText(nextBody);
       }
-      draft.notes[index] = next;
+
+      if (
+        nextTitle === current.title
+        && nextBody === current.body
+        && richBodiesEqual(nextRichBody, current.richBody)
+      ) {
+        return runtime.getSnapshot();
+      }
+
+      draft.notes[index] = {
+        ...current,
+        title: nextTitle,
+        body: nextBody,
+        richBody: nextRichBody,
+        updatedAt: now(),
+      };
       return commit(draft);
     },
     toggleFavorite(noteId) {
@@ -318,10 +373,24 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       const taskIndex = draft.notes[index].tasks.findIndex((task) => task.id === taskId);
       if (taskIndex < 0) return runtime.getSnapshot();
-      const task = { ...draft.notes[index].tasks[taskIndex] };
-      if (Object.prototype.hasOwnProperty.call(patch, "text")) task.text = String(patch.text ?? "").slice(0, 2048);
-      if (Object.prototype.hasOwnProperty.call(patch, "done")) task.done = patch.done === true;
-      draft.notes[index].tasks[taskIndex] = task;
+
+      const currentTask = draft.notes[index].tasks[taskIndex];
+      const input = mutationPatch(patch);
+      const nextText = Object.prototype.hasOwnProperty.call(input, "text")
+        ? String(input.text ?? "").slice(0, 2048)
+        : currentTask.text;
+      const nextDone = Object.prototype.hasOwnProperty.call(input, "done")
+        ? input.done === true
+        : currentTask.done;
+      if (nextText === currentTask.text && nextDone === currentTask.done) {
+        return runtime.getSnapshot();
+      }
+
+      draft.notes[index].tasks[taskIndex] = {
+        ...currentTask,
+        text: nextText,
+        done: nextDone,
+      };
       draft.notes[index].updatedAt = now();
       return commit(draft);
     },

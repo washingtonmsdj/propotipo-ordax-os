@@ -657,6 +657,119 @@ test("runtime collection limits fail closed without validation exceptions or pha
   assert.deepEqual(boundedRuntime.getSnapshot().document, boundedBefore);
 });
 
+test("semantic no-op mutations do not write, emit, or advance timestamps", () => {
+  let stored = null;
+  let saves = 0;
+  let clock = 100_000;
+  const store = {
+    schema: NOTES_STORE_SCHEMA,
+    scope: "device",
+    load() {
+      return stored;
+    },
+    save(next) {
+      stored = validateNotesSnapshot(next);
+      saves += 1;
+      return true;
+    },
+  };
+  const runtime = createNotesRuntime({ store, now: () => clock++ });
+  let emissions = 0;
+  const unsubscribe = runtime.subscribe(() => {
+    emissions += 1;
+  });
+
+  runtime.createNote();
+  let state = runtime.getSnapshot();
+  const noteId = state.document.selectedNoteId;
+  const note = state.document.notes.find((item) => item.id === noteId);
+  const afterCreate = {
+    saves,
+    emissions,
+    lastSavedAt: state.persistence.lastSavedAt,
+    updatedAt: note.updatedAt,
+  };
+
+  runtime.selectNote(noteId);
+  runtime.updateNote(noteId, null);
+  runtime.updateNote(noteId, { title: note.title });
+  runtime.updateNote(noteId, { body: note.body });
+  runtime.updateNote(noteId, { richBody: note.richBody });
+
+  state = runtime.getSnapshot();
+  assert.equal(saves, afterCreate.saves);
+  assert.equal(emissions, afterCreate.emissions);
+  assert.equal(state.persistence.lastSavedAt, afterCreate.lastSavedAt);
+  assert.equal(
+    state.document.notes.find((item) => item.id === noteId).updatedAt,
+    afterCreate.updatedAt,
+  );
+
+  runtime.updateNote(noteId, { body: "x" });
+  const beforeFormat = runtime.getSnapshot();
+  const beforeFormatSaves = saves;
+  runtime.updateNote(noteId, {
+    richBody: {
+      blocks: [{
+        type: "paragraph",
+        text: "x",
+        marks: [{ type: "bold", start: 0, end: 1 }],
+      }],
+    },
+  });
+  const formatted = runtime.getSnapshot();
+  assert.equal(saves, beforeFormatSaves + 1);
+  assert.equal(formatted.document.notes.find((item) => item.id === noteId).body, "x");
+  assert.equal(
+    formatted.document.notes.find((item) => item.id === noteId).richBody.blocks[0].marks[0].type,
+    "bold",
+  );
+  assert.ok(formatted.persistence.lastSavedAt > beforeFormat.persistence.lastSavedAt);
+
+  runtime.addTask(noteId, "Item");
+  state = runtime.getSnapshot();
+  const task = state.document.notes.find((item) => item.id === noteId).tasks[0];
+  const beforeTaskNoop = {
+    saves,
+    emissions,
+    lastSavedAt: state.persistence.lastSavedAt,
+    updatedAt: state.document.notes.find((item) => item.id === noteId).updatedAt,
+  };
+  runtime.updateTask(noteId, task.id, null);
+  runtime.updateTask(noteId, task.id, { text: task.text, done: task.done });
+  state = runtime.getSnapshot();
+  assert.equal(saves, beforeTaskNoop.saves);
+  assert.equal(emissions, beforeTaskNoop.emissions);
+  assert.equal(state.persistence.lastSavedAt, beforeTaskNoop.lastSavedAt);
+  assert.equal(
+    state.document.notes.find((item) => item.id === noteId).updatedAt,
+    beforeTaskNoop.updatedAt,
+  );
+
+  runtime.createProject("Projeto idempotente");
+  state = runtime.getSnapshot();
+  const projectId = state.document.selectedProjectId;
+  const project = state.document.projects.find((item) => item.id === projectId);
+  const beforeProjectNoop = {
+    saves,
+    emissions,
+    lastSavedAt: state.persistence.lastSavedAt,
+    updatedAt: project.updatedAt,
+  };
+  runtime.selectProject(projectId);
+  runtime.renameProject(projectId, `  ${project.name}  `);
+  state = runtime.getSnapshot();
+  assert.equal(saves, beforeProjectNoop.saves);
+  assert.equal(emissions, beforeProjectNoop.emissions);
+  assert.equal(state.persistence.lastSavedAt, beforeProjectNoop.lastSavedAt);
+  assert.equal(
+    state.document.projects.find((item) => item.id === projectId).updatedAt,
+    beforeProjectNoop.updatedAt,
+  );
+
+  unsubscribe();
+});
+
 test("notes runtime exposes local persistence failure without losing session state", () => {
   const runtime = createNotesRuntime({
     store: memoryStore({ saveResult: false }),
