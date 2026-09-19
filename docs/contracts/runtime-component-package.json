@@ -1,0 +1,19 @@
+{
+  "$schema": "prototype-ordax.runtime-component-package-policy/1",
+  "status": "candidate-packaging",
+  "package_schema": "prototype-ordax.runtime-component-package/1",
+  "source_repository": "washingtonmsdj/prototipo-ordax-os",
+  "component_manifest_source": "system/services/components/manifests/",
+  "supported_components": [
+    "internet"
+  ],
+  "self_contained_source_graph_required": true,
+  "remote_runtime_dependencies_allowed": false,
+  "native_adapters_may_be_packaged": false,
+  "composition_may_be_packaged": false,
+  "signature_required_before_activation": true,
+  "activation_allowed_from_unsigned_candidate": false,
+  "publish_allowed": false,
+  "rollback_slot_activation_available": false,
+  "next_gate": "signed Native installer with pending health promotion"
+}
