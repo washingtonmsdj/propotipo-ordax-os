@@ -132,6 +132,8 @@ def validate_rootfs_source(rootfs_dir: Path, source_commit: str) -> Path:
         path = rootfs / relative
         if path.is_symlink() or not path.is_file():
             raise CandidateError(f"development rootfs required file is missing: {relative}")
+        if path.stat().st_mode & 0o111 == 0:
+            raise CandidateError(f"development rootfs required file is not executable: {relative}")
     return rootfs
 
 
