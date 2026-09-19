@@ -221,7 +221,7 @@ async function start() {
     try {
       batteryTrayControls = mountBatteryTrayControls(root, powerStatus);
     } catch (error) {
-      reportClientDiagnostic("network-tray-status", error);
+      reportClientDiagnostic("battery-tray-status", error);
     }
   }
   let batteryQuickPanel = null;
