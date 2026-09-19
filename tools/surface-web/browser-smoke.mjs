@@ -842,7 +842,6 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesFileReferenceChoicePresent = Boolean(fileReferenceChoice);
     result.notesFileReferenceFailsClosedOnWeb = fileReferenceChoice?.disabled === true;
 
-    const originalPrompt = window.prompt;
     const referencePromptValues = ['  https://Example.COM/docs?q=1  ', 'Documentação'];
     window.prompt = () => referencePromptValues.shift() ?? null;
     try {
