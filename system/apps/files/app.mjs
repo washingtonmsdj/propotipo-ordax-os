@@ -1,5 +1,5 @@
 import { defineFirstPartyApp } from "../app-contract.mjs";
-import { filesComponent } from "../../services/components/manifests/apps.mjs";
+import { filesComponent } from "./component.mjs";
 
 export const filesApp = defineFirstPartyApp({
   id: "files",
