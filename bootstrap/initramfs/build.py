@@ -132,8 +132,8 @@ def check_contract() -> dict:
     if recovery_mount not in text or text.index(recovery_mount) > text.index(rw_mount):
         raise BuildError("recovery must remain a separate read-only path before normal rw boot")
     recovery_section = text[text.index(recovery_mount):text.index(rw_mount)]
-    if "ordax-grow-ext4" in recovery_section:
-        raise BuildError("recovery mode may never invoke the ext4 growth helper")
+    if grow_call in recovery_section:
+        raise BuildError("recovery mode may never invoke online ext4 growth")
     if contract.get("network_inside_fixed_initramfs") is not False:
         raise BuildError("network must remain outside the fixed initramfs")
     return {
