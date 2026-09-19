@@ -46,9 +46,16 @@
     "local_application_history_required": true
   },
   "product_version": {
-    "currently_assigned": false,
+    "currently_assigned": true,
+    "scheme": "semantic-versioning",
+    "current": "0.1.0",
+    "display": "v0.1.0",
+    "maturity": "prototype",
+    "stable_release": false,
+    "independent_from_delivery": true,
     "may_not_be_inferred_from_delivery": true,
-    "may_not_be_inferred_from_pull_request": true
+    "may_not_be_inferred_from_pull_request": true,
+    "v1_reserved_for_stable_product": true
   },
   "component_version": {
     "currently_independent": false,
