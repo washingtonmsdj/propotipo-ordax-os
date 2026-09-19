@@ -107,11 +107,7 @@ export function validateComponentManifests(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 128) {
     throw new TypeError("Component manifest catalog must be a bounded non-empty array");
   }
-  const manifests = value.map((manifest) =>
-    manifest?.schema === COMPONENT_MANIFEST_SCHEMA
-      ? defineComponentManifest(manifest)
-      : defineComponentManifest(manifest)
-  );
+  const manifests = value.map((manifest) => defineComponentManifest(manifest));
   if (new Set(manifests.map((manifest) => manifest.id)).size !== manifests.length) {
     throw new TypeError("Component ids must be unique");
   }
