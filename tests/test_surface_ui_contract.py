@@ -9,6 +9,7 @@ APP_CATALOG = APPS / "catalog.mjs"
 APP_CONTRACT = APPS / "app-contract.mjs"
 APP_OWNERS = {
     "files": APPS / "files" / "app.mjs",
+    "notes": APPS / "notes" / "app.mjs",
     "settings": APPS / "settings" / "app.mjs",
     "account": APPS / "account" / "app.mjs",
     "system": APPS / "system" / "app.mjs",
@@ -43,6 +44,7 @@ UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mj
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
+NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
@@ -61,6 +63,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             DESKTOP_SHELL,
             SURFACE_LIFECYCLE,
             FILE_SPACE_CONTROLS,
+            NOTES_WORKSPACE_CONTROLS,
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
             SETTINGS_OVERVIEW_CONTROLS,
@@ -69,6 +72,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
             SURFACE / "files.css",
+            SURFACE / "notes.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
             SURFACE / "settings.css",
@@ -150,7 +154,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("getAppTarget(appId)", surface)
         self.assertIn("setAppTarget(appId, target)", surface)
         self.assertIn('type: "app.target"', surface)
-        for path in (FILE_SPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
@@ -203,6 +207,33 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('.ordax-files-view', css)
         self.assertIn("../../surface/ui/files.css", web_html)
         self.assertIn("../../surface/ui/files.css", native_html)
+
+    def test_notes_uses_shared_local_workspace_extension(self):
+        notes = APP_OWNERS["notes"].read_text(encoding="utf-8")
+        controls = NOTES_WORKSPACE_CONTROLS.read_text(encoding="utf-8")
+        css = (SURFACE / "notes.css").read_text(encoding="utf-8")
+        web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
+        native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
+        web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+
+        self.assertIn('kind: "extension"', notes)
+        self.assertIn('extensionId: "notes-workspace"', notes)
+        self.assertIn('NOTES_EXTENSION_SELECTOR', controls)
+        self.assertIn("assertNotesRuntime", controls)
+        self.assertIn("scheduleSave", controls)
+        self.assertIn("Referências", controls)
+        self.assertIn("Disponível offline", controls)
+        self.assertIn(".ordax-notes-view", css)
+        self.assertIn("--notes-accent: #ed4b25", css)
+        self.assertIn("../../surface/ui/notes.css", web_html)
+        self.assertIn("../../surface/ui/notes.css", native_html)
+        self.assertIn("createWebNotesStore", web_main)
+        self.assertIn("createNativeNotesStore", native_main)
+        self.assertIn("mountNotesWorkspaceControls", web_main)
+        self.assertIn("mountNotesWorkspaceControls", native_main)
+        self.assertNotIn("localStorage", controls)
+        self.assertNotIn("/__ordax/native/", controls)
 
     def test_system_uses_formal_shared_overview_extension(self):
         system = APP_OWNERS["system"].read_text(encoding="utf-8")
@@ -479,6 +510,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/tokens.css", html)
         self.assertIn("../../surface/ui/surface.css", html)
         self.assertIn("../../surface/ui/files.css", html)
+        self.assertIn("../../surface/ui/notes.css", html)
         self.assertIn("../../surface/ui/system.css", html)
         self.assertIn("../../surface/ui/account.css", html)
         self.assertIn("../../surface/ui/settings.css", html)
@@ -506,7 +538,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
         css = (SURFACE / "surface.css").read_text(encoding="utf-8")
         tokens = (SURFACE / "tokens.css").read_text(encoding="utf-8")
-        for app_id in ("files", "settings", "account", "system"):
+        for app_id in ("files", "notes", "settings", "account", "system"):
             self.assertIn(f'railButton("{app_id}"', shell)
         self.assertIn("data-power-slot", shell)
         self.assertIn("data-update-slot", shell)
