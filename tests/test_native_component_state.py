@@ -96,7 +96,7 @@ class NativeComponentStateTests(unittest.TestCase):
         self.assertIn('ordax.component-manager/1', contract)
         self.assertIn("appComponentManifests", catalog)
         self.assertIn("coreComponentManifests", catalog)
-        self.assertIn("../../apps/internet/component.mjs", catalog)
+        self.assertIn("./internet/component.mjs", catalog)
         self.assertNotIn('id: "internet"', app_manifests)
         self.assertIn('id: "internet"', internet_component)
         self.assertIn('releaseMode: "git-app"', internet_component)
