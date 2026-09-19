@@ -5,6 +5,12 @@ import {
   validateImagePreview,
 } from "../../contracts/file-space.mjs";
 import {
+  MAX_NOTES,
+  MAX_NOTE_PROJECTS,
+  MAX_NOTE_REFERENCES,
+  MAX_NOTE_TASKS,
+} from "../../contracts/notes-store.mjs";
+import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
 } from "../../services/notes/runtime.mjs";
@@ -749,11 +755,19 @@ export function mountNotesWorkspaceControls(
     }
     const choices = view.querySelector("[data-notes-reference-choices]");
     choices.hidden = !referenceChooserOpen;
+    const referencesFull = note.references.length >= MAX_NOTE_REFERENCES;
+    const linkChoice = choices.querySelector('[data-notes-action="add-link-reference"]');
+    linkChoice.disabled = referencesFull;
+    linkChoice.title = referencesFull
+      ? `Limite de ${MAX_NOTE_REFERENCES} referências atingido`
+      : "Adicionar link da web";
     const fileChoice = choices.querySelector('[data-notes-action="add-file-reference"]');
-    fileChoice.disabled = filePort === null;
-    fileChoice.title = filePort
-      ? "Relacionar um arquivo local à nota"
-      : "Arquivos locais estão disponíveis no OrdaX Native";
+    fileChoice.disabled = filePort === null || referencesFull;
+    fileChoice.title = referencesFull
+      ? `Limite de ${MAX_NOTE_REFERENCES} referências atingido`
+      : filePort
+        ? "Relacionar um arquivo local à nota"
+        : "Arquivos locais estão disponíveis no OrdaX Native";
 
     const picker = view.querySelector("[data-notes-file-picker]");
     picker.hidden = !filePickerOpen;
@@ -832,7 +846,9 @@ export function mountNotesWorkspaceControls(
       "attach-file-reference",
       filePickerPurpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
     );
-    attach.disabled = !selectedFilePath || filePickerPending;
+    attach.disabled = !selectedFilePath
+      || filePickerPending
+      || note.references.length >= MAX_NOTE_REFERENCES;
     picker.append(attach);
   };
 
@@ -948,6 +964,55 @@ export function mountNotesWorkspaceControls(
     return true;
   };
 
+  const renderCapacityControls = (view, note) => {
+    const notesFull = state.document.notes.length >= MAX_NOTES;
+    const projectsFull = state.document.projects.length >= MAX_NOTE_PROJECTS;
+    const tasksFull = note?.tasks.length >= MAX_NOTE_TASKS;
+    const referencesFull = note?.references.length >= MAX_NOTE_REFERENCES;
+
+    const newNote = view.querySelector('[data-notes-action="new-note"]');
+    if (newNote) {
+      newNote.disabled = notesFull;
+      newNote.title = notesFull
+        ? `Limite de ${MAX_NOTES} notas atingido`
+        : "Nova nota";
+    }
+
+    const newProject = view.querySelector('[data-notes-action="new-project"]');
+    if (newProject) {
+      newProject.disabled = projectsFull;
+      newProject.title = projectsFull
+        ? `Limite de ${MAX_NOTE_PROJECTS} projetos atingido`
+        : "Novo projeto";
+    }
+
+    const addTask = view.querySelector('[data-notes-action="add-task"]');
+    if (addTask) {
+      addTask.disabled = !note || tasksFull;
+      addTask.title = tasksFull
+        ? `Limite de ${MAX_NOTE_TASKS} itens atingido`
+        : "Adicionar item de checklist";
+    }
+
+    const addReference = view.querySelector('[data-notes-action="add-reference"]');
+    if (addReference) {
+      addReference.disabled = !note || referencesFull;
+      addReference.title = referencesFull
+        ? `Limite de ${MAX_NOTE_REFERENCES} referências atingido`
+        : "Adicionar referência";
+    }
+
+    const imageTool = view.querySelector('[data-notes-action="insert-image"]');
+    if (imageTool) {
+      imageTool.disabled = !note || filePort === null || referencesFull;
+      imageTool.title = referencesFull
+        ? `Limite de ${MAX_NOTE_REFERENCES} referências atingido`
+        : filePort === null
+          ? "Imagens locais estão disponíveis no OrdaX Native"
+          : "Relacionar imagem local";
+    }
+  };
+
   const renderMoveProjects = (view, note) => {
     const list = view.querySelector(".ordax-notes-move-projects");
     list.replaceChildren();
@@ -973,8 +1038,7 @@ export function mountNotesWorkspaceControls(
     const documentView = view.querySelector("[data-notes-document]");
     const controls = view.querySelectorAll(".ordax-notes-toolbar button, .ordax-notes-format, .ordax-notes-star, .ordax-notes-more");
     for (const control of controls) control.disabled = !note;
-    const imageTool = view.querySelector('[data-notes-action="insert-image"]');
-    if (imageTool) imageTool.disabled = !note || filePort === null;
+    renderCapacityControls(view, note);
 
     if (!note) {
       releaseImagePreviewsExcept(new Set());
@@ -1089,6 +1153,7 @@ export function mountNotesWorkspaceControls(
     const note = currentNote();
 
     if (action === "new-note") {
+      if (state.document.notes.length >= MAX_NOTES) return;
       resetReferenceFlow();
       flushEditor();
       mode = "project";
@@ -1097,6 +1162,7 @@ export function mountNotesWorkspaceControls(
       return;
     }
     if (action === "new-project") {
+      if (state.document.projects.length >= MAX_NOTE_PROJECTS) return;
       const name = windowObject.prompt?.("Nome do novo projeto:");
       if (name?.trim()) {
         projectMenuId = null;
@@ -1193,7 +1259,7 @@ export function mountNotesWorkspaceControls(
 
     const body = mountedSlot.querySelector("[data-notes-body]");
     if (action === "favorite") runtime.toggleFavorite(note.id);
-    if (action === "add-task") runtime.addTask(note.id);
+    if (action === "add-task" && note.tasks.length < MAX_NOTE_TASKS) runtime.addTask(note.id);
     if (action === "remove-task") runtime.removeTask(note.id, actionNode.dataset.taskId);
     if (action === "move-note-project") {
       const projectId = actionNode.dataset.projectId;
@@ -1253,7 +1319,11 @@ export function mountNotesWorkspaceControls(
       promptEditorLink(body);
       syncEditorToolbar();
     }
-    if (action === "insert-image" && filePort) {
+    if (
+      action === "insert-image"
+      && filePort
+      && note.references.length < MAX_NOTE_REFERENCES
+    ) {
       referencesOpen = true;
       referenceNoteId = note.id;
       referenceChooserOpen = false;
@@ -1270,6 +1340,7 @@ export function mountNotesWorkspaceControls(
       syncEditorToolbar();
     }
     if (action === "add-reference") {
+      if (note.references.length >= MAX_NOTE_REFERENCES) return;
       referenceNoteId = note.id;
       referenceChooserOpen = !referenceChooserOpen;
       filePickerOpen = false;
@@ -1278,6 +1349,7 @@ export function mountNotesWorkspaceControls(
       render();
     }
     if (action === "add-link-reference") {
+      if (note.references.length >= MAX_NOTE_REFERENCES) return;
       referenceNoteId = note.id;
       const href = windowObject.prompt?.("Cole o endereço da referência:");
       if (!href) return;
@@ -1296,7 +1368,11 @@ export function mountNotesWorkspaceControls(
       resetReferenceFlow();
       runtime.addReference(note.id, { kind: "link", title, detail: "Link", href });
     }
-    if (action === "add-file-reference" && filePort) {
+    if (
+      action === "add-file-reference"
+      && filePort
+      && note.references.length < MAX_NOTE_REFERENCES
+    ) {
       referenceNoteId = note.id;
       referenceChooserOpen = false;
       filePickerPurpose = "file";
@@ -1320,7 +1396,12 @@ export function mountNotesWorkspaceControls(
       selectedFilePath = actionNode.dataset.filePath;
       render();
     }
-    if (action === "attach-file-reference" && selectedFilePath && referenceNoteId === note.id) {
+    if (
+      action === "attach-file-reference"
+      && selectedFilePath
+      && referenceNoteId === note.id
+      && note.references.length < MAX_NOTE_REFERENCES
+    ) {
       const path = selectedFilePath;
       const purpose = filePickerPurpose;
       const title = path.split("/").filter(Boolean).at(-1) || "Arquivo";
