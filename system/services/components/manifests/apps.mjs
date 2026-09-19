@@ -28,20 +28,6 @@ export const notesComponent = defineComponentManifest({
   dependencies: ["surface-shell"],
 });
 
-export const internetComponent = defineComponentManifest({
-  id: "internet",
-  title: "Internet",
-  kind: "app",
-  version: "0.3.0",
-  releaseMode: "bundled",
-  criticality: "optional",
-  failureDomain: "app",
-  restartScope: "component",
-  healthMode: "runtime",
-  owner: "system/apps/internet",
-  dependencies: ["surface-shell"],
-});
-
 export const settingsComponent = defineComponentManifest({
   id: "settings",
   title: "Ajustes",
@@ -87,7 +73,6 @@ export const systemComponent = defineComponentManifest({
 export const appComponentManifests = Object.freeze([
   filesComponent,
   notesComponent,
-  internetComponent,
   settingsComponent,
   accountComponent,
   systemComponent,
