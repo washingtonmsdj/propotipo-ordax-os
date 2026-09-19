@@ -249,15 +249,37 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertIn("repetindo uma vez apos pausa curta", dev_init)
         self.assertIn("sleep 2", dev_init)
 
-    def test_pull_rejects_dirty_checkout_and_unexpected_origin(self) -> None:
+    def test_pull_repairs_dirty_runtime_checkout_and_rejects_unexpected_origin(self) -> None:
         self._script(PULL)
+
+        entrypoint = self.worktree / "system/entrypoint"
+        entrypoint.write_text("#!/bin/sh\nprintf '%s\\n' 'locally-corrupted'\n", encoding="utf-8")
         dirty = self.worktree / "system/local-change.txt"
         dirty.write_text("local\n", encoding="utf-8")
-        result = self._script(PULL, check=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("alteracoes locais", result.stderr)
 
-        dirty.unlink()
+        self.commit_v2 = self._commit_runtime("runtime-v2")
+        result = self._script(PULL)
+
+        self.assertIn("checkout local alterado", result.stderr)
+        self.assertIn("checkout local restaurado", result.stderr)
+        self.assertFalse(dirty.exists())
+        self.assertIn("runtime-v2", entrypoint.read_text(encoding="utf-8"))
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "status", "--porcelain"]).stdout,
+            "",
+        )
+        self.assertEqual(
+            (self.state / "current-commit").read_text().strip(),
+            self.commit_v2,
+        )
+        diagnostic = self.state / "dirty-checkout/last-status.txt"
+        patch = self.state / "dirty-checkout/last-tracked-changes.patch"
+        self.assertTrue(diagnostic.is_file())
+        self.assertIn("system/entrypoint", diagnostic.read_text(encoding="utf-8"))
+        self.assertIn("system/local-change.txt", diagnostic.read_text(encoding="utf-8"))
+        self.assertTrue(patch.is_file())
+        self.assertIn("locally-corrupted", patch.read_text(encoding="utf-8"))
+
         self._run(
             [
                 "git",
