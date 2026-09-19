@@ -20,7 +20,7 @@ import {
 } from "../../services/network/management-runtime.mjs";
 import { listNotificationSources } from "../../services/notifications/catalog.mjs";
 import { listPreferenceDefinitions } from "../../services/preferences/catalog.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
 
 const SETTINGS_WINDOW_SELECTOR = '[data-window-id="settings"]';
 const SETTINGS_EXTENSION_SELECTOR = '[data-app-extension="settings-overview"]';
