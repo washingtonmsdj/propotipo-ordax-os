@@ -79,6 +79,12 @@ test("notes contract preserves bounded projects, tasks and references", () => {
           title: "Fonte",
           detail: "Referência",
           href: "https://example.org",
+        }, {
+          id: "ref-file",
+          kind: "file",
+          title: "direcao-visual.pdf",
+          detail: "Arquivo local",
+          path: "/Documentos/direcao-visual.pdf",
         }],
       },
     ],
@@ -86,6 +92,7 @@ test("notes contract preserves bounded projects, tasks and references", () => {
 
   assert.equal(snapshot.notes[0].tasks[0].text, "Revisar");
   assert.equal(snapshot.notes[0].references[0].kind, "link");
+  assert.equal(snapshot.notes[0].references[1].path, "/Documentos/direcao-visual.pdf");
   assert.equal(Object.isFrozen(snapshot.notes[0]), true);
 
   assert.throws(
@@ -105,6 +112,32 @@ test("notes contract preserves bounded projects, tasks and references", () => {
       }],
     }),
     /unknown project/,
+  );
+
+  assert.throws(
+    () => validateNotesSnapshot({
+      ...minimalSnapshot(),
+      selectedNoteId: "nota-arquivo",
+      notes: [{
+        id: "nota-arquivo",
+        projectId: "meu-espaco",
+        title: "Inválida",
+        body: "",
+        favorite: false,
+        deletedAt: null,
+        createdAt: 1,
+        updatedAt: 1,
+        tasks: [],
+        references: [{
+          id: "ref-arquivo",
+          kind: "file",
+          title: "fora.txt",
+          detail: "",
+          path: "../fora.txt",
+        }],
+      }],
+    }),
+    /absolute logical path/,
   );
 
   assert.throws(
@@ -165,6 +198,12 @@ test("notes runtime edits, organizes and reloads durable state", () => {
     detail: "Leitura",
     href: "https://example.org/docs",
   });
+  first.addReference(noteId, {
+    kind: "file",
+    title: "brief.pdf",
+    detail: "Arquivo local",
+    path: "/Documentos/brief.pdf",
+  });
 
   state = first.getSnapshot();
   let note = state.document.notes.find((item) => item.id === noteId);
@@ -173,6 +212,7 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   assert.equal(note.favorite, true);
   assert.equal(note.tasks[0].text, "Validar fluxo");
   assert.equal(note.references[0].title, "Documentação");
+  assert.equal(note.references[1].path, "/Documentos/brief.pdf");
 
   first.trashNote(noteId);
   note = first.getSnapshot().document.notes.find((item) => item.id === noteId);
@@ -186,6 +226,7 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   assert.equal(reloaded.title, "Plano");
   assert.equal(reloaded.tasks[0].text, "Validar fluxo");
   assert.equal(reloaded.references[0].href, "https://example.org/docs");
+  assert.equal(reloaded.references[1].path, "/Documentos/brief.pdf");
 });
 
 test("notes runtime exposes local persistence failure without losing session state", () => {
