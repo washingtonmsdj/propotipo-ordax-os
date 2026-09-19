@@ -554,7 +554,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
     }
     if (action === "bold") wrapSelection(body, "**");
     if (action === "italic") wrapSelection(body, "*");
-    if (action === "insert-link") wrapSelection(body, "[", "](https://)", "link");
+    if (action === "insert-link") wrapSelection(body, "[", "]()", "link");
     if (action === "insert-image") wrapSelection(body, "![", "](imagem)", "descrição");
     if (action === "undo") {
       body.focus();
