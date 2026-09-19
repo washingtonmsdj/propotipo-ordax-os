@@ -27,6 +27,8 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/project-web-references.mjs'
+      - 'system/contracts/project-web-reference-store.mjs'
       - 'system/contracts/notifications.mjs'
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
@@ -38,6 +40,7 @@ on:
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/files/**'
+      - 'system/services/projects/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -56,6 +59,7 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_project_web_references.mjs'
       - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_home_continuation.mjs'
       - 'tests/test_home_continuation_contract.py'
@@ -125,6 +129,8 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/project-web-references.mjs'
+      - 'system/contracts/project-web-reference-store.mjs'
       - 'system/contracts/notifications.mjs'
       - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
@@ -136,6 +142,7 @@ on:
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/files/**'
+      - 'system/services/projects/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -154,6 +161,7 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_project_web_references.mjs'
       - 'tests/test_project_file_space_continuity.mjs'
       - 'tests/test_home_continuation.mjs'
       - 'tests/test_home_continuation_contract.py'
@@ -231,6 +239,7 @@ jobs:
             system/services/account \
             system/services/apps \
             system/services/files \
+            system/services/projects \
             system/services/notes \
             system/services/preferences \
             system/services/sync \
@@ -250,6 +259,7 @@ jobs:
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
+          node --test tests/test_project_web_references.mjs
           node --test tests/test_project_file_space_continuity.mjs
           node --test tests/test_home_continuation.mjs
           node --test tests/test_notifications.mjs

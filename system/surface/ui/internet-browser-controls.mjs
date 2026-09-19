@@ -1,5 +1,9 @@
 import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
 import { assertProjectCatalogPort } from "../../contracts/project-catalog.mjs";
+import {
+  assertProjectWebReferencePort,
+  validateProjectWebUrl,
+} from "../../contracts/project-web-references.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const INTERNET_WINDOW_SELECTOR = '[data-window-id="internet"]';
@@ -190,17 +194,25 @@ function createProjectPanel(documentObject) {
   current.append(page);
   const save = node(documentObject, "button", "ordax-internet-save-button", "▱  Salvar no projeto");
   save.type = "button";
+  save.dataset.browserSaveProject = "";
   save.disabled = true;
-  save.title = "O catálogo de projetos já existe, mas referências web ainda exigem um contrato próprio antes de poderem ser gravadas.";
   current.append(save);
+  const savedState = node(documentObject, "div", "ordax-internet-reference-state");
+  savedState.dataset.browserReferenceState = "";
+  savedState.hidden = true;
+  current.append(savedState);
 
   const note = node(documentObject, "section", "ordax-internet-project-section");
   note.append(node(documentObject, "h3", "", "Sua nota"));
   const textarea = node(documentObject, "textarea", "ordax-internet-note");
   textarea.rows = 3;
   textarea.placeholder = "Adicione uma observação sobre esta referência";
+  textarea.dataset.browserReferenceNote = "";
   textarea.disabled = true;
-  note.append(textarea, node(documentObject, "span", "ordax-internet-project-pending", "Notas de referência ainda não possuem persistência própria."));
+  textarea.maxLength = 4096;
+  const noteHint = node(documentObject, "span", "ordax-internet-project-pending");
+  noteHint.dataset.browserReferenceNoteHint = "";
+  note.append(textarea, noteHint);
 
   const materials = node(documentObject, "section", "ordax-internet-project-section");
   materials.append(node(documentObject, "h3", "", "Contexto do projeto"));
@@ -238,17 +250,23 @@ export function mountInternetBrowserControls(
   root,
   browserSession,
   surfaceLifecycle,
-  { projects = null } = {},
+  { projects = null, projectReferences = null } = {},
 ) {
   if (!(root instanceof Element)) throw new TypeError("Internet controls require a Surface root Element");
   const port = assertBrowserSessionPort(browserSession);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const projectPort = projects === null ? null : assertProjectCatalogPort(projects);
+  const referencePort = projectReferences === null
+    ? null
+    : assertProjectWebReferencePort(projectReferences);
   const documentObject = root.ownerDocument;
   const windowObject = documentObject.defaultView;
   let snapshot = port.getSnapshot();
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
+  let referenceSnapshot = referencePort?.getSnapshot() ?? null;
   let selectedProjectId = null;
+  let noteDraftKey = "";
+  let noteDraftValue = "";
   let mountedSlot = null;
   let destroyed = false;
   let nextTabOrdinal = 1;
@@ -262,6 +280,36 @@ export function mountInternetBrowserControls(
   const findSlot = () => root.querySelector(`${INTERNET_WINDOW_SELECTOR} ${INTERNET_EXTENSION_SELECTOR}`);
   const activeTab = () => snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId) ?? null;
   const selectedProject = () => projectSnapshot?.projects.find((project) => project.id === selectedProjectId) ?? null;
+  const activeReferenceUrl = () => {
+    const url = activeTab()?.url;
+    if (!url) return null;
+    try {
+      return validateProjectWebUrl(url);
+    } catch {
+      return null;
+    }
+  };
+
+  const activeSavedReference = () => {
+    const url = activeReferenceUrl();
+    if (!referenceSnapshot || !selectedProjectId || !url) return null;
+    return referenceSnapshot.references.find((reference) => (
+      reference.projectId === selectedProjectId && reference.url === url
+    )) ?? null;
+  };
+
+  const currentReferenceKey = () => {
+    const url = activeReferenceUrl();
+    return selectedProjectId && url ? `${selectedProjectId}\u0000${url}` : "";
+  };
+
+  const syncNoteDraft = () => {
+    const key = currentReferenceKey();
+    if (key === noteDraftKey) return;
+    noteDraftKey = key;
+    noteDraftValue = key ? (activeSavedReference()?.note ?? "") : "";
+  };
+
   const allocateTabId = () => {
     while (snapshot.tabs.some((tab) => tab.id === `tab-${nextTabOrdinal}`)) nextTabOrdinal += 1;
     return `tab-${nextTabOrdinal++}`;
@@ -490,6 +538,77 @@ export function mountInternetBrowserControls(
     }
   };
 
+  const syncReferenceControls = (slot) => {
+    syncNoteDraft();
+    const tab = activeTab();
+    const url = activeReferenceUrl();
+    const project = selectedProject();
+    const saved = activeSavedReference();
+    const available = Boolean(referencePort && project && url);
+
+    const save = slot.querySelector("[data-browser-save-project]");
+    if (save) {
+      save.disabled = !available;
+      save.textContent = saved ? "▱  Atualizar no projeto" : "▱  Salvar no projeto";
+      save.title = !referencePort
+        ? "Referências de projeto não estão disponíveis neste host."
+        : !project
+          ? "Selecione um projeto para salvar esta página."
+          : !url
+            ? "Abra uma página HTTP ou HTTPS válida antes de salvá-la."
+            : saved
+              ? "Atualizar título e nota desta referência."
+              : "Salvar a página atual como referência explícita deste projeto.";
+    }
+
+    const textarea = slot.querySelector("[data-browser-reference-note]");
+    if (textarea) {
+      textarea.disabled = !available;
+      if (documentObject.activeElement !== textarea && textarea.value !== noteDraftValue) {
+        textarea.value = noteDraftValue;
+      }
+    }
+
+    const hint = slot.querySelector("[data-browser-reference-note-hint]");
+    if (hint) {
+      hint.textContent = !referencePort
+        ? "Persistência de referências indisponível neste host."
+        : !project
+          ? "Selecione um projeto para relacionar uma nota à página."
+          : !url
+            ? "Abra uma página HTTP ou HTTPS válida para adicionar contexto."
+            : saved
+              ? "A nota é salva junto desta referência."
+              : "A nota será salva junto com a página.";
+    }
+
+    const stateNode = slot.querySelector("[data-browser-reference-state]");
+    if (stateNode) {
+      stateNode.replaceChildren();
+      stateNode.hidden = !saved;
+      if (saved) {
+        const copy = node(
+          documentObject,
+          "span",
+          "ordax-internet-reference-state-copy",
+          referenceSnapshot?.persistence === "device"
+            ? "Salvo neste dispositivo"
+            : "Salvo somente nesta sessão",
+        );
+        const remove = node(
+          documentObject,
+          "button",
+          "ordax-internet-reference-remove",
+          "Remover",
+        );
+        remove.type = "button";
+        remove.dataset.browserRemoveReference = saved.id;
+        remove.setAttribute("aria-label", "Remover página salva do projeto");
+        stateNode.append(copy, remove);
+      }
+    }
+  };
+
   const syncPanel = (slot) => {
     const panel = slot.querySelector(`#${PROJECT_PANEL_ID}`);
     panel?.toggleAttribute("hidden", panelCollapsed);
@@ -520,6 +639,7 @@ export function mountInternetBrowserControls(
     syncTabs(slot);
     syncProjectContext(slot);
     syncCurrentPage(slot);
+    syncReferenceControls(slot);
     syncPanel(slot);
     windowObject.requestAnimationFrame(syncViewport);
     ensureTab();
@@ -543,6 +663,43 @@ export function mountInternetBrowserControls(
       }
       render();
       focusProject(projectId);
+      return;
+    }
+
+    if (target.dataset.browserSaveProject !== undefined) {
+      const tab = activeTab();
+      const url = activeReferenceUrl();
+      const project = selectedProject();
+      if (!referencePort || !project || !tab || !url) return;
+      try {
+        referencePort.save({
+          projectId: project.id,
+          url,
+          title: tab.title || displayHost(url),
+          note: noteDraftValue,
+        });
+        projectPort?.recordOpened(project.id);
+        message = referenceSnapshot?.persistence === "session"
+          ? "Referência salva para esta sessão."
+          : "Referência salva no projeto.";
+      } catch (error) {
+        message = error instanceof Error ? error.message : "Não foi possível salvar a referência.";
+      }
+      render();
+      return;
+    }
+
+    const removeReferenceId = target.dataset.browserRemoveReference;
+    if (removeReferenceId) {
+      if (!referencePort) return;
+      try {
+        referencePort.remove(removeReferenceId);
+        noteDraftValue = "";
+        message = "Referência removida do projeto.";
+      } catch (error) {
+        message = error instanceof Error ? error.message : "Não foi possível remover a referência.";
+      }
+      render();
       return;
     }
 
@@ -633,6 +790,16 @@ export function mountInternetBrowserControls(
   };
 
   const onInput = (event) => {
+    const note = event.target.closest("[data-browser-reference-note]");
+    if (note && root.contains(note)) {
+      const slot = findSlot();
+      if (slot?.contains(note)) {
+        syncNoteDraft();
+        noteDraftValue = note.value;
+        return;
+      }
+    }
+
     const searchInput = event.target.closest("[data-browser-tab-search]");
     if (!searchInput || !root.contains(searchInput)) return;
     const slot = findSlot();
@@ -674,6 +841,15 @@ export function mountInternetBrowserControls(
     }
     render();
   }) ?? (() => {});
+  const unsubscribeReferences = referencePort?.subscribe((nextSnapshot) => {
+    referenceSnapshot = nextSnapshot;
+    const saved = activeSavedReference();
+    if (saved && currentReferenceKey() !== noteDraftKey) {
+      noteDraftKey = currentReferenceKey();
+      noteDraftValue = saved.note;
+    }
+    render();
+  }) ?? (() => {});
   const unsubscribeSurface = lifecycle.subscribeRender(render);
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
@@ -691,6 +867,7 @@ export function mountInternetBrowserControls(
       resizeObserver = null;
       unsubscribeSession();
       unsubscribeProjects();
+      unsubscribeReferences();
       unsubscribeSurface();
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
