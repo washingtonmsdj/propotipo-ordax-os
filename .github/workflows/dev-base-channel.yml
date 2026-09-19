@@ -49,6 +49,17 @@ jobs:
           python tools/dev-base-channel/build.py check
           python -m unittest tests.test_dev_base_channel -v
 
+      - name: Install disposable rootfs selector proof dependency
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends busybox-static
+
+      - name: Prove versioned rootfs pivot and invalid-candidate rejection
+        run: |
+          set -euo pipefail
+          sudo bash tools/dev-base-channel/prove-rootfs-selector.sh
+
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: verify
