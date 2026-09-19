@@ -16,23 +16,23 @@ import {
   isNotesImageFileName,
   isNotesImageReference,
   notesImageReferenceKey,
-} from "./notes-image-previews.mjs";
-import { createNotesEditorSaveController } from "./notes-editor-save.mjs";
+} from "./image-previews.mjs";
+import { createNotesEditorSaveController } from "./editor-save.mjs";
 import {
   createNotesFilePicker,
   joinNotesLogicalPath,
   notesParentLogicalPath,
-} from "./notes-file-picker.mjs";
+} from "./file-picker.mjs";
 import {
   firstNotesBodyLine,
   formatNotesRelativeTime,
   visibleNotes,
-} from "./notes-list-model.mjs";
+} from "./list-model.mjs";
 import {
   createNotesLinkReference,
   notesWebReferenceHost,
   parseNotesWebHref,
-} from "./notes-reference-links.mjs";
+} from "./reference-links.mjs";
 import {
   applyNotesRichLink,
   captureNotesRichSelection,
@@ -48,7 +48,7 @@ import {
   setNotesRichBlockType,
   toggleNotesRichInlineMark,
   undoNotesRichEditor,
-} from "./notes-rich-editor.mjs";
+} from "./rich-editor.mjs";
 import { assertSurfaceRenderLifecycle } from "../../../contracts/surface-render-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
