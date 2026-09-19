@@ -30,6 +30,7 @@ HEALTH_PATH = "/__ordax/native/health"
 SURFACE_HEARTBEAT_PATH = "/__ordax/native/surface-heartbeat"
 CLIENT_DIAGNOSTIC_PATH = "/__ordax/native/client-diagnostic"
 PREFERENCES_PATH = "/__ordax/native/preferences"
+NOTES_PATH = "/__ordax/native/notes"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 DIAGNOSTIC_JOURNAL_PATH = "/__ordax/native/diagnostic-journal"
 FILES_PATH = "/__ordax/native/files"
@@ -44,6 +45,7 @@ UPDATE_HISTORY_PATH = "/__ordax/native/update-history"
 UPDATE_STATE_FILE = "/run/ordax-update/state.json"
 HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
+NOTES_FILE = "/var/lib/ordax/notes.json"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
 DIAGNOSTIC_JOURNAL_FILE = "/var/lib/ordax/diagnostic-journal.json"
 UPDATE_HISTORY_FILE = "/var/lib/ordax/update-history.tsv"
@@ -64,6 +66,8 @@ MAX_NETWORKS = 32
 MAX_SURFACE_HEARTBEAT_BODY = 512
 MAX_CLIENT_DIAGNOSTIC_BODY = 512
 MAX_PREFERENCE_BODY = 8192
+MAX_NOTES_PAYLOAD = 2 * 1024 * 1024
+MAX_NOTES_BODY = 8 * MAX_NOTES_PAYLOAD + 1024
 MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
 MAX_DIAGNOSTIC_JOURNAL_PAYLOAD = 4 * 1024 * 1024
@@ -432,6 +436,61 @@ def write_preferences(preferences: dict) -> None:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, PREFERENCES_FILE)
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def valid_notes_payload(value: object) -> bool:
+    return (
+        value is None
+        or (
+            isinstance(value, str)
+            and len(value.encode("utf-8")) <= MAX_NOTES_PAYLOAD
+        )
+    )
+
+
+def read_notes_payload() -> str | None:
+    try:
+        with open(NOTES_FILE, "rb") as handle:
+            raw = handle.read(MAX_NOTES_PAYLOAD + 1)
+    except FileNotFoundError:
+        return None
+    if len(raw) > MAX_NOTES_PAYLOAD:
+        raise ValueError("notes payload exceeds maximum size")
+    return raw.decode("utf-8", errors="strict")
+
+
+def write_notes_payload(payload: str | None) -> None:
+    if not valid_notes_payload(payload):
+        raise ValueError("invalid notes payload")
+    directory = os.path.dirname(NOTES_FILE)
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    if payload is None:
+        try:
+            os.unlink(NOTES_FILE)
+        except FileNotFoundError:
+            return
+    else:
+        temporary = f"{NOTES_FILE}.tmp.{os.getpid()}.{threading.get_ident()}"
+        try:
+            with open(temporary, "w", encoding="utf-8") as handle:
+                os.fchmod(handle.fileno(), 0o600)
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, NOTES_FILE)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
     try:
         directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
@@ -1995,7 +2054,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
-        if parsed_path == SYNC_STATE_PATH and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SYNC_STATE_PATH, NOTES_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == METRICS_PATH:
@@ -2153,6 +2212,15 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             return
         if self.path == PREFERENCES_PATH:
             self._write_json(200, read_preferences())
+            return
+        if self.path == NOTES_PATH:
+            try:
+                payload = read_notes_payload()
+            except (OSError, UnicodeError, ValueError) as exc:
+                print(f"ordax-native-host: could not read notes: {exc}", file=sys.stderr, flush=True)
+                self._empty(500)
+                return
+            self._write_json(200, {"payload": payload})
             return
         if self.path == SYNC_STATE_PATH:
             self._write_json(200, {"payload": read_sync_state_payload()})
@@ -2330,6 +2398,27 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             except (OSError, ValueError) as exc:
                 print(f"ordax-native-host: could not persist preferences: {exc}", file=sys.stderr, flush=True)
                 self._empty(500)
+                return
+            self._empty(204)
+            return
+
+        if self.path == NOTES_PATH:
+            body = self._read_json_body(MAX_NOTES_BODY)
+            if body is None or set(body) != {"payload"}:
+                self._empty(400)
+                return
+            payload = body["payload"]
+            if not valid_notes_payload(payload):
+                self._empty(400)
+                return
+            try:
+                write_notes_payload(payload)
+            except OSError as exc:
+                print(f"ordax-native-host: could not persist notes: {exc}", file=sys.stderr, flush=True)
+                self._empty(507 if exc.errno == errno.ENOSPC else 500)
+                return
+            except ValueError:
+                self._empty(400)
                 return
             self._empty(204)
             return
