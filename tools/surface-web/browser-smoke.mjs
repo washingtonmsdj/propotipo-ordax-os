@@ -960,13 +960,23 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     ) === null;
 
     document.body.replaceChildren();
+    const remountBootScreen = document.createElement('div');
+    remountBootScreen.id = 'ordax-boot-screen';
+    remountBootScreen.className = 'ordax-boot-screen';
+    remountBootScreen.dataset.state = 'loading';
+    const remountBootStatus = document.createElement('span');
+    remountBootStatus.dataset.ordaxBootStatus = '';
+    remountBootStatus.textContent = 'Preparando OrdaX…';
+    remountBootScreen.append(remountBootStatus);
     const remountRoot = document.createElement('div');
     remountRoot.id = 'ordax-root';
-    document.body.append(remountRoot);
+    document.body.append(remountBootScreen, remountRoot);
     await import(namespaceUrls['composition-remount'][rootModule]);
     await Promise.resolve();
     root = document.querySelector('#ordax-root');
     result.remountCompositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    result.remountBootScreenCompleted = remountBootScreen.hidden === true
+      && remountBootScreen.dataset.state === 'ready';
     result.internetComponentStyleRestored = Boolean(
       document.querySelector('link[data-ordax-component-style="internet"]'),
     );
@@ -1044,7 +1054,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
-      'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
+      'remountCompositionMounted', 'remountBootScreenCompleted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
       'notesRichTextRestored', 'internetWindowRestored', 'internetTargetRestored',
       'internetStillFailsClosedOnWeb',
