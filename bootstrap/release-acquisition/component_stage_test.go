@@ -169,6 +169,80 @@ func mustComponentPayload(t *testing.T, envelopeBytes []byte) []byte {
 	return envelope.Payload
 }
 
+func TestVerifyInstalledComponentVersionRevalidatesSignedStage(t *testing.T) {
+	trust, public, private := testKeys(t)
+	pkg := componentPackageBytes(t, testCommit, "0.3.0")
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+
+	release := componentReleaseFor(server.URL+"/internet.zip", pkg, "0.3.0", 3, testCommit)
+	envelope := signedComponentEnvelope(t, release, trust.KeyID, private)
+	mux.HandleFunc("/envelope.json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(envelope)
+	})
+	mux.HandleFunc("/internet.zip", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(pkg)
+	})
+
+	root := t.TempDir()
+	if _, err := stageComponent(
+		server.Client(),
+		server.URL+"/envelope.json",
+		root,
+		trust,
+		public,
+		defaultRepo,
+		"internet",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	verified, err := verifyInstalledComponentVersion(
+		root,
+		"internet",
+		"0.3.0",
+		trust,
+		public,
+		defaultRepo,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verified.Status != "verified-staged" ||
+		verified.ComponentID != "internet" ||
+		verified.Version != "0.3.0" ||
+		verified.SourceCommit != testCommit ||
+		verified.ReleaseSequence != 3 ||
+		verified.Entrypoint != "system/components/internet/runtime.mjs" {
+		t.Fatalf("unexpected verified staged identity: %#v", verified)
+	}
+
+	runtime := filepath.Join(
+		root,
+		"internet",
+		"versions",
+		"0.3.0",
+		"system",
+		"components",
+		"internet",
+		"runtime.mjs",
+	)
+	if err := os.WriteFile(runtime, []byte("tampered\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyInstalledComponentVersion(
+		root,
+		"internet",
+		"0.3.0",
+		trust,
+		public,
+		defaultRepo,
+	); err == nil || !strings.Contains(err.Error(), "differs from package") {
+		t.Fatalf("tampered staged tree verification error = %v", err)
+	}
+}
+
 func TestStageComponentRejectsTamperedPackage(t *testing.T) {
 	trust, public, private := testKeys(t)
 	pkg := componentPackageBytes(t, testCommit, "0.3.0")
