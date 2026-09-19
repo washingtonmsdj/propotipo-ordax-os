@@ -2,6 +2,9 @@ import {
   NOTES_SNAPSHOT_SCHEMA,
   NOTES_STORE_SCHEMA,
   assertNotesStore,
+  createNotesRichBodyFromPlainText,
+  notesRichBodyToPlainText,
+  validateNotesRichBody,
   validateNotesSnapshot,
 } from "../../contracts/notes-store.mjs";
 
@@ -27,6 +30,12 @@ function thaw(snapshot) {
     projects: snapshot.projects.map((project) => ({ ...project })),
     notes: snapshot.notes.map((note) => ({
       ...note,
+      richBody: {
+        blocks: note.richBody.blocks.map((block) => ({
+          ...block,
+          marks: block.marks.map((mark) => ({ ...mark })),
+        })),
+      },
       tasks: note.tasks.map((task) => ({ ...task })),
       references: note.references.map((reference) => ({ ...reference })),
     })),
@@ -138,6 +147,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
         projectId,
         title: "Sem título",
         body: "",
+        richBody: createNotesRichBodyFromPlainText(""),
         favorite: false,
         deletedAt: null,
         createdAt: stamp,
@@ -165,8 +175,16 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const index = requireNoteIndex(draft, noteId);
       const current = draft.notes[index];
       const next = { ...current, updatedAt: now() };
-      if (Object.prototype.hasOwnProperty.call(patch, "title")) next.title = String(patch.title ?? "").slice(0, 1024);
-      if (Object.prototype.hasOwnProperty.call(patch, "body")) next.body = String(patch.body ?? "").slice(0, 65536);
+      if (Object.prototype.hasOwnProperty.call(patch, "title")) {
+        next.title = String(patch.title ?? "").slice(0, 1024);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "richBody")) {
+        next.richBody = validateNotesRichBody(patch.richBody);
+        next.body = notesRichBodyToPlainText(next.richBody);
+      } else if (Object.prototype.hasOwnProperty.call(patch, "body")) {
+        next.body = String(patch.body ?? "").slice(0, 65536);
+        next.richBody = createNotesRichBodyFromPlainText(next.body);
+      }
       draft.notes[index] = next;
       return commit(draft);
     },
