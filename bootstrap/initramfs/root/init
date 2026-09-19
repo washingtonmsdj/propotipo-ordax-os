@@ -43,9 +43,10 @@ esac
 
 health_rc=0
 /sbin/ordax-grow-ext4 --check "$ORDAX_DEVICE" || health_rc=$?
-if [ "$health_rc" -ne 0 ]; then
-    enter_recovery "ORDAX filesystem requires offline repair (health rc=$health_rc)"
-fi
+case "$health_rc" in
+    0) ;;
+    *) enter_recovery "ORDAX filesystem requires offline repair (health rc=$health_rc)" ;;
+esac
 
 mount -t ext4 -o rw,errors=remount-ro "$ORDAX_DEVICE" /ordax || rescue "cannot mount ORDAX"
 if ! /sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax; then
