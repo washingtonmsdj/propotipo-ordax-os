@@ -28,7 +28,9 @@ The initial owners are:
 
 App definitions contain platform-neutral metadata, capability requirements and declarative panels. They do not import browser/native adapters and they do not decide which platform is running.
 
-Application availability is capability-driven. A future app that requires a capability declares that capability in `requiredCapabilities`; the Surface fails closed when the host does not expose it.
+Application availability is capability-driven. A future app that requires a capability declares that capability in `requiredCapabilities`; the Surface fails closed when the host does not expose it. An app may also declare `optionalCapabilities`: these enrich the same app when a host exposes them without turning that app into a platform fork or making the optional feature a launch requirement.
+
+**Notas is an app, not a Surface/system subsystem.** It is currently bundled as a first-party app and is especially useful on Native/USB because `filesystem.user-space` is available there, but its stable app identity remains `notes` and that filesystem capability is optional. This keeps the application boundary compatible with a future signed app-package/store path without pretending that a general package manager or Store already exists. Until independent app packaging/release is implemented, Notas shares the product release/version instead of inventing a separate app version.
 
 ## Boundary
 
