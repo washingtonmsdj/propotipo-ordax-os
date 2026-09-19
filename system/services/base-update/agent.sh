@@ -12,6 +12,8 @@ PHYSICAL_BIND_HOST=
 PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device
 OWNER_STATE_CHROOT=
 OWNER_BASE_ROOT_CHROOT=
+PHYSICAL_ROOT_SOURCE=
+ESP_DISCOVERY_FILE=$HOST_STATE_ROOT/base-update/esp-discovery.json
 DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha
 DEV_BASE_READY_FILE=$HOST_STATE_ROOT/dev-base-ready-sha
 DEV_BASE_FETCHING_FILE=$HOST_STATE_ROOT/dev-base-fetching-sha
@@ -324,6 +326,34 @@ EOF
 
     OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath/state/ordax
     OWNER_BASE_ROOT_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath
+    PHYSICAL_ROOT_SOURCE=$root_source
+    return 0
+}
+
+discover_esp_read_only() {
+    discovery=/srv/ordax-system/services/base-update/esp_discovery.py
+    [ -n "$PHYSICAL_ROOT_SOURCE" ] || {
+        /bin/busybox rm -f "$ESP_DISCOVERY_FILE" >/dev/null 2>&1 || true
+        return 0
+    }
+    [ -f "$RUNTIME_ROOT$discovery" ] || {
+        /bin/busybox rm -f "$ESP_DISCOVERY_FILE" >/dev/null 2>&1 || true
+        return 0
+    }
+
+    directory=${ESP_DISCOVERY_FILE%/*}
+    temporary=$ESP_DISCOVERY_FILE.tmp.$
+    /bin/busybox mkdir -p "$directory" >/dev/null 2>&1 || return 0
+
+    if /bin/busybox chroot "$RUNTIME_ROOT" /usr/bin/python3 "$discovery" --root-source "$PHYSICAL_ROOT_SOURCE" >"$temporary" 2>/dev/null
+    then
+        /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
+        /bin/busybox mv -f "$temporary" "$ESP_DISCOVERY_FILE" >/dev/null 2>&1 || {
+            /bin/busybox rm -f "$temporary" >/dev/null 2>&1 || true
+        }
+    else
+        /bin/busybox rm -f "$temporary" "$ESP_DISCOVERY_FILE" >/dev/null 2>&1 || true
+    fi
     return 0
 }
 
@@ -402,6 +432,7 @@ while :; do
             --state-root "$OWNER_STATE_CHROOT" \
             --physical-root "$PHYSICAL_MOUNT_CHROOT" \
             >/dev/null 2>&1 || true
+        discover_esp_read_only
         prepare_dev_base_candidate
     else
         write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
