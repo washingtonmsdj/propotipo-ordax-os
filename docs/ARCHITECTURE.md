@@ -11,6 +11,7 @@ Prove a minimal, reproducible, Git-first OrdaX that boots independently, reaches
 ```text
 GIT_SOURCE_AUTHORITY=YES
 BASE_UPDATE_CONTROL_FROM_GIT=YES
+DEV_BASE_HELPERS_FROM_GIT=YES
 RUNNING_KERNEL_SELF_REPLACEMENT=NO
 USB_SOURCE_AUTHORITY=NO
 NOTEBOOK_SOURCE_AUTHORITY=NO
@@ -62,13 +63,15 @@ Rules:
 
 - Git is physically present in the development base;
 - the source checkout is not preseeded into the USB image;
-- first acquisition uses a partial+sparse clone limited to runtime source (`system/`);
-- later updates use `git pull --ff-only`;
-- local modifications block automatic pull;
+- first acquisition uses a partial+sparse clone of runtime source plus the bounded Base-update/helper control plane;
+- later updates validate the remote fast-forward, prepare a clean checkout and switch the disposable Git-controlled tree atomically;
+- local checkout modifications are diagnosed and replaced by a clean validated cache instead of becoming source authority;
 - unexpected origin/branch state fails closed;
 - rollback pins the previous commit across reboot until an explicit `ordax-pull` releases the pin;
 - ordinary `system/` changes do not require USB reflash or kernel rebuild;
-- changes to the bootstrap substrate, kernel, initramfs or hardware support may require a new base image.
+- the fixed development helpers and recovery entrypoint are refreshed from their Git-owned sources after the runtime bridge is available;
+- kernel/initramfs changes use exact-commit Base candidates and activate only on a later boot;
+- bootloader and complete development-rootfs/package changes still require expansion of the Base candidate path.
 
 This profile is a development mechanism and may use explicitly marked ephemeral prototype trust for Creator provenance. It does not replace canonical release trust.
 
