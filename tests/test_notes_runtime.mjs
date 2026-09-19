@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  LEGACY_NOTES_SNAPSHOT_SCHEMA,
   NOTES_SNAPSHOT_SCHEMA,
   NOTES_STORE_SCHEMA,
+  createNotesRichBodyFromPlainText,
+  notesRichBodyToPlainText,
+  validateNotesRichBody,
   validateNotesSnapshot,
 } from "../system/contracts/notes-store.mjs";
 import { createWebNotesStore } from "../system/adapters/web/notes.mjs";
@@ -68,6 +72,13 @@ test("notes contract preserves bounded projects, tasks and references", () => {
         projectId: "meu-espaco",
         title: "Ideia",
         body: "Texto local",
+        richBody: {
+          blocks: [{
+            type: "paragraph",
+            text: "Texto local",
+            marks: [{ type: "bold", start: 0, end: 5 }],
+          }],
+        },
         favorite: true,
         deletedAt: null,
         createdAt: 1,
@@ -90,7 +101,9 @@ test("notes contract preserves bounded projects, tasks and references", () => {
     ],
   });
 
+  assert.equal(snapshot.$schema, NOTES_SNAPSHOT_SCHEMA);
   assert.equal(snapshot.notes[0].tasks[0].text, "Revisar");
+  assert.equal(snapshot.notes[0].richBody.blocks[0].marks[0].type, "bold");
   assert.equal(snapshot.notes[0].references[0].kind, "link");
   assert.equal(snapshot.notes[0].references[1].path, "/Documentos/direcao-visual.pdf");
   assert.equal(Object.isFrozen(snapshot.notes[0]), true);
@@ -167,6 +180,86 @@ test("notes contract preserves bounded projects, tasks and references", () => {
   );
 });
 
+test("rich note bodies stay bounded, structured and plain-text compatible", () => {
+  const rich = validateNotesRichBody({
+    blocks: [
+      {
+        type: "heading",
+        text: "Plano",
+        marks: [{ type: "bold", start: 0, end: 5 }],
+      },
+      {
+        type: "paragraph",
+        text: "Leia a fonte",
+        marks: [{
+          type: "link",
+          start: 7,
+          end: 12,
+          href: "https://example.org",
+        }],
+      },
+      {
+        type: "quote",
+        text: "Continuar simples",
+        marks: [{ type: "italic", start: 0, end: 16 }],
+      },
+      {
+        type: "bullet",
+        text: "Revisar",
+        marks: [],
+      },
+    ],
+  });
+  assert.equal(notesRichBodyToPlainText(rich), "Plano\nLeia a fonte\nContinuar simples\nRevisar");
+  assert.equal(createNotesRichBodyFromPlainText("A\nB").blocks.length, 2);
+  assert.throws(
+    () => validateNotesRichBody({
+      blocks: [{
+        type: "paragraph",
+        text: "abc",
+        marks: [{ type: "bold", start: 0, end: 4 }],
+      }],
+    }),
+    /mark range/,
+  );
+  assert.throws(
+    () => validateNotesRichBody({
+      blocks: [{
+        type: "paragraph",
+        text: "abc",
+        marks: [{ type: "link", start: 0, end: 3, href: "ftp://example.org" }],
+      }],
+    }),
+    /http or https/,
+  );
+});
+
+test("legacy v1 snapshots migrate in memory and all future saves emit v2", () => {
+  const legacy = {
+    ...minimalSnapshot(),
+    $schema: LEGACY_NOTES_SNAPSHOT_SCHEMA,
+    selectedNoteId: "legacy-note",
+    notes: [{
+      id: "legacy-note",
+      projectId: "meu-espaco",
+      title: "Legada",
+      body: "Linha 1\nLinha 2",
+      favorite: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      tasks: [],
+      references: [],
+    }],
+  };
+
+  const migrated = validateNotesSnapshot(legacy);
+  assert.equal(migrated.$schema, NOTES_SNAPSHOT_SCHEMA);
+  assert.equal(migrated.notes[0].body, "Linha 1\nLinha 2");
+  assert.equal(migrated.notes[0].richBody.blocks.length, 2);
+  assert.equal(migrated.notes[0].richBody.blocks[1].text, "Linha 2");
+});
+
 test("notes runtime edits, organizes and reloads durable state", () => {
   let clock = 10_000;
   const store = memoryStore();
@@ -190,6 +283,17 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   const noteId = state.document.selectedNoteId;
   assert.ok(noteId);
   first.updateNote(noteId, { title: "Plano", body: "Primeira versão" });
+  let formatted = first.getSnapshot().document.notes.find((item) => item.id === noteId);
+  assert.equal(formatted.richBody.blocks[0].text, "Primeira versão");
+  first.updateNote(noteId, {
+    richBody: {
+      blocks: [{
+        type: "paragraph",
+        text: "Primeira versão",
+        marks: [{ type: "italic", start: 0, end: 8 }],
+      }],
+    },
+  });
   first.addTask(noteId, "Validar fluxo");
   first.toggleFavorite(noteId);
   first.addReference(noteId, {
@@ -209,6 +313,7 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   let note = state.document.notes.find((item) => item.id === noteId);
   assert.equal(note.title, "Plano");
   assert.equal(note.body, "Primeira versão");
+  assert.equal(note.richBody.blocks[0].marks[0].type, "italic");
   assert.equal(note.favorite, true);
   assert.equal(note.tasks[0].text, "Validar fluxo");
   assert.equal(note.references[0].title, "Documentação");
@@ -224,6 +329,7 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   const second = createNotesRuntime({ store, now: () => clock++ });
   const reloaded = second.getSnapshot().document.notes.find((item) => item.id === noteId);
   assert.equal(reloaded.title, "Plano");
+  assert.equal(reloaded.richBody.blocks[0].marks[0].type, "italic");
   assert.equal(reloaded.tasks[0].text, "Validar fluxo");
   assert.equal(reloaded.references[0].href, "https://example.org/docs");
   assert.equal(reloaded.references[1].path, "/Documentos/brief.pdf");
@@ -256,6 +362,7 @@ test("web notes store survives recreation and degrades cleanly when storage is d
   assert.equal(first.scope, "device");
 
   const second = createWebNotesStore(windowRef);
+  assert.equal(second.load().$schema, NOTES_SNAPSHOT_SCHEMA);
   assert.equal(second.load().projects[0].name, "Meu espaço");
 
   const denied = {};
