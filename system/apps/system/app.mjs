@@ -6,6 +6,16 @@ export const systemApp = defineFirstPartyApp({
   description: "Entrega, atualizações, conectividade e recursos desta execução do OrdaX.",
   monogram: "SI",
   singleton: true,
+  component: {
+    version: "0.1.0",
+    releaseMode: "bundled",
+    criticality: "system",
+    failureDomain: "app",
+    restartScope: "surface",
+    healthMode: "surface",
+    owner: "system/apps/system",
+    dependencies: ["surface-shell", "update-service"],
+  },
   requiredCapabilities: [],
   panels: [
     {
