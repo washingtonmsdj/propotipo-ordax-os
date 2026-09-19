@@ -202,7 +202,14 @@ activate_versioned_rootfs() {
     cd "$root" || return 1
     /bin/busybox pivot_root . .ordax-base || return 1
     cd /
-    exec /sbin/ordax-dev-init
+    if exec /sbin/ordax-dev-init; then
+        return 0
+    fi
+    if [ "$mode" = "candidate" ]; then
+        candidate_root_failure "init da Base candidata falhou apos a troca de raiz"
+    fi
+    printf 'Base versionada nao conseguiu reiniciar o init; entrando em manutencao local.\n' >&2
+    maintenance_shell
 }
 
 candidate_root_failure() {
@@ -239,9 +246,11 @@ select_development_rootfs() {
             *) candidate_root_failure "slot A/B ausente ou invalido" ;;
         esac
         rootfs_version_valid "$candidate_sha" || candidate_root_failure "rootfs exato nao esta materializado"
-        write_rootfs_slot_mapping "$base_slot" "$candidate_sha"             || candidate_root_failure "nao foi possivel registrar o rootfs do slot"
+        write_rootfs_slot_mapping "$base_slot" "$candidate_sha" \
+            || candidate_root_failure "nao foi possivel registrar o rootfs do slot"
         printf 'Base candidata %s preparada no slot %s; iniciando ensaio unico.\n' "$candidate_sha" "$base_slot"
-        activate_versioned_rootfs "$candidate_sha" "$base_slot" candidate             || candidate_root_failure "troca de raiz falhou"
+        activate_versioned_rootfs "$candidate_sha" "$base_slot" candidate \
+            || candidate_root_failure "troca de raiz falhou"
         return 0
     fi
 
