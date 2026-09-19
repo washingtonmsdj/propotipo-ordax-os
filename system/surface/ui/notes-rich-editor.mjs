@@ -352,6 +352,21 @@ export function undoNotesRichEditor(editor) {
   return changed;
 }
 
+export function captureNotesRichSelection(editor) {
+  const selected = selectionInside(editor);
+  return selected ? selected.range.cloneRange() : null;
+}
+
+export function restoreNotesRichSelection(editor, range) {
+  if (!range || !range.startContainer?.isConnected || !range.endContainer?.isConnected) return false;
+  if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return false;
+  const selection = editor.ownerDocument.getSelection?.();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
 export function notesRichSelectionState(editor) {
   const selected = selectionInside(editor);
   if (!selected) {
