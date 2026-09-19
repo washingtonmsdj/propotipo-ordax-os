@@ -47,7 +47,7 @@ write_state_value() {
     path=$1
     value=$2
     directory=${path%/*}
-    temporary=$path.tmp.$
+    temporary=$path.tmp.$$
     /bin/busybox mkdir -p "$directory" || return 1
     printf '%s\n' "$value" >"$temporary" || return 1
     /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
@@ -354,7 +354,12 @@ prepare_dev_base_candidate() {
     write_state_value "$DEV_BASE_FETCHING_FILE" "$request_sha" || return 0
     /bin/busybox mkdir -p "${DEV_BASE_LOG%/*}" >/dev/null 2>&1 || true
 
-    if /bin/busybox chroot "$RUNTIME_ROOT"         /usr/bin/python3 "$channel"         --source-commit "$request_sha"         --destination-root "$destination"         --version-root "$version_root"         >>"$DEV_BASE_LOG" 2>&1
+    if /bin/busybox chroot "$RUNTIME_ROOT" \\
+        /usr/bin/python3 "$channel" \\
+        --source-commit "$request_sha" \\
+        --destination-root "$destination" \\
+        --version-root "$version_root" \\
+        >>"$DEV_BASE_LOG" 2>&1
     then
         write_state_value "$DEV_BASE_READY_FILE" "$request_sha" || true
         /bin/busybox rm -f "$DEV_BASE_REQUEST_FILE" >/dev/null 2>&1 || true
