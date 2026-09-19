@@ -10,6 +10,7 @@ DEV_HELPERS = ROOT / "system" / "services" / "base-update" / "dev-helpers.sh"
 DEV_CHANNEL = ROOT / "system" / "services" / "base-update" / "dev_channel.py"
 MINIMAL = ROOT / "docs" / "contracts" / "minimal-bootstrap.json"
 DEV_INIT = ROOT / "bootstrap" / "dev-base" / "ordax-dev-init"
+NETWORK = ROOT / "bootstrap" / "dev-base" / "ordax-network"
 
 
 class DeviceUpdateCoverageTests(unittest.TestCase):
@@ -26,6 +27,26 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
         self.assertFalse(contract["boot_policy"]["normal_boot_waits_for_git"])
         self.assertTrue(contract["runtime_checkout"]["sparse_by_design"])
         self.assertTrue(contract["runtime_checkout"]["must_not_expand_to_full_repository_on_boot"])
+
+    def test_known_good_local_boot_does_not_wait_for_network_driver_loading(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        init = DEV_INIT.read_text(encoding="utf-8")
+        network = NETWORK.read_text(encoding="utf-8")
+
+        self.assertFalse(
+            contract["boot_policy"]["network_module_loading_on_known_good_local_boot"]
+        )
+        self.assertTrue(
+            contract["boot_policy"]["network_initialization_runs_outside_local_boot_critical_path"]
+        )
+        self.assertEqual(
+            contract["boot_policy"]["network_initialization_owner"],
+            "bootstrap/dev-base/ordax-network",
+        )
+        self.assertNotIn('for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc', init)
+        self.assertIn('for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc', network)
+        self.assertIn("load_network_modules", network)
+        self.assertIn("start_network_background", init)
 
     def test_runtime_pull_stays_lightweight_while_helpers_refresh_from_git(self):
         pull = PULL.read_text(encoding="utf-8")
