@@ -468,7 +468,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     });
 
     document.open();
-    document.write('<!doctype html><html><head></head><body><div id="ordax-root"></div></body></html>');
+    document.write('<!doctype html><html><head></head><body><div id="ordax-boot-screen" class="ordax-boot-screen" data-state="loading"><span data-ordax-boot-status>Preparando OrdaX…</span></div><div id="ordax-root"></div></body></html>');
     document.close();
     const style = document.createElement('style');
     style.textContent = ${JSON.stringify(styles)};
@@ -600,6 +600,9 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     await Promise.resolve();
     let root = document.querySelector('#ordax-root');
     result.compositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    const bootScreen = document.querySelector('#ordax-boot-screen');
+    result.bootScreenCompleted = bootScreen?.hidden === true
+      && bootScreen?.dataset.state === 'ready';
     const firstInternetStyle = document.querySelector(
       'link[data-ordax-component-style="internet"]',
     );
@@ -1018,7 +1021,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     result.systemOverviewRestored = restoredSystemSlot?.dataset.systemActiveSection === 'overview';
 
     const required = [
-      'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
+      'compositionMounted', 'bootScreenCompleted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
       'workspaceTargetPersisted', 'internetComponentStyleMounted',
