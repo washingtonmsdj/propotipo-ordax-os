@@ -31,6 +31,12 @@ IDENTITY_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "identity-actions.mj
 POWER_ACTIONS_CONTRACT = ROOT / "system" / "contracts" / "power-actions.mjs"
 APP_ACTIVATION_CONTRACT = ROOT / "system" / "contracts" / "app-activation.mjs"
 APP_ACTIVATION_SERVICE = ROOT / "system" / "services" / "apps" / "activation.mjs"
+COMPONENT_MANIFEST_CONTRACT = ROOT / "system" / "contracts" / "component-manifest.mjs"
+COMPONENT_STATE_CONTRACT = ROOT / "system" / "contracts" / "component-state-store.mjs"
+COMPONENT_MANAGER_CONTRACT = ROOT / "system" / "contracts" / "component-manager.mjs"
+COMPONENT_CATALOG = ROOT / "system" / "services" / "components" / "catalog.mjs"
+COMPONENT_MANAGER = ROOT / "system" / "services" / "components" / "manager.mjs"
+NATIVE_COMPONENT_STATE = ROOT / "system" / "adapters" / "native" / "component-state.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "web"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "runtime.mjs"
@@ -104,6 +110,12 @@ class SurfaceUiContractTests(unittest.TestCase):
             POWER_ACTIONS_CONTRACT,
             APP_ACTIVATION_CONTRACT,
             APP_ACTIVATION_SERVICE,
+            COMPONENT_MANIFEST_CONTRACT,
+            COMPONENT_STATE_CONTRACT,
+            COMPONENT_MANAGER_CONTRACT,
+            COMPONENT_CATALOG,
+            COMPONENT_MANAGER,
+            NATIVE_COMPONENT_STATE,
             COMPOSITION / "index.html",
             COMPOSITION / "main.mjs",
             NATIVE_COMPOSITION / "index.html",
@@ -184,6 +196,8 @@ class SurfaceUiContractTests(unittest.TestCase):
             owner = path.read_text(encoding="utf-8")
             self.assertIn(f'id: "{app_id}"', owner)
             self.assertIn("defineFirstPartyApp", owner)
+            self.assertIn("component:", owner)
+            self.assertIn('releaseMode: "bundled"', owner)
             self.assertIn(f'./{app_id}/app.mjs', catalog)
         self.assertIn("listFirstPartyApps", catalog)
         self.assertIn("getFirstPartyApp", catalog)
@@ -333,7 +347,12 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("assertSystemMetricsPort", overview)
         self.assertIn("Histórico de atualizações", overview)
         self.assertIn("Identidade da entrega", overview)
-        self.assertIn("Distribuição conjunta · sem versão própria", overview)
+        self.assertIn("assertComponentManager", overview)
+        self.assertIn("validateComponentManagerSnapshot", overview)
+        self.assertIn("Versões e isolamento", overview)
+        self.assertIn("Distribuição conjunta", overview)
+        self.assertIn("Slot independente", overview)
+        self.assertIn("rollback individual permanece bloqueado", overview)
         self.assertIn("services/update/presentation.mjs", overview)
         self.assertIn(".ordax-system-view", css)
         self.assertIn("../../surface/ui/system.css", web_html)
@@ -794,6 +813,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("node --test tests/test_power_actions.mjs", workflow)
         self.assertIn("node --test tests/test_app_activation.mjs", workflow)
         self.assertIn("node --test tests/test_app_contract.mjs", workflow)
+        self.assertIn("system/services/components", workflow)
+        self.assertIn("node --test tests/test_component_manager.mjs", workflow)
+        self.assertIn("python -m unittest tests.test_native_component_state -v", workflow)
 
 
 if __name__ == "__main__":
