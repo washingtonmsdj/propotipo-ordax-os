@@ -140,12 +140,13 @@ Implemented in source:
 - explicit native capability advertisement;
 - native runtime package ownership without a `barkery-browser` dependency;
 - fail-closed Web-mode behavior;
-- architecture regression tests.
+- architecture regression tests;
+- explicit project-owned web-reference persistence on Native/USB;
+- bounded per-reference user notes stored with the saved page;
+- automatic cleanup of saved web references when their project is removed.
 
 Intentionally not faked yet:
 
-- project-reference persistence;
-- project note persistence;
 - collections/favorites/history persistence;
 - downloads;
 - website permission UI;
@@ -155,23 +156,15 @@ Intentionally not faked yet:
 
 The concept surfaces these future controls, but disabled controls must remain honest until their domain owners and persistence/security contracts exist.
 
-## Project/reference integration direction
+## Project/reference integration
 
-`Salvar no projeto` must store an explicit reference object owned by the workspace/project domain. It must not silently download a page or grant the page access to project storage.
+`Salvar no projeto` now stores an explicit bounded reference owned by the project domain. It does not download the page and does not grant website JavaScript access to project storage.
 
-Conceptually:
+The persisted record contains a stable reference id, project id, canonical HTTP/HTTPS URL, captured title, optional user note and created/updated timestamps. The same project/URL pair is updated in place rather than duplicated. Removing a project prunes its saved web references through the project-reference runtime. Persistence is device-scoped in the Native privileged profile and degrades honestly to session scope if durable storage is unavailable.
 
-```text
-reference
-  id
-  project/workspace id
-  canonical URL
-  captured title
-  created/updated revision
-  optional user note linkage
-```
+The shared Internet UI receives only the neutral project/reference ports. It does not use `localStorage`, Native endpoints or adapters directly.
 
-Download and offline-copy semantics are separate operations and need separate storage, size, provenance and permission rules.
+Download and offline-copy semantics remain separate operations and still need separate storage, size, provenance and permission rules.
 
 ## Optional assistance direction
 
