@@ -51,11 +51,12 @@
         "bootstrap/recovery"
       ],
       "development_delivery": "exact-commit-development-base-rootfs-candidate",
-      "activation": "materialized-candidate-rootfs-selection-pending",
+      "activation": "slot-coupled-one-shot-rootfs-with-known-good-fallback",
       "candidate_delivery_implemented": true,
-      "activation_implemented": false,
+      "activation_implemented": true,
       "usb_rewrite_required": false,
-      "reboot_required": true
+      "reboot_required": true,
+      "health_gate": "base-slot-promotion-requires-existing-base-and-surface-health"
     },
     {
       "id": "kernel-and-initramfs",
@@ -126,11 +127,25 @@
     "app_update_blocked_by_gap": false
   },
   "development_rootfs_activation": {
-    "status": "candidate-delivery-implemented-activation-pending",
+    "status": "source-implemented-physical-proof-pending",
     "artifact": "rootfs.tar",
     "candidate_owner": "tools/dev-base-channel + system/services/base-update/dev_channel.py",
+    "selector_owner": "bootstrap/dev-base/ordax-dev-init",
     "current_boot_root": "/ordax/dev-base",
     "target_versioned_layout": "/ordax/dev-base/versions/<commit>",
-    "next_gate": "bootstrap version selection with persistent state/workspace binds and fallback"
+    "candidate_identity": "ordax.base_candidate=<commit> + ordax.base_slot=a|b",
+    "slot_mapping": "/state/ordax/base-update/rootfs/slot-{a,b}",
+    "shared_mounts": [
+      "/state",
+      "/workspace",
+      "/home",
+      "/proc",
+      "/sys",
+      "/dev"
+    ],
+    "selection_policy": "candidate rootfs runs only on the matching one-shot A/B candidate boot",
+    "promotion_policy": "the slot becomes normal only through the existing base heartbeat + Surface health promotion gate",
+    "fallback_policy": "a failed candidate never becomes the normal slot; missing legacy mapping keeps the seed development Base",
+    "next_gate": "disposable selector proof and physical broken-candidate fallback exercise"
   }
 }
