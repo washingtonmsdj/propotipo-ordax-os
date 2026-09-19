@@ -59,13 +59,11 @@ class ThirdPartyInventoryTests(unittest.TestCase):
     def test_native_surface_runtime_matches_apk_request(self):
         text = SURFACE.read_text(encoding="utf-8")
         match = re.search(
-            r"--initdb add \\\n\s+([^\n]+) \\\n\s+([^\n]+) \\\n\s+([^\n]+) >>\"\$HOST_LOG\"",
+            r"--initdb add \\\n(?P<body>(?:\s+[^\n]+ \\\n)*\s+[^\n]+?) >>\"\$HOST_LOG\"",
             text,
         )
         self.assertIsNotNone(match)
-        packages = []
-        for group in match.groups():
-            packages.extend(group.split())
+        packages = match.group("body").replace("\\\n", " ").split()
         item = self.by_id["alpine-native-surface-runtime"]
         self.assertEqual(item["packages"], packages)
         self.assertIn("https://dl-cdn.alpinelinux.org/alpine/v3.22/main", text)

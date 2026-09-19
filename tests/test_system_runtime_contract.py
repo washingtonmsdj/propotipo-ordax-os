@@ -10,6 +10,7 @@ SYSTEM_SUPERVISOR = ROOT / "system" / "supervisor"
 SURFACE_ENTRYPOINT = ROOT / "system" / "surface" / "entrypoint"
 SURFACE_RUNTIME = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 NATIVE_HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
+NATIVE_BROWSER_HOST = ROOT / "system" / "surface" / "runtime" / "ordax_browser_host.py"
 RESCUE_AGENT = ROOT / "system" / "rescue" / "agent.sh"
 BASE_TELEMETRY_AGENT = ROOT / "system" / "services" / "telemetry" / "base-agent.sh"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
@@ -23,6 +24,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
             self.assertEqual(mode, 0o755, f"{path} mode={mode:o}")
         self.assertTrue(SYSTEM_SUPERVISOR.is_file(), SYSTEM_SUPERVISOR)
         self.assertTrue(NATIVE_HOST_SERVER.is_file(), NATIVE_HOST_SERVER)
+        self.assertTrue(NATIVE_BROWSER_HOST.is_file(), NATIVE_BROWSER_HOST)
         self.assertTrue(RESCUE_AGENT.is_file(), RESCUE_AGENT)
         self.assertTrue(BASE_TELEMETRY_AGENT.is_file(), BASE_TELEMETRY_AGENT)
         self.assertTrue((NATIVE_COMPOSITION / "index.html").is_file())
@@ -38,10 +40,11 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("could not provision standard user directories", text)
 
     def test_native_host_server_python_syntax_is_valid(self):
-        subprocess.run(
-            ["python3", "-m", "py_compile", str(NATIVE_HOST_SERVER)],
-            check=True,
-        )
+        for path in (NATIVE_HOST_SERVER, NATIVE_BROWSER_HOST):
+            subprocess.run(
+                ["python3", "-m", "py_compile", str(path)],
+                check=True,
+            )
 
     def test_system_entrypoint_is_guardian_and_fail_closed(self):
         text = SYSTEM_ENTRYPOINT.read_text(encoding="utf-8")
@@ -84,7 +87,8 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/surface.mjs", native_main)
         self.assertIn("../../surface/ui/power-controls.mjs", native_main)
         self.assertIn("/usr/bin/cage", text)
-        self.assertIn("/usr/bin/barkery", text)
+        self.assertIn("/usr/bin/python3 /srv/ordax-system/surface/runtime/ordax_browser_host.py", text)
+        self.assertNotIn("/usr/bin/barkery", text)
         self.assertNotIn("/usr/bin/cog", text)
         self.assertIn("/usr/bin/seatd-launch", text)
         self.assertIn("/dev/dri/card0", text)
@@ -101,7 +105,8 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("--keys-dir /etc/apk/keys", text)
         self.assertIn("alpine/v3.22/main", text)
         self.assertIn("alpine/v3.22/community", text)
-        self.assertIn("barkery-browser", text)
+        self.assertIn("python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1", text)
+        self.assertNotIn("barkery-browser", text)
         self.assertIn("xwayland", text)
         self.assertIn("eudev", text)
         self.assertIn("libinput-udev", text)
@@ -109,6 +114,8 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("/bin/busybox chroot", text)
         self.assertIn("mesa-dri-gallium", text)
         self.assertIn("$RUNTIME_ROOT/usr/bin/python3", text)
+        self.assertIn("$RUNTIME_ROOT/usr/lib/girepository-1.0/Gtk-3.0.typelib", text)
+        self.assertIn("$RUNTIME_ROOT/usr/lib/girepository-1.0/WebKit2-4.1.typelib", text)
         self.assertIn("$RUNTIME_ROOT/usr/bin/Xwayland", text)
         self.assertIn("$RUNTIME_ROOT/sbin/udevd", text)
         self.assertIn("$RUNTIME_ROOT/bin/udevadm", text)
@@ -117,19 +124,21 @@ class SystemRuntimeContractTests(unittest.TestCase):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
         self.assertIn("runtime_base_is_ready", text)
         self.assertIn("upgrade_existing_runtime", text)
-        self.assertIn("xwayland eudev libinput-udev", text)
-        self.assertIn("extending existing graphical runtime with input discovery support", text)
-        self.assertIn("RUNTIME_ID=alpine-v3.22-cage-barkery-v1", text)
+        self.assertIn("xwayland eudev libinput-udev python3 py3-gobject3 gtk+3.0 webkit2gtk-4.1", text)
+        self.assertIn("extending existing graphical runtime with WebKit browser host support", text)
+        self.assertIn("RUNTIME_ID=alpine-v3.22-cage-webkitgtk-v1", text)
 
     def test_native_browser_is_configured_for_local_shared_surface(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
-        self.assertIn("/etc/barkery/barkery.conf", text)
-        self.assertIn("start_uri = http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA", text)
+        self.assertIn("configure_graphics_host()", text)
         self.assertIn('/usr/bin/git -C "$repo_root" rev-parse HEAD', text)
         self.assertIn("XDG_CACHE_HOME=/tmp/ordax-web-cache-$SOURCE_SHA", text)
         self.assertIn('mkdir -p "$RUNTIME_ROOT/tmp/ordax-web-cache-$SOURCE_SHA"', text)
         self.assertIn("GDK_BACKEND=wayland", text)
-        self.assertIn("enabled = 0", text)
+        self.assertIn('START_URI="http://127.0.0.1:8765/composition/native/index.html?source=$SOURCE_SHA"', text)
+        self.assertIn("/srv/ordax-system/surface/runtime/ordax_browser_host.py", text)
+        self.assertIn("--profile-root /var/lib/ordax-user/browser", text)
+        self.assertNotIn("/etc/barkery/barkery.conf", text)
 
     def test_native_surface_bootstraps_persistent_base_telemetry_fail_soft(self):
         text = SURFACE_RUNTIME.read_text(encoding="utf-8")
@@ -333,7 +342,7 @@ class SystemRuntimeContractTests(unittest.TestCase):
         self.assertIn("graphical runtime is unavailable after provisioning attempt", text)
         self.assertIn("failed to bind host resources into graphical runtime", text)
         self.assertIn("native Surface HTTP/control server failed readiness check", text)
-        self.assertIn("native Cage/Barkery host exited with status", text)
+        self.assertIn("native Cage/OrdaX WebKit host exited with status", text)
 
 
 if __name__ == "__main__":

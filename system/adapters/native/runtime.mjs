@@ -17,6 +17,7 @@ export function createNativeSurfaceHost(
     powerStatusAvailable = false,
     networkStatusAvailable = false,
     networkManagementAvailable = false,
+    browserWebContentAvailable = false,
   } = {},
 ) {
   if (!windowRef?.navigator) {
@@ -40,6 +41,9 @@ export function createNativeSurfaceHost(
     }
     if (networkManagementAvailable) {
       capabilityIds.push("network.management");
+    }
+    if (browserWebContentAvailable) {
+      capabilityIds.push("browser.web-content");
     }
     if (bootControlAvailable) {
       capabilityIds.push("system.boot-control");

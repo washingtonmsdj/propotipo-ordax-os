@@ -1,3 +1,4 @@
+import { createWebBrowserSession } from "../../adapters/web/browser-session.mjs";
 import { createWebIdentityActions } from "../../adapters/web/identity-actions.mjs";
 import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { createWebNotesStore } from "../../adapters/web/notes.mjs";
@@ -12,6 +13,7 @@ import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
+import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
@@ -26,6 +28,7 @@ if (!root) {
 }
 
 const host = createWebSurfaceHost(window);
+const browserSession = createWebBrowserSession();
 const preferenceStore = createWebPreferenceStore(window);
 const localWorkspaceStore = createWebWorkspaceStore(window);
 const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
@@ -49,6 +52,7 @@ const surface = mountSurface(
   appActivation,
 );
 const notesWorkspaceControls = mountNotesWorkspaceControls(root, notesRuntime, surface);
+const internetBrowserControls = mountInternetBrowserControls(root, browserSession, surface);
 const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
 let quickPanelControls = null;
 let networkQuickPanel = null;
@@ -107,6 +111,8 @@ window.addEventListener(
     settingsOverviewControls.destroy();
     accountOverviewControls.destroy();
     preferenceSync.destroy();
+    internetBrowserControls.destroy();
+    browserSession.dispose();
     surface.destroy();
     notesRuntime.destroy();
     identityActions.dispose();

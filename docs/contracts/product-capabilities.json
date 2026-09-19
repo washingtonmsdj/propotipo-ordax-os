@@ -42,6 +42,11 @@
       "security_boundary": "standard-secure-transport"
     },
     {
+      "id": "browser.web-content",
+      "owner": "system/adapters",
+      "security_boundary": "isolated-unprivileged-web-content"
+    },
+    {
       "id": "network.status",
       "owner": "system/adapters/native",
       "security_boundary": "read-only-local-network-observability"
@@ -189,6 +194,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "browser.web-content",
         "network.status",
         "network.management",
         "filesystem.user-space",
@@ -209,6 +215,7 @@
         "account.identity",
         "sync.safe-state",
         "network.https",
+        "browser.web-content",
         "network.status",
         "network.management",
         "filesystem.user-space",
