@@ -101,6 +101,19 @@ jobs:
       - name: Prove signed envelope and immutable slot staging
         run: |
           set -euo pipefail
+          release_mode="$(python - <<'PY'
+import json
+from pathlib import Path
+descriptor = json.loads(Path("out/runtime-components/runtime-component-release.json").read_text(encoding="utf-8"))
+print(descriptor["component"]["release_mode"])
+PY
+)"
+          if [ "$release_mode" = "git-app" ]; then
+            echo 'RUNTIME_COMPONENT_SIGNED_STAGING=SKIPPED_GIT_APP'
+            echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
+            exit 0
+          fi
+
           channel="$PWD/out/runtime-components/ordax-runtime-component-channel"
           (
             cd tools/runtime-component-channel
@@ -153,7 +166,7 @@ jobs:
           echo 'RUNTIME_COMPONENT_CANONICAL_TRUST=NO'
           echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
 
-      - name: Upload non-activatable signed staging proof
+      - name: Upload runtime component candidate proof
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-runtime-component-internet-${{ github.sha }}
