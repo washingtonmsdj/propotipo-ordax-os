@@ -1,6 +1,9 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import { assertFileSpacePort, validateFileSpacePath } from "../../contracts/file-space.mjs";
-import { assertNotesRuntime } from "../../services/notes/runtime.mjs";
+import {
+  NOTES_HOME_PROJECT_ID,
+  assertNotesRuntime,
+} from "../../services/notes/runtime.mjs";
 import {
   applyNotesRichLink,
   captureNotesRichSelection,
@@ -172,7 +175,19 @@ function buildShell(documentObject) {
   );
   const menu = node(documentObject, "div", "ordax-notes-menu");
   menu.hidden = true;
-  menu.append(button(documentObject, "ordax-notes-menu-item", "Mover nota para lixeira", "trash-note", "Mover para a lixeira"));
+  const trashAction = button(
+    documentObject,
+    "ordax-notes-menu-item ordax-notes-trash-action",
+    "Mover nota para lixeira",
+    "trash-note",
+    "Mover para a lixeira",
+  );
+  const moveSection = node(documentObject, "section", "ordax-notes-move-section");
+  moveSection.append(
+    node(documentObject, "span", "ordax-notes-menu-label", "MOVER PARA"),
+    node(documentObject, "div", "ordax-notes-move-projects"),
+  );
+  menu.append(trashAction, moveSection);
   top.append(breadcrumb, topActions, menu);
   editor.append(top);
 
@@ -280,6 +295,7 @@ export function mountNotesWorkspaceControls(
   let query = "";
   let referencesOpen = true;
   let newestFirst = true;
+  let projectMenuId = null;
   let referenceChooserOpen = false;
   let referenceNoteId = null;
   let filePickerOpen = false;
@@ -388,11 +404,69 @@ export function mountNotesWorkspaceControls(
     const projects = view.querySelector(".ordax-notes-projects");
     projects.replaceChildren();
     for (const project of state.document.projects) {
-      const projectButton = button(documentObject, "ordax-notes-project", `Abrir projeto ${project.name}`, "select-project", "");
+      const row = node(documentObject, "div", "ordax-notes-project-row");
+      row.dataset.projectId = project.id;
+      row.dataset.active = String(mode === "project" && project.id === state.document.selectedProjectId);
+
+      const projectButton = button(
+        documentObject,
+        "ordax-notes-project",
+        `Abrir projeto ${project.name}`,
+        "select-project",
+        "",
+      );
       projectButton.dataset.projectId = project.id;
-      projectButton.dataset.active = String(mode === "project" && project.id === state.document.selectedProjectId);
-      projectButton.append(node(documentObject, "span", "ordax-notes-project-icon", "□"), node(documentObject, "span", "", project.name));
-      projects.append(projectButton);
+      projectButton.dataset.active = row.dataset.active;
+      projectButton.append(
+        node(documentObject, "span", "ordax-notes-project-icon", "□"),
+        node(documentObject, "span", "ordax-notes-project-name", project.name),
+      );
+
+      const actions = button(
+        documentObject,
+        "ordax-notes-project-actions",
+        `Ações do projeto ${project.name}`,
+        "project-actions",
+        "•••",
+      );
+      actions.dataset.projectId = project.id;
+      actions.setAttribute("aria-expanded", String(projectMenuId === project.id));
+      row.append(projectButton, actions);
+      projects.append(row);
+
+      if (projectMenuId === project.id) {
+        const projectMenu = node(documentObject, "div", "ordax-notes-project-menu");
+        const rename = button(
+          documentObject,
+          "ordax-notes-project-menu-item",
+          `Renomear projeto ${project.name}`,
+          "rename-project",
+          "Renomear",
+        );
+        rename.dataset.projectId = project.id;
+        projectMenu.append(rename);
+        if (project.id !== NOTES_HOME_PROJECT_ID) {
+          const remove = button(
+            documentObject,
+            "ordax-notes-project-menu-item ordax-notes-project-menu-danger",
+            `Excluir projeto ${project.name}`,
+            "remove-project",
+            "Excluir projeto",
+          );
+          remove.dataset.projectId = project.id;
+          projectMenu.append(remove);
+        } else {
+          projectMenu.append(
+            node(
+              documentObject,
+              "small",
+              "ordax-notes-project-menu-hint",
+              "Meu espaço é o projeto base e não pode ser excluído.",
+            ),
+          );
+        }
+        projects.append(projectMenu);
+      }
     }
   };
 
@@ -440,13 +514,14 @@ export function mountNotesWorkspaceControls(
     const section = view.querySelector(".ordax-notes-tasks");
     section.hidden = note.tasks.length === 0;
     for (const task of note.tasks) {
-      const label = node(documentObject, "label", "ordax-notes-task");
-      label.dataset.done = String(task.done);
+      const row = node(documentObject, "div", "ordax-notes-task");
+      row.dataset.done = String(task.done);
       const checkbox = node(documentObject, "input");
       checkbox.type = "checkbox";
       checkbox.checked = task.done;
       checkbox.dataset.taskId = task.id;
       checkbox.dataset.notesTaskDone = "";
+      checkbox.setAttribute("aria-label", `Marcar “${task.text}” como concluído`);
       const text = node(documentObject, "input", "ordax-notes-task-text");
       text.type = "text";
       text.value = task.text;
@@ -454,8 +529,16 @@ export function mountNotesWorkspaceControls(
       text.dataset.taskId = task.id;
       text.dataset.notesTaskText = "";
       text.setAttribute("aria-label", "Texto do item");
-      label.append(checkbox, text);
-      taskList.append(label);
+      const remove = button(
+        documentObject,
+        "ordax-notes-task-remove",
+        `Remover item ${task.text}`,
+        "remove-task",
+        "×",
+      );
+      remove.dataset.taskId = task.id;
+      row.append(checkbox, text, remove);
+      taskList.append(row);
     }
   };
 
@@ -641,6 +724,25 @@ export function mountNotesWorkspaceControls(
     return body ? restoreNotesRichSelection(body, lastEditorRange) : false;
   };
 
+  const renderMoveProjects = (view, note) => {
+    const list = view.querySelector(".ordax-notes-move-projects");
+    list.replaceChildren();
+    const targets = state.document.projects.filter((project) => project.id !== note.projectId);
+    const section = view.querySelector(".ordax-notes-move-section");
+    section.hidden = targets.length === 0 || note.deletedAt !== null;
+    for (const project of targets) {
+      const move = button(
+        documentObject,
+        "ordax-notes-menu-item ordax-notes-move-project",
+        `Mover nota para ${project.name}`,
+        "move-note-project",
+        project.name,
+      );
+      move.dataset.projectId = project.id;
+      list.append(move);
+    }
+  };
+
   const renderEditor = (view) => {
     const note = currentNote();
     const empty = view.querySelector("[data-notes-empty]");
@@ -683,9 +785,10 @@ export function mountNotesWorkspaceControls(
     const star = view.querySelector(".ordax-notes-star");
     star.textContent = note.favorite ? "★" : "☆";
     star.setAttribute("aria-label", note.favorite ? "Remover dos favoritos" : "Adicionar aos favoritos");
-    const menuAction = view.querySelector(".ordax-notes-menu-item");
+    const menuAction = view.querySelector(".ordax-notes-trash-action");
     menuAction.textContent = note.deletedAt === null ? "Mover para a lixeira" : "Restaurar nota";
     menuAction.dataset.notesAction = note.deletedAt === null ? "trash-note" : "restore-note";
+    renderMoveProjects(view, note);
     renderTasks(view, note);
     renderReferences(view, note);
 
@@ -744,13 +847,50 @@ export function mountNotesWorkspaceControls(
     if (action === "new-project") {
       const name = windowObject.prompt?.("Nome do novo projeto:");
       if (name?.trim()) {
+        projectMenuId = null;
         flushEditor();
         mode = "project";
         runtime.createProject(name);
       }
       return;
     }
+    if (action === "project-actions") {
+      const projectId = actionNode.dataset.projectId;
+      projectMenuId = projectMenuId === projectId ? null : projectId;
+      renderProjects(mountedSlot.querySelector("[data-ordax-notes-view]"));
+      return;
+    }
+    if (action === "rename-project") {
+      const projectId = actionNode.dataset.projectId;
+      const project = state.document.projects.find((candidate) => candidate.id === projectId);
+      if (!project) return;
+      const name = windowObject.prompt?.("Novo nome do projeto:", project.name);
+      if (name?.trim()) {
+        projectMenuId = null;
+        runtime.renameProject(projectId, name);
+      }
+      return;
+    }
+    if (action === "remove-project") {
+      const projectId = actionNode.dataset.projectId;
+      const project = state.document.projects.find((candidate) => candidate.id === projectId);
+      if (!project || project.id === NOTES_HOME_PROJECT_ID) return;
+      const noteCount = state.document.notes.filter((candidate) => candidate.projectId === projectId).length;
+      const confirmed = windowObject.confirm?.(
+        noteCount > 0
+          ? `Excluir “${project.name}”? As ${noteCount} ${noteCount === 1 ? "nota será movida" : "notas serão movidas"} para Meu espaço.`
+          : `Excluir o projeto “${project.name}”?`,
+      );
+      if (confirmed) {
+        projectMenuId = null;
+        flushEditor();
+        mode = "project";
+        runtime.removeProject(projectId);
+      }
+      return;
+    }
     if (action === "select-project") {
+      projectMenuId = null;
       resetReferenceFlow();
       flushEditor();
       mode = "project";
@@ -758,12 +898,14 @@ export function mountNotesWorkspaceControls(
       return;
     }
     if (action === "select-note") {
+      projectMenuId = null;
       resetReferenceFlow();
       flushEditor();
       runtime.selectNote(actionNode.dataset.noteId);
       return;
     }
     if (["view-all", "view-favorites", "view-recent", "view-trash"].includes(action)) {
+      projectMenuId = null;
       resetReferenceFlow();
       flushEditor();
       mode = action.replace("view-", "");
@@ -785,6 +927,18 @@ export function mountNotesWorkspaceControls(
     const body = mountedSlot.querySelector("[data-notes-body]");
     if (action === "favorite") runtime.toggleFavorite(note.id);
     if (action === "add-task") runtime.addTask(note.id);
+    if (action === "remove-task") runtime.removeTask(note.id, actionNode.dataset.taskId);
+    if (action === "move-note-project") {
+      const projectId = actionNode.dataset.projectId;
+      const target = state.document.projects.find((project) => project.id === projectId);
+      if (target && target.id !== note.projectId) {
+        flushEditor();
+        mode = "project";
+        runtime.moveNote(note.id, target.id);
+        const menu = mountedSlot?.querySelector(".ordax-notes-menu");
+        if (menu) menu.hidden = true;
+      }
+    }
     if (action === "trash-note") runtime.trashNote(note.id);
     if (action === "restore-note") runtime.restoreNote(note.id);
     if (action === "toggle-references") {
