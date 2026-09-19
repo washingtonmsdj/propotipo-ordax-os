@@ -165,7 +165,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         self.assertNotIn("../", rendered)
         self.assertIn("./system/surface/ui/tokens.css", rendered)
         self.assertIn("./system/surface/ui/files.css", rendered)
-        self.assertIn("./system/apps/notes/notes.css", rendered)
+        self.assertNotIn("notes.css", rendered)
         self.assertNotIn("internet.css", rendered)
         self.assertIn("./system/surface/ui/system.css", rendered)
         self.assertIn("./system/surface/ui/account.css", rendered)
