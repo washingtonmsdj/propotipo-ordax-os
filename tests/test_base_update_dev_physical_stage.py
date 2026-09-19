@@ -60,7 +60,31 @@ class PhysicalDevelopmentStageBoundaryTests(unittest.TestCase):
         self.assertFalse(stage["efi_variables_written"])
         self.assertFalse(stage["reboot_requested"])
         self.assertFalse(stage["activation_performed"])
-        self.assertFalse(stage["owner_runtime_wiring_enabled"])
+        self.assertTrue(stage["owner_runtime_wiring_enabled"])
+        self.assertTrue(stage["automatic_stage_enabled"])
+        self.assertEqual(
+            stage["stage_sha_state_file"],
+            "/state/ordax/base-update/dev-base-staged-sha",
+        )
+        self.assertEqual(
+            stage["stage_result_state_file"],
+            "/state/ordax/base-update/dev-base-stage-result.json",
+        )
+        self.assertEqual(
+            stage["stage_log_file"],
+            "/state/ordax/base-update/dev-physical-stage.log",
+        )
+        self.assertTrue(stage["runtime_requires_ready_sha"])
+        self.assertTrue(stage["runtime_requires_matching_readonly_preflight_sha"])
+        self.assertTrue(stage["cached_preflight_is_scheduling_gate_only"])
+        self.assertTrue(stage["helper_performs_fresh_preflight_before_write"])
+        self.assertTrue(stage["runtime_validates_result_source_sha"])
+        self.assertTrue(stage["runtime_validates_activation_false"])
+        self.assertTrue(stage["runtime_validates_efi_write_false"])
+        self.assertTrue(stage["runtime_validates_reboot_false"])
+        self.assertFalse(stage["stage_failure_blocks_surface"])
+        self.assertFalse(stage["stage_failure_changes_current_boot"])
+        self.assertTrue(stage["activation_owned_separately"])
         self.assertFalse(stage["physical_notebook_proven"])
 
 
