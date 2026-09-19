@@ -126,6 +126,7 @@ export function assertProjectCatalogPort(port) {
     "recordOpened",
     "recordFileOpened",
     "clearLastFile",
+    "relocateLastFilePath",
     "remove",
   ]) {
     if (typeof port[method] !== "function") {

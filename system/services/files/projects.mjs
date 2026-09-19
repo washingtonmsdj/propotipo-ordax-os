@@ -1,3 +1,4 @@
+import { validateFileSpacePath } from "../../contracts/file-space.mjs";
 import {
   MAX_PROJECTS,
   PROJECT_CATALOG_SCHEMA,
@@ -20,6 +21,14 @@ function readClock(now) {
     throw new TypeError("Project runtime clock must return a non-negative epoch millisecond");
   }
   return value;
+}
+
+function validateRelocationPath(value) {
+  const path = validateFileSpacePath(value);
+  if (path === "/") {
+    throw new TypeError("Project continuity relocation path must identify an entry below the logical root");
+  }
+  return path;
 }
 
 function sameProjects(left, right) {
@@ -193,6 +202,41 @@ export function createProjectCatalogRuntime({ store = null, now = Date.now } = {
         ...existing,
         lastFilePath: null,
       });
+      replaceState({
+        nextOrdinal: state.nextOrdinal,
+        projects: updatedProjects,
+      });
+      return getSnapshot();
+    },
+    relocateLastFilePath(previousPath, nextPath) {
+      const previous = validateRelocationPath(previousPath);
+      const next = validateRelocationPath(nextPath);
+      if (previous === next) return getSnapshot();
+
+      let changed = false;
+      const updatedProjects = state.projects.map((project) => {
+        const current = project.lastFilePath;
+        if (
+          current === null
+          || (current !== previous && !current.startsWith(`${previous}/`))
+        ) {
+          return project;
+        }
+
+        const suffix = current.slice(previous.length);
+        const relocated = validateFileSpacePath(`${next}${suffix}`);
+        const insideProject =
+          relocated !== project.path
+          && relocated.startsWith(`${project.path}/`);
+        const lastFilePath = insideProject
+          ? validateProjectFilePath(project.path, relocated)
+          : null;
+        if (lastFilePath === current) return project;
+        changed = true;
+        return Object.freeze({ ...project, lastFilePath });
+      });
+
+      if (!changed) return getSnapshot();
       replaceState({
         nextOrdinal: state.nextOrdinal,
         projects: updatedProjects,
