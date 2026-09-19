@@ -1,3 +1,5 @@
+import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
+import { assertFileSpacePort, validateFileSpacePath } from "../../contracts/file-space.mjs";
 import { assertNotesRuntime } from "../../services/notes/runtime.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -41,6 +43,19 @@ function hostFromHref(href) {
   }
 }
 
+function joinLogicalPath(path, name) {
+  const base = validateFileSpacePath(path);
+  return validateFileSpacePath(base === "/" ? `/${name}` : `${base}/${name}`);
+}
+
+function parentLogicalPath(path) {
+  const valid = validateFileSpacePath(path);
+  if (valid === "/") return "/";
+  const parts = valid.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length ? `/${parts.join("/")}` : "/";
+}
+
 function firstBodyLine(body) {
   return body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? "Nota sem conteúdo";
 }
@@ -51,7 +66,12 @@ function noteMatchesQuery(note, query) {
     note.title,
     note.body,
     ...note.tasks.map((task) => task.text),
-    ...note.references.flatMap((reference) => [reference.title, reference.detail, reference.href]),
+    ...note.references.flatMap((reference) => [
+      reference.title,
+      reference.detail,
+      reference.href,
+      reference.path ?? "",
+    ]),
   ].join("\n").toLocaleLowerCase("pt-BR");
   return haystack.includes(query.toLocaleLowerCase("pt-BR"));
 }
@@ -228,18 +248,40 @@ function buildShell(documentObject) {
   );
   refs.append(refsHeader, node(documentObject, "div", "ordax-notes-refs-content"));
   const addRef = button(documentObject, "ordax-notes-add-reference", "Adicionar referência", "add-reference", "＋  Adicionar referência");
-  refs.append(addRef, node(documentObject, "p", "ordax-notes-refs-caption", "Fontes próximas das suas ideias."));
+  const refChoices = node(documentObject, "div", "ordax-notes-reference-choices");
+  refChoices.dataset.notesReferenceChoices = "";
+  refChoices.hidden = true;
+  refChoices.append(
+    button(documentObject, "ordax-notes-reference-choice", "Adicionar link da web", "add-link-reference", "◎  Link da web"),
+    button(documentObject, "ordax-notes-reference-choice", "Relacionar arquivo deste dispositivo", "add-file-reference", "▱  Arquivo deste dispositivo"),
+  );
+  const filePicker = node(documentObject, "section", "ordax-notes-file-picker");
+  filePicker.dataset.notesFilePicker = "";
+  filePicker.hidden = true;
+  refs.append(
+    addRef,
+    refChoices,
+    filePicker,
+    node(documentObject, "p", "ordax-notes-refs-caption", "Fontes próximas das suas ideias."),
+  );
 
   view.append(nav, list, editor, refs);
   return view;
 }
 
-export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle = null) {
+export function mountNotesWorkspaceControls(
+  root,
+  notesRuntime,
+  surfaceLifecycle = null,
+  { fileSpace = null, appActivation = null } = {},
+) {
   if (!(root instanceof Element)) {
     throw new TypeError("Notes workspace controls require a Surface root Element");
   }
   const runtime = assertNotesRuntime(notesRuntime);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+  const filePort = fileSpace === null ? null : assertFileSpacePort(fileSpace);
+  const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
   const documentObject = root.ownerDocument;
   const windowObject = documentObject.defaultView ?? globalThis.window;
 
@@ -248,6 +290,15 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
   let query = "";
   let referencesOpen = true;
   let newestFirst = true;
+  let referenceChooserOpen = false;
+  let referenceNoteId = null;
+  let filePickerOpen = false;
+  let filePickerPath = "/";
+  let filePickerListing = null;
+  let filePickerPending = false;
+  let filePickerError = "";
+  let selectedFilePath = null;
+  let filePickerOrdinal = 0;
   let mountedSlot = null;
   let saveTimer = null;
   let pendingNoteId = null;
@@ -286,6 +337,42 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       const body = mountedSlot.querySelector("[data-notes-body]");
       runtime.updateNote(noteId, { title: title?.value ?? "", body: body?.value ?? "" });
     }, SAVE_DELAY_MS);
+  };
+
+  const resetReferenceFlow = () => {
+    referenceChooserOpen = false;
+    referenceNoteId = null;
+    filePickerOpen = false;
+    filePickerListing = null;
+    filePickerPending = false;
+    filePickerError = "";
+    selectedFilePath = null;
+    filePickerOrdinal += 1;
+  };
+
+  const loadFilePicker = async (path) => {
+    if (!filePort) return;
+    const target = validateFileSpacePath(path);
+    const ordinal = ++filePickerOrdinal;
+    filePickerPending = true;
+    filePickerError = "";
+    selectedFilePath = null;
+    render();
+    try {
+      const listing = await filePort.list(target);
+      if (ordinal !== filePickerOrdinal) return;
+      filePickerListing = listing;
+      filePickerPath = listing.path;
+    } catch {
+      if (ordinal !== filePickerOrdinal) return;
+      filePickerListing = null;
+      filePickerError = "Não foi possível abrir esta pasta.";
+    } finally {
+      if (ordinal === filePickerOrdinal) {
+        filePickerPending = false;
+        render();
+      }
+    }
   };
 
   const renderProjects = (view) => {
@@ -363,18 +450,101 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
     }
   };
 
+  const renderReferenceControls = (view, note) => {
+    if (referenceNoteId !== null && referenceNoteId !== note.id) {
+      resetReferenceFlow();
+    }
+    const choices = view.querySelector("[data-notes-reference-choices]");
+    choices.hidden = !referenceChooserOpen;
+    const fileChoice = choices.querySelector('[data-notes-action="add-file-reference"]');
+    fileChoice.disabled = filePort === null;
+    fileChoice.title = filePort
+      ? "Relacionar um arquivo local à nota"
+      : "Arquivos locais estão disponíveis no OrdaX Native";
+
+    const picker = view.querySelector("[data-notes-file-picker]");
+    picker.hidden = !filePickerOpen;
+    picker.replaceChildren();
+    if (!filePickerOpen) return;
+
+    const header = node(documentObject, "header", "ordax-notes-file-picker-header");
+    const heading = node(documentObject, "div", "ordax-notes-file-picker-heading");
+    heading.append(
+      node(documentObject, "strong", "", "Relacionar arquivo"),
+      node(documentObject, "small", "", filePickerPath),
+    );
+    header.append(
+      heading,
+      button(documentObject, "ordax-notes-file-picker-close", "Fechar seletor de arquivos", "close-file-picker", "×"),
+    );
+    picker.append(header);
+
+    const navigation = node(documentObject, "div", "ordax-notes-file-picker-nav");
+    const up = button(documentObject, "ordax-notes-file-picker-up", "Subir uma pasta", "file-picker-up", "↑  Pasta acima");
+    up.disabled = filePickerPath === "/" || filePickerPending;
+    navigation.append(up);
+    picker.append(navigation);
+
+    const list = node(documentObject, "div", "ordax-notes-file-picker-list");
+    if (filePickerPending) {
+      list.append(node(documentObject, "p", "ordax-notes-file-picker-message", "Carregando arquivos…"));
+    } else if (filePickerError) {
+      list.append(node(documentObject, "p", "ordax-notes-file-picker-message", filePickerError));
+    } else if (filePickerListing) {
+      const entries = [...filePickerListing.entries].sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+        return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+      });
+      if (entries.length === 0) {
+        list.append(node(documentObject, "p", "ordax-notes-file-picker-message", "Esta pasta está vazia."));
+      }
+      for (const entry of entries) {
+        const fullPath = joinLogicalPath(filePickerListing.path, entry.name);
+        const action = entry.kind === "directory" ? "file-picker-open-directory" : "file-picker-select-file";
+        const row = button(
+          documentObject,
+          "ordax-notes-file-picker-row",
+          entry.kind === "directory" ? `Abrir pasta ${entry.name}` : `Selecionar arquivo ${entry.name}`,
+          action,
+          "",
+        );
+        row.dataset.filePath = fullPath;
+        row.dataset.kind = entry.kind;
+        row.dataset.selected = String(entry.kind === "file" && selectedFilePath === fullPath);
+        row.append(
+          node(documentObject, "span", "ordax-notes-file-picker-icon", entry.kind === "directory" ? "□" : "▱"),
+          node(documentObject, "span", "ordax-notes-file-picker-name", entry.name),
+          node(documentObject, "small", "ordax-notes-file-picker-kind", entry.kind === "directory" ? "Pasta" : "Arquivo"),
+        );
+        list.append(row);
+      }
+    }
+    picker.append(list);
+
+    const attach = button(
+      documentObject,
+      "ordax-notes-file-picker-attach",
+      "Relacionar arquivo selecionado",
+      "attach-file-reference",
+      "Relacionar arquivo",
+    );
+    attach.disabled = !selectedFilePath || filePickerPending;
+    picker.append(attach);
+  };
+
   const renderReferences = (view, note) => {
     const panel = view.querySelector("[data-notes-references]");
     panel.hidden = !referencesOpen;
     const refs = view.querySelector(".ordax-notes-refs-content");
     refs.replaceChildren();
     refs.append(node(documentObject, "span", "ordax-notes-refs-kicker", "DESTA NOTA"));
-    if (note.references.length === 0) {
-      refs.append(node(documentObject, "p", "ordax-notes-refs-empty", "Nenhuma referência adicionada."));
-      return;
-    }
+
     const links = note.references.filter((reference) => reference.kind === "link");
     const files = note.references.filter((reference) => reference.kind === "file");
+    if (note.references.length === 0) {
+      refs.append(node(documentObject, "p", "ordax-notes-refs-empty", "Nenhuma referência adicionada."));
+    }
+
     for (const reference of links) {
       const card = node(documentObject, "article", "ordax-notes-ref-card");
       const leading = node(documentObject, "span", "ordax-notes-ref-icon", "◎");
@@ -394,18 +564,30 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       }
       refs.append(card);
     }
+
     if (files.length) {
       refs.append(node(documentObject, "h3", "ordax-notes-refs-subtitle", "Arquivos relacionados"));
       for (const reference of files) {
-        const card = node(documentObject, "article", "ordax-notes-ref-card");
+        const card = node(documentObject, "article", "ordax-notes-ref-card ordax-notes-file-ref-card");
         const copy = node(documentObject, "span", "ordax-notes-ref-copy");
-        copy.append(node(documentObject, "strong", "", reference.title), node(documentObject, "span", "", reference.detail || "Arquivo"));
+        copy.append(
+          node(documentObject, "strong", "", reference.title),
+          node(documentObject, "small", "", reference.path || "Arquivo local"),
+          node(documentObject, "span", "", reference.detail || "Arquivo local"),
+        );
+        if (reference.path && activationPort) {
+          const open = button(documentObject, "ordax-notes-ref-open", "Abrir localização no Arquivos", "open-file-reference", "Abrir");
+          open.dataset.filePath = reference.path;
+          copy.append(open);
+        }
         const remove = button(documentObject, "ordax-notes-ref-remove", "Remover referência", "remove-reference", "×");
         remove.dataset.referenceId = reference.id;
         card.append(node(documentObject, "span", "ordax-notes-ref-icon", "▱"), copy, remove);
         refs.append(card);
       }
     }
+
+    renderReferenceControls(view, note);
   };
 
   const renderEditor = (view) => {
@@ -493,6 +675,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
     const note = currentNote();
 
     if (action === "new-note") {
+      resetReferenceFlow();
       flushEditor();
       mode = "project";
       runtime.createNote(state.document.selectedProjectId);
@@ -509,17 +692,20 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       return;
     }
     if (action === "select-project") {
+      resetReferenceFlow();
       flushEditor();
       mode = "project";
       runtime.selectProject(actionNode.dataset.projectId);
       return;
     }
     if (action === "select-note") {
+      resetReferenceFlow();
       flushEditor();
       runtime.selectNote(actionNode.dataset.noteId);
       return;
     }
     if (["view-all", "view-favorites", "view-recent", "view-trash"].includes(action)) {
+      resetReferenceFlow();
       flushEditor();
       mode = action.replace("view-", "");
       render();
@@ -560,6 +746,15 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       scheduleSave();
     }
     if (action === "add-reference") {
+      referenceNoteId = note.id;
+      referenceChooserOpen = !referenceChooserOpen;
+      filePickerOpen = false;
+      filePickerOrdinal += 1;
+      selectedFilePath = null;
+      render();
+    }
+    if (action === "add-link-reference") {
+      referenceNoteId = note.id;
       const href = windowObject.prompt?.("Cole o endereço da referência:");
       if (!href) return;
       let valid;
@@ -575,6 +770,44 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       }
       const title = windowObject.prompt?.("Título da referência:", hostFromHref(href)) || hostFromHref(href);
       runtime.addReference(note.id, { kind: "link", title, detail: "Link", href });
+      resetReferenceFlow();
+    }
+    if (action === "add-file-reference" && filePort) {
+      referenceNoteId = note.id;
+      referenceChooserOpen = false;
+      filePickerOpen = true;
+      filePickerPath = "/";
+      filePickerListing = null;
+      selectedFilePath = null;
+      void loadFilePicker("/");
+    }
+    if (action === "close-file-picker") {
+      resetReferenceFlow();
+      render();
+    }
+    if (action === "file-picker-up" && filePort) {
+      void loadFilePicker(parentLogicalPath(filePickerPath));
+    }
+    if (action === "file-picker-open-directory" && filePort) {
+      void loadFilePicker(actionNode.dataset.filePath);
+    }
+    if (action === "file-picker-select-file") {
+      selectedFilePath = actionNode.dataset.filePath;
+      render();
+    }
+    if (action === "attach-file-reference" && selectedFilePath && referenceNoteId === note.id) {
+      const title = selectedFilePath.split("/").filter(Boolean).at(-1) || "Arquivo";
+      runtime.addReference(note.id, {
+        kind: "file",
+        title,
+        detail: "Arquivo local",
+        path: selectedFilePath,
+      });
+      resetReferenceFlow();
+    }
+    if (action === "open-file-reference" && activationPort) {
+      const path = actionNode.dataset.filePath;
+      if (path) activationPort.publish({ appId: "files", target: parentLogicalPath(path) });
     }
     if (action === "remove-reference") {
       runtime.removeReference(note.id, actionNode.dataset.referenceId);
@@ -637,6 +870,7 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
 
   return Object.freeze({
     destroy() {
+      filePickerOrdinal += 1;
       flushEditor();
       unsubscribeRuntime?.();
       unsubscribeRender?.();
