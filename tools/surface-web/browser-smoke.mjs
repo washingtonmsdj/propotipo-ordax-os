@@ -466,6 +466,96 @@ function buildCompositionProofExpression(moduleSources, styles) {
     document.head.append(importMap);
 
     const result = {};
+    const notesRich = await import(
+      namespaceUrls['composition-first']['system/surface/ui/notes-rich-editor.mjs']
+    );
+    const placeCaret = (element, atEnd = true) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(!atEnd);
+      const selection = document.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
+    const emptyEditorProbe = notesRich.createNotesRichEditor(document);
+    notesRich.renderNotesRichBody(emptyEditorProbe, {
+      blocks: [{ type: 'paragraph', text: '', marks: [] }],
+    });
+    document.body.append(emptyEditorProbe);
+    result.notesEmptyEditorState = emptyEditorProbe.dataset.notesEmptyState === 'true';
+
+    const blockEditorProbe = notesRich.createNotesRichEditor(document);
+    notesRich.renderNotesRichBody(blockEditorProbe, {
+      blocks: [{ type: 'heading', text: 'Título', marks: [] }],
+    });
+    document.body.append(blockEditorProbe);
+    let probeBlock = blockEditorProbe.querySelector('[data-notes-rich-block]');
+    placeCaret(probeBlock, true);
+    const enterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    result.notesHeadingEnterHandled = notesRich.handleNotesRichBlockKeyDown(
+      blockEditorProbe,
+      enterEvent,
+    ) === true && enterEvent.defaultPrevented === true
+      && blockEditorProbe.children.length === 2
+      && blockEditorProbe.children[0].dataset.notesBlockType === 'heading'
+      && blockEditorProbe.children[1].dataset.notesBlockType === 'paragraph';
+
+    probeBlock = blockEditorProbe.children[1];
+    probeBlock.dataset.notesBlockType = 'quote';
+    placeCaret(probeBlock, false);
+    const backspaceEvent = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    });
+    result.notesBackspaceExitsBlock = notesRich.handleNotesRichBlockKeyDown(
+      blockEditorProbe,
+      backspaceEvent,
+    ) === true && backspaceEvent.defaultPrevented === true
+      && probeBlock.dataset.notesBlockType === 'paragraph';
+
+    const bulletEditorProbe = notesRich.createNotesRichEditor(document);
+    notesRich.renderNotesRichBody(bulletEditorProbe, {
+      blocks: [{ type: 'bullet', text: 'Item', marks: [] }],
+    });
+    document.body.append(bulletEditorProbe);
+    placeCaret(bulletEditorProbe.children[0], true);
+    const bulletEnterEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    notesRich.handleNotesRichBlockKeyDown(bulletEditorProbe, bulletEnterEvent);
+    result.notesBulletEnterContinuesList = bulletEditorProbe.children.length === 2
+      && bulletEditorProbe.children[1].dataset.notesBlockType === 'bullet';
+
+    const softBreakProbe = notesRich.createNotesRichEditor(document);
+    notesRich.renderNotesRichBody(softBreakProbe, {
+      blocks: [{ type: 'paragraph', text: 'Linha', marks: [] }],
+    });
+    document.body.append(softBreakProbe);
+    placeCaret(softBreakProbe.children[0], true);
+    const softBreakEvent = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    notesRich.handleNotesRichBlockKeyDown(softBreakProbe, softBreakEvent);
+    result.notesShiftEnterKeepsBlock = softBreakEvent.defaultPrevented === true
+      && softBreakProbe.children.length === 1
+      && softBreakProbe.textContent === 'Linha\\n';
+
+    emptyEditorProbe.remove();
+    blockEditorProbe.remove();
+    bulletEditorProbe.remove();
+    softBreakProbe.remove();
+
     const parsedStorage = (key) => {
       const raw = storage.getItem(key);
       return raw === null ? null : JSON.parse(raw);
@@ -755,7 +845,9 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
-      'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
+      'workspaceTargetPersisted', 'notesEmptyEditorState', 'notesHeadingEnterHandled',
+      'notesBackspaceExitsBlock', 'notesBulletEnterContinuesList', 'notesShiftEnterKeepsBlock',
+      'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
       'notesNewActionPresent', 'notesAutosavePersisted', 'notesRichTextPersisted', 'notesItalicShortcutPersisted',
       'notesSaveShortcutPreventedBrowserDialog', 'notesPlainBodyHasNoMarkup',
       'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
@@ -807,7 +899,11 @@ async function evaluateProof(client, expression, label) {
     userGesture: true,
   });
   if (evaluation.exceptionDetails) {
-    throw new Error(`${label} browser proof threw: ${evaluation.exceptionDetails.text ?? 'unknown exception'}`);
+    const detail = evaluation.exceptionDetails.exception?.description
+      ?? evaluation.exceptionDetails.exception?.value
+      ?? evaluation.exceptionDetails.text
+      ?? 'unknown exception';
+    throw new Error(`${label} browser proof threw: ${detail}`);
   }
   const result = evaluation.result?.value;
   if (!result || result.allCoreAssertions !== true) {
