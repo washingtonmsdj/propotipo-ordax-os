@@ -705,38 +705,26 @@ test("semantic no-op mutations do not write, emit, or advance timestamps", () =>
     afterCreate.updatedAt,
   );
 
+  runtime.updateNote(noteId, { body: "x" });
+  const beforeFormat = runtime.getSnapshot();
+  const beforeFormatSaves = saves;
   runtime.updateNote(noteId, {
     richBody: {
       blocks: [{
         type: "paragraph",
-        text: note.body,
-        marks: [{ type: "bold", start: 0, end: Math.min(1, note.body.length) }],
+        text: "x",
+        marks: [{ type: "bold", start: 0, end: 1 }],
       }],
     },
   });
-  // Empty text cannot carry a mark, so make a real text mutation first when needed.
-  if (note.body.length === 0) {
-    runtime.updateNote(noteId, { body: "x" });
-    const beforeFormat = runtime.getSnapshot();
-    const beforeFormatSaves = saves;
-    runtime.updateNote(noteId, {
-      richBody: {
-        blocks: [{
-          type: "paragraph",
-          text: "x",
-          marks: [{ type: "bold", start: 0, end: 1 }],
-        }],
-      },
-    });
-    const formatted = runtime.getSnapshot();
-    assert.equal(saves, beforeFormatSaves + 1);
-    assert.equal(formatted.document.notes.find((item) => item.id === noteId).body, "x");
-    assert.equal(
-      formatted.document.notes.find((item) => item.id === noteId).richBody.blocks[0].marks[0].type,
-      "bold",
-    );
-    assert.ok(formatted.persistence.lastSavedAt > beforeFormat.persistence.lastSavedAt);
-  }
+  const formatted = runtime.getSnapshot();
+  assert.equal(saves, beforeFormatSaves + 1);
+  assert.equal(formatted.document.notes.find((item) => item.id === noteId).body, "x");
+  assert.equal(
+    formatted.document.notes.find((item) => item.id === noteId).richBody.blocks[0].marks[0].type,
+    "bold",
+  );
+  assert.ok(formatted.persistence.lastSavedAt > beforeFormat.persistence.lastSavedAt);
 
   runtime.addTask(noteId, "Item");
   state = runtime.getSnapshot();
