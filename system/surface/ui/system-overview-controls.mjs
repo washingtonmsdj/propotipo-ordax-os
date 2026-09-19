@@ -15,6 +15,7 @@ import {
   assertUpdateStatusPort,
   validateUpdateStatusSnapshot,
 } from "../../contracts/update-status.mjs";
+import { PRODUCT_VERSION, productVersionLabel } from "../../contracts/product-version.mjs";
 import {
   deliveryLabel,
   formatUpdateTimestamp,
@@ -307,6 +308,12 @@ export function mountSystemOverviewControls(
     grid.setAttribute("aria-label", "Resumo do sistema");
 
     appendMetricCard(documentObject, grid, {
+      label: "Versão do protótipo",
+      value: productVersionLabel(),
+      detail: "Versão humana do produto · independente da Entrega e do SHA",
+    });
+
+    appendMetricCard(documentObject, grid, {
       label: "Entrega observada",
       value: updateSnapshot ? deliveryLabel(updateSnapshot.deliveryNumber) : "—",
       detail: updateSnapshot
@@ -559,6 +566,33 @@ export function mountSystemOverviewControls(
   };
 
   const renderComponentVersions = (view) => {
+    const versionSection = node(documentObject, "section", "ordax-system-section");
+    const versionHeading = node(documentObject, "div", "ordax-system-section-heading");
+    const versionHeadingCopy = node(documentObject, "div");
+    versionHeadingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Versão do produto"),
+      node(documentObject, "h4", "ordax-system-section-title", productVersionLabel()),
+    );
+    versionHeading.append(versionHeadingCopy);
+    versionSection.append(versionHeading);
+    versionSection.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-system-section-copy",
+        "Esta é a versão humana do protótipo. Ela muda quando o produto atinge um novo marco funcional; Entrega e SHA continuam identificando atualizações e builds específicos.",
+      ),
+      node(
+        documentObject,
+        "p",
+        "ordax-system-section-copy",
+        PRODUCT_VERSION.stableRelease
+          ? "Este marco é uma versão estável do produto."
+          : "Canal de protótipo: v1.0 permanece reservado para o produto estável.",
+      ),
+    );
+    view.append(versionSection);
+
     const section = node(documentObject, "section", "ordax-system-section");
     const heading = node(documentObject, "div", "ordax-system-section-heading");
     const headingCopy = node(documentObject, "div");
@@ -578,7 +612,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. Componentes só exibem versão própria quando tiverem empacotamento e ciclo de release independentes.",
+        "Entrega identifica o que pode chegar ao notebook e SHA identifica exatamente o build. Nenhum deles é a versão comercial do OrdaX. Apps só recebem versão própria quando tiverem empacotamento e ciclo de release independentes.",
       ),
     );
 
@@ -588,7 +622,7 @@ export function mountSystemOverviewControls(
           documentObject,
           "p",
           "ordax-system-placeholder",
-          "Este host não informa uma identidade técnica de entrega. O OrdaX não inventa uma versão local.",
+          "Este host ainda não publicou uma identidade técnica de entrega.",
         ),
       );
       view.append(section);
@@ -596,18 +630,32 @@ export function mountSystemOverviewControls(
     }
 
     const list = node(documentObject, "div", "ordax-system-version-grid");
-    for (const label of ["Surface", "Arquivos", "Ajustes", "Conta", "Sistema", "Rede", "Atualizador"]) {
+    for (const label of [
+      "Surface",
+      "Arquivos",
+      "Notas",
+      "Internet",
+      "Ajustes",
+      "Conta",
+      "Sistema",
+      "Rede",
+      "Atualizador",
+    ]) {
       const item = node(documentObject, "div", "ordax-system-version-item");
       item.append(
         node(documentObject, "strong", "", label),
-        node(documentObject, "span", "", "Distribuição conjunta · sem versão própria"),
+        node(
+          documentObject,
+          "span",
+          "",
+          `${PRODUCT_VERSION.displayVersion} · distribuição conjunta · sem versão própria`,
+        ),
       );
       list.append(item);
     }
     section.append(list);
     view.append(section);
   };
-
   const renderHistory = (view) => {
     if (!historyPort) return;
     const section = node(documentObject, "section", "ordax-system-section");
