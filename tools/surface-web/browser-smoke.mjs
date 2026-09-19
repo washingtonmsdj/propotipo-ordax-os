@@ -17,7 +17,7 @@ const CSS_FILES = [
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
   'system/surface/ui/notes.css',
-  'system/surface/ui/browser.css',
+  'system/surface/ui/internet.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
@@ -867,24 +867,22 @@ function buildCompositionProofExpression(moduleSources, styles) {
       cancelable: true,
     }));
     await Promise.resolve();
-    const browserSlot = root.querySelector(
-      '[data-window-id="browser"] [data-app-extension="browser-workspace"]',
+    const internetSlot = root.querySelector(
+      '[data-window-id="internet"] [data-app-extension="internet-browser"]',
     );
-    const browserAddress = browserSlot?.querySelector('[data-browser-address]');
-    const browserFrame = browserSlot?.querySelector('[data-browser-frame]');
-    const browserSandbox = browserFrame?.getAttribute('sandbox') ?? '';
-    result.notesReferenceOpenedInBrowser = Boolean(
-      browserSlot?.dataset.ordaxBrowserMounted === 'true',
+    const internetWorkspace = parsedStorage('ordax.workspace.v2');
+    const internetArea = internetWorkspace?.areas
+      ?.find((area) => area.id === internetWorkspace.activeAreaId) ?? internetWorkspace?.areas?.[0];
+    const storedInternet = internetArea?.windows?.find((item) => item.appId === 'internet');
+    result.notesReferenceOpenedInInternet = Boolean(
+      internetSlot?.dataset.ordaxInternetMounted === 'true',
     );
-    result.browserAddressReceivedActivation = browserAddress?.value
-      === 'https://example.com/docs?q=1';
-    result.browserFrameReceivedActivation = browserFrame?.dataset.browserUrl
-      === 'https://example.com/docs?q=1'
-      && browserFrame?.src === 'https://example.com/docs?q=1';
-    result.browserSandboxIsolated = browserSandbox.includes('allow-scripts')
-      && browserSandbox.includes('allow-forms')
-      && !browserSandbox.includes('allow-same-origin')
-      && browserFrame?.referrerPolicy === 'no-referrer';
+    result.internetTargetPersisted = storedInternet?.target === 'https://example.com/docs?q=1';
+    result.internetFailsClosedOnWeb = internetSlot
+      ?.querySelector('.ordax-internet-unavailable')?.textContent
+      ?.includes('Navegação integrada não disponível neste host') === true;
+    result.internetDoesNotEmbedWebContent = internetSlot?.querySelector('iframe') === null
+      && internetSlot?.querySelector('[data-browser-viewport] iframe') === null;
 
     const closePendingTitle = notesSlot?.querySelector('[data-notes-title]');
     closePendingTitle.value = 'Nota salva ao fechar';
@@ -950,14 +948,22 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesRichTextRestored = restoredNotesBody?.textContent === 'Conteúdo salvo localmente e disponível offline.'
       && restoredNotesBody?.querySelector('strong')?.textContent === 'Conteúdo';
 
-    const restoredBrowserSlot = root?.querySelector(
-      '[data-window-id="browser"] [data-app-extension="browser-workspace"]',
+    const restoredInternetSlot = root?.querySelector(
+      '[data-window-id="internet"] [data-app-extension="internet-browser"]',
     );
-    result.browserWindowRestored = Boolean(
-      restoredBrowserSlot?.dataset.ordaxBrowserMounted === 'true',
+    const restoredWorkspace = parsedStorage('ordax.workspace.v2');
+    const restoredActiveArea = restoredWorkspace?.areas
+      ?.find((area) => area.id === restoredWorkspace.activeAreaId) ?? restoredWorkspace?.areas?.[0];
+    const restoredInternetWindow = restoredActiveArea?.windows
+      ?.find((item) => item.appId === 'internet');
+    result.internetWindowRestored = Boolean(
+      restoredInternetSlot?.dataset.ordaxInternetMounted === 'true',
     );
-    result.browserTargetRestored = restoredBrowserSlot
-      ?.querySelector('[data-browser-address]')?.value === 'https://example.com/docs?q=1';
+    result.internetTargetRestored = restoredInternetWindow?.target
+      === 'https://example.com/docs?q=1';
+    result.internetStillFailsClosedOnWeb = restoredInternetSlot
+      ?.querySelector('.ordax-internet-unavailable')?.textContent
+      ?.includes('Navegação integrada não disponível neste host') === true;
 
     const restoredAccountSlot = root?.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
@@ -990,15 +996,16 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'notesWebReferenceAdded', 'notesWebReferenceHostRendered',
-      'notesReferenceOpenedInBrowser', 'browserAddressReceivedActivation',
-      'browserFrameReceivedActivation', 'browserSandboxIsolated',
+      'notesReferenceOpenedInInternet', 'internetTargetPersisted',
+      'internetFailsClosedOnWeb', 'internetDoesNotEmbedWebContent',
       'notesWindowClosedWithPendingEdit', 'notesPendingEditRestoredAfterClose',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
       'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
-      'notesRichTextRestored', 'browserWindowRestored', 'browserTargetRestored',
+      'notesRichTextRestored', 'internetWindowRestored', 'internetTargetRestored',
+      'internetStillFailsClosedOnWeb',
       'accountWindowRestored', 'accountOwnerRestored', 'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
       'systemOwnerRestored', 'systemOverviewRestored',
     ];
