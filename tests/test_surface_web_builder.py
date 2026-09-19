@@ -26,6 +26,8 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/apps/settings/app.mjs",
             "system/apps/account/app.mjs",
             "system/apps/system/app.mjs",
+            "system/components/internet/runtime.mjs",
+            "system/components/internet/internet.css",
             "system/services/preferences/appearance.mjs",
             "system/services/preferences/catalog.mjs",
             "system/services/apps/activation.mjs",
@@ -77,6 +79,36 @@ class SurfaceWebBuilderTests(unittest.TestCase):
                 )
             }
             self.assertIn("system/services/preferences/value.mjs", graph)
+
+    def test_import_meta_url_component_asset_is_discovered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            composition = root / "system" / "composition" / "web"
+            composition.mkdir(parents=True)
+            (composition / "index.html").write_text(
+                '<script type="module" src="./main.mjs"></script>',
+                encoding="utf-8",
+            )
+            (composition / "main.mjs").write_text(
+                'import("../../components/demo/runtime.mjs");\n',
+                encoding="utf-8",
+            )
+            component = root / "system" / "components" / "demo"
+            component.mkdir(parents=True)
+            (component / "runtime.mjs").write_text(
+                'export const style = new URL("./demo.css", import.meta.url).href;\n',
+                encoding="utf-8",
+            )
+            (component / "demo.css").write_text(".demo { display: block; }\n", encoding="utf-8")
+
+            graph = {
+                path.as_posix()
+                for path in MODULE.discover_graph(
+                    root, PurePosixPath("system/composition/web/index.html")
+                )
+            }
+            self.assertIn("system/components/demo/runtime.mjs", graph)
+            self.assertIn("system/components/demo/demo.css", graph)
 
     def test_build_is_byte_reproducible_for_same_commit(self):
         commit = "1" * 40
@@ -134,6 +166,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         self.assertIn("./system/surface/ui/tokens.css", rendered)
         self.assertIn("./system/surface/ui/files.css", rendered)
         self.assertIn("./system/surface/ui/notes.css", rendered)
+        self.assertNotIn("internet.css", rendered)
         self.assertIn("./system/surface/ui/system.css", rendered)
         self.assertIn("./system/surface/ui/account.css", rendered)
         self.assertIn("./system/surface/ui/settings.css", rendered)
