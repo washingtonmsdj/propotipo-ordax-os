@@ -11,6 +11,13 @@ STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 NETWORK_STATE_DIR=${ORDAX_NETWORK_STATE_DIR:-/state/network}
 BIN_DIR=${ORDAX_BIN_DIR:-/usr/local/bin}
 PINNED_FILE=$STATE_DIR/pinned-commit
+BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}
+
+case "$BOOT_PULL_ATTEMPTS" in
+    ''|*[!0-9]*) BOOT_PULL_ATTEMPTS=2 ;;
+esac
+[ "$BOOT_PULL_ATTEMPTS" -ge 1 ] 2>/dev/null || BOOT_PULL_ATTEMPTS=2
+[ "$BOOT_PULL_ATTEMPTS" -le 3 ] 2>/dev/null || BOOT_PULL_ATTEMPTS=3
 
 is_commit_sha() {
     value=$1
@@ -80,10 +87,21 @@ fi
 
 pull_ok=0
 if [ "$network_ok" -eq 1 ]; then
-    if "$BIN_DIR/ordax-pull"; then
-        pull_ok=1
-    else
-        printf '\nNao foi possivel sincronizar a main.\n'
+    attempt=1
+    while [ "$attempt" -le "$BOOT_PULL_ATTEMPTS" ]; do
+        printf 'Sincronizando OrdaX com a main (tentativa %s/%s)...\n' "$attempt" "$BOOT_PULL_ATTEMPTS"
+        if "$BIN_DIR/ordax-pull"; then
+            pull_ok=1
+            break
+        fi
+        if [ "$attempt" -lt "$BOOT_PULL_ATTEMPTS" ]; then
+            printf 'Sincronizacao falhou; repetindo uma vez apos pausa curta.\n'
+            sleep 2
+        fi
+        attempt=$((attempt + 1))
+    done
+    if [ "$pull_ok" -eq 0 ]; then
+        printf '\nNao foi possivel sincronizar a main apos %s tentativa(s).\n' "$BOOT_PULL_ATTEMPTS"
     fi
 fi
 

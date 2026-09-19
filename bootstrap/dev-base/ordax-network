@@ -54,7 +54,10 @@ sync_clock() {
 finish_network() {
     iface=$1
     echo "ordax-network: conectado em $iface"
-    sync_clock
+    if ! sync_clock; then
+        echo "ordax-network: continuando com IP disponivel; Git validara HTTPS independentemente" >&2
+    fi
+    return 0
 }
 
 try_dhcp() {
