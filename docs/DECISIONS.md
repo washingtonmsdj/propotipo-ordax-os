@@ -267,6 +267,9 @@ contracts
 
 contracts/services
   <- adapters
+
+contracts/services/apps/surface/adapters
+  <- composition
 ```
 
 `system/contracts/` is intentionally small and only gains concrete interfaces when a real implementation requires them. It is not a speculative framework layer.
@@ -274,3 +277,42 @@ contracts/services
 Surface/apps/services do not import concrete Web/Mobile/Desktop/native adapters. Adapters implement capabilities and do not own shared screens or application policy. Dependency cycles are forbidden. Temporary compatibility bridges require an owner and removal condition; permanent ownerless bridges are forbidden.
 
 Reason: keep modules replaceable and independently evolvable as the codebase grows, while avoiding both monolithic coupling and premature abstraction.
+
+## ADR-022 - Runtime component trust and activation are independent boundaries
+
+Decision: independently delivered runtime components use a trust domain and activation lifecycle that are distinct from the whole-OS release boundary.
+
+Machine-readable authority: `docs/contracts/runtime-component-package.json`.
+
+A runtime component release is bound as:
+
+```text
+runtime-component public trust
+ -> Ed25519 signed component release descriptor
+ -> exact component id + semantic version + source commit
+ -> exact package size + SHA-256
+ -> exact component-package manifest SHA-256
+ -> exact packaged file hashes
+ -> immutable staged slot
+```
+
+The whole-OS release trust anchor is not implicitly reused as component trust. A canonical component key requires its own explicit custody/promotion decision outside Git. Ephemeral CI keys may prove the protocol but cannot establish product trust.
+
+A valid signature authorizes verification and staging only. It does not authorize direct activation. Promotion requires a separate runtime-health gate:
+
+```text
+signed + verified package
+ -> immutable slot
+ -> pending
+ -> runtime load/mount
+ -> health observation
+ -> promote current
+ -> preserve previous
+```
+
+Production slot activation remains blocked until this full path exists for a component. During Git-first prototype development, a first-party app may instead declare `releaseMode: "git-app"`: its source, semantic version and runtime entrypoint are owned by the app, while delivery still arrives through the ordinary Git checkout/reload path. `git-app` does not claim signed independent activation, a `current/previous` slot pair or component-local rollback.
+
+When the product reaches the MVP/real-user hardening phase, an app may move from `git-app` to `component-slot` only after signed verification, pending health, promotion and rollback are implemented and proven.
+
+Reason: development speed and production activation safety are separate concerns. A cryptographically valid package can still contain a runtime regression; the signed-slot protocol remains fail-closed without forcing prototype app development through production ceremony.
+
