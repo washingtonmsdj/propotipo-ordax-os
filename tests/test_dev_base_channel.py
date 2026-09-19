@@ -58,6 +58,9 @@ def write_rootfs_fixture(root: Path, source_commit: str = SOURCE) -> Path:
         target.chmod(0o755)
         payload_total += len(payload)
 
+    for relative in builder.REQUIRED_ROOTFS_DIRS:
+        (rootfs / relative).mkdir(parents=True, exist_ok=True)
+
     (rootfs / "etc").mkdir(parents=True, exist_ok=True)
     config = rootfs / "etc" / "ordax-base"
     config.write_text("development-rootfs\n", encoding="utf-8")
