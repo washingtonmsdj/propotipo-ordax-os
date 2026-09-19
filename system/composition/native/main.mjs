@@ -42,6 +42,7 @@ import { mountNotificationCenterControls } from "../../surface/ui/notification-c
 import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
+import { mountHomeContinuation } from "../../surface/ui/home-continuation.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -220,7 +221,7 @@ async function start() {
     try {
       batteryTrayControls = mountBatteryTrayControls(root, powerStatus);
     } catch (error) {
-      reportClientDiagnostic("battery-tray-status", error);
+      reportClientDiagnostic("network-tray-status", error);
     }
   }
   let batteryQuickPanel = null;
@@ -257,6 +258,7 @@ async function start() {
     workspaceMetadata.source,
     appActivation,
   );
+  const homeContinuation = mountHomeContinuation(root, { projects, recentFiles });
   const filesOwnerSpace = fileSpace === null
     ? null
     : createProjectContinuityFileSpace(fileSpace, projects, {
@@ -320,6 +322,7 @@ async function start() {
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       surfaceHeartbeat.dispose();
+      homeContinuation.dispose();
       powerControls.destroy();
       updateControls.destroy();
       systemOverviewControls.destroy();
