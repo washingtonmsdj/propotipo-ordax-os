@@ -62,12 +62,10 @@ jobs:
         run: |
           bash bootstrap/base-update/prove_esp_readonly_preflight.sh \
             out/base-update/esp-readonly-preflight-proof.json
-            out/base-update/dev-physical-stage-proof.json
 
       - name: Prove inactive-slot physical development staging on disposable media
         run: |
           bash bootstrap/base-update/prove_dev_physical_stage.sh \
-            out/base-update/dev-physical-stage-proof.json
 
       - name: Run base update regressions
         run: |
@@ -154,5 +152,6 @@ jobs:
             out/base-update/fat32-staging-proof.json
             out/base-update/signed-fat32-staging-proof.json
             out/base-update/esp-readonly-preflight-proof.json
+            out/base-update/dev-physical-stage-proof.json
           if-no-files-found: error
           retention-days: 14
