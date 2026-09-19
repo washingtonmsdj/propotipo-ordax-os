@@ -847,6 +847,26 @@ func materializeSlot(tempDir string, verified verifiedPackage, envelopeBytes []b
 	return nil
 }
 
+func removeStagingTree(root string) {
+	if strings.TrimSpace(root) == "" {
+		return
+	}
+	if runtime.GOOS != "windows" {
+		_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if entry.IsDir() {
+				_ = os.Chmod(path, 0o700)
+			} else {
+				_ = os.Chmod(path, 0o600)
+			}
+			return nil
+		})
+	}
+	_ = os.RemoveAll(root)
+}
+
 func makeSlotReadOnly(root string) error {
 	directories := []string{}
 	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
@@ -1037,7 +1057,7 @@ func stageComponent(envelopePath, trustPath, packagePath, root string) (releaseD
 	remove := true
 	defer func() {
 		if remove {
-			_ = os.RemoveAll(tempDir)
+			removeStagingTree(tempDir)
 		}
 	}()
 	if err := materializeSlot(tempDir, verified, envelopeBytes); err != nil {
