@@ -40,7 +40,7 @@ class FileNotesActionContractTests(unittest.TestCase):
         self.assertIn("assertNotesFileImporter(notesFileImporter)", source)
         self.assertIn("createFileNotesActionPresentation", source)
         self.assertIn("importSelectedFileToNotes", source)
-        self.assertIn("data.fileCreateNote", source)
+        self.assertIn("dataset.fileCreateNote", source)
         self.assertIn("createNoteFromSelected", source)
         self.assertIn('activationPort.publish({ appId: "notes", target: null })', source)
         self.assertNotIn("createNotesRuntime", source)
