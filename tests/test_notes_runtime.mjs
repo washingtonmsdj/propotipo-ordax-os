@@ -3,6 +3,10 @@ import test from "node:test";
 
 import {
   LEGACY_NOTES_SNAPSHOT_SCHEMA,
+  MAX_NOTES,
+  MAX_NOTE_PROJECTS,
+  MAX_NOTE_REFERENCES,
+  MAX_NOTE_TASKS,
   NOTES_SNAPSHOT_SCHEMA,
   NOTES_STORE_SCHEMA,
   createNotesRichBodyFromPlainText,
@@ -486,6 +490,99 @@ test("checklist items can be removed without affecting sibling items", () => {
   const unchanged = runtime.getSnapshot().document;
   runtime.removeTask(noteId, "task:missing");
   assert.deepEqual(runtime.getSnapshot().document, unchanged);
+});
+
+test("runtime collection limits fail closed without validation exceptions or phantom updates", () => {
+  const fullProjects = [
+    minimalSnapshot().projects[0],
+    ...Array.from({ length: MAX_NOTE_PROJECTS - 1 }, (_, index) => ({
+      id: `project-${index + 1}`,
+      name: `Projeto ${index + 1}`,
+      createdAt: index + 2,
+      updatedAt: index + 2,
+    })),
+  ];
+  const projectRuntime = createNotesRuntime({
+    store: memoryStore({
+      initial: validateNotesSnapshot({
+        ...minimalSnapshot(),
+        projects: fullProjects,
+      }),
+    }),
+    now: () => 90_000,
+  });
+  const projectsBefore = projectRuntime.getSnapshot().document;
+  projectRuntime.createProject("Além do limite");
+  assert.deepEqual(projectRuntime.getSnapshot().document, projectsBefore);
+
+  const fullNotes = Array.from({ length: MAX_NOTES }, (_, index) => ({
+    id: `note-${index + 1}`,
+    projectId: NOTES_HOME_PROJECT_ID,
+    title: `Nota ${index + 1}`,
+    body: "",
+    favorite: false,
+    deletedAt: null,
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    tasks: [],
+    references: [],
+  }));
+  const noteRuntime = createNotesRuntime({
+    store: memoryStore({
+      initial: validateNotesSnapshot({
+        ...minimalSnapshot(),
+        notes: fullNotes,
+      }),
+    }),
+    now: () => 91_000,
+  });
+  const notesBefore = noteRuntime.getSnapshot().document;
+  noteRuntime.createNote();
+  assert.deepEqual(noteRuntime.getSnapshot().document, notesBefore);
+
+  const fullTasks = Array.from({ length: MAX_NOTE_TASKS }, (_, index) => ({
+    id: `task-${index + 1}`,
+    text: `Item ${index + 1}`,
+    done: false,
+  }));
+  const fullReferences = Array.from({ length: MAX_NOTE_REFERENCES }, (_, index) => ({
+    id: `ref-${index + 1}`,
+    kind: "link",
+    title: `Fonte ${index + 1}`,
+    detail: "Link",
+    href: `https://example.org/${index + 1}`,
+  }));
+  const boundedRuntime = createNotesRuntime({
+    store: memoryStore({
+      initial: validateNotesSnapshot({
+        ...minimalSnapshot(),
+        selectedNoteId: "bounded-note",
+        notes: [{
+          id: "bounded-note",
+          projectId: NOTES_HOME_PROJECT_ID,
+          title: "Limites",
+          body: "",
+          favorite: false,
+          deletedAt: null,
+          createdAt: 1,
+          updatedAt: 1,
+          tasks: fullTasks,
+          references: fullReferences,
+        }],
+      }),
+    }),
+    now: () => 92_000,
+  });
+  const boundedBefore = boundedRuntime.getSnapshot().document;
+  boundedRuntime.addTask("bounded-note", "Além do limite");
+  boundedRuntime.addReference("bounded-note", {
+    kind: "link",
+    title: "Além do limite",
+    detail: "Link",
+    href: "https://example.org/extra",
+  });
+  boundedRuntime.removeReference("bounded-note", "ref-inexistente");
+  assert.deepEqual(boundedRuntime.getSnapshot().document, boundedBefore);
 });
 
 test("notes runtime exposes local persistence failure without losing session state", () => {
