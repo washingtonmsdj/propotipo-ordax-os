@@ -113,6 +113,20 @@ class InternetBrowserContractTests(unittest.TestCase):
         self.assertIn('root.removeEventListener("input", onInput)', controls)
         self.assertIn('.ordax-internet-tab-search-input', styles)
 
+    def test_home_reports_live_product_state_instead_of_stale_placeholders(self):
+        controls = self.text(CONTROLS)
+        styles = self.text(STYLES)
+        for key in ("session", "projects", "references", "favorites"):
+            self.assertIn(f'["{key}",', controls)
+        self.assertIn('value.dataset.browserHomeStatus = key', controls)
+        self.assertIn('const syncHomeStatus = (slot) => {', controls)
+        self.assertIn('projectSnapshot?.projects.length', controls)
+        self.assertIn('referenceSnapshot?.references.length', controls)
+        self.assertIn('favoriteSnapshot?.favorites.length', controls)
+        self.assertIn('syncHomeStatus(slot)', controls)
+        self.assertNotIn('"REFERÊNCIAS", "Persistência em preparação"', controls)
+        self.assertIn('repeat(auto-fit, minmax(140px, 1fr))', styles)
+
     def test_web_mode_fails_closed_instead_of_claiming_embedded_navigation(self):
         adapter = self.text(WEB_ADAPTER)
         self.assertIn('createUnavailableBrowserSession', adapter)

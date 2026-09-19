@@ -169,9 +169,16 @@ function createHome(documentObject, supported, reason) {
     home.append(node(documentObject, "span", "ordax-internet-home-hint", "Use a barra acima para abrir um endereço web."));
   }
   const cards = node(documentObject, "div", "ordax-internet-home-links");
-  for (const [label, value] of [["SESSÃO", "Abra uma página para começar"], ["ESPAÇO", "Integração em preparação"], ["REFERÊNCIAS", "Persistência em preparação"]]) {
+  for (const [key, label] of [
+    ["session", "SESSÃO"],
+    ["projects", "PROJETOS"],
+    ["references", "REFERÊNCIAS"],
+    ["favorites", "FAVORITOS"],
+  ]) {
     const card = node(documentObject, "div", "ordax-internet-home-link");
-    card.append(node(documentObject, "span", "", label), node(documentObject, "strong", "", value));
+    const value = node(documentObject, "strong", "", "Verificando…");
+    value.dataset.browserHomeStatus = key;
+    card.append(node(documentObject, "span", "", label), value);
     cards.append(card);
   }
   home.append(cards);
@@ -538,6 +545,56 @@ export function mountInternetBrowserControls(
     }
   };
 
+  const syncHomeStatus = (slot) => {
+    const setStatus = (key, value) => {
+      const target = slot.querySelector(`[data-browser-home-status="${key}"]`);
+      if (target) target.textContent = value;
+    };
+    const tabCount = snapshot.tabs.length;
+    setStatus(
+      "session",
+      snapshot.supported
+        ? (tabCount === 1 ? "1 aba aberta" : `${tabCount} abas abertas`)
+        : "Navegação indisponível",
+    );
+
+    const projectCount = projectSnapshot?.projects.length ?? 0;
+    setStatus(
+      "projects",
+      !projectSnapshot
+        ? "Indisponível neste host"
+        : projectCount === 0
+          ? "Nenhum projeto cadastrado"
+          : projectCount === 1
+            ? "1 projeto disponível"
+            : `${projectCount} projetos disponíveis`,
+    );
+
+    const referenceCount = referenceSnapshot?.references.length ?? 0;
+    setStatus(
+      "references",
+      !referenceSnapshot
+        ? "Indisponível neste host"
+        : referenceCount === 0
+          ? "Nenhuma página salva"
+          : referenceCount === 1
+            ? "1 página salva em projetos"
+            : `${referenceCount} páginas salvas em projetos`,
+    );
+
+    const favoriteCount = favoriteSnapshot?.favorites.length ?? 0;
+    setStatus(
+      "favorites",
+      !favoriteSnapshot
+        ? "Indisponível neste host"
+        : favoriteCount === 0
+          ? "Nenhum favorito salvo"
+          : favoriteCount === 1
+            ? "1 favorito salvo"
+            : `${favoriteCount} favoritos salvos`,
+    );
+  };
+
   const syncCurrentPage = (slot) => {
     const tab = activeTab();
     const reference = slot.querySelector("[data-browser-current-page]");
@@ -737,6 +794,7 @@ export function mountInternetBrowserControls(
     syncSurfaceTarget();
     syncTabs(slot);
     syncProjectContext(slot);
+    syncHomeStatus(slot);
     syncCurrentPage(slot);
     syncReferenceControls(slot);
     syncFavorites(slot);
