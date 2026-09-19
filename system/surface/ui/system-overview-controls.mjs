@@ -1,5 +1,9 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
+  assertComponentManager,
+  validateComponentManagerSnapshot,
+} from "../../contracts/component-manager.mjs";
+import {
   assertSurfaceHost,
   validateSurfaceSnapshot,
 } from "../../contracts/surface-host.mjs";
@@ -152,6 +156,7 @@ export function mountSystemOverviewControls(
   updateHistory = null,
   appActivation = null,
   diagnosticReviewController = null,
+  componentManager = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("System overview controls require a Surface root Element");
@@ -162,6 +167,7 @@ export function mountSystemOverviewControls(
   const metricsPort = systemMetrics === null ? null : assertSystemMetricsPort(systemMetrics);
   const historyPort = updateHistory === null ? null : assertUpdateHistoryPort(updateHistory);
   const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
+  const componentPort = componentManager === null ? null : assertComponentManager(componentManager);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -178,6 +184,7 @@ export function mountSystemOverviewControls(
   let metricsOrdinal = 0;
   let historySnapshot = null;
   let historyMessage = "";
+  let componentSnapshot = componentPort?.getSnapshot() ?? null;
   let historyOrdinal = 0;
   let activeSection = validSystemSection(lifecycle.getAppTarget("system"))
     ? lifecycle.getAppTarget("system")
@@ -565,6 +572,25 @@ export function mountSystemOverviewControls(
     view.append(section);
   };
 
+  const componentReleaseLabel = (mode) => ({
+    "base-ab": "Base A/B",
+    "component-slot": "Slot independente",
+    bundled: "Distribuição conjunta",
+  }[mode] ?? mode);
+
+  const componentKindLabel = (kind) => ({
+    base: "Base",
+    shell: "Shell",
+    service: "Serviço",
+    app: "App",
+  }[kind] ?? kind);
+
+  const componentHealthLabel = (health) => ({
+    healthy: "Saudável",
+    failed: "Falha",
+    unknown: "Não observado",
+  }[health] ?? health);
+
   const renderComponentVersions = (view) => {
     const versionSection = node(documentObject, "section", "ordax-system-section");
     const versionHeading = node(documentObject, "div", "ordax-system-section-heading");
@@ -580,7 +606,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Esta é a versão humana do protótipo. Ela muda quando o produto atinge um novo marco funcional; Entrega e SHA continuam identificando atualizações e builds específicos.",
+        "A versão do produto identifica o marco geral. Cada componente abaixo possui identidade própria e declara explicitamente se ainda é distribuído junto ou se já possui slot independente.",
       ),
       node(
         documentObject,
@@ -593,10 +619,10 @@ export function mountSystemOverviewControls(
     );
     view.append(versionSection);
 
-    const section = node(documentObject, "section", "ordax-system-section");
-    const heading = node(documentObject, "div", "ordax-system-section-heading");
-    const headingCopy = node(documentObject, "div");
-    headingCopy.append(
+    const deliverySection = node(documentObject, "section", "ordax-system-section");
+    const deliveryHeading = node(documentObject, "div", "ordax-system-section-heading");
+    const deliveryHeadingCopy = node(documentObject, "div");
+    deliveryHeadingCopy.append(
       node(documentObject, "span", "ordax-system-section-kicker", "Identidade da entrega"),
       node(
         documentObject,
@@ -605,52 +631,103 @@ export function mountSystemOverviewControls(
         updateSnapshot?.deliveryNumber ? deliveryLabel(updateSnapshot.deliveryNumber) : "Entrega não informada",
       ),
     );
-    heading.append(headingCopy);
-    section.append(heading);
-    section.append(
+    deliveryHeading.append(deliveryHeadingCopy);
+    deliverySection.append(deliveryHeading);
+    deliverySection.append(
       node(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. O SHA identifica exatamente o build. Apps só recebem versão própria quando tiverem empacotamento e ciclo de release independentes.",
+        "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. O SHA identifica exatamente o build.",
       ),
     );
-
     if (!updateSnapshot?.deliveryNumber) {
+      deliverySection.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-system-placeholder",
+          "Este host não informa uma identidade técnica de entrega. As versões dos componentes permanecem disponíveis separadamente.",
+        ),
+      );
+    }
+    view.append(deliverySection);
+
+    const section = node(documentObject, "section", "ordax-system-section");
+    const heading = node(documentObject, "div", "ordax-system-section-heading");
+    const headingCopy = node(documentObject, "div");
+    headingCopy.append(
+      node(documentObject, "span", "ordax-system-section-kicker", "Componentes"),
+      node(documentObject, "h4", "ordax-system-section-title", "Versões e isolamento"),
+    );
+    heading.append(headingCopy);
+    section.append(heading);
+
+    if (!componentSnapshot) {
       section.append(
         node(
           documentObject,
           "p",
           "ordax-system-placeholder",
-          "Este host não informa uma identidade técnica de entrega. A versão do produto permanece disponível separadamente.",
+          "O Component Manager não está disponível nesta composição.",
         ),
       );
       view.append(section);
       return;
     }
 
+    section.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-system-section-copy",
+        componentSnapshot.persistence === "device"
+          ? "Estado de slots e saúde persistido neste dispositivo."
+          : "Catálogo disponível; estado de slots permanece somente nesta sessão.",
+      ),
+    );
+
     const list = node(documentObject, "div", "ordax-system-version-grid");
-    for (const label of [
-      "Surface",
-      "Arquivos",
-      "Notas",
-      "Internet",
-      "Ajustes",
-      "Conta",
-      "Sistema",
-      "Rede",
-      "Atualizador",
-    ]) {
+    for (const component of componentSnapshot.components) {
+      const { manifest, state, independentUpdate } = component;
       const item = node(documentObject, "div", "ordax-system-version-item");
-      item.append(
-        node(documentObject, "strong", "", label),
-        node(
-          documentObject,
-          "span",
-          "",
-          `Distribuição conjunta · sem versão própria · OrdaX ${PRODUCT_VERSION.displayVersion}`,
-        ),
+      item.dataset.componentId = manifest.id;
+      item.dataset.releaseMode = manifest.releaseMode;
+      const title = node(documentObject, "strong", "", manifest.title);
+      const identity = node(
+        documentObject,
+        "span",
+        "",
+        `${componentKindLabel(manifest.kind)} · v${state.currentVersion} · ${componentReleaseLabel(manifest.releaseMode)}`,
       );
+      const health = node(
+        documentObject,
+        "small",
+        "ordax-system-component-health",
+        `Saúde: ${componentHealthLabel(state.currentHealth)} · falha isolada em ${manifest.failureDomain}`,
+      );
+      item.append(title, identity, health);
+
+      if (independentUpdate) {
+        const slots = node(
+          documentObject,
+          "small",
+          "ordax-system-component-slots",
+          `Anterior: ${state.previousVersion ? `v${state.previousVersion}` : "—"} · Pendente: ${state.pendingVersion ? `v${state.pendingVersion}` : "—"}`,
+        );
+        item.append(slots);
+      } else {
+        item.append(
+          node(
+            documentObject,
+            "small",
+            "ordax-system-component-slots",
+            manifest.releaseMode === "base-ab"
+              ? "Rollback pertence aos slots A/B da Base."
+              : "Ainda acompanha a entrega conjunta; rollback individual permanece bloqueado.",
+          ),
+        );
+      }
       list.append(item);
     }
     section.append(list);
@@ -905,6 +982,10 @@ export function mountSystemOverviewControls(
       replaceView();
     }
   });
+  const unsubscribeComponents = componentPort?.subscribe((snapshot) => {
+    componentSnapshot = validateComponentManagerSnapshot(snapshot);
+    replaceView();
+  });
   const unsubscribeUpdate = updatePort?.subscribe((snapshot) => {
     const previousAppliedSha = updateSnapshot?.lastAppliedSha ?? "";
     updateSnapshot = validateUpdateStatusSnapshot(snapshot);
@@ -924,6 +1005,7 @@ export function mountSystemOverviewControls(
       historyOrdinal += 1;
       disposeDiagnosticsReview();
       unsubscribeUpdate?.();
+      unsubscribeComponents?.();
       unsubscribeActivation?.();
       unsubscribeHost?.();
       unsubscribeRender();
