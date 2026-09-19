@@ -51,12 +51,13 @@
         "bootstrap/recovery"
       ],
       "development_delivery": "exact-commit-development-base-rootfs-candidate",
-      "activation": "slot-coupled-one-shot-rootfs-with-known-good-fallback",
+      "activation": "versioned-selector-implemented-a-b-staging-pending",
       "candidate_delivery_implemented": true,
-      "activation_implemented": true,
+      "activation_implemented": false,
       "usb_rewrite_required": false,
       "reboot_required": true,
-      "health_gate": "base-slot-promotion-requires-existing-base-and-surface-health"
+      "health_gate": "selector-is-slot-coupled; eventual slot promotion remains base-plus-surface-health-gated",
+      "selector_implemented": true
     },
     {
       "id": "kernel-and-initramfs",
@@ -127,7 +128,7 @@
     "app_update_blocked_by_gap": false
   },
   "development_rootfs_activation": {
-    "status": "source-implemented-physical-proof-pending",
+    "status": "selector-and-materialization-implemented-a-b-staging-pending",
     "artifact": "rootfs.tar",
     "candidate_owner": "system/services/base-update/agent.sh + system/services/base-update/dev_channel.py",
     "selector_owner": "bootstrap/dev-base/ordax-dev-init",
@@ -146,9 +147,10 @@
     "selection_policy": "candidate rootfs runs only on the matching one-shot A/B candidate boot",
     "promotion_policy": "the slot becomes normal only through the existing base heartbeat + Surface health promotion gate",
     "fallback_policy": "a failed candidate never becomes the normal slot; missing legacy mapping keeps the seed development Base",
-    "next_gate": "disposable selector proof and physical broken-candidate fallback exercise",
+    "next_gate": "authorized exact-commit development candidate staging into the inactive A/B boot slot, followed by disposable and physical broken-candidate fallback proof",
     "request_owner": "system/supervisor writes exact SHA request only",
     "python_runtime": "replaceable native Surface runtime; Python is not required in the development bootstrap Base",
-    "seed_root_resolution": "strip terminal /versions/<commit> from the live root mount subpath before resolving shared state/version storage"
+    "seed_root_resolution": "strip terminal /versions/<commit> from the live root mount subpath before resolving shared state/version storage",
+    "current_limit": "dev-base-ready-sha is not yet consumed by an ESP staging/one-shot activation owner"
   }
 }
