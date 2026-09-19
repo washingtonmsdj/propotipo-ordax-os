@@ -11,6 +11,9 @@ STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 NETWORK_STATE_DIR=${ORDAX_NETWORK_STATE_DIR:-/state/network}
 BIN_DIR=${ORDAX_BIN_DIR:-/usr/local/bin}
 PINNED_FILE=$STATE_DIR/pinned-commit
+BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit
+REPO_URL=${ORDAX_REPO_URL:-https://github.com/washingtonmsdj/prototipo-ordax-os.git}
+BRANCH=${ORDAX_REPO_BRANCH:-main}
 BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}
 
 case "$BOOT_PULL_ATTEMPTS" in
@@ -26,6 +29,56 @@ is_commit_sha() {
         *[!0-9a-f]*|'') return 1 ;;
     esac
     return 0
+}
+
+write_state() {
+    destination=$1
+    value=$2
+    temporary=$destination.tmp.$
+    printf '%s\n' "$value" >"$temporary"
+    mv -f "$temporary" "$destination"
+}
+
+remote_branch_sha() {
+    output=$(/bin/busybox timeout -k 5 20 git -C "$WORKTREE" ls-remote --heads "$REPO_URL" "refs/heads/$BRANCH" 2>/dev/null || true)
+    set -- $output
+    value=${1:-}
+    is_commit_sha "$value" || return 1
+    printf '%s' "$value"
+}
+
+run_pinned_checkout() {
+    pinned=$1
+    printf 'Rollback fixado em %s.\n' "$pinned"
+    printf '\nIniciando ultimo OrdaX conhecido como valido...\n'
+    if "$BIN_DIR/ordax-run"; then
+        exit 0
+    fi
+    printf '\nUltimo checkout conhecido tambem falhou; entrando em recuperacao local.\n' >&2
+    maintenance_shell
+}
+
+recover_previous_checkout() {
+    failed_sha=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    is_commit_sha "$failed_sha" || return 1
+
+    printf '\nOrdaX atual nao iniciou; tentando rollback automatico...\n' >&2
+    if ! "$BIN_DIR/ordax-rollback"; then
+        printf 'Rollback automatico indisponivel.\n' >&2
+        return 1
+    fi
+
+    write_state "$BOOT_REJECTED_FILE" "$failed_sha"
+    rolled_back=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
+    is_commit_sha "$rolled_back" || return 1
+    [ "$rolled_back" != "$failed_sha" ] || return 1
+
+    printf 'Rollback automatico ativado: %s -> %s\n' "$failed_sha" "$rolled_back"
+    if "$BIN_DIR/ordax-run"; then
+        exit 0
+    fi
+    printf 'Checkout anterior tambem falhou ao iniciar.\n' >&2
+    return 1
 }
 
 maintenance_shell() {
@@ -57,23 +110,38 @@ for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
     modprobe "$module" >/dev/null 2>&1 || true
 done
 
-# A rollback is sticky across reboots. It must not be undone by the automatic
-# boot-time pull. An explicit ordax-pull is the action that releases the pin.
+# A rollback caused by a failed boot stays pinned while main still points at
+# the rejected commit. When main advances, the base retries automatically.
 if [ -s "$PINNED_FILE" ]; then
     pinned=$(cat "$PINNED_FILE")
     current=$(git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true)
     if is_commit_sha "$pinned" && [ "$current" = "$pinned" ] && [ -x "$WORKTREE/system/entrypoint" ]; then
-        printf 'Rollback fixado em %s; sincronizacao automatica ignorada.\n' "$pinned"
-        printf 'Use ordax-pull explicitamente para voltar a acompanhar %s.\n' "${ORDAX_REPO_BRANCH:-main}"
-        printf '\nIniciando OrdaX fixado...\n'
-        if "$BIN_DIR/ordax-run"; then
-            exit 0
+        rejected=""
+        [ ! -s "$BOOT_REJECTED_FILE" ] || rejected=$(cat "$BOOT_REJECTED_FILE")
+        if is_commit_sha "$rejected"; then
+            if "$BIN_DIR/ordax-network"; then
+                remote=$(remote_branch_sha || true)
+                if is_commit_sha "$remote" && [ "$remote" != "$rejected" ]; then
+                    printf 'Main avancou alem do commit rejeitado; liberando rollback automatico.\n'
+                    if "$BIN_DIR/ordax-pull"; then
+                        rm -f "$BOOT_REJECTED_FILE"
+                        printf '\nIniciando OrdaX atualizado apos recuperacao...\n'
+                        if "$BIN_DIR/ordax-run"; then
+                            exit 0
+                        fi
+                        recover_previous_checkout || maintenance_shell
+                    fi
+                fi
+            fi
+            run_pinned_checkout "$pinned"
         fi
-        printf '\nOrdaX fixado encerrou ou falhou ao iniciar.\n'
-        maintenance_shell
+
+        # Manual rollback remains sticky for compatibility when there is no
+        # boot-rejected marker.
+        run_pinned_checkout "$pinned"
     fi
 
-    printf 'Estado de rollback fixado inconsistente; pull e execucao automaticos bloqueados.\n' >&2
+    printf 'Estado de rollback fixado inconsistente; mantendo modo de recuperacao.\n' >&2
     printf 'PIN=%s HEAD=%s\n' "$pinned" "${current:-indisponivel}" >&2
     maintenance_shell
 fi
@@ -115,6 +183,7 @@ if [ -x "$WORKTREE/system/entrypoint" ]; then
         exit 0
     fi
     printf '\nOrdaX encerrou ou falhou ao iniciar.\n'
+    recover_previous_checkout || true
 else
     printf '\nAinda nao existe um checkout executavel em %s.\n' "$WORKTREE"
 fi
