@@ -104,7 +104,7 @@ export function assertProjectCatalogPort(port) {
   if (!port || typeof port !== "object" || port.schema !== PROJECT_CATALOG_SCHEMA) {
     throw new TypeError("A compatible project-catalog port is required");
   }
-  for (const method of ["getSnapshot", "subscribe", "create", "recordOpened", "remove"]) {
+  for (const method of ["getSnapshot", "subscribe", "create", "rename", "recordOpened", "remove"]) {
     if (typeof port[method] !== "function") {
       throw new TypeError(`Project-catalog port must implement ${method}()`);
     }
