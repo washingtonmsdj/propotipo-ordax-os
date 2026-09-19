@@ -121,6 +121,23 @@ export function createProjectCatalogRuntime({ store = null, now = Date.now } = {
       });
       return getSnapshot();
     },
+    rename(id, name) {
+      const projectId = validateProjectId(id);
+      const validatedName = validateProjectName(name);
+      const existingIndex = state.projects.findIndex((project) => project.id === projectId);
+      if (existingIndex < 0) {
+        throw new TypeError("Project id is not registered");
+      }
+      const existing = state.projects[existingIndex];
+      if (existing.name === validatedName) return getSnapshot();
+      const updatedProjects = [...state.projects];
+      updatedProjects[existingIndex] = Object.freeze({ ...existing, name: validatedName });
+      replaceState({
+        nextOrdinal: state.nextOrdinal,
+        projects: updatedProjects,
+      });
+      return getSnapshot();
+    },
     recordOpened(id) {
       const projectId = validateProjectId(id);
       const existing = state.projects.find((project) => project.id === projectId);
