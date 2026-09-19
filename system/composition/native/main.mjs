@@ -35,6 +35,7 @@ import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/updat
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
+import { mountBrowserWorkspaceControls } from "../../surface/ui/browser-workspace-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
@@ -202,6 +203,7 @@ async function start() {
     surface,
     { fileSpace, appActivation },
   );
+  const browserWorkspaceControls = mountBrowserWorkspaceControls(root, surface);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
   try {
@@ -331,6 +333,7 @@ async function start() {
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
+      browserWorkspaceControls.destroy();
       notesWorkspaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
