@@ -6,6 +6,7 @@ import {
   validateNotificationEntries,
   validateNotificationId,
   validateNotificationPolicy,
+  validateNotificationSourceId,
   validateNotificationsSnapshot,
 } from "../../contracts/notifications.mjs";
 import {
@@ -28,6 +29,10 @@ function sameEntries(left, right) {
       && entry.destination?.appId === candidate.destination?.appId
       && entry.destination?.target === candidate.destination?.target;
   });
+}
+
+function sameStrings(left, right) {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 export function createNotificationsRuntime({ store = null, now = Date.now } = {}) {
@@ -66,6 +71,7 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
     persistence,
     policyPersistence,
     doNotDisturb: policy.doNotDisturb,
+    disabledSources: policy.disabledSources,
     entries,
   });
 
@@ -111,7 +117,10 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
 
   const replacePolicy = (next) => {
     const validated = validateNotificationPolicy(next);
-    if (validated.doNotDisturb === policy.doNotDisturb) return false;
+    if (
+      validated.doNotDisturb === policy.doNotDisturb
+      && sameStrings(validated.disabledSources, policy.disabledSources)
+    ) return false;
     policy = validated;
     persistPolicy();
     emit();
@@ -150,6 +159,7 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
     },
     publish(value) {
       const draft = validateNotificationDraft(value);
+      if (policy.disabledSources.includes(draft.sourceId)) return null;
       const createdAt = nextCreatedAt();
       const entry = Object.freeze({
         id: nextId(createdAt),
@@ -164,7 +174,24 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
       if (typeof enabled !== "boolean") {
         throw new TypeError("Do Not Disturb state must be boolean");
       }
-      replacePolicy({ doNotDisturb: enabled });
+      replacePolicy({
+        doNotDisturb: enabled,
+        disabledSources: policy.disabledSources,
+      });
+      return getSnapshot();
+    },
+    setSourceEnabled(sourceId, enabled) {
+      const source = validateNotificationSourceId(sourceId);
+      if (typeof enabled !== "boolean") {
+        throw new TypeError("Notification source enabled state must be boolean");
+      }
+      const disabledSources = enabled
+        ? policy.disabledSources.filter((candidate) => candidate !== source)
+        : [...policy.disabledSources, source];
+      replacePolicy({
+        doNotDisturb: policy.doNotDisturb,
+        disabledSources,
+      });
       return getSnapshot();
     },
     markRead(id) {

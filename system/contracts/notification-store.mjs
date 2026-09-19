@@ -3,10 +3,13 @@ import {
   validateNotificationPolicy,
 } from "./notifications.mjs";
 
-export const NOTIFICATION_STORE_SCHEMA = "ordax.notification-store/2";
+export const NOTIFICATION_STORE_SCHEMA = "ordax.notification-store/3";
 
 const STORE_SCOPES = new Set(["device", "session"]);
-const DEFAULT_POLICY = Object.freeze({ doNotDisturb: false });
+const DEFAULT_POLICY = Object.freeze({
+  doNotDisturb: false,
+  disabledSources: Object.freeze([]),
+});
 
 export function assertNotificationStore(store) {
   if (!store || typeof store !== "object" || store.schema !== NOTIFICATION_STORE_SCHEMA) {

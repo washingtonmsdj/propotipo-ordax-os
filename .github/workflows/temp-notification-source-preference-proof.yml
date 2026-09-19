@@ -1,0 +1,101 @@
+name: Temporary Notification Source Preference Proof
+
+on:
+  push:
+    branches: [feature/notification-source-preferences-lab]
+
+permissions:
+  contents: write
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout laboratory branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: feature/notification-source-preferences-lab
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Materialize fail-closed integration
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/surface-web/materialize-notification-source-preferences.py
+          python tools/surface-web/materialize-notification-source-preferences.py
+
+      - name: Validate modules and focused contracts
+        run: |
+          set -euo pipefail
+          find \
+            system/contracts \
+            system/services/notifications \
+            system/surface/ui \
+            system/adapters/native \
+            system/composition/web \
+            system/composition/native \
+            -type f -name '*.mjs' -print0 \
+            | sort -z \
+            | xargs -0 -n1 node --check
+          node --test tests/test_notifications.mjs
+          python -m unittest \
+            tests.test_notification_center_ui_contract \
+            tests.test_settings_canonical_navigation \
+            -v
+
+      - name: Run shared Surface regressions
+        run: |
+          set -euo pipefail
+          python tools/surface-web/build.py check
+          node --test tests/test_surface_preferences.mjs
+          node --test tests/test_surface_workspace.mjs
+          node --test tests/test_app_activation.mjs
+          node --test tests/test_update_*.mjs
+          python -m unittest tests.test_surface_ui_contract -v
+          python -m unittest tests.test_surface_web_builder -v
+
+      - name: Build deterministic Web candidate
+        run: |
+          set -euo pipefail
+          python tools/surface-web/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir out/web-client
+          python tools/surface-web/build.py verify --out-dir out/web-client
+          python tools/surface-web/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --out-dir "$RUNNER_TEMP/web-client-repeat"
+          python tools/surface-web/build.py verify --out-dir "$RUNNER_TEMP/web-client-repeat"
+          diff -qr out/web-client "$RUNNER_TEMP/web-client-repeat"
+          echo 'WEB_CLIENT_REPEATABILITY=PASS'
+          echo 'KERNEL_REBUILD_REQUIRED=NO'
+
+      - name: Run real Chromium Surface smoke
+        run: |
+          set -euo pipefail
+          node tools/surface-web/browser-smoke.mjs --bundle-dir out/web-client
+
+      - name: Commit only materialized product and plan integration
+        run: |
+          set -euo pipefail
+          git add \
+            system/surface/ui/notification-center-controls.mjs \
+            system/surface/ui/settings-overview-controls.mjs \
+            system/surface/ui/settings.css \
+            system/composition/web/main.mjs \
+            system/composition/native/main.mjs \
+            PLANO-FUNCIONAL-SURFACE-E-APPS.md \
+            PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md
+          git diff --cached --exit-code && {
+            echo 'Expected materialized changes were not produced.' >&2
+            exit 1
+          } || true
+          git config user.name 'ordax-ci'
+          git config user.email 'ordax-ci@users.noreply.github.com'
+          git commit -m 'Materialize notification source preference integration'
+          git push origin HEAD:feature/notification-source-preferences-lab
