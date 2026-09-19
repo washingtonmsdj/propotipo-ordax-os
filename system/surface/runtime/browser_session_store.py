@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
 from typing import Callable, Iterable
@@ -73,12 +74,17 @@ def load_browser_session(
     max_tabs: int = DEFAULT_MAX_TABS,
 ) -> StoredBrowserSession:
     try:
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0))
-    except (FileNotFoundError, OSError):
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError:
         return empty_session()
 
     try:
         metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            return empty_session()
         if metadata.st_size < 0 or metadata.st_size > MAX_SESSION_BYTES:
             return empty_session()
         with os.fdopen(descriptor, "r", encoding="utf-8", closefd=False) as handle:
@@ -91,17 +97,10 @@ def load_browser_session(
     return normalize_session(payload, allow_url=allow_url, max_tabs=max_tabs)
 
 
-def _session_payload(
-    urls: Iterable[str],
-    active_index: int | None,
-    *,
-    allow_url: Callable[[str], bool],
-    max_tabs: int,
-) -> dict:
-    raw_urls = list(urls)
+def _session_payload(urls: Iterable[str], active_index: int | None) -> dict:
     return {
         "version": SESSION_VERSION,
-        "urls": raw_urls,
+        "urls": list(urls),
         "activeIndex": active_index,
     }
 
@@ -115,7 +114,7 @@ def save_browser_session(
     max_tabs: int = DEFAULT_MAX_TABS,
 ) -> StoredBrowserSession:
     session = normalize_session(
-        _session_payload(urls, active_index, allow_url=allow_url, max_tabs=max_tabs),
+        _session_payload(urls, active_index),
         allow_url=allow_url,
         max_tabs=max_tabs,
     )
