@@ -17,7 +17,7 @@ const CSS_FILES = [
   'system/surface/ui/surface.css',
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
-  'system/surface/ui/notes.css',
+  'system/apps/notes/notes.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
@@ -493,7 +493,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
 
     const result = {};
     const notesRich = await import(
-      namespaceUrls['composition-first']['system/surface/ui/notes-rich-editor.mjs']
+      namespaceUrls['composition-first']['system/apps/notes/ui/rich-editor.mjs']
     );
     const placeCaret = (element, atEnd = true) => {
       const range = document.createRange();
