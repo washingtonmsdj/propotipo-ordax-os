@@ -43,7 +43,6 @@ import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/updat
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
-import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
@@ -284,13 +283,6 @@ async function start() {
           reportClientDiagnostic("files-project-continuity", error);
         },
       });
-  const fileSpaceControls = mountFileSpaceControls(
-    root,
-    filesOwnerSpace,
-    appActivation,
-    surface,
-    { recentFiles, projects },
-  );
   let settingsOverviewControls;
   try {
     settingsOverviewControls = mountSettingsOverviewControls(
@@ -336,6 +328,23 @@ async function start() {
   componentManager.setCurrentHealth("surface-shell", "healthy");
   void updateWatcher.markHealthy();
   const surfaceHeartbeat = createNativeSurfaceHeartbeat(window);
+
+  const filesComponent = await loadOptionalComponentRuntime({
+    componentId: "files",
+    importer: () => import("../../apps/files/runtime.mjs"),
+    componentManager,
+    context: {
+      root,
+      fileSpace: filesOwnerSpace,
+      appActivation,
+      surfaceLifecycle: surface,
+      recentFiles,
+      projects,
+    },
+    onError(error) {
+      reportClientDiagnostic("files-runtime", error);
+    },
+  });
 
   const notesComponent = await loadOptionalComponentRuntime({
     componentId: "notes",
@@ -391,7 +400,7 @@ async function start() {
       notificationCenter.destroy();
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
-      fileSpaceControls.destroy();
+      filesComponent?.destroy();
       notesComponent?.destroy();
       internetComponent?.destroy();
       projectReferences?.destroy();
