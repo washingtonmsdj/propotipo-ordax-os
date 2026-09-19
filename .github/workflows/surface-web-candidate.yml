@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/diagnostics.json'
+      - 'docs/contracts/branding.json'
+      - 'docs/contracts/device-update-coverage.json'
       - 'system/contracts/diagnostic-journal-store.mjs'
       - 'system/contracts/diagnostic-export.mjs'
       - 'system/contracts/diagnostic-copy.mjs'
@@ -59,6 +61,7 @@ on:
       - 'tools/surface-web/**'
       - 'tools/source_graph.py'
       - 'tests/test_surface_ui_contract.py'
+      - 'tests/test_surface_boot_screen.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
@@ -120,6 +123,8 @@ on:
   pull_request:
     paths:
       - 'docs/contracts/diagnostics.json'
+      - 'docs/contracts/branding.json'
+      - 'docs/contracts/device-update-coverage.json'
       - 'system/contracts/diagnostic-journal-store.mjs'
       - 'system/contracts/diagnostic-export.mjs'
       - 'system/contracts/diagnostic-copy.mjs'
@@ -174,6 +179,7 @@ on:
       - 'tools/surface-web/**'
       - 'tools/source_graph.py'
       - 'tests/test_surface_ui_contract.py'
+      - 'tests/test_surface_boot_screen.py'
       - 'tests/test_surface_web_builder.py'
       - 'tests/test_surface_preferences.mjs'
       - 'tests/test_surface_workspace.mjs'
@@ -319,6 +325,7 @@ jobs:
       - name: Run Surface and Web bundle regressions
         run: |
           python -m unittest tests.test_surface_ui_contract -v
+          python -m unittest tests.test_surface_boot_screen -v
           python -m unittest tests.test_surface_web_builder -v
           python -m unittest tests.test_recent_files_ui_contract -v
           python -m unittest tests.test_project_files_ui_contract -v
