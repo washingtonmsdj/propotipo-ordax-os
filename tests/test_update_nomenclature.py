@@ -28,7 +28,17 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertFalse(contract["product_version"]["stable_release"])
         self.assertTrue(contract["product_version"]["independent_from_delivery"])
         self.assertTrue(contract["product_version"]["v1_reserved_for_stable_product"])
-        self.assertFalse(contract["component_version"]["currently_independent"])
+        component = contract["component_version"]
+        self.assertTrue(component["declared"])
+        self.assertEqual(component["scheme"], "semantic-versioning")
+        self.assertTrue(component["independence_is_per_component"])
+        self.assertEqual(component["independent_update_release_mode"], "component-slot")
+        self.assertEqual(component["bundled_release_mode"], "bundled")
+        self.assertEqual(component["base_release_mode"], "base-ab")
+        self.assertEqual(component["independent_components_currently_enabled"], [])
+        self.assertFalse(component["invented_component_versions_allowed"])
+        self.assertTrue(component["independent_update_requires_independent_packaging"])
+        self.assertTrue(component["bundled_version_does_not_imply_independent_update"])
         sequence = contract["delivery"]["prototype_sequence"]
         self.assertEqual(sequence["method"], "anchored-first-parent-device-impact-count")
         self.assertEqual(sequence["epoch"]["delivery_number"], 220)
@@ -78,9 +88,10 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn("productVersionLabel()", overview)
         self.assertIn('"Versão do protótipo"', overview)
         self.assertIn('"Versão do produto"', overview)
-        self.assertIn('"Notas"', overview)
-        self.assertIn('"Internet"', overview)
-        self.assertIn("Distribuição conjunta · sem versão própria", overview)
+        self.assertIn("assertComponentManager", overview)
+        self.assertIn('"Versões e isolamento"', overview)
+        self.assertIn('"Distribuição conjunta"', overview)
+        self.assertIn('"Slot independente"', overview)
         self.assertIn("v1.0 permanece reservado para o produto estável", overview)
 
     def test_surface_uses_delivery_language_not_fake_component_versions(self):
@@ -92,7 +103,9 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn("Entrega observada", overview)
         self.assertIn("Identidade da entrega", overview)
         self.assertIn("não é número de PR nem versão comercial do OrdaX", overview)
-        self.assertIn("Distribuição conjunta · sem versão própria", overview)
+        self.assertIn('"Distribuição conjunta"', overview)
+        self.assertIn('"Base A/B"', overview)
+        self.assertIn("rollback individual permanece bloqueado", overview)
         self.assertNotIn("Versão global", overview)
         self.assertNotIn("Incluído nesta entrega", overview)
 
