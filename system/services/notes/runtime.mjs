@@ -8,80 +8,14 @@ import {
 export const NOTES_RUNTIME_SCHEMA = "ordax.notes-runtime/1";
 
 function defaultSnapshot(now = Date.now()) {
-  const past = (milliseconds) => Math.max(0, now - milliseconds);
-  const projects = [
-    { id: "meu-espaco", name: "Meu espaço", createdAt: now, updatedAt: now },
-    { id: "pesquisa-ordax", name: "Pesquisa OrdaX", createdAt: now, updatedAt: now },
-    { id: "ideias-pessoais", name: "Ideias pessoais", createdAt: now, updatedAt: now },
-  ];
-  const notes = [
-    {
-      id: "um-lugar-para-criar",
-      projectId: "meu-espaco",
-      title: "Um lugar para criar",
-      body: "Reunir ideias, referências e próximos passos em um só lugar.\n\nO que quero construir\nUm ambiente simples para pensar com clareza e continuar de onde parei.",
-      favorite: false,
-      deletedAt: null,
-      createdAt: past(60000),
-      updatedAt: now,
-      tasks: [
-        { id: "organizar-referencias", text: "Organizar minhas referências", done: true },
-        { id: "primeira-proposta", text: "Escrever a primeira proposta", done: false },
-        { id: "revisar-passos", text: "Revisar os próximos passos", done: false },
-      ],
-      references: [
-        {
-          id: "espacos-que-ajudam",
-          kind: "link",
-          title: "Espaços que ajudam a pensar",
-          detail: "Link de exemplo",
-          href: "https://example.org",
-        },
-      ],
-    },
-    {
-      id: "pesquisa-de-referencias",
-      projectId: "meu-espaco",
-      title: "Pesquisa de referências",
-      body: "Links e observações",
-      favorite: false,
-      deletedAt: null,
-      createdAt: past(86400000),
-      updatedAt: past(86400000),
-      tasks: [],
-      references: [],
-    },
-    {
-      id: "proximos-passos",
-      projectId: "meu-espaco",
-      title: "Próximos passos",
-      body: "Uma coisa de cada vez",
-      favorite: false,
-      deletedAt: null,
-      createdAt: past(3 * 86400000),
-      updatedAt: past(3 * 86400000),
-      tasks: [],
-      references: [],
-    },
-    {
-      id: "ideias-soltas",
-      projectId: "meu-espaco",
-      title: "Ideias soltas",
-      body: "Guardar antes de esquecer",
-      favorite: false,
-      deletedAt: null,
-      createdAt: past(7 * 86400000),
-      updatedAt: past(7 * 86400000),
-      tasks: [],
-      references: [],
-    },
-  ];
   return validateNotesSnapshot({
     $schema: NOTES_SNAPSHOT_SCHEMA,
     selectedProjectId: "meu-espaco",
-    selectedNoteId: "um-lugar-para-criar",
-    projects,
-    notes,
+    selectedNoteId: null,
+    projects: [
+      { id: "meu-espaco", name: "Meu espaço", createdAt: now, updatedAt: now },
+    ],
+    notes: [],
   });
 }
 
