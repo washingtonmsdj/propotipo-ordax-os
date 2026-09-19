@@ -6,6 +6,8 @@ on:
     paths:
       - 'bootstrap/kernel/**'
       - 'bootstrap/initramfs/**'
+      - 'bootstrap/dev-base/**'
+      - 'bootstrap/recovery/**'
       - 'tools/dev-base-channel/**'
       - 'system/services/base-update/dev_channel.py'
       - 'tests/test_dev_base_channel.py'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'bootstrap/kernel/**'
       - 'bootstrap/initramfs/**'
+      - 'bootstrap/dev-base/**'
+      - 'bootstrap/recovery/**'
       - 'tools/dev-base-channel/**'
       - 'system/services/base-update/dev_channel.py'
       - 'tests/test_dev_base_channel.py'
@@ -68,7 +72,7 @@ jobs:
           if ! git rev-parse HEAD^ >/dev/null 2>&1; then
             publish=true
           elif git diff --name-only HEAD^ HEAD | grep -Eq \
-              '^(bootstrap/kernel/|bootstrap/initramfs/|tools/dev-base-channel/|\.github/workflows/dev-base-channel\.yml$)'; then
+              '^(bootstrap/kernel/|bootstrap/initramfs/|bootstrap/dev-base/|bootstrap/recovery/|tools/dev-base-channel/|\.github/workflows/dev-base-channel\.yml$)'; then
             publish=true
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
@@ -89,7 +93,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
             dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
-            e2fsprogs util-linux
+            e2fsprogs util-linux proot
 
       - name: Build exact-commit kernel and initramfs
         if: steps.changes.outputs.publish == 'true'
@@ -99,6 +103,13 @@ jobs:
           python bootstrap/kernel/build.py build --jobs 4
           python bootstrap/kernel/verify.py out/kernel
 
+          module_tar="$(find out/kernel -maxdepth 1 -type f -name 'kernel-modules-*.tar' -print -quit)"
+          test -n "$module_tar"
+          sudo env GITHUB_SHA="$GITHUB_SHA"             python bootstrap/dev-base/build.py               --kernel-modules "$module_tar"               --out-dir out/dev-rootfs
+          sudo chown -R "$(id -u):$(id -g)" out/dev-rootfs
+          test -f out/dev-rootfs/provenance.json
+          test -d out/dev-rootfs/rootfs
+
           python bootstrap/initramfs/build.py check
           python bootstrap/initramfs/build.py build --jobs 4
           python bootstrap/initramfs/build.py verify
@@ -107,6 +118,7 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --kernel-dir out/kernel \
             --initramfs-dir out/initramfs \
+            --rootfs-dir out/dev-rootfs \
             --out-dir out/dev-base
           python tools/dev-base-channel/build.py verify --out-dir out/dev-base
 
@@ -126,12 +138,12 @@ jobs:
               --target "$GITHUB_SHA" \
               --title "OrdaX Development Base $GITHUB_SHA" \
               --prerelease \
-              --notes 'Git-first development Base candidate. Exact source commit plus SHA-256 bound kernel/initramfs. Activation is performed only through the inactive A/B slot on the next boot.'
+              --notes 'Git-first development Base candidate. Exact source commit plus SHA-256 bound kernel, initramfs and development rootfs. Kernel/initramfs activation uses the inactive A/B slot; rootfs selection remains a separate fail-closed gate.'
           fi
 
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
-          for asset in dev-base.json vmlinuz initrd.gz; do
+          for asset in dev-base.json vmlinuz initrd.gz rootfs.tar; do
             if gh release view "$tag" --repo "$repo" --json assets \
                 --jq '.assets[].name' | grep -Fxq "$asset"; then
               gh release download "$tag" --repo "$repo" \
@@ -149,3 +161,5 @@ jobs:
           echo "DEV_BASE_SOURCE_COMMIT=$GITHUB_SHA"
           echo 'DEV_BASE_MANUAL_USB_REWRITE_REQUIRED=NO'
           echo 'DEV_BASE_ACTIVATION=INACTIVE_SLOT_NEXT_BOOT'
+          echo 'DEV_BASE_ROOTFS_CANDIDATE=YES'
+          echo 'DEV_BASE_ROOTFS_ACTIVATION=NOT_ENABLED'

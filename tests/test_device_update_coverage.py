@@ -74,20 +74,36 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
         ):
             self.assertIn(source, helpers)
 
-    def test_kernel_and_initramfs_use_exact_commit_development_base_without_usb_rewrite(self):
+    def test_kernel_initramfs_and_rootfs_use_exact_commit_base_delivery_without_usb_rewrite(self):
         channel = DEV_CHANNEL.read_text(encoding="utf-8")
-        self.assertIn('SCHEMA = "prototype-ordax.dev-base-candidate/1"', channel)
+        self.assertIn('SCHEMA = "prototype-ordax.dev-base-candidate/2"', channel)
         self.assertIn('"kernel"', channel)
         self.assertIn('"initramfs"', channel)
+        self.assertIn('"rootfs"', channel)
+        self.assertIn('MAX_ROOTFS_BYTES', channel)
         self.assertIn('"inactive-slot-next-boot"', channel)
         self.assertIn('"manual_usb_rewrite_required"', channel)
         self.assertIn("is not False", channel)
 
         contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-        layer = next(item for item in contract["layers"] if item["id"] == "kernel-and-initramfs")
-        self.assertEqual(layer["development_delivery"], "exact-commit-development-base-candidate")
-        self.assertFalse(layer["usb_rewrite_required"])
-        self.assertTrue(layer["reboot_required"])
+        boot = next(item for item in contract["layers"] if item["id"] == "kernel-and-initramfs")
+        self.assertEqual(boot["development_delivery"], "exact-commit-development-base-candidate")
+        self.assertFalse(boot["usb_rewrite_required"])
+        self.assertTrue(boot["reboot_required"])
+
+        rootfs = next(item for item in contract["layers"] if item["id"] == "development-rootfs")
+        self.assertEqual(
+            rootfs["development_delivery"],
+            "exact-commit-development-base-rootfs-candidate",
+        )
+        self.assertTrue(rootfs["candidate_delivery_implemented"])
+        self.assertFalse(rootfs["activation_implemented"])
+        self.assertFalse(rootfs["usb_rewrite_required"])
+        self.assertTrue(rootfs["reboot_required"])
+        activation = contract["development_rootfs_activation"]
+        self.assertEqual(activation["artifact"], "rootfs.tar")
+        self.assertEqual(activation["current_boot_root"], "/ordax/dev-base")
+        self.assertIn("/ordax/dev-base/versions/<commit>", activation["target_versioned_layout"])
 
     def test_uefi_loader_is_repository_owned_but_gap_is_not_hidden(self):
         minimal = json.loads(MINIMAL.read_text(encoding="utf-8"))

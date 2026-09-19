@@ -45,6 +45,19 @@
       "reboot_required": false
     },
     {
+      "id": "development-rootfs",
+      "source_roots": [
+        "bootstrap/dev-base",
+        "bootstrap/recovery"
+      ],
+      "development_delivery": "exact-commit-development-base-rootfs-candidate",
+      "activation": "materialized-candidate-rootfs-selection-pending",
+      "candidate_delivery_implemented": true,
+      "activation_implemented": false,
+      "usb_rewrite_required": false,
+      "reboot_required": true
+    },
+    {
       "id": "kernel-and-initramfs",
       "source_roots": [
         "bootstrap/kernel",
@@ -111,5 +124,13 @@
     "normal_system_update_blocked_by_gap": false,
     "kernel_update_blocked_by_gap": false,
     "app_update_blocked_by_gap": false
+  },
+  "development_rootfs_activation": {
+    "status": "candidate-delivery-implemented-activation-pending",
+    "artifact": "rootfs.tar",
+    "candidate_owner": "tools/dev-base-channel + system/services/base-update/dev_channel.py",
+    "current_boot_root": "/ordax/dev-base",
+    "target_versioned_layout": "/ordax/dev-base/versions/<commit>",
+    "next_gate": "bootstrap version selection with persistent state/workspace binds and fallback"
   }
 }
