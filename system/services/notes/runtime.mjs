@@ -1,4 +1,8 @@
 import {
+  MAX_NOTES,
+  MAX_NOTE_PROJECTS,
+  MAX_NOTE_REFERENCES,
+  MAX_NOTE_TASKS,
   NOTES_SNAPSHOT_SCHEMA,
   NOTES_STORE_SCHEMA,
   assertNotesStore,
@@ -147,6 +151,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       if (!draft.projects.some((project) => project.id === projectId)) {
         throw new RangeError(`Unknown note project: ${projectId}`);
       }
+      if (draft.notes.length >= MAX_NOTES) return runtime.getSnapshot();
       const stamp = now();
       const noteId = id("note");
       draft.notes.unshift({
@@ -170,6 +175,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const cleanName = String(name ?? "").trim();
       if (!cleanName) return runtime.getSnapshot();
       const draft = thaw(snapshot);
+      if (draft.projects.length >= MAX_NOTE_PROJECTS) return runtime.getSnapshot();
       const stamp = now();
       const projectId = id("project");
       draft.projects.push({ id: projectId, name: cleanName.slice(0, 160), createdAt: stamp, updatedAt: stamp });
@@ -294,6 +300,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     addTask(noteId, text = "Novo item") {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].tasks.length >= MAX_NOTE_TASKS) return runtime.getSnapshot();
       draft.notes[index].tasks.push({ id: id("task"), text: String(text).slice(0, 2048), done: false });
       draft.notes[index].updatedAt = now();
       return commit(draft);
@@ -322,6 +329,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     addReference(noteId, reference) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].references.length >= MAX_NOTE_REFERENCES) return runtime.getSnapshot();
       draft.notes[index].references.push({
         id: id("ref"),
         kind: reference?.kind === "file" ? "file" : "link",
@@ -336,7 +344,9 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     removeReference(noteId, referenceId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      const before = draft.notes[index].references.length;
       draft.notes[index].references = draft.notes[index].references.filter((reference) => reference.id !== referenceId);
+      if (draft.notes[index].references.length === before) return runtime.getSnapshot();
       draft.notes[index].updatedAt = now();
       return commit(draft);
     },
@@ -370,6 +380,8 @@ export function assertNotesRuntime(runtime) {
     "addTask",
     "updateTask",
     "removeTask",
+    "addReference",
+    "removeReference",
   ]) {
     if (typeof runtime[method] !== "function") throw new TypeError(`Notes runtime must implement ${method}()`);
   }
