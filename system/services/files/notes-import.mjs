@@ -3,6 +3,11 @@ import {
   validateFileSpacePath,
   validateTextFile,
 } from "../../contracts/file-space.mjs";
+import {
+  NOTES_FILE_IMPORTER_SCHEMA,
+  assertNotesFileImporter,
+  validateNotesFileImportResult,
+} from "../../contracts/notes-file-importer.mjs";
 import { MAX_NOTE_TEXT_CHARS } from "../../contracts/notes-store.mjs";
 import {
   assertNotesRuntime,
@@ -12,7 +17,7 @@ const MAX_REFERENCE_TITLE_CHARS = 512;
 const MAX_REFERENCE_DETAIL_CHARS = 1024;
 
 function result(status, fields = {}) {
-  return Object.freeze({ status, ...fields });
+  return validateNotesFileImportResult({ status, ...fields });
 }
 
 function sourceName(path) {
@@ -33,7 +38,9 @@ export function createNotesFileImporter({ fileSpace, notesRuntime }) {
   const files = assertFileSpacePort(fileSpace);
   const notes = assertImportCapableNotesRuntime(notesRuntime);
 
-  return Object.freeze({
+  const port = {
+    schema: NOTES_FILE_IMPORTER_SCHEMA,
+
     async importTextFile(pathValue) {
       const path = validateFileSpacePath(pathValue);
       const name = sourceName(path);
@@ -96,5 +103,8 @@ export function createNotesFileImporter({ fileSpace, notesRuntime }) {
         return result("failed", { code: "notes-create-failed" });
       }
     },
-  });
+  };
+
+  assertNotesFileImporter(port);
+  return Object.freeze(port);
 }

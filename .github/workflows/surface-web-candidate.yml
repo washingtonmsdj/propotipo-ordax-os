@@ -28,6 +28,7 @@ on:
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
       - 'system/contracts/notes-store.mjs'
+      - 'system/contracts/notes-file-importer.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -54,6 +55,8 @@ on:
       - 'tests/test_notes_runtime.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
+      - 'tests/test_file_notes_action.mjs'
+      - 'tests/test_file_notes_action_contract.py'
       - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
@@ -100,6 +103,7 @@ on:
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
       - 'system/contracts/notes-store.mjs'
+      - 'system/contracts/notes-file-importer.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
@@ -126,6 +130,8 @@ on:
       - 'tests/test_notes_runtime.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
+      - 'tests/test_file_notes_action.mjs'
+      - 'tests/test_file_notes_action_contract.py'
       - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
@@ -199,6 +205,7 @@ jobs:
           node --test tests/test_projects.mjs
           node --test tests/test_notes_runtime.mjs
           node --test tests/test_files_to_notes_import.mjs
+          node --test tests/test_file_notes_action.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
@@ -221,6 +228,7 @@ jobs:
           python -m unittest tests.test_recent_files_ui_contract -v
           python -m unittest tests.test_project_files_ui_contract -v
           python -m unittest tests.test_files_to_notes_import_contract -v
+          python -m unittest tests.test_file_notes_action_contract -v
           python -m unittest tests.test_notes_native -v
 
       - name: Build and verify deterministic Web client
