@@ -346,7 +346,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         )
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
-        self.assertIn("boot refresh is marked pending", text)
+        self.assertIn("Base candidate acquisition runs in background", text)
 
     def test_rollback_pin_disables_automatic_pull(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
