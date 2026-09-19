@@ -41,15 +41,32 @@ class ReleaseAgentRefreshTests(unittest.TestCase):
             ),
         )
 
-    def test_refresh_target_is_same_byte_pinned_by_minimal_bootstrap(self):
+    def test_physical_bootstrap_agent_is_an_allowed_refresh_baseline(self):
         descriptor = json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
         minimal = json.loads(MINIMAL.read_text(encoding="utf-8"))
         groups = {group["id"]: group for group in minimal["artifact_groups"]}
         artifact = groups["bootstrap-release-acquisition"]["artifacts"][0]
-        self.assertEqual(artifact["sha256"], descriptor["target_sha256"])
+
+        self.assertIn(artifact["sha256"], descriptor["allowed_from_sha256"])
+        self.assertNotEqual(artifact["sha256"], descriptor["target_sha256"])
         self.assertEqual(artifact["target_path"], descriptor["target_path"])
         self.assertEqual(artifact["mode"], descriptor["mode"])
         self.assertFalse(minimal["physical_write_allowed"])
+        self.assertFalse(descriptor["physical_media_rewrite_required"])
+
+    def test_base_contract_matches_current_refresh_descriptor(self):
+        descriptor = json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
+        contract = json.loads(BASE.read_text(encoding="utf-8"))
+        refresh = contract["release_agent_refresh"]
+        migration = refresh["initial_supported_migration"]
+
+        self.assertEqual(
+            migration["from_sha256"],
+            descriptor["allowed_from_sha256"],
+        )
+        self.assertEqual(migration["to_sha256"], descriptor["target_sha256"])
+        self.assertTrue(refresh["physical_baseline_may_lag_refresh_target"])
+        self.assertTrue(refresh["physical_baseline_hash_must_be_allowed_from"])
 
     def test_base_contract_does_not_create_generic_bootstrap_updater(self):
         contract = json.loads(BASE.read_text(encoding="utf-8"))

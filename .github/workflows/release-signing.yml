@@ -8,6 +8,7 @@ on:
       - 'bootstrap/release-acquisition/**'
       - 'bootstrap/trust/README.md'
       - 'docs/RELEASE-SIGNING.md'
+      - 'docs/contracts/runtime-component-release.json'
       - '.github/workflows/release-signing.yml'
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - 'bootstrap/release-acquisition/**'
       - 'bootstrap/trust/README.md'
       - 'docs/RELEASE-SIGNING.md'
+      - 'docs/contracts/runtime-component-release.json'
       - '.github/workflows/release-signing.yml'
 
 permissions:
@@ -109,6 +111,48 @@ jobs:
           printf '%s\n' "$verify_output"
           grep -q '"status": "verified"' <<<"$verify_output"
           grep -q '"source_commit": "0123456789abcdef0123456789abcdef01234567"' <<<"$verify_output"
+
+          cat > "$work/component-release.json" <<'JSON'
+          {
+            "$schema": "prototype-ordax.runtime-component-release/1",
+            "source_repository": "washingtonmsdj/prototipo-ordax-os",
+            "source_commit": "0123456789abcdef0123456789abcdef01234567",
+            "component_id": "internet",
+            "version": "0.3.0",
+            "release_sequence": 3,
+            "created_from_ci_recipe": "runtime-component/internet/1",
+            "package": {
+              "name": "internet.zip",
+              "url": "https://example.invalid/runtime-components/internet.zip",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "size": 123
+            }
+          }
+          JSON
+          "$signer" sign-component \
+            --manifest "$work/component-release.json" \
+            --private-key "$work/private.pem" \
+            --trust "$work/trust.json" \
+            --key-id ci-test-1 \
+            --component internet \
+            --out "$work/component-envelope.json"
+          signer_component_verify="$("$signer" verify-component-envelope \
+            --envelope "$work/component-envelope.json" \
+            --trust "$work/trust.json" \
+            --component internet)"
+          printf '%s\n' "$signer_component_verify"
+          grep -q 'RUNTIME_COMPONENT_ENVELOPE_VERIFIED=YES' <<<"$signer_component_verify"
+          agent_component_verify="$("$agent" verify-component-envelope \
+            --envelope "$work/component-envelope.json" \
+            --trust "$work/trust.json" \
+            --component internet)"
+          printf '%s\n' "$agent_component_verify"
+          grep -q '"status": "verified"' <<<"$agent_component_verify"
+          grep -q '"component_id": "internet"' <<<"$agent_component_verify"
+          grep -q '"version": "0.3.0"' <<<"$agent_component_verify"
+          grep -q '"activation_allowed": false' <<<"$agent_component_verify"
+          echo 'RUNTIME_COMPONENT_SIGNER_AGENT_PROTOCOL=PASS'
+
           rm -f "$work/private.pem"
           test ! -e "$work/private.pem"
           echo 'SIGNER_TRUST_MATCH=PASS'

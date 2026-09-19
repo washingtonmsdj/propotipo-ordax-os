@@ -1,0 +1,58 @@
+{
+  "$schema": "prototype-ordax.runtime-component-release-policy/1",
+  "status": "signed-stage-implemented",
+  "source_repository": "washingtonmsdj/prototipo-ordax-os",
+  "trust": {
+    "schema": "prototype-ordax.release-trust/1",
+    "shared_with_base_release_authority": true,
+    "canonical_device_path": "/ordax/bootstrap/trust/release-ed25519.json",
+    "private_key_may_ship_to_device": false,
+    "private_key_may_ship_in_ci_artifact": false
+  },
+  "protocol": {
+    "envelope_schema": "prototype-ordax.runtime-component-envelope/1",
+    "release_manifest_schema": "prototype-ordax.runtime-component-release/1",
+    "package_schema": "prototype-ordax.runtime-component-package/1",
+    "signature": "Ed25519 over exact release manifest bytes",
+    "package_sha256_required": true,
+    "package_size_required": true,
+    "source_commit_identity_required": true,
+    "component_id_identity_required": true,
+    "semantic_version_required": true,
+    "monotonic_release_sequence_required": true
+  },
+  "commands": {
+    "signer": "ordax-release-signing sign-component",
+    "signer_verify": "ordax-release-signing verify-component-envelope",
+    "device_verify": "ordax-release-agent verify-component-envelope",
+    "device_stage": "ordax-release-agent stage-component"
+  },
+  "staging": {
+    "default_root": "/var/lib/ordax/components",
+    "layout": "<root>/<component_id>/versions/<semantic_version>",
+    "immutable_version_directory": true,
+    "temporary_stage_same_parent": true,
+    "file_fsync_required": true,
+    "directory_fsync_required": true,
+    "atomic_rename_commit": true,
+    "interrupted_staging_residue_may_be_removed": true,
+    "anti_rollback_baseline": "highest release_sequence derived from immutable signed installed releases",
+    "sequence_state_separate_mutable_counter": false,
+    "same_sequence_different_release": "reject",
+    "older_sequence": "reject"
+  },
+  "activation": {
+    "allowed_by_stage_command": false,
+    "current_pointer_written_by_stage_command": false,
+    "component_manager_pending_state_written_by_stage_command": false,
+    "health_check_required_before_future_promotion": true,
+    "future_owner": "system/services/components + Native component slot loader"
+  },
+  "publication": {
+    "canonical_component_channel_created": false,
+    "publish_allowed": false,
+    "unsigned_package_may_activate": false,
+    "unsigned_envelope_may_stage": false
+  },
+  "next_gate": "Native pending/current slot resolution and health-checked promotion"
+}
