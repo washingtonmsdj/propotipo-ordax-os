@@ -4,6 +4,7 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
 const SAVE_DELAY_MS = 320;
+const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
 
 function node(documentObject, tag, className, text) {
   const element = documentObject.createElement(tag);
@@ -553,17 +554,17 @@ export function mountNotesWorkspaceControls(root, notesRuntime, surfaceLifecycle
       scheduleSave();
     }
     if (action === "add-reference") {
-      const href = windowObject.prompt?.("Cole o endereço da referência (http ou https):", "https://");
+      const href = windowObject.prompt?.("Cole o endereço da referência:");
       if (!href) return;
       let valid;
       try {
         const parsed = new URL(href);
-        valid = ["http:", "https:"].includes(parsed.protocol);
+        valid = WEB_PROTOCOLS.includes(parsed.protocol);
       } catch {
         valid = false;
       }
       if (!valid) {
-        windowObject.alert?.("Use um endereço começando com http:// ou https://.");
+        windowObject.alert?.("Use um endereço da web válido.");
         return;
       }
       const title = windowObject.prompt?.("Título da referência:", hostFromHref(href)) || hostFromHref(href);
