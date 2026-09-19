@@ -16,6 +16,7 @@ STATE_STORE = ROOT / "system" / "contracts" / "component-state-store.mjs"
 MANAGER_CONTRACT = ROOT / "system" / "contracts" / "component-manager.mjs"
 CATALOG = ROOT / "system" / "services" / "components" / "catalog.mjs"
 APP_MANIFESTS = ROOT / "system" / "services" / "components" / "manifests" / "apps.mjs"
+INTERNET_COMPONENT = ROOT / "system" / "apps" / "internet" / "component.mjs"
 MANAGER = ROOT / "system" / "services" / "components" / "manager.mjs"
 SYSTEM_VIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 
@@ -78,6 +79,7 @@ class NativeComponentStateTests(unittest.TestCase):
         contract = MANAGER_CONTRACT.read_text(encoding="utf-8")
         catalog = CATALOG.read_text(encoding="utf-8")
         app_manifests = APP_MANIFESTS.read_text(encoding="utf-8")
+        internet_component = INTERNET_COMPONENT.read_text(encoding="utf-8")
         manager = MANAGER.read_text(encoding="utf-8")
         adapter = NATIVE_ADAPTER.read_text(encoding="utf-8")
         native = NATIVE_MAIN.read_text(encoding="utf-8")
@@ -87,15 +89,18 @@ class NativeComponentStateTests(unittest.TestCase):
         self.assertIn('ordax.component-manifest/1', manifest)
         self.assertIn('"base-ab"', manifest)
         self.assertIn('"component-slot"', manifest)
+        self.assertIn('"git-app"', manifest)
         self.assertIn('"bundled"', manifest)
         self.assertIn("dependency cycle", manifest)
         self.assertIn('ordax.component-state/1', state)
         self.assertIn('ordax.component-manager/1', contract)
         self.assertIn("appComponentManifests", catalog)
         self.assertIn("coreComponentManifests", catalog)
-        self.assertNotIn("system/apps", catalog)
-        self.assertIn('id: "internet"', app_manifests)
-        self.assertIn('owner: "system/apps/internet"', app_manifests)
+        self.assertIn("../../apps/internet/component.mjs", catalog)
+        self.assertNotIn('id: "internet"', app_manifests)
+        self.assertIn('id: "internet"', internet_component)
+        self.assertIn('releaseMode: "git-app"', internet_component)
+        self.assertIn('owner: "system/apps/internet"', internet_component)
         self.assertIn("stageCandidate", manager)
         self.assertIn("markPendingHealthy", manager)
         self.assertIn("promotePending", manager)
@@ -117,7 +122,9 @@ class NativeComponentStateTests(unittest.TestCase):
 
         self.assertIn("assertComponentManager", view)
         self.assertIn('"Slot independente"', view)
+        self.assertIn('"App via Git"', view)
         self.assertIn('"Distribuição conjunta"', view)
+        self.assertIn("diretamente pelo Git, sem slot de produção", view)
         self.assertIn("rollback individual permanece bloqueado", view)
 
 
