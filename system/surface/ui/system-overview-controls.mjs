@@ -612,7 +612,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "Entrega identifica o que pode chegar ao notebook e SHA identifica exatamente o build. Nenhum deles é a versão comercial do OrdaX. Apps só recebem versão própria quando tiverem empacotamento e ciclo de release independentes.",
+        "Entrega é o número humano do que pode chegar ao notebook; não é número de PR nem versão comercial do OrdaX. O SHA identifica exatamente o build. Apps só recebem versão própria quando tiverem empacotamento e ciclo de release independentes.",
       ),
     );
 
