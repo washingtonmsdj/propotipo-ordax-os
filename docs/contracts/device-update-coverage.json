@@ -129,7 +129,7 @@
   "development_rootfs_activation": {
     "status": "source-implemented-physical-proof-pending",
     "artifact": "rootfs.tar",
-    "candidate_owner": "tools/dev-base-channel + system/services/base-update/dev_channel.py",
+    "candidate_owner": "system/services/base-update/agent.sh + system/services/base-update/dev_channel.py",
     "selector_owner": "bootstrap/dev-base/ordax-dev-init",
     "current_boot_root": "/ordax/dev-base",
     "target_versioned_layout": "/ordax/dev-base/versions/<commit>",
@@ -146,6 +146,9 @@
     "selection_policy": "candidate rootfs runs only on the matching one-shot A/B candidate boot",
     "promotion_policy": "the slot becomes normal only through the existing base heartbeat + Surface health promotion gate",
     "fallback_policy": "a failed candidate never becomes the normal slot; missing legacy mapping keeps the seed development Base",
-    "next_gate": "disposable selector proof and physical broken-candidate fallback exercise"
+    "next_gate": "disposable selector proof and physical broken-candidate fallback exercise",
+    "request_owner": "system/supervisor writes exact SHA request only",
+    "python_runtime": "replaceable native Surface runtime; Python is not required in the development bootstrap Base",
+    "seed_root_resolution": "strip terminal /versions/<commit> from the live root mount subpath before resolving shared state/version storage"
   }
 }
