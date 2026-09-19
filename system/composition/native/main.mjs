@@ -53,6 +53,7 @@ import { mountHomeContinuation } from "../../surface/ui/home-continuation.mjs";
 import { mountHomePending } from "../../surface/ui/home-pending.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
+import { createSurfaceBootScreen } from "../../surface/ui/boot-screen.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
 import { mountSystemTrayQuickPanels } from "../../surface/ui/system-tray-quick-panels.mjs";
@@ -67,7 +68,10 @@ async function optionalNativeProbe(label, factory) {
   }
 }
 
+const bootScreen = createSurfaceBootScreen(document);
+
 async function start() {
+  bootScreen.setStage("Carregando superfície…");
   const root = document.querySelector("#ordax-root");
   if (!root) {
     throw new Error("OrdaX composition root is missing #ordax-root");
@@ -337,6 +341,8 @@ async function start() {
   void updateWatcher.markHealthy();
   const surfaceHeartbeat = createNativeSurfaceHeartbeat(window);
 
+  bootScreen.setStage("Carregando aplicativos…");
+
   const notesComponent = await loadOptionalComponentRuntime({
     componentId: "notes",
     importer: () => import("../../apps/notes/runtime.mjs"),
@@ -372,6 +378,8 @@ async function start() {
       reportClientDiagnostic("internet-runtime", error);
     },
   });
+
+  bootScreen.ready();
 
   window.addEventListener(
     "pagehide",
@@ -412,5 +420,6 @@ async function start() {
 }
 
 start().catch((error) => {
+  bootScreen.fail("Não foi possível iniciar a interface");
   console.error("OrdaX native composition failed", error);
 });

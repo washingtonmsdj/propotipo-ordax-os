@@ -1,0 +1,27 @@
+{
+  "$schema": "prototype-ordax.branding/1",
+  "status": "prototype",
+  "product_name": "OrdaX",
+  "source_authority": "repository",
+  "surface_loading": {
+    "implemented": true,
+    "owner": "system/surface/ui/boot-screen.*",
+    "delivery": "runtime-git-checkout",
+    "usb_rewrite_required": false,
+    "default_status": "Preparando OrdaX…"
+  },
+  "early_boot": {
+    "graphical_splash_implemented": false,
+    "current_mode": "console-text",
+    "owner": "bootstrap/dev-base/ordax-dev-init",
+    "future_graphical_owner": "bootstrap/initramfs-or-development-base",
+    "kernel_framebuffer_support": true,
+    "branding_change_requires_usb_rewrite": false,
+    "future_delivery": "development-base-candidate"
+  },
+  "failure_policy": {
+    "surface_loading_error_stays_visible": true,
+    "early_boot_graphics_must_have_text_fallback": true,
+    "branding_must_not_block_boot": true
+  }
+}

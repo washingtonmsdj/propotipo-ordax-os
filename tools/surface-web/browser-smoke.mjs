@@ -15,6 +15,7 @@ const ROOT_MODULES = [SURFACE_ROOT_MODULE, WEB_COMPOSITION_ROOT_MODULE];
 const CSS_FILES = [
   'system/surface/ui/tokens.css',
   'system/surface/ui/surface.css',
+  'system/surface/ui/boot-screen.css',
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
   'system/surface/ui/system.css',
@@ -468,7 +469,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     });
 
     document.open();
-    document.write('<!doctype html><html><head></head><body><div id="ordax-root"></div></body></html>');
+    document.write('<!doctype html><html><head></head><body><div id="ordax-boot-screen" class="ordax-boot-screen" data-state="loading"><span data-ordax-boot-status>Preparando OrdaX…</span></div><div id="ordax-root"></div></body></html>');
     document.close();
     const style = document.createElement('style');
     style.textContent = ${JSON.stringify(styles)};
@@ -600,6 +601,9 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     await Promise.resolve();
     let root = document.querySelector('#ordax-root');
     result.compositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    const bootScreen = document.querySelector('#ordax-boot-screen');
+    result.bootScreenCompleted = bootScreen?.hidden === true
+      && bootScreen?.dataset.state === 'ready';
     const firstInternetStyle = document.querySelector(
       'link[data-ordax-component-style="internet"]',
     );
@@ -956,13 +960,23 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     ) === null;
 
     document.body.replaceChildren();
+    const remountBootScreen = document.createElement('div');
+    remountBootScreen.id = 'ordax-boot-screen';
+    remountBootScreen.className = 'ordax-boot-screen';
+    remountBootScreen.dataset.state = 'loading';
+    const remountBootStatus = document.createElement('span');
+    remountBootStatus.dataset.ordaxBootStatus = '';
+    remountBootStatus.textContent = 'Preparando OrdaX…';
+    remountBootScreen.append(remountBootStatus);
     const remountRoot = document.createElement('div');
     remountRoot.id = 'ordax-root';
-    document.body.append(remountRoot);
+    document.body.append(remountBootScreen, remountRoot);
     await import(namespaceUrls['composition-remount'][rootModule]);
     await Promise.resolve();
     root = document.querySelector('#ordax-root');
     result.remountCompositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    result.remountBootScreenCompleted = remountBootScreen.hidden === true
+      && remountBootScreen.dataset.state === 'ready';
     result.internetComponentStyleRestored = Boolean(
       document.querySelector('link[data-ordax-component-style="internet"]'),
     );
@@ -1018,7 +1032,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     result.systemOverviewRestored = restoredSystemSlot?.dataset.systemActiveSection === 'overview';
 
     const required = [
-      'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
+      'compositionMounted', 'bootScreenCompleted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
       'workspaceTargetPersisted', 'internetComponentStyleMounted',
@@ -1040,7 +1054,7 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
-      'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
+      'remountCompositionMounted', 'remountBootScreenCompleted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
       'notesRichTextRestored', 'internetWindowRestored', 'internetTargetRestored',
       'internetStillFailsClosedOnWeb',
