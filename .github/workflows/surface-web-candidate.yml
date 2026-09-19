@@ -27,6 +27,8 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/notifications.mjs'
+      - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
       - 'system/contracts/notes-file-importer.mjs'
       - 'system/surface/**'
@@ -40,6 +42,7 @@ on:
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
       - 'system/services/update/**'
+      - 'system/services/notifications/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -52,6 +55,8 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_notifications.mjs'
+      - 'tests/test_notification_center_ui_contract.py'
       - 'tests/test_notes_runtime.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
@@ -102,6 +107,8 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/notifications.mjs'
+      - 'system/contracts/notification-store.mjs'
       - 'system/contracts/notes-store.mjs'
       - 'system/contracts/notes-file-importer.mjs'
       - 'system/surface/**'
@@ -115,6 +122,7 @@ on:
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
       - 'system/services/update/**'
+      - 'system/services/notifications/**'
       - 'system/adapters/web/**'
       - 'system/adapters/native/**'
       - 'system/composition/web/**'
@@ -127,6 +135,8 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_notifications.mjs'
+      - 'tests/test_notification_center_ui_contract.py'
       - 'tests/test_notes_runtime.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
@@ -190,6 +200,7 @@ jobs:
             system/services/sync \
             system/services/diagnostics \
             system/services/update \
+            system/services/notifications \
             system/apps \
             system/surface/ui \
             system/adapters/web \
@@ -203,6 +214,7 @@ jobs:
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
+          node --test tests/test_notifications.mjs
           node --test tests/test_notes_runtime.mjs
           node --test tests/test_files_to_notes_import.mjs
           node --test tests/test_file_notes_action.mjs
@@ -227,6 +239,7 @@ jobs:
           python -m unittest tests.test_surface_web_builder -v
           python -m unittest tests.test_recent_files_ui_contract -v
           python -m unittest tests.test_project_files_ui_contract -v
+          python -m unittest tests.test_notification_center_ui_contract -v
           python -m unittest tests.test_files_to_notes_import_contract -v
           python -m unittest tests.test_file_notes_action_contract -v
           python -m unittest tests.test_notes_native -v
