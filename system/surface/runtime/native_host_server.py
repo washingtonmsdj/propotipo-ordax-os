@@ -20,7 +20,7 @@ import time
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
 _RUNTIME_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +28,12 @@ if _RUNTIME_DIR not in sys.path:
     sys.path.insert(0, _RUNTIME_DIR)
 
 from native_request_boundary import expected_surface_authority, request_is_trusted
+from component_slots import (
+    ComponentSlotBroker,
+    ComponentSlotConflict,
+    ComponentSlotError,
+    ComponentSlotNotFound,
+)
 
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
@@ -38,6 +44,8 @@ CLIENT_DIAGNOSTIC_PATH = "/__ordax/native/client-diagnostic"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 NOTES_PATH = "/__ordax/native/notes"
 COMPONENT_STATE_PATH = "/__ordax/native/component-state"
+COMPONENT_SLOT_PATH = "/__ordax/native/component-slot"
+COMPONENT_ASSET_PREFIX = "/__ordax/component/"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 DIAGNOSTIC_JOURNAL_PATH = "/__ordax/native/diagnostic-journal"
 FILES_PATH = "/__ordax/native/files"
@@ -68,6 +76,7 @@ TOKEN_HEADER = "X-OrdaX-Power-Token"
 NETWORK_TOKEN_HEADER = "X-OrdaX-Network-Token"
 DIAGNOSTIC_TOKEN_HEADER = "X-OrdaX-Diagnostic-Token"
 HEALTH_TOKEN_HEADER = "X-OrdaX-Health-Token"
+COMPONENT_SLOT_TOKEN_HEADER = "X-OrdaX-Component-Slot-Token"
 MAX_CONTROL_BODY = 512
 MAX_NETWORK_ACTION_BODY = 1024
 MAX_NETWORK_SCAN_BYTES = 512 * 1024
@@ -2084,17 +2093,20 @@ class NativeHostServer(ThreadingHTTPServer):
         user_root: str,
         power_request_path: str,
         network_session_dir: str,
+        component_slots: ComponentSlotBroker,
     ):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
         self.network_token = secrets.token_urlsafe(32)
         self.diagnostic_token = secrets.token_urlsafe(32)
         self.health_token = secrets.token_urlsafe(32)
+        self.component_slot_token = secrets.token_urlsafe(32)
         self.power_request_path = power_request_path
         self.supported_actions = supported_power_actions(power_request_path)
         self.network_paths = network_broker_paths(network_session_dir)
         self.network_lock = threading.Lock()
         self.user_root = user_root
+        self.component_slots = component_slots
 
 
 class NativeHostHandler(SimpleHTTPRequestHandler):
@@ -2127,6 +2139,15 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/octet-stream")
         self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{encoded_name}")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _write_component_asset(self, mime: str, payload: bytes) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -2177,7 +2198,59 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if not self._request_is_trusted():
             return
-        parsed_path = urlsplit(self.path).path
+        parsed = urlsplit(self.path)
+        parsed_path = parsed.path
+        if parsed_path.startswith(COMPONENT_ASSET_PREFIX):
+            if self.client_address[0] != "127.0.0.1" or parsed.query:
+                self._empty(403)
+                return
+            encoded = parsed_path[len(COMPONENT_ASSET_PREFIX):]
+            parts = encoded.split("/", 2)
+            if len(parts) != 3:
+                self._empty(404)
+                return
+            try:
+                component_id = unquote(parts[0], errors="strict")
+                version = unquote(parts[1], errors="strict")
+                relative_path = unquote(parts[2], errors="strict")
+                mime, payload = self.server.component_slots.read_asset(
+                    component_id,
+                    version,
+                    relative_path,
+                )
+            except ComponentSlotNotFound:
+                self._empty(404)
+                return
+            except (ComponentSlotError, UnicodeError, ValueError, OSError) as exc:
+                print(
+                    f"ordax-native-host: component asset rejected: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(409)
+                return
+            self._write_component_asset(mime, payload)
+            return
+        if parsed_path == COMPONENT_SLOT_PATH:
+            if self.client_address[0] != "127.0.0.1":
+                self._empty(403)
+                return
+            query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=False)
+            if set(query) != {"component"} or len(query["component"]) != 1:
+                self._empty(400)
+                return
+            try:
+                snapshot = self.server.component_slots.snapshot(query["component"][0])
+            except (ComponentSlotError, OSError, ValueError) as exc:
+                print(
+                    f"ordax-native-host: component slot snapshot unavailable: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(503)
+                return
+            self._write_json(200, snapshot)
+            return
         if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, IMAGE_PREVIEW_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
@@ -2341,6 +2414,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
                     "token": self.server.power_token,
                     "networkToken": self.server.network_token,
                     "diagnosticToken": self.server.diagnostic_token,
+                    "componentSlotToken": self.server.component_slot_token,
                     "supportedActions": list(self.server.supported_actions),
                 },
             )
@@ -2420,6 +2494,54 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             return
 
         parsed_path = urlsplit(self.path).path
+        if parsed_path == COMPONENT_SLOT_PATH:
+            supplied_token = self.headers.get(COMPONENT_SLOT_TOKEN_HEADER, "")
+            if not hmac.compare_digest(supplied_token, self.server.component_slot_token):
+                self._empty(403)
+                return
+            payload = self._read_json_body(1024)
+            if payload is None:
+                self._empty(400)
+                return
+            action = payload.get("action")
+            component_id = payload.get("componentId")
+            try:
+                if action == "prepare" and set(payload) == {"action", "componentId", "version"}:
+                    snapshot = self.server.component_slots.prepare(
+                        component_id,
+                        payload.get("version"),
+                    )
+                elif action == "promote" and set(payload) == {"action", "componentId", "version"}:
+                    snapshot = self.server.component_slots.promote(
+                        component_id,
+                        payload.get("version"),
+                    )
+                elif action == "reject" and set(payload) == {"action", "componentId", "version"}:
+                    snapshot = self.server.component_slots.reject(
+                        component_id,
+                        payload.get("version"),
+                    )
+                elif action == "rollback" and set(payload) == {"action", "componentId"}:
+                    snapshot = self.server.component_slots.rollback(component_id)
+                else:
+                    self._empty(400)
+                    return
+            except ComponentSlotConflict:
+                self._empty(409)
+                return
+            except ComponentSlotNotFound:
+                self._empty(404)
+                return
+            except (ComponentSlotError, OSError, ValueError) as exc:
+                print(
+                    f"ordax-native-host: component slot action rejected: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(422)
+                return
+            self._write_json(200, snapshot)
+            return
         if parsed_path == FILE_IMPORT_PATH:
             try:
                 logical_path, name = requested_file_import_target(self.path)
@@ -2775,6 +2897,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--power-request", default=DEFAULT_POWER_REQUEST_PATH)
     parser.add_argument("--network-session-dir", default=DEFAULT_NETWORK_SESSION_DIR)
     parser.add_argument("--telemetry-config", default="")
+    parser.add_argument("--component-root", default="/var/lib/ordax/components")
+    parser.add_argument(
+        "--release-agent",
+        default="/ordax/bootstrap/release-acquisition/ordax-release-agent",
+    )
+    parser.add_argument(
+        "--release-trust",
+        default="/ordax/bootstrap/trust/release-ed25519.json",
+    )
     return parser.parse_args()
 
 
@@ -2801,6 +2932,11 @@ def main() -> int:
             file=sys.stderr,
             flush=True,
         )
+    component_slots = ComponentSlotBroker(
+        root=args.component_root,
+        release_agent=args.release_agent,
+        trust_path=args.release_trust,
+    )
     handler = partial(NativeHostHandler, directory=args.directory)
     server = NativeHostServer(
         (args.bind, args.port),
@@ -2808,6 +2944,7 @@ def main() -> int:
         user_root=args.user_root,
         power_request_path=args.power_request,
         network_session_dir=args.network_session_dir,
+        component_slots=component_slots,
     )
     telemetry_started = start_telemetry_heartbeat(args.telemetry_config)
     print(
