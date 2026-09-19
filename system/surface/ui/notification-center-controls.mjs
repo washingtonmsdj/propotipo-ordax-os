@@ -34,18 +34,6 @@ function requireHost(root, selector, label) {
   return element;
 }
 
-function createBellIcon(documentRef) {
-  const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("aria-hidden", "true");
-  const bell = documentRef.createElementNS("http://www.w3.org/2000/svg", "path");
-  bell.setAttribute("d", "M6.5 17h11l-1.3-2v-4.2a4.2 4.2 0 0 0-8.4 0V15z");
-  const clapper = documentRef.createElementNS("http://www.w3.org/2000/svg", "path");
-  clapper.setAttribute("d", "M10 19a2.2 2.2 0 0 0 4 0");
-  svg.append(bell, clapper);
-  return svg;
-}
-
 function ensureNotificationMarkup(root) {
   if (root.querySelector("[data-notification-tray], [data-quick-panel='notifications']")) {
     throw new Error("Notification center is already mounted");
@@ -66,7 +54,9 @@ function ensureNotificationMarkup(root) {
   const icon = documentRef.createElement("span");
   icon.className = "ordax-tray-icon ordax-notification-bell";
   icon.setAttribute("aria-hidden", "true");
-  icon.append(createBellIcon(documentRef));
+  const bellShape = documentRef.createElement("span");
+  bellShape.className = "ordax-notification-bell-shape";
+  icon.append(bellShape);
 
   const badge = documentRef.createElement("span");
   badge.className = "ordax-notification-badge";

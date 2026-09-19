@@ -6,10 +6,12 @@ import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { createWebSyncStateStore } from "../../adapters/web/sync-state.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
+import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
+import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
@@ -29,6 +31,7 @@ const syncStateStore = createWebSyncStateStore(window);
 const identitySession = createWebIdentitySession();
 const identityActions = createWebIdentityActions();
 const appActivation = createAppActivationChannel();
+const notifications = createNotificationsRuntime();
 validateAccountRuntime(
   host.getSnapshot(),
   identitySession.getSnapshot(),
@@ -41,6 +44,7 @@ const surface = mountSurface(
   workspaceStore,
   appActivation,
 );
+const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
 let quickPanelControls = null;
 let networkQuickPanel = null;
 try {
@@ -92,6 +96,7 @@ window.addEventListener(
     systemOverviewControls.destroy();
     networkQuickPanel?.destroy();
     quickPanelControls?.destroy();
+    notificationCenter.destroy();
     settingsOverviewControls.destroy();
     accountOverviewControls.destroy();
     preferenceSync.destroy();
