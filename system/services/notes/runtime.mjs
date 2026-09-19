@@ -117,12 +117,17 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
   } catch {
     snapshot = defaultSnapshot(now());
   }
-  notesStore.save(snapshot);
+  let initialSaveSucceeded = true;
+  try {
+    initialSaveSucceeded = notesStore.save(snapshot) !== false;
+  } catch {
+    initialSaveSucceeded = false;
+  }
 
   const listeners = new Set();
   let ordinal = 0;
   let lastSavedAt = now();
-  let lastSaveSucceeded = true;
+  let lastSaveSucceeded = initialSaveSucceeded;
 
   const emit = () => {
     const state = runtime.getSnapshot();
