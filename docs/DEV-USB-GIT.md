@@ -35,13 +35,17 @@ edit/commit on remote main
 https://github.com/washingtonmsdj/prototipo-ordax-os.git
 branch: main
 checkout: /workspace/ordax
-materialized runtime paths:
+materialized runtime/control paths:
 - system/
 - bootstrap/base-update/ (control logic only)
+- bootstrap/dev-base/{ordax-dev-init,ordax-network,ordax-pull,ordax-rollback,ordax-run}
+- bootstrap/recovery/entrypoint
 - selected trust/update contracts
 ```
 
-A new checkout uses Git partial clone (`blob:none`) plus sparse checkout. Git commit/history metadata remains available for update/rollback. The live product tree `system/` is materialized together with the small repository-owned base-update control plane under `bootstrap/base-update/` and the trust/contracts it needs. Kernel/initramfs binaries and build toolchains are not copied into the runtime checkout; base bytes are built separately and staged for the next boot.
+A new checkout uses Git partial clone (`blob:none`) plus sparse checkout. Git commit/history metadata remains available for update/rollback. The live product tree `system/` is materialized together with the small repository-owned base-update control plane, the fixed development/recovery helper sources, and the trust/contracts they need. Kernel/initramfs binaries and build toolchains are not copied into the runtime checkout; base bytes are built separately and staged for the next boot.
+
+After the Git-controlled supervisor is running, those fixed helper sources refresh the physical development copies of `ordax-dev-init`, network, pull, rollback, run and recovery. The refresh is bounded to that allowlist and does not turn the checkout into an arbitrary root-filesystem copier. This provides the bridge needed for later Git commits to repair the pre-runtime development helpers without rewriting the USB.
 
 Before updating an existing checkout, `ordax-pull` fails closed when:
 
@@ -104,10 +108,10 @@ Only the development substrate is preseeded:
 - Wi-Fi userspace plus the firmware for the currently selected kernel modules;
 - CA certificates and HTTPS support;
 - Git;
-- `ordax-pull`, `ordax-run`, `ordax-rollback`;
-- local recovery entrypoint.
+- seed copies of `ordax-dev-init`, `ordax-network`, `ordax-pull`, `ordax-run` and `ordax-rollback`;
+- seed copy of the local recovery entrypoint.
 
-Normal OrdaX Surface/apps/services/source are not preseeded. The runtime `system/` tree arrives through Git.
+These helper copies are bootstrap seeds, not long-term source authority: once the Git-controlled runtime bridge is available they can be refreshed from the matching repository commit. Normal OrdaX Surface/apps/services/source are not preseeded. The runtime `system/` tree arrives through Git.
 
 ## Reflash rule
 
@@ -118,7 +122,7 @@ A normal source change under `system/` does **not** require:
 - rebuilding the kernel;
 - rebooting the notebook unless that component genuinely requires it.
 
-A base-level change is different. Changes to the bootloader, kernel, initramfs, development-network substrate, Git client, or a driver/firmware needed before Git is reachable require a base candidate and reboot to activate. The repository checkout now carries the base-update control logic so this path can be driven from the current main without reflashing the USB by hand. The running kernel cannot replace itself in-place.
+A base-level change is different. The small shell helper layer used by the development base is now Git-refreshable after the runtime bridge is available, so fixing `ordax-pull`, network, rollback, init or recovery does not by itself require a USB rewrite. Changes to the bootloader, kernel, initramfs, package/rootfs substrate, Git binary itself, or a driver/firmware needed before Git is reachable still require a Base candidate and reboot to activate. The repository checkout carries the base-update control logic; the running kernel cannot replace itself in-place.
 
 For kernel/initramfs changes, main publishes an immutable candidate bound to the exact Git commit. When the running supervisor observes the matching low-level commit, it keeps the current Surface running and acquires that candidate in the background under `/state/ordax/base-update/dev-candidates/<commit>`. A temporarily unavailable candidate does not block runtime/app updates; the supervisor retries while `boot-refresh-required` remains armed.
 
