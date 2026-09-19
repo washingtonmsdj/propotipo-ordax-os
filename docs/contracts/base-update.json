@@ -209,7 +209,20 @@
       ],
       "candidate_presence_reported": true,
       "inspection_authorizes_write": false,
-      "inspection_authorizes_activation": false
+      "inspection_authorizes_activation": false,
+      "readonly_preflight_helper": "system/services/base-update/esp_readonly.py",
+      "readonly_preflight_schema": "prototype-ordax.esp-readonly-preflight/1",
+      "readonly_mount_filesystem": "vfat",
+      "readonly_mount_options": [
+        "ro",
+        "nosuid",
+        "nodev",
+        "noexec"
+      ],
+      "identity_revalidated_after_mount": true,
+      "unmount_required_before_return": true,
+      "disposable_same_disk_proof": "bootstrap/base-update/prove_esp_readonly_preflight.sh",
+      "physical_hardware_proven_by_disposable_proof": false
     }
   },
   "release_channel_enrollment": {
