@@ -174,7 +174,7 @@
     "physical_root_required_filesystem": "ext4",
     "physical_root_required_source_prefix": "/dev/",
     "physical_root_chroot_mount": "/mnt/ordax-device",
-    "development_state_inside_physical_root": "<root-mount-subpath>/state/ordax",
+    "development_state_inside_physical_root": "<seed-root-subpath>/state/ordax",
     "state_root_derived_from_mountinfo_subpath": true,
     "recursive_state_bind_forbidden": true,
     "mount_staging_host": "/run/ordax-base-owner",
@@ -185,7 +185,9 @@
     "mount_tree_must_not_recurse_into_ordax_filesystem": true,
     "physical_release_agent_may_be_absent_before_pinned_enrollment": true,
     "physical_release_channel_may_be_absent_before_pinned_enrollment": true,
-    "bootstrap_component_sentinels_not_required_before_pinned_enrollment": true
+    "bootstrap_component_sentinels_not_required_before_pinned_enrollment": true,
+    "versioned_root_subpath_normalization": "strip-terminal-/versions/<commit>-before-seed-state-and-version-store-resolution",
+    "development_version_store_inside_physical_root": "<seed-root-subpath>/versions"
   },
   "release_channel_enrollment": {
     "source_path": "bootstrap/config/release-envelope-url",
