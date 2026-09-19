@@ -20,6 +20,7 @@ ROOTFS_SELECTION_DIR=$STATE_DIR/base-update/rootfs
 ROOTFS_VERSIONS_ROOT=${ORDAX_DEV_VERSION_ROOT:-/versions}
 ROOTFS_SELECTED=${ORDAX_DEV_ROOT_SELECTED:-0}
 ROOTFS_SELECTED_COMMIT=${ORDAX_DEV_ROOT_COMMIT:-seed}
+CMDLINE_FILE=${ORDAX_CMDLINE_FILE:-/proc/cmdline}
 
 case "$BOOT_PULL_ATTEMPTS" in
     ''|*[!0-9]*) BOOT_PULL_ATTEMPTS=2 ;;
@@ -137,7 +138,7 @@ maintenance_shell() {
 cmdline_value() {
     key=$1
     found=""
-    for token in $(cat /proc/cmdline 2>/dev/null || true); do
+    for token in $(cat "$CMDLINE_FILE" 2>/dev/null || true); do
         case "$token" in
             "$key="*)
                 value=${token#*=}
