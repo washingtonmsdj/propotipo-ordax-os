@@ -1,0 +1,63 @@
+.ordax-boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--ordax-accent) 9%, transparent), transparent 32%),
+    var(--ordax-page-bg);
+  color: var(--ordax-text);
+}
+
+.ordax-boot-screen[hidden] {
+  display: none;
+}
+
+.ordax-boot-screen-card {
+  display: grid;
+  min-width: 220px;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.ordax-boot-wordmark {
+  font-family: var(--ordax-font-display);
+  font-size: clamp(2.2rem, 7vw, 4.2rem);
+  font-weight: 550;
+  letter-spacing: -0.055em;
+}
+
+.ordax-boot-status {
+  color: var(--ordax-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.ordax-boot-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ordax-border);
+  border-top-color: var(--ordax-accent);
+  border-radius: 50%;
+  animation: ordax-boot-spin 0.9s linear infinite;
+}
+
+.ordax-boot-screen[data-state="error"] .ordax-boot-spinner {
+  animation: none;
+  border-color: var(--ordax-danger);
+}
+
+@keyframes ordax-boot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ordax-boot-spinner {
+    animation-duration: 1.8s;
+  }
+}
