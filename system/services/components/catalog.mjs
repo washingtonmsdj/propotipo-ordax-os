@@ -1,10 +1,12 @@
 import { validateComponentManifests } from "../../contracts/component-manifest.mjs";
 import { appComponentManifests } from "./manifests/apps.mjs";
 import { coreComponentManifests } from "./manifests/core.mjs";
+import { internetComponent } from "../../apps/internet/component.mjs";
 
 const COMPONENTS = validateComponentManifests([
   ...coreComponentManifests,
   ...appComponentManifests,
+  internetComponent,
 ]);
 
 const COMPONENT_BY_ID = new Map(
