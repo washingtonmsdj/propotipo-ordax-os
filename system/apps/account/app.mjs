@@ -6,6 +6,16 @@ export const accountApp = defineFirstPartyApp({
   description: "Identidade, acesso e continuidade segura entre os modos do OrdaX.",
   monogram: "CO",
   singleton: true,
+  component: {
+    version: "0.1.0",
+    releaseMode: "bundled",
+    criticality: "optional",
+    failureDomain: "app",
+    restartScope: "surface",
+    healthMode: "surface",
+    owner: "system/apps/account",
+    dependencies: ["surface-shell"],
+  },
   requiredCapabilities: [],
   panels: [
     {
