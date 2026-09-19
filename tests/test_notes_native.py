@@ -16,6 +16,7 @@ NOTES_OWNER = ROOT / "system" / "apps" / "notes" / "app.mjs"
 APP_CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
 NOTES_CONTROLS = ROOT / "system" / "surface" / "ui" / "notes-workspace-controls.mjs"
 NOTES_RICH_EDITOR = ROOT / "system" / "surface" / "ui" / "notes-rich-editor.mjs"
+NOTES_IMAGE_PREVIEWS = ROOT / "system" / "surface" / "ui" / "notes-image-previews.mjs"
 NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -120,6 +121,7 @@ class NotesNativeTests(unittest.TestCase):
     def test_notes_surface_matches_concept_without_platform_storage_shortcuts(self):
         controls = NOTES_CONTROLS.read_text(encoding="utf-8")
         rich_editor = NOTES_RICH_EDITOR.read_text(encoding="utf-8")
+        image_previews = NOTES_IMAGE_PREVIEWS.read_text(encoding="utf-8")
         css = NOTES_CSS.read_text(encoding="utf-8")
         web_html = WEB_HTML.read_text(encoding="utf-8")
         native_html = NATIVE_HTML.read_text(encoding="utf-8")
@@ -185,11 +187,15 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("Relacionar arquivo", controls)
         self.assertIn("file-picker-open-directory", controls)
         self.assertIn("attach-file-reference", controls)
-        self.assertIn("validateImagePreview", controls)
-        self.assertIn("readImagePreview", controls)
+        self.assertIn("./notes-image-previews.mjs", controls)
+        self.assertIn("createNotesImagePreviewCache", controls)
         self.assertIn("renderInlineMedia", controls)
-        self.assertIn("releaseAllImagePreviews", controls)
         self.assertIn("renderCapacityControls", controls)
+        self.assertIn("validateImagePreview", image_previews)
+        self.assertIn("readImagePreview", image_previews)
+        self.assertIn("releaseExcept", image_previews)
+        self.assertIn("destroy", image_previews)
+        self.assertNotIn("/__ordax/native/", image_previews)
         self.assertIn("MAX_NOTES", controls)
         self.assertIn("MAX_NOTE_PROJECTS", controls)
         self.assertIn("MAX_NOTE_TASKS", controls)
