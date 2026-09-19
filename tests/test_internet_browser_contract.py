@@ -230,6 +230,17 @@ class InternetBrowserContractTests(unittest.TestCase):
         for mode_id in ("web", "mobile", "desktop"):
             self.assertNotIn("browser.web-content", modes[mode_id]["baseline_capabilities"])
 
+    def test_native_surface_health_is_acknowledged_before_optional_internet_load(self):
+        native = self.text(NATIVE_COMPOSITION / "main.mjs")
+        health_index = native.index("void updateWatcher.markHealthy()")
+        import_index = native.index('import("../../components/internet/runtime.mjs")')
+        self.assertLess(health_index, import_index)
+        self.assertIn('componentManager.setCurrentHealth("surface-shell", "healthy")', native)
+        self.assertIn('componentId: "internet"', native)
+        self.assertIn('reportClientDiagnostic("internet-runtime", error)', native)
+        self.assertNotIn('from "../../services/internet/', native)
+        self.assertNotIn('from "../../surface/ui/internet-browser-', native)
+
     def test_both_compositions_load_internet_as_optional_component_runtime(self):
         runtime = self.text(INTERNET_RUNTIME)
         manifests = self.text(APP_COMPONENTS)
