@@ -70,6 +70,9 @@ function buildShell(documentObject) {
   const frame = node(documentObject, "iframe", "ordax-browser-frame");
   frame.dataset.browserFrame = "";
   frame.hidden = true;
+  // Remote documents intentionally do not receive allow-same-origin. This keeps
+  // their DOM/storage origin isolated from the OrdaX Surface even when a page
+  // shares an origin with the host shell.
   frame.setAttribute(
     "sandbox",
     "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts",
@@ -118,7 +121,10 @@ export function mountBrowserWorkspaceControls(
   let destroyed = false;
 
   const persistTarget = (state) => {
+    const currentTarget = lifecycle.getAppTarget("browser");
+    if (currentTarget === state.currentUrl) return false;
     lifecycle.setAppTarget("browser", state.currentUrl);
+    return true;
   };
 
   const render = () => {
@@ -142,9 +148,13 @@ export function mountBrowserWorkspaceControls(
         state = navigation.navigate(target);
         errorMessage = "";
       } catch {
-        lifecycle.setAppTarget("browser", null);
         state = navigation.reset();
         errorMessage = "O endereço salvo não é válido.";
+        queueMicrotask(() => {
+          if (!destroyed && lifecycle.getAppTarget("browser") === target) {
+            lifecycle.setAppTarget("browser", null);
+          }
+        });
       }
     } else if (target === null && state.currentUrl !== null) {
       state = navigation.reset();
@@ -184,8 +194,7 @@ export function mountBrowserWorkspaceControls(
     try {
       const state = navigation.navigate(value);
       errorMessage = "";
-      persistTarget(state);
-      render();
+      if (!persistTarget(state)) render();
       return true;
     } catch {
       errorMessage = "Digite um endereço HTTP ou HTTPS válido.";
@@ -199,8 +208,7 @@ export function mountBrowserWorkspaceControls(
     const state = direction === "back" ? navigation.back() : navigation.forward();
     if (state.revision === before.revision) return false;
     errorMessage = "";
-    persistTarget(state);
-    render();
+    if (!persistTarget(state)) render();
     return true;
   };
 
