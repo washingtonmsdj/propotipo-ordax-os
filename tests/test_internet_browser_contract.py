@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "system" / "apps" / "internet" / "app.mjs"
 CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-session.mjs"
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
-STYLES = ROOT / "system" / "components" / "internet" / "internet.css"
+CONTROLS = ROOT / "system" / "apps" / "internet" / "ui" / "browser-controls.mjs"
+STYLES = ROOT / "system" / "apps" / "internet" / "internet.css"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "browser-session.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "browser-session.mjs"
 NATIVE_HOST = ROOT / "system" / "surface" / "runtime" / "ordax_browser_host.py"
@@ -17,8 +17,9 @@ SURFACE_LAUNCHER = ROOT / "system" / "surface" / "bin" / "ordax-surface"
 WEB_COMPOSITION = ROOT / "system" / "composition" / "web"
 NATIVE_COMPOSITION = ROOT / "system" / "composition" / "native"
 CAPABILITIES = ROOT / "docs" / "contracts" / "product-capabilities.json"
-INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
-APP_COMPONENTS = ROOT / "system" / "services" / "components" / "manifests" / "apps.mjs"
+INTERNET_RUNTIME = ROOT / "system" / "apps" / "internet" / "runtime.mjs"
+INTERNET_COMPONENT = ROOT / "system" / "apps" / "internet" / "component.mjs"
+INTERNET_VERSION = ROOT / "system" / "apps" / "internet" / "version.mjs"
 
 
 class InternetBrowserContractTests(unittest.TestCase):
@@ -85,7 +86,7 @@ class InternetBrowserContractTests(unittest.TestCase):
     def test_shared_chrome_does_not_embed_arbitrary_sites(self):
         controls = self.text(CONTROLS)
         self.assertIn('contracts/browser-session.mjs', controls)
-        self.assertIn('./surface-lifecycle.mjs', controls)
+        self.assertIn('surface/ui/surface-lifecycle.mjs', controls)
         self.assertIn('assertBrowserSessionPort', controls)
         self.assertIn('data-browser-viewport', controls)
         self.assertNotIn('<iframe', controls.lower())
@@ -233,7 +234,7 @@ class InternetBrowserContractTests(unittest.TestCase):
     def test_native_surface_health_is_acknowledged_before_optional_internet_load(self):
         native = self.text(NATIVE_COMPOSITION / "main.mjs")
         health_index = native.index("void updateWatcher.markHealthy()")
-        import_index = native.index('import("../../components/internet/runtime.mjs")')
+        import_index = native.index('import("../../apps/internet/runtime.mjs")')
         self.assertLess(health_index, import_index)
         self.assertIn('componentManager.setCurrentHealth("surface-shell", "healthy")', native)
         self.assertIn('componentId: "internet"', native)
@@ -243,12 +244,14 @@ class InternetBrowserContractTests(unittest.TestCase):
 
     def test_both_compositions_load_internet_as_optional_component_runtime(self):
         runtime = self.text(INTERNET_RUNTIME)
-        manifests = self.text(APP_COMPONENTS)
+        component = self.text(INTERNET_COMPONENT)
+        version = self.text(INTERNET_VERSION)
         self.assertIn('componentId: "internet"', runtime)
-        self.assertIn('version: "0.3.0"', runtime)
-        self.assertIn('version: "0.3.0"', manifests)
-        self.assertIn('restartScope: "component"', manifests)
-        self.assertIn('healthMode: "runtime"', manifests)
+        self.assertIn('version: INTERNET_VERSION', runtime)
+        self.assertIn('INTERNET_VERSION = "0.3.0"', version)
+        self.assertIn('releaseMode: "git-app"', component)
+        self.assertIn('restartScope: "component"', component)
+        self.assertIn('healthMode: "runtime"', component)
         self.assertIn('mountInternetBrowserControls', runtime)
         self.assertIn('new URL("./internet.css", import.meta.url)', runtime)
         self.assertIn('mountInternetStyles', runtime)
@@ -257,7 +260,7 @@ class InternetBrowserContractTests(unittest.TestCase):
             html = self.text(composition / "index.html")
             main = self.text(composition / "main.mjs")
             self.assertNotIn('../../surface/ui/internet.css', html)
-            self.assertIn('import("../../components/internet/runtime.mjs")', main)
+            self.assertIn('import("../../apps/internet/runtime.mjs")', main)
             self.assertIn('loadOptionalComponentRuntime', main)
             self.assertIn('browserSession', main)
             self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', main)
