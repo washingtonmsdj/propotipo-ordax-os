@@ -60,6 +60,7 @@ configure_runtime_checkout_at() {
         /bootstrap/config/release-envelope-url \
         /docs/contracts/release-trust-policy.json \
         /docs/contracts/minimal-bootstrap.json \
+        /docs/contracts/native-surface-runtime.env \
         /docs/evidence/release-trust-ceremony.json \
         /docs/evidence/release-trust-proof-manifest.json \
         /docs/evidence/release-trust-recovery-envelope.json
