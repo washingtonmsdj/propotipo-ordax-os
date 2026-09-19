@@ -71,7 +71,8 @@ Rules:
 - ordinary `system/` changes do not require USB reflash or kernel rebuild;
 - the fixed development helpers and recovery entrypoint are refreshed from their Git-owned sources after the runtime bridge is available;
 - kernel/initramfs changes use exact-commit Base candidates and activate only on a later boot;
-- bootloader and complete development-rootfs/package changes still require expansion of the Base candidate path.
+- development-rootfs/package changes use the same exact-commit candidate identity, materialize a versioned rootfs, and select it only on the matching one-shot A/B slot before health promotion;
+- the seed development Base remains the local known-good fallback; the UEFI fallback loader remains a separate physical self-update gap.
 
 This profile is a development mechanism and may use explicitly marked ephemeral prototype trust for Creator provenance. It does not replace canonical release trust.
 
