@@ -107,6 +107,29 @@ test("preview cache never retains a stale image relation", async () => {
   assert.deepEqual(windowRef.revoked, ["blob:notes-preview-1"]);
 });
 
+test("preview cache rejects adapter path mismatches without exposing the wrong file", async () => {
+  const windowRef = fakeWindow();
+  const cache = createNotesImagePreviewCache({
+    fileSpace: {
+      async readImagePreview() {
+        return {
+          path: "/Imagens/outra.png",
+          size: 4,
+          mime: "image/png",
+          bytes: new Uint8Array([137, 80, 78, 71]),
+        };
+      },
+    },
+    windowRef,
+  });
+  const reference = imageReference();
+
+  const failed = await cache.ensure("note-1", reference, () => true);
+  assert.equal(failed.status, "failed");
+  assert.equal(cache.get("note-1", reference).status, "failed");
+  assert.equal(windowRef.created.length, 0);
+});
+
 test("preview failures are stable cache states and do not retry-render loops", async () => {
   const windowRef = fakeWindow();
   let calls = 0;
