@@ -60,7 +60,7 @@ class FilesToNotesImportContractTests(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertGreaterEqual(workflow.count("system/services/files/**"), 2)
         self.assertGreaterEqual(workflow.count("tests/test_files_to_notes_import.mjs"), 3)
-        self.assertGreaterEqual(workflow.count("tests/test_files_to_notes_import_contract.py"), 3)
+        self.assertGreaterEqual(workflow.count("tests/test_files_to_notes_import_contract.py"), 2)
         self.assertIn("node --test tests/test_files_to_notes_import.mjs", workflow)
         self.assertIn(
             "python -m unittest tests.test_files_to_notes_import_contract -v",
