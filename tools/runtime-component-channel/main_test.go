@@ -184,6 +184,23 @@ func makeFixture(t *testing.T) testFixture {
 	}
 }
 
+func allowTestTreeCleanup(root string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		} else {
+			_ = os.Chmod(path, 0o600)
+		}
+		return nil
+	})
+}
+
 func TestSigningUsesSeparateRuntimeComponentTrustDomain(t *testing.T) {
 	fixture := makeFixture(t)
 	trustBytes, err := os.ReadFile(fixture.trustPath)
@@ -220,6 +237,7 @@ func TestSigningUsesSeparateRuntimeComponentTrustDomain(t *testing.T) {
 func TestStageCreatesImmutableVerifiedSlotWithoutActivation(t *testing.T) {
 	fixture := makeFixture(t)
 	root := filepath.Join(fixture.dir, "slots")
+	t.Cleanup(func() { allowTestTreeCleanup(root) })
 	release, slot, changed, err := stageComponent(
 		fixture.envelopePath,
 		fixture.trustPath,
@@ -363,6 +381,7 @@ func TestSignedTraversalPackageIsStillRejected(t *testing.T) {
 func TestInstalledSlotTamperingIsDetected(t *testing.T) {
 	fixture := makeFixture(t)
 	root := filepath.Join(fixture.dir, "slots")
+	t.Cleanup(func() { allowTestTreeCleanup(root) })
 	_, slot, _, err := stageComponent(
 		fixture.envelopePath,
 		fixture.trustPath,
