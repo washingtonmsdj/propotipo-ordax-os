@@ -566,3 +566,92 @@
   background: color-mix(in srgb, currentColor 8%, transparent);
   color: inherit;
 }
+
+.ordax-internet-history {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.ordax-internet-history-list {
+  display: grid;
+  gap: 4px;
+  max-height: 290px;
+  overflow: auto;
+  padding: 2px 0 5px;
+}
+
+.ordax-internet-history-list[hidden] {
+  display: none;
+}
+
+.ordax-internet-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  color: #5f5b54;
+  font-size: 9px;
+}
+
+.ordax-internet-history-clear {
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: #9d2f18;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ordax-internet-history-clear:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.ordax-internet-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 3px;
+}
+
+.ordax-internet-history-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-history-open:hover,
+.ordax-internet-history-open:focus-visible {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.ordax-internet-history-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f5b54;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ordax-internet-history-remove:hover,
+.ordax-internet-history-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+}

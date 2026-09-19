@@ -3,6 +3,7 @@ import {
   assertBrowserFavoritesPort,
   validateBrowserFavoriteUrl,
 } from "../../contracts/browser-favorites.mjs";
+import { assertBrowserHistoryPort } from "../../contracts/browser-history.mjs";
 import { assertProjectCatalogPort } from "../../contracts/project-catalog.mjs";
 import {
   assertProjectWebReferencePort,
@@ -44,6 +45,19 @@ function displayHost(url) {
     return new URL(url).hostname || url;
   } catch {
     return url;
+  }
+}
+
+function formatHistoryVisit(value) {
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "";
   }
 }
 
@@ -116,11 +130,26 @@ function createSidebar(documentObject) {
   favoritesList.hidden = true;
   collections.append(favoritesList);
 
-  const footer = node(documentObject, "div", "ordax-internet-sidebar-footer");
-  footer.append(node(documentObject, "span", "", "◷  Histórico"));
-  footer.append(node(documentObject, "span", "", "◉  Janela privada"));
+  const history = node(documentObject, "div", "ordax-internet-history");
+  history.append(node(documentObject, "span", "ordax-internet-section-label", "NAVEGAÇÃO"));
+  const historyToggle = node(documentObject, "button", "ordax-internet-collection-row");
+  historyToggle.type = "button";
+  historyToggle.dataset.browserHistoryToggle = "";
+  historyToggle.setAttribute("aria-expanded", "false");
+  historyToggle.append(node(documentObject, "span", "", "◷"));
+  const historyLabel = node(documentObject, "span", "", "Histórico");
+  historyLabel.dataset.browserHistoryLabel = "";
+  historyToggle.append(historyLabel);
+  history.append(historyToggle);
+  const historyList = node(documentObject, "div", "ordax-internet-history-list");
+  historyList.dataset.browserHistoryList = "";
+  historyList.hidden = true;
+  history.append(historyList);
 
-  sidebar.append(workspace, newTab, search, label, tabs, collections, footer);
+  const footer = node(documentObject, "div", "ordax-internet-sidebar-footer");
+  footer.append(node(documentObject, "span", "", "◉  Janela privada · em breve"));
+
+  sidebar.append(workspace, newTab, search, label, tabs, collections, history, footer);
   return sidebar;
 }
 
@@ -174,6 +203,7 @@ function createHome(documentObject, supported, reason) {
     ["projects", "PROJETOS"],
     ["references", "REFERÊNCIAS"],
     ["favorites", "FAVORITOS"],
+    ["history", "HISTÓRICO"],
   ]) {
     const card = node(documentObject, "div", "ordax-internet-home-link");
     const value = node(documentObject, "strong", "", "Verificando…");
@@ -274,7 +304,12 @@ export function mountInternetBrowserControls(
   root,
   browserSession,
   surfaceLifecycle,
-  { projects = null, projectReferences = null, favorites = null } = {},
+  {
+    projects = null,
+    projectReferences = null,
+    favorites = null,
+    history = null,
+  } = {},
 ) {
   if (!(root instanceof Element)) throw new TypeError("Internet controls require a Surface root Element");
   const port = assertBrowserSessionPort(browserSession);
@@ -284,12 +319,14 @@ export function mountInternetBrowserControls(
     ? null
     : assertProjectWebReferencePort(projectReferences);
   const favoritePort = favorites === null ? null : assertBrowserFavoritesPort(favorites);
+  const historyPort = history === null ? null : assertBrowserHistoryPort(history);
   const documentObject = root.ownerDocument;
   const windowObject = documentObject.defaultView;
   let snapshot = port.getSnapshot();
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
   let referenceSnapshot = referencePort?.getSnapshot() ?? null;
   let favoriteSnapshot = favoritePort?.getSnapshot() ?? null;
+  let historySnapshot = historyPort?.getSnapshot() ?? null;
   let selectedProjectId = null;
   let noteDraftKey = "";
   let noteDraftValue = "";
@@ -299,6 +336,7 @@ export function mountInternetBrowserControls(
   let message = "";
   let panelCollapsed = false;
   let favoritesExpanded = false;
+  let historyExpanded = false;
   let tabQuery = "";
   let pendingTabFocusId = null;
   let handledSurfaceTarget = null;
@@ -593,6 +631,18 @@ export function mountInternetBrowserControls(
             ? "1 favorito salvo"
             : `${favoriteCount} favoritos salvos`,
     );
+
+    const historyCount = historySnapshot?.entries.length ?? 0;
+    setStatus(
+      "history",
+      !historySnapshot
+        ? "Indisponível neste host"
+        : historyCount === 0
+          ? "Nenhuma visita registrada"
+          : historyCount === 1
+            ? "1 visita registrada"
+            : `${historyCount} visitas registradas`,
+    );
   };
 
   const syncCurrentPage = (slot) => {
@@ -765,6 +815,74 @@ export function mountInternetBrowserControls(
     }
   };
 
+  const syncHistory = (slot) => {
+    const toggle = slot.querySelector("[data-browser-history-toggle]");
+    const label = slot.querySelector("[data-browser-history-label]");
+    const list = slot.querySelector("[data-browser-history-list]");
+    const entries = historySnapshot?.entries ?? [];
+    const count = entries.length;
+
+    if (label) label.textContent = count > 0 ? `Histórico · ${count}` : "Histórico";
+    if (toggle) {
+      toggle.disabled = !historyPort;
+      toggle.setAttribute("aria-expanded", String(Boolean(historyPort && historyExpanded)));
+      toggle.title = !historyPort
+        ? "Histórico não está disponível neste host."
+        : historySnapshot?.persistence === "device"
+          ? "Histórico salvo neste dispositivo."
+          : "Histórico disponível somente nesta sessão.";
+    }
+    if (!list) return;
+    list.hidden = !historyPort || !historyExpanded;
+    list.replaceChildren();
+    if (!historyPort || !historyExpanded) return;
+
+    const header = node(documentObject, "div", "ordax-internet-history-header");
+    const scope = node(
+      documentObject,
+      "span",
+      "",
+      historySnapshot?.persistence === "device" ? "Neste dispositivo" : "Nesta sessão",
+    );
+    const clear = node(documentObject, "button", "ordax-internet-history-clear", "Limpar");
+    clear.type = "button";
+    clear.dataset.browserClearHistory = "";
+    clear.disabled = entries.length === 0;
+    header.append(scope, clear);
+    list.append(header);
+
+    if (entries.length === 0) {
+      list.append(node(documentObject, "div", "ordax-internet-tab-placeholder", "Nenhuma visita registrada."));
+      return;
+    }
+
+    for (const entry of entries.slice(0, 60)) {
+      const row = node(documentObject, "div", "ordax-internet-history-row");
+      const open = node(documentObject, "button", "ordax-internet-history-open");
+      open.type = "button";
+      open.dataset.browserOpenHistory = entry.id;
+      open.title = entry.url;
+      const copy = node(documentObject, "span", "ordax-internet-page-copy");
+      copy.append(node(documentObject, "strong", "", entry.title));
+      copy.append(
+        node(
+          documentObject,
+          "small",
+          "",
+          `${displayHost(entry.url)} · ${formatHistoryVisit(entry.visitedAt)}`,
+        ),
+      );
+      open.append(node(documentObject, "span", "", "◷"), copy);
+
+      const remove = node(documentObject, "button", "ordax-internet-history-remove", "×");
+      remove.type = "button";
+      remove.dataset.browserRemoveHistory = entry.id;
+      remove.setAttribute("aria-label", `Remover ${entry.title} do histórico`);
+      row.append(open, remove);
+      list.append(row);
+    }
+  };
+
   const syncPanel = (slot) => {
     const panel = slot.querySelector(`#${PROJECT_PANEL_ID}`);
     panel?.toggleAttribute("hidden", panelCollapsed);
@@ -798,6 +916,7 @@ export function mountInternetBrowserControls(
     syncCurrentPage(slot);
     syncReferenceControls(slot);
     syncFavorites(slot);
+    syncHistory(slot);
     syncPanel(slot);
     windowObject.requestAnimationFrame(syncViewport);
     ensureTab();
@@ -808,6 +927,44 @@ export function mountInternetBrowserControls(
     if (!target || !root.contains(target)) return;
     const slot = findSlot();
     if (!slot?.contains(target)) return;
+
+    if (target.dataset.browserHistoryToggle !== undefined) {
+      if (!historyPort) return;
+      historyExpanded = !historyExpanded;
+      render();
+      return;
+    }
+
+    const openHistoryId = target.dataset.browserOpenHistory;
+    if (openHistoryId) {
+      const entry = historySnapshot?.entries.find((item) => item.id === openHistoryId);
+      if (!entry || !snapshot.supported) return;
+      const tab = activeTab();
+      message = "";
+      if (tab) {
+        port.navigate(tab.id, entry.url);
+      } else {
+        port.openTab(allocateTabId(), entry.url);
+      }
+      return;
+    }
+
+    const removeHistoryId = target.dataset.browserRemoveHistory;
+    if (removeHistoryId) {
+      if (!historyPort) return;
+      historyPort.remove(removeHistoryId);
+      message = "Item removido do histórico.";
+      render();
+      return;
+    }
+
+    if (target.dataset.browserClearHistory !== undefined) {
+      if (!historyPort) return;
+      historyPort.clear();
+      message = "Histórico limpo.";
+      render();
+      return;
+    }
 
     if (target.dataset.browserFavoritesToggle !== undefined) {
       if (!favoritePort) return;
@@ -1061,6 +1218,10 @@ export function mountInternetBrowserControls(
     favoriteSnapshot = nextSnapshot;
     render();
   }) ?? (() => {});
+  const unsubscribeHistory = historyPort?.subscribe((nextSnapshot) => {
+    historySnapshot = nextSnapshot;
+    render();
+  }) ?? (() => {});
   const unsubscribeSurface = lifecycle.subscribeRender(render);
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onKeyDown);
@@ -1080,6 +1241,7 @@ export function mountInternetBrowserControls(
       unsubscribeProjects();
       unsubscribeReferences();
       unsubscribeFavorites();
+      unsubscribeHistory();
       unsubscribeSurface();
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onKeyDown);
