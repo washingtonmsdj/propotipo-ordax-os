@@ -1,0 +1,96 @@
+name: Runtime Component Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/contracts/runtime-component-package.json'
+      - 'system/components/**'
+      - 'system/contracts/browser-*.mjs'
+      - 'system/contracts/component-*.mjs'
+      - 'system/contracts/file-space.mjs'
+      - 'system/contracts/project-*.mjs'
+      - 'system/services/components/**'
+      - 'system/services/internet/**'
+      - 'system/surface/ui/internet-browser-*.mjs'
+      - 'system/surface/ui/surface-lifecycle.mjs'
+      - 'tools/component-package/**'
+      - 'tools/source_graph.py'
+      - 'tests/test_runtime_component_package.py'
+      - '.github/workflows/runtime-component-candidate.yml'
+  pull_request:
+    paths:
+      - 'docs/contracts/runtime-component-package.json'
+      - 'system/components/**'
+      - 'system/contracts/browser-*.mjs'
+      - 'system/contracts/component-*.mjs'
+      - 'system/contracts/file-space.mjs'
+      - 'system/contracts/project-*.mjs'
+      - 'system/services/components/**'
+      - 'system/services/internet/**'
+      - 'system/surface/ui/internet-browser-*.mjs'
+      - 'system/surface/ui/surface-lifecycle.mjs'
+      - 'tools/component-package/**'
+      - 'tools/source_graph.py'
+      - 'tests/test_runtime_component_package.py'
+      - '.github/workflows/runtime-component-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  internet-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Validate candidate policy and packager regressions
+        run: |
+          set -euo pipefail
+          node --version
+          python -m unittest tests.test_runtime_component_package -v
+          python tools/component-package/build.py check --component internet
+
+      - name: Build deterministic Internet candidate twice
+        run: |
+          set -euo pipefail
+          mkdir -p out/runtime-components "$RUNNER_TEMP/runtime-components-repeat"
+          python tools/component-package/build.py build \
+            --component internet \
+            --source-commit "$GITHUB_SHA" \
+            --out out/runtime-components/internet.zip
+          python tools/component-package/build.py verify \
+            --package out/runtime-components/internet.zip
+
+          python tools/component-package/build.py build \
+            --component internet \
+            --source-commit "$GITHUB_SHA" \
+            --out "$RUNNER_TEMP/runtime-components-repeat/internet.zip"
+          python tools/component-package/build.py verify \
+            --package "$RUNNER_TEMP/runtime-components-repeat/internet.zip"
+
+          cmp out/runtime-components/internet.zip "$RUNNER_TEMP/runtime-components-repeat/internet.zip"
+          sha256sum out/runtime-components/internet.zip
+          echo 'RUNTIME_COMPONENT_REPEATABILITY=PASS'
+          echo 'RUNTIME_COMPONENT_SIGNED=NO'
+          echo 'RUNTIME_COMPONENT_ACTIVATION_ALLOWED=NO'
+          echo 'RUNTIME_COMPONENT_PUBLISHED=NO'
+
+      - name: Upload unsigned candidate for inspection
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-runtime-component-internet-${{ github.sha }}
+          path: out/runtime-components/internet.zip
+          if-no-files-found: error
+          retention-days: 14
