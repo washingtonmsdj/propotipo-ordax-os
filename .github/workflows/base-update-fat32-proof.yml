@@ -75,6 +75,7 @@ jobs:
           python -m unittest tests.test_base_update_plan -v
           python -m unittest tests.test_base_update_stage -v
           python -m unittest tests.test_base_update_dev_stage -v
+          python -m unittest tests.test_base_update_dev_physical_stage -v
           python -m unittest tests.test_base_update_esp_discovery -v
           python -m unittest tests.test_base_update_esp_layout -v
 
