@@ -834,7 +834,7 @@ func materializeCommand(args []string) error {
 
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|materialize|install> [options]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-release-agent <verify-envelope|verify-component-envelope|materialize|stage-component|install> [options]")
 }
 
 func main() {
@@ -846,8 +846,12 @@ func main() {
 	switch os.Args[1] {
 	case "verify-envelope":
 		err = verifyCommand(os.Args[2:])
+	case "verify-component-envelope":
+		err = verifyComponentCommand(os.Args[2:])
 	case "materialize":
 		err = materializeCommand(os.Args[2:])
+	case "stage-component":
+		err = stageComponentCommand(os.Args[2:])
 	case "install":
 		err = installCommand(os.Args[2:])
 	default:
