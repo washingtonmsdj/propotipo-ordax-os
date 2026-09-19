@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { FILE_SPACE_SCHEMA } from "../system/contracts/file-space.mjs";
+import {
+  FILE_SPACE_SCHEMA,
+  MAX_IMAGE_PREVIEW_BYTES,
+  validateImagePreview,
+} from "../system/contracts/file-space.mjs";
 import {
   MAX_NOTE_TEXT_CHARS,
   NOTES_STORE_SCHEMA,
@@ -26,6 +30,47 @@ function fileSpace(readTextFile, calls = []) {
 function noteById(runtime, noteId) {
   return runtime.getSnapshot().document.notes.find((note) => note.id === noteId);
 }
+
+test("image preview contract accepts only bounded raster bytes with matching size", () => {
+  const bytes = new Uint8Array([137, 80, 78, 71]);
+  const preview = validateImagePreview({
+    path: "/Imagens/capa.png",
+    size: bytes.byteLength,
+    mime: "image/png",
+    bytes,
+  });
+  assert.equal(preview.path, "/Imagens/capa.png");
+  assert.equal(preview.mime, "image/png");
+  assert.equal(preview.bytes, bytes);
+
+  assert.throws(
+    () => validateImagePreview({
+      path: "/Imagens/capa.svg",
+      size: 4,
+      mime: "image/svg+xml",
+      bytes,
+    }),
+    /MIME type is unsupported/,
+  );
+  assert.throws(
+    () => validateImagePreview({
+      path: "/Imagens/capa.png",
+      size: MAX_IMAGE_PREVIEW_BYTES + 1,
+      mime: "image/png",
+      bytes,
+    }),
+    /size is outside/,
+  );
+  assert.throws(
+    () => validateImagePreview({
+      path: "/Imagens/capa.png",
+      size: bytes.byteLength + 1,
+      mime: "image/png",
+      bytes,
+    }),
+    /bytes must match/,
+  );
+});
 
 test("text import creates a note with exact content and a file-origin reference without mutating Files", async () => {
   const calls = [];
