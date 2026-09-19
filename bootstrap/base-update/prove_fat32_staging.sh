@@ -19,6 +19,7 @@ MOUNT="$WORK/mnt"
 KERNEL="$WORK/candidate-kernel"
 INITRAMFS="$WORK/candidate-initramfs"
 STAGE_RESULT="$WORK/stage-result.json"
+LAYOUT_RESULT="$WORK/layout-result.json"
 FSCK_RESULT="$WORK/fsck.txt"
 LOOP=""
 
@@ -127,6 +128,27 @@ test "$(sudo sha256sum "$MOUNT/ordax/base/a/initrd.gz" | awk '{print $1}')" = "$
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/vmlinuz" | awk '{print $1}')" = "$KERNEL_SHA"
 test "$(sudo sha256sum "$MOUNT/ordax/base/b/initrd.gz" | awk '{print $1}')" = "$INITRAMFS_SHA"
 sudo grep -Fq 'ordax.base_slot=b' "$MOUNT/loader/entries/ordax-candidate+01-00.conf"
+
+python3 "$ROOT/system/services/base-update/esp_layout.py" \
+  --esp-root "$MOUNT" >"$LAYOUT_RESULT"
+python3 - "$LAYOUT_RESULT" "$RELEASE_SHA" <<'PY'
+import json
+import pathlib
+import sys
+
+layout = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert layout["$schema"] == "prototype-ordax.esp-layout/1"
+assert layout["status"] == "valid"
+assert layout["layout"] == "ab"
+assert layout["active_slot"] == "a"
+assert layout["stage_active_slot"] == "a"
+assert layout["candidate_entry_present"] is True
+assert layout["candidate_slot"] == "b"
+assert layout["candidate_release_sha"] == sys.argv[2]
+assert layout["write_authorized"] is False
+assert layout["activation_authorized"] is False
+PY
+
 sudo umount "$MOUNT"
 
 IMAGE_SHA="$(sha256sum "$IMAGE" | awk '{print $1}')"
@@ -162,6 +184,7 @@ proof = {
         "candidate_entry_written_last": True,
         "filesystem_passes_read_only_fsck": True,
         "filesystem_survives_unmount_fsck_remount": True,
+        "readonly_layout_inspection_passed": True,
         "activation_not_performed": True,
         "reboot_not_requested": True,
     },
