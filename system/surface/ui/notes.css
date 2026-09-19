@@ -34,6 +34,7 @@
   --notes-muted: #6c6860;
   --notes-accent: #ed4b25;
   --notes-soft: color-mix(in srgb, var(--notes-accent) 9%, transparent);
+  position: relative;
   display: grid;
   grid-template-columns: 220px 285px minmax(440px, 1fr) 270px;
   width: 100%;
