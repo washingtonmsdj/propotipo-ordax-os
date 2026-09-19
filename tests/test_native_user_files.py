@@ -419,7 +419,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('[data-selected="true"]', files_css)
         self.assertIn('kind: "extension"', files_app)
         self.assertIn('extensionId: "file-space"', files_app)
-        self.assertIn("./surface-lifecycle.mjs", controls)
+        self.assertIn("contracts/surface-render-lifecycle.mjs", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
         self.assertNotIn("MutationObserver", controls)
         self.assertNotIn("adapters/native", controls)
