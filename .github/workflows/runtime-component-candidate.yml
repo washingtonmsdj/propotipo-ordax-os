@@ -6,6 +6,8 @@ on:
     paths:
       - 'docs/contracts/runtime-component-package.json'
       - 'system/components/**'
+      - 'system/adapters/native/component-slot-source.mjs'
+      - 'system/surface/runtime/native_host_server.py'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
@@ -18,11 +20,15 @@ on:
       - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
       - 'tests/test_runtime_component_package.py'
+      - 'tests/test_component_runtime.mjs'
+      - 'tests/test_native_component_slots.py'
       - '.github/workflows/runtime-component-candidate.yml'
   pull_request:
     paths:
       - 'docs/contracts/runtime-component-package.json'
       - 'system/components/**'
+      - 'system/adapters/native/component-slot-source.mjs'
+      - 'system/surface/runtime/native_host_server.py'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
@@ -35,6 +41,8 @@ on:
       - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
       - 'tests/test_runtime_component_package.py'
+      - 'tests/test_component_runtime.mjs'
+      - 'tests/test_native_component_slots.py'
       - '.github/workflows/runtime-component-candidate.yml'
   workflow_dispatch:
 
@@ -68,7 +76,11 @@ jobs:
         run: |
           set -euo pipefail
           node --version
-          python -m unittest tests.test_runtime_component_package -v
+          python -m unittest \
+            tests.test_runtime_component_package \
+            tests.test_native_component_slots \
+            -v
+          node --test tests/test_component_runtime.mjs
           python tools/component-package/build.py check --component internet
           (
             cd tools/runtime-component-channel

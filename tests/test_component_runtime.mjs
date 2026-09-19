@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createNativeComponentSlotSource } from "../system/adapters/native/component-slot-source.mjs";
 import { COMPONENT_RUNTIME_SCHEMA } from "../system/contracts/component-runtime.mjs";
 import { listSystemComponents } from "../system/services/components/catalog.mjs";
 import { createComponentManager } from "../system/services/components/manager.mjs";
-import { loadOptionalComponentRuntime } from "../system/services/components/runtime-loader.mjs";
+import {
+  loadManagedComponentRuntime,
+  loadOptionalComponentRuntime,
+} from "../system/services/components/runtime-loader.mjs";
 
 function createManager() {
   return createComponentManager({
@@ -14,6 +18,26 @@ function createManager() {
       return () => value++;
     })(),
   });
+}
+
+function createIndependentManager() {
+  return createComponentManager({
+    manifests: listSystemComponents().map((manifest) => (
+      manifest.id === "internet"
+        ? { ...manifest, releaseMode: "component-slot" }
+        : manifest
+    )),
+    now: (() => {
+      let value = 2000;
+      return () => value++;
+    })(),
+  });
+}
+
+function componentState(manager, componentId) {
+  return manager.getSnapshot().components.find(
+    (component) => component.manifest.id === componentId,
+  ).state;
 }
 
 function healthOf(manager, componentId) {
@@ -118,4 +142,222 @@ test("malformed mounted runtime is isolated as component failure", async () => {
   assert.equal(mounted, null);
   assert.equal(healthOf(manager, "internet"), "failed");
   manager.destroy();
+});
+
+
+test("healthy pending runtime is probed before current/previous promotion", async () => {
+  const manager = createIndependentManager();
+  manager.stageCandidate("internet", "0.4.0");
+
+  let pendingImportedVersion = null;
+  let currentImports = 0;
+  const mounted = await loadManagedComponentRuntime({
+    componentId: "internet",
+    componentManager: manager,
+    currentImporter: async () => {
+      currentImports += 1;
+      throw new Error("current importer should not run after healthy pending promotion");
+    },
+    pendingImporter: async (version) => {
+      pendingImportedVersion = version;
+      return {
+        componentRuntime: {
+          schema: COMPONENT_RUNTIME_SCHEMA,
+          componentId: "internet",
+          version: "0.4.0",
+          async mount() {
+            return {
+              async probeHealth() {
+                return true;
+              },
+              destroy() {},
+            };
+          },
+        },
+      };
+    },
+  });
+
+  assert.notEqual(mounted, null);
+  assert.equal(pendingImportedVersion, "0.4.0");
+  assert.equal(currentImports, 0);
+  assert.deepEqual(
+    {
+      currentVersion: componentState(manager, "internet").currentVersion,
+      previousVersion: componentState(manager, "internet").previousVersion,
+      pendingVersion: componentState(manager, "internet").pendingVersion,
+      rejectedVersion: componentState(manager, "internet").rejectedVersion,
+      currentHealth: componentState(manager, "internet").currentHealth,
+    },
+    {
+      currentVersion: "0.4.0",
+      previousVersion: "0.3.0",
+      pendingVersion: null,
+      rejectedVersion: null,
+      currentHealth: "healthy",
+    },
+  );
+
+  let reloadedCurrentVersion = null;
+  mounted.destroy();
+  const reloaded = await loadManagedComponentRuntime({
+    componentId: "internet",
+    componentManager: manager,
+    currentImporter: async (version) => {
+      reloadedCurrentVersion = version;
+      return {
+        componentRuntime: {
+          schema: COMPONENT_RUNTIME_SCHEMA,
+          componentId: "internet",
+          version,
+          mount() {
+            return { destroy() {} };
+          },
+        },
+      };
+    },
+  });
+  assert.notEqual(reloaded, null);
+  assert.equal(reloadedCurrentVersion, "0.4.0");
+  reloaded.destroy();
+  manager.destroy();
+});
+
+test("failed pending health is rejected and current runtime is restored", async () => {
+  const manager = createIndependentManager();
+  manager.setCurrentHealth("surface-shell", "healthy");
+  manager.stageCandidate("internet", "0.4.0");
+
+  let pendingDestroyed = false;
+  let pendingError = null;
+  let currentImportedVersion = null;
+  const mounted = await loadManagedComponentRuntime({
+    componentId: "internet",
+    componentManager: manager,
+    pendingImporter: async (version) => ({
+      componentRuntime: {
+        schema: COMPONENT_RUNTIME_SCHEMA,
+        componentId: "internet",
+        version,
+        mount() {
+          return {
+            async probeHealth() {
+              return false;
+            },
+            destroy() {
+              pendingDestroyed = true;
+            },
+          };
+        },
+      },
+    }),
+    currentImporter: async (version) => {
+      currentImportedVersion = version;
+      return {
+        componentRuntime: {
+          schema: COMPONENT_RUNTIME_SCHEMA,
+          componentId: "internet",
+          version,
+          mount() {
+            return { destroy() {} };
+          },
+        },
+      };
+    },
+    onPendingError(error) {
+      pendingError = error;
+    },
+  });
+
+  assert.notEqual(mounted, null);
+  assert.equal(pendingDestroyed, true);
+  assert.match(pendingError?.message ?? "", /pending health probe/);
+  assert.equal(currentImportedVersion, "0.3.0");
+  assert.deepEqual(
+    {
+      currentVersion: componentState(manager, "internet").currentVersion,
+      previousVersion: componentState(manager, "internet").previousVersion,
+      pendingVersion: componentState(manager, "internet").pendingVersion,
+      rejectedVersion: componentState(manager, "internet").rejectedVersion,
+      currentHealth: componentState(manager, "internet").currentHealth,
+    },
+    {
+      currentVersion: "0.3.0",
+      previousVersion: null,
+      pendingVersion: null,
+      rejectedVersion: "0.4.0",
+      currentHealth: "healthy",
+    },
+  );
+  assert.equal(healthOf(manager, "surface-shell"), "healthy");
+
+  mounted.destroy();
+  manager.destroy();
+});
+
+test("pending runtime without explicit health probe cannot be promoted", async () => {
+  const manager = createIndependentManager();
+  manager.stageCandidate("internet", "0.4.0");
+  let currentImportedVersion = null;
+
+  const mounted = await loadManagedComponentRuntime({
+    componentId: "internet",
+    componentManager: manager,
+    pendingImporter: async (version) => ({
+      componentRuntime: {
+        schema: COMPONENT_RUNTIME_SCHEMA,
+        componentId: "internet",
+        version,
+        mount() {
+          return { destroy() {} };
+        },
+      },
+    }),
+    currentImporter: async (version) => {
+      currentImportedVersion = version;
+      return {
+        componentRuntime: {
+          schema: COMPONENT_RUNTIME_SCHEMA,
+          componentId: "internet",
+          version,
+          mount() {
+            return { destroy() {} };
+          },
+        },
+      };
+    },
+  });
+
+  assert.notEqual(mounted, null);
+  assert.equal(currentImportedVersion, "0.3.0");
+  assert.equal(componentState(manager, "internet").currentVersion, "0.3.0");
+  assert.equal(componentState(manager, "internet").rejectedVersion, "0.4.0");
+  mounted.destroy();
+  manager.destroy();
+});
+
+
+test("native component slot source emits canonical same-origin runtime URLs", () => {
+  const source = createNativeComponentSlotSource({
+    location: { href: "http://127.0.0.1:8765/index.html" },
+  });
+  assert.equal(
+    source.runtimeUrl("internet", "0.4.0"),
+    "http://127.0.0.1:8765/__ordax/native/component-slot/internet/0.4.0/"
+      + "system/components/internet/runtime.mjs",
+  );
+  assert.throws(
+    () => source.runtimeUrl("Internet", "0.4.0"),
+    /component id/i,
+  );
+  assert.throws(
+    () => source.runtimeUrl("internet", "latest"),
+    /version/i,
+  );
+  assert.throws(
+    () => createNativeComponentSlotSource({
+      location: { href: "https://example.com/index.html" },
+    }),
+    /loopback Surface origin/,
+  );
 });

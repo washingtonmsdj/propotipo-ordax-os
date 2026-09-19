@@ -1,6 +1,6 @@
 {
   "$schema": "prototype-ordax.runtime-component-package-policy/1",
-  "status": "signed-slot-staging",
+  "status": "signed-slot-runtime-gated",
   "package_schema": "prototype-ordax.runtime-component-package/1",
   "release_descriptor_schema": "prototype-ordax.runtime-component-release/1",
   "envelope_schema": "prototype-ordax.runtime-component-envelope/1",
@@ -29,5 +29,7 @@
   "rollback_slot_activation_available": false,
   "publish_allowed": false,
   "internet_release_mode": "bundled",
-  "next_gate": "Native slot serving/import plus pending runtime health promotion with atomic current/previous rollback"
+  "next_gate": "Pin canonical runtime-component trust, add autonomous signed candidate acquisition/discovery, wire Native composition to slot import, then migrate Internet to component-slot",
+  "native_slot_serving_available": true,
+  "pending_health_loader_available": true
 }

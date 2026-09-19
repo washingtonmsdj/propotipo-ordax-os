@@ -1006,6 +1006,36 @@ func verifySlotWithTrustBytes(slot string, trustBytes []byte) (releaseDescriptor
 	return release, nil
 }
 
+func ensureVersionCommitBinding(versionRoot, sourceCommit string) error {
+	entries, err := os.ReadDir(versionRoot)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".slot-stage-") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !entry.IsDir() {
+			return errors.New("runtime component version directory contains an unsafe entry")
+		}
+		if !commitPattern.MatchString(name) {
+			return errors.New("runtime component version directory contains an invalid slot name")
+		}
+		if name != sourceCommit {
+			return fmt.Errorf(
+				"runtime component version is already bound to another source commit: %s",
+				name,
+			)
+		}
+	}
+	return nil
+}
+
 func stageComponent(envelopePath, trustPath, packagePath, root string) (releaseDescriptor, string, bool, error) {
 	release, envelopeBytes, trustBytes, err := verifyEnvelopeFiles(envelopePath, trustPath)
 	if err != nil {
@@ -1029,6 +1059,9 @@ func stageComponent(envelopePath, trustPath, packagePath, root string) (releaseD
 	}
 	versionRoot, err := ensureSecureDirectory(filepath.Join(versionsRoot, release.Component.Version), 0o755)
 	if err != nil {
+		return releaseDescriptor{}, "", false, err
+	}
+	if err := ensureVersionCommitBinding(versionRoot, release.SourceCommit); err != nil {
 		return releaseDescriptor{}, "", false, err
 	}
 	finalDir := filepath.Join(versionRoot, release.SourceCommit)

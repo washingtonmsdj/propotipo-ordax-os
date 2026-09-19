@@ -111,6 +111,18 @@ export const componentRuntime = Object.freeze({
       let destroyed = false;
 
       return Object.freeze({
+        async probeHealth() {
+          if (destroyed || controls === null) return false;
+          const style = root?.ownerDocument?.querySelector(INTERNET_STYLE_SELECTOR) ?? null;
+          if (!style || style.href !== INTERNET_STYLESHEET_URL) return false;
+          if (enableShortcuts && shortcuts === null) return false;
+          try {
+            const snapshot = browserSession.getSnapshot();
+            return Boolean(snapshot && typeof snapshot.supported === "boolean");
+          } catch {
+            return false;
+          }
+        },
         destroy() {
           if (destroyed) return;
           destroyed = true;

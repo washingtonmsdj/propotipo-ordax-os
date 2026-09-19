@@ -38,6 +38,7 @@ CLIENT_DIAGNOSTIC_PATH = "/__ordax/native/client-diagnostic"
 PREFERENCES_PATH = "/__ordax/native/preferences"
 NOTES_PATH = "/__ordax/native/notes"
 COMPONENT_STATE_PATH = "/__ordax/native/component-state"
+COMPONENT_SLOT_PREFIX = "/__ordax/native/component-slot/"
 SYNC_STATE_PATH = "/__ordax/native/sync-state"
 DIAGNOSTIC_JOURNAL_PATH = "/__ordax/native/diagnostic-journal"
 FILES_PATH = "/__ordax/native/files"
@@ -55,6 +56,7 @@ HEALTH_STATE_FILE = "/run/ordax-update/healthy-sha"
 PREFERENCES_FILE = "/var/lib/ordax/preferences.json"
 NOTES_FILE = "/var/lib/ordax/notes.json"
 COMPONENT_STATE_FILE = "/var/lib/ordax/component-state.json"
+DEFAULT_COMPONENT_SLOT_ROOT = "/var/lib/ordax/components"
 SYNC_STATE_FILE = "/var/lib/ordax/sync-state.json"
 DIAGNOSTIC_JOURNAL_FILE = "/var/lib/ordax/diagnostic-journal.json"
 UPDATE_HISTORY_FILE = "/var/lib/ordax/update-history.tsv"
@@ -79,6 +81,7 @@ MAX_NOTES_PAYLOAD = 2 * 1024 * 1024
 MAX_NOTES_BODY = 8 * MAX_NOTES_PAYLOAD + 1024
 MAX_COMPONENT_STATE_PAYLOAD = 256 * 1024
 MAX_COMPONENT_STATE_BODY = 6 * MAX_COMPONENT_STATE_PAYLOAD + 1024
+MAX_COMPONENT_SLOT_FILE_BYTES = 2 * 1024 * 1024
 MAX_SYNC_STATE_PAYLOAD = 65536
 MAX_SYNC_STATE_BODY = 393216
 MAX_DIAGNOSTIC_JOURNAL_PAYLOAD = 4 * 1024 * 1024
@@ -104,6 +107,20 @@ MAX_RELEASE_HISTORY_ENTRIES = 80
 MAX_APPLICATION_HISTORY_ENTRIES = 200
 STANDARD_USER_DIRECTORIES = ("Documentos", "Imagens", "Downloads")
 PREFERENCE_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
+COMPONENT_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+COMPONENT_VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$")
+COMPONENT_SLOT_MIME_TYPES = {
+    ".mjs": "text/javascript; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".woff2": "font/woff2",
+}
 NETWORK_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
 CLIENT_DIAGNOSTIC_STAGE_RE = re.compile(r"^[a-z][a-z0-9.-]{0,63}$")
 CLIENT_DIAGNOSTIC_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,63}$")
@@ -1993,6 +2010,169 @@ def ensure_standard_user_directories(user_root: str) -> tuple[str, ...]:
     return tuple(ready)
 
 
+class ComponentSlotAmbiguousError(RuntimeError):
+    pass
+
+
+class ComponentSlotTooLargeError(ValueError):
+    pass
+
+
+class ComponentSlotMediaTypeError(ValueError):
+    pass
+
+
+def _component_slot_directory_flags() -> int:
+    return (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+
+
+def _open_component_slot_directory(name: str, *, dir_fd: int | None = None, immutable: bool = False) -> int:
+    descriptor = os.open(name, _component_slot_directory_flags(), dir_fd=dir_fd)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise NotADirectoryError(name)
+        if immutable and stat.S_IMODE(metadata.st_mode) & 0o222:
+            raise PermissionError("component slot directory is writable")
+        return descriptor
+    except Exception:
+        os.close(descriptor)
+        raise
+
+
+def _component_slot_request_parts(request_target: str) -> tuple[str, str, tuple[str, ...]]:
+    parsed = urlsplit(request_target)
+    if parsed.query or parsed.fragment or not parsed.path.startswith(COMPONENT_SLOT_PREFIX):
+        raise ValueError("invalid component slot request")
+    suffix = parsed.path[len(COMPONENT_SLOT_PREFIX):]
+    if not suffix or "%" in suffix or "\\" in suffix or "\0" in suffix:
+        raise ValueError("invalid component slot request path")
+    parts = suffix.split("/")
+    if len(parts) < 4:
+        raise ValueError("component slot request is incomplete")
+    component_id, version, *relative_parts = parts
+    if not COMPONENT_ID_RE.fullmatch(component_id):
+        raise ValueError("invalid component id")
+    if not COMPONENT_VERSION_RE.fullmatch(version):
+        raise ValueError("invalid component version")
+    if relative_parts[0] != "system":
+        raise ValueError("component slot may serve only packaged system files")
+    if any(not valid_file_name(part) for part in relative_parts):
+        raise ValueError("invalid component slot file path")
+    return component_id, version, tuple(relative_parts)
+
+
+def read_component_slot_file(
+    slot_root: str,
+    request_target: str,
+    max_bytes: int = MAX_COMPONENT_SLOT_FILE_BYTES,
+) -> tuple[str, bytes, str]:
+    component_id, version, relative_parts = _component_slot_request_parts(request_target)
+    extension = os.path.splitext(relative_parts[-1])[1].lower()
+    mime = COMPONENT_SLOT_MIME_TYPES.get(extension)
+    if mime is None:
+        raise ComponentSlotMediaTypeError("unsupported component slot media type")
+
+    descriptors: list[int] = []
+    file_descriptor = None
+    try:
+        root_fd = _open_component_slot_directory(slot_root)
+        descriptors.append(root_fd)
+        component_fd = _open_component_slot_directory(component_id, dir_fd=root_fd)
+        descriptors.append(component_fd)
+        versions_fd = _open_component_slot_directory("versions", dir_fd=component_fd)
+        descriptors.append(versions_fd)
+        version_fd = _open_component_slot_directory(version, dir_fd=versions_fd)
+        descriptors.append(version_fd)
+
+        names = os.listdir(version_fd)
+        source_commits = sorted(name for name in names if valid_commit_sha(name))
+        unexpected = [
+            name for name in names
+            if not valid_commit_sha(name) and not name.startswith(".slot-stage-")
+        ]
+        if unexpected:
+            raise PermissionError("component version directory contains unexpected entries")
+        if len(source_commits) == 0:
+            raise FileNotFoundError("component version has no staged slot")
+        if len(source_commits) != 1:
+            raise ComponentSlotAmbiguousError("component version maps to multiple source commits")
+
+        source_commit = source_commits[0]
+        commit_fd = _open_component_slot_directory(
+            source_commit,
+            dir_fd=version_fd,
+            immutable=True,
+        )
+        descriptors.append(commit_fd)
+
+        current_fd = commit_fd
+        for segment in relative_parts[:-1]:
+            next_fd = _open_component_slot_directory(
+                segment,
+                dir_fd=current_fd,
+                immutable=True,
+            )
+            descriptors.append(next_fd)
+            current_fd = next_fd
+
+        file_descriptor = os.open(
+            relative_parts[-1],
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=current_fd,
+        )
+        before = os.fstat(file_descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("component slot entry is not a regular file")
+        if stat.S_IMODE(before.st_mode) & 0o222:
+            raise PermissionError("component slot file is writable")
+        if before.st_size <= 0:
+            raise ValueError("component slot file is empty")
+        if before.st_size > max_bytes:
+            raise ComponentSlotTooLargeError("component slot file exceeds size limit")
+
+        payload = bytearray()
+        while len(payload) <= max_bytes:
+            remaining = max_bytes + 1 - len(payload)
+            chunk = os.read(file_descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            payload.extend(chunk)
+            if len(payload) > max_bytes:
+                raise ComponentSlotTooLargeError("component slot file grew beyond size limit")
+
+        after = os.fstat(file_descriptor)
+        before_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        after_identity = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        if before_identity != after_identity or len(payload) != after.st_size:
+            raise OSError(errno.EIO, "component slot file changed while being served")
+        return mime, bytes(payload), source_commit
+    finally:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
 def requested_file_path(request_target: str, endpoint: str = FILES_PATH) -> str:
     parsed = urlsplit(request_target)
     if parsed.path != endpoint:
@@ -2084,6 +2264,7 @@ class NativeHostServer(ThreadingHTTPServer):
         user_root: str,
         power_request_path: str,
         network_session_dir: str,
+        component_slot_root: str = DEFAULT_COMPONENT_SLOT_ROOT,
     ):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
@@ -2095,6 +2276,7 @@ class NativeHostServer(ThreadingHTTPServer):
         self.network_paths = network_broker_paths(network_session_dir)
         self.network_lock = threading.Lock()
         self.user_root = user_root
+        self.component_slot_root = component_slot_root
 
 
 class NativeHostHandler(SimpleHTTPRequestHandler):
@@ -2142,6 +2324,17 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _write_component_slot_file(self, mime: str, payload: bytes, source_commit: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("X-OrdaX-Component-Source", source_commit)
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _empty(self, status: int) -> None:
         self.send_response(status)
         self.send_header("Content-Length", "0")
@@ -2183,6 +2376,43 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
             return
         if parsed_path in {SYNC_STATE_PATH, NOTES_PATH, COMPONENT_STATE_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
+            return
+        if parsed_path.startswith(COMPONENT_SLOT_PREFIX):
+            if self.client_address[0] != "127.0.0.1":
+                self._empty(403)
+                return
+            try:
+                mime, payload, source_commit = read_component_slot_file(
+                    self.server.component_slot_root,
+                    self.path,
+                )
+            except ComponentSlotTooLargeError:
+                self._empty(413)
+                return
+            except ComponentSlotMediaTypeError:
+                self._empty(415)
+                return
+            except ComponentSlotAmbiguousError:
+                self._empty(409)
+                return
+            except ValueError:
+                self._empty(400)
+                return
+            except (FileNotFoundError, NotADirectoryError):
+                self._empty(404)
+                return
+            except PermissionError:
+                self._empty(403)
+                return
+            except OSError as exc:
+                print(
+                    f"ordax-native-host: component slot read failed safely: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._empty(503)
+                return
+            self._write_component_slot_file(mime, payload, source_commit)
             return
         if parsed_path == METRICS_PATH:
             try:
@@ -2774,6 +3004,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user-root", default="/var/lib/ordax-user")
     parser.add_argument("--power-request", default=DEFAULT_POWER_REQUEST_PATH)
     parser.add_argument("--network-session-dir", default=DEFAULT_NETWORK_SESSION_DIR)
+    parser.add_argument("--component-slot-root", default=DEFAULT_COMPONENT_SLOT_ROOT)
     parser.add_argument("--telemetry-config", default="")
     return parser.parse_args()
 
@@ -2808,6 +3039,7 @@ def main() -> int:
         user_root=args.user_root,
         power_request_path=args.power_request,
         network_session_dir=args.network_session_dir,
+        component_slot_root=args.component_slot_root,
     )
     telemetry_started = start_telemetry_heartbeat(args.telemetry_config)
     print(

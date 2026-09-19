@@ -36,3 +36,18 @@ export function validateMountedComponent(value, componentId) {
   }
   return value;
 }
+
+
+export async function probeMountedComponentHealth(value, componentId) {
+  const mounted = validateMountedComponent(value, componentId);
+  if (typeof mounted.probeHealth !== "function") {
+    throw new TypeError(
+      `Mounted component ${componentId} must implement probeHealth() before pending promotion`,
+    );
+  }
+  const healthy = await mounted.probeHealth();
+  if (healthy !== true) {
+    throw new Error(`Mounted component ${componentId} did not pass its pending health probe`);
+  }
+  return true;
+}

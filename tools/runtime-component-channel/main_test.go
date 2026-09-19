@@ -421,3 +421,22 @@ func TestReleaseDescriptorRejectsDirectActivation(t *testing.T) {
 		t.Fatal("direct activation was accepted")
 	}
 }
+
+
+func TestVersionCannotBindToTwoSourceCommits(t *testing.T) {
+	root := t.TempDir()
+	versionRoot := filepath.Join(root, "internet", "versions", "0.3.0")
+	if err := os.MkdirAll(filepath.Join(versionRoot, testSourceCommit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureVersionCommitBinding(versionRoot, testSourceCommit); err != nil {
+		t.Fatal(err)
+	}
+
+	otherCommit := "abcdef0123456789abcdef0123456789abcdef01"
+	if err := ensureVersionCommitBinding(versionRoot, otherCommit); err == nil {
+		t.Fatal("semantic version unexpectedly accepted a second source commit")
+	} else if !strings.Contains(err.Error(), "already bound to another source commit") {
+		t.Fatalf("unexpected version binding error: %v", err)
+	}
+}
