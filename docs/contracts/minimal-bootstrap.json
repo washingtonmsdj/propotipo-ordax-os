@@ -103,10 +103,10 @@
         {
           "source_path": "bootstrap/initramfs/initramfs.cpio.gz",
           "target_path": "/ordax/initrd.gz",
-          "sha256": "451741c9af00c5bab1cd41828fb69fa12d94eb6d7e80d8a3a2564ac7ddecc01c",
+          "sha256": "0ab029ce888dca00f8cb7415cf8c2bcee066f41ac7953d9c46f6b8206e6b2f37",
           "mode": "0644",
           "logical_owner": "initramfs",
-          "reason": "Fixed clean-room capsule that mounts LABEL=ORDAX, grows its ext4 filesystem only during normal read-write boot, preserves read-only recovery, and hands off to /ordax/bootstrap/entrypoint"
+          "reason": "Fixed clean-room capsule that checks ORDAX ext4 health before writable boot, mounts errored filesystems read-only for recovery, grows healthy ext4 only during normal boot, and hands off to /ordax/bootstrap/entrypoint"
         }
       ]
     },
