@@ -9,19 +9,19 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 NOTES_CONTRACT = ROOT / "system" / "contracts" / "notes-store.mjs"
-NOTES_RUNTIME = ROOT / "system" / "services" / "notes" / "runtime.mjs"
+NOTES_RUNTIME = ROOT / "system" / "apps" / "notes" / "runtime.mjs"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "notes.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "notes.mjs"
 NOTES_OWNER = ROOT / "system" / "apps" / "notes" / "app.mjs"
 APP_CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
-NOTES_CONTROLS = ROOT / "system" / "surface" / "ui" / "notes-workspace-controls.mjs"
-NOTES_RICH_EDITOR = ROOT / "system" / "surface" / "ui" / "notes-rich-editor.mjs"
-NOTES_IMAGE_PREVIEWS = ROOT / "system" / "surface" / "ui" / "notes-image-previews.mjs"
-NOTES_LIST_MODEL = ROOT / "system" / "surface" / "ui" / "notes-list-model.mjs"
-NOTES_FILE_PICKER = ROOT / "system" / "surface" / "ui" / "notes-file-picker.mjs"
-NOTES_EDITOR_SAVE = ROOT / "system" / "surface" / "ui" / "notes-editor-save.mjs"
-NOTES_REFERENCE_LINKS = ROOT / "system" / "surface" / "ui" / "notes-reference-links.mjs"
-NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
+NOTES_CONTROLS = ROOT / "system" / "apps" / "notes" / "ui" / "workspace-controls.mjs"
+NOTES_RICH_EDITOR = ROOT / "system" / "apps" / "notes" / "ui" / "rich-editor.mjs"
+NOTES_IMAGE_PREVIEWS = ROOT / "system" / "apps" / "notes" / "ui" / "image-previews.mjs"
+NOTES_LIST_MODEL = ROOT / "system" / "apps" / "notes" / "ui" / "list-model.mjs"
+NOTES_FILE_PICKER = ROOT / "system" / "apps" / "notes" / "ui" / "file-picker.mjs"
+NOTES_EDITOR_SAVE = ROOT / "system" / "apps" / "notes" / "ui" / "editor-save.mjs"
+NOTES_REFERENCE_LINKS = ROOT / "system" / "apps" / "notes" / "ui" / "reference-links.mjs"
+NOTES_CSS = ROOT / "system" / "apps" / "notes" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
@@ -301,8 +301,8 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn('.ordax-notes-document[data-deleted="true"]', css)
         self.assertIn(".ordax-notes-ref-remove:disabled", css)
         self.assertIn("@media (max-width: 1180px)", css)
-        self.assertIn("../../surface/ui/notes.css", web_html)
-        self.assertIn("../../surface/ui/notes.css", native_html)
+        self.assertIn("../../apps/notes/notes.css", web_html)
+        self.assertIn("../../apps/notes/notes.css", native_html)
 
 
 if __name__ == "__main__":
