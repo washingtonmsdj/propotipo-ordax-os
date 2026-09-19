@@ -1,0 +1,151 @@
+name: Development Base Channel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'tools/dev-base-channel/**'
+      - 'system/services/base-update/dev_channel.py'
+      - 'tests/test_dev_base_channel.py'
+      - '.github/workflows/dev-base-channel.yml'
+  pull_request:
+    paths:
+      - 'bootstrap/kernel/**'
+      - 'bootstrap/initramfs/**'
+      - 'tools/dev-base-channel/**'
+      - 'system/services/base-update/dev_channel.py'
+      - 'tests/test_dev_base_channel.py'
+      - '.github/workflows/dev-base-channel.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Validate development Base channel
+        run: |
+          set -euo pipefail
+          python tools/dev-base-channel/build.py check
+          python -m unittest tests.test_dev_base_channel -v
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Detect Base-byte changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          publish=false
+          if ! git rev-parse HEAD^ >/dev/null 2>&1; then
+            publish=true
+          elif git diff --name-only HEAD^ HEAD | grep -Eq \
+              '^(bootstrap/kernel/|bootstrap/initramfs/|tools/dev-base-channel/|\.github/workflows/dev-base-channel\.yml$)'; then
+            publish=true
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "DEV_BASE_BYTES_CHANGED=$publish"
+
+      - name: Set up Python
+        if: steps.changes.outputs.publish == 'true'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          check-latest: false
+
+      - name: Install measured Base build dependencies
+        if: steps.changes.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-13 make bc perl bison flex openssl libssl-dev libelf-dev \
+            dwarves kmod xz-utils pkg-config musl-tools binutils bzip2 \
+            e2fsprogs util-linux
+
+      - name: Build exact-commit kernel and initramfs
+        if: steps.changes.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          python bootstrap/kernel/build.py check
+          python bootstrap/kernel/build.py build --jobs 4
+          python bootstrap/kernel/verify.py out/kernel
+
+          python bootstrap/initramfs/build.py check
+          python bootstrap/initramfs/build.py build --jobs 4
+          python bootstrap/initramfs/build.py verify
+
+          python tools/dev-base-channel/build.py build \
+            --source-commit "$GITHUB_SHA" \
+            --kernel-dir out/kernel \
+            --initramfs-dir out/initramfs \
+            --out-dir out/dev-base
+          python tools/dev-base-channel/build.py verify --out-dir out/dev-base
+
+      - name: Publish immutable exact-commit Base candidate
+        if: steps.changes.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo='washingtonmsdj/prototipo-ordax-os'
+          tag="ordax-dev-base-$GITHUB_SHA"
+          out='out/dev-base'
+
+          if ! gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --repo "$repo" \
+              --target "$GITHUB_SHA" \
+              --title "OrdaX Development Base $GITHUB_SHA" \
+              --prerelease \
+              --notes 'Git-first development Base candidate. Exact source commit plus SHA-256 bound kernel/initramfs. Activation is performed only through the inactive A/B slot on the next boot.'
+          fi
+
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          for asset in dev-base.json vmlinuz initrd.gz; do
+            if gh release view "$tag" --repo "$repo" --json assets \
+                --jq '.assets[].name' | grep -Fxq "$asset"; then
+              gh release download "$tag" --repo "$repo" \
+                --pattern "$asset" --dir "$tmp"
+              local_hash="$(sha256sum "$out/$asset" | awk '{print $1}')"
+              remote_hash="$(sha256sum "$tmp/$asset" | awk '{print $1}')"
+              test "$local_hash" = "$remote_hash"
+              rm -f "$tmp/$asset"
+            else
+              gh release upload "$tag" "$out/$asset#$asset" --repo "$repo"
+            fi
+          done
+
+          echo "DEV_BASE_TAG=$tag"
+          echo "DEV_BASE_SOURCE_COMMIT=$GITHUB_SHA"
+          echo 'DEV_BASE_MANUAL_USB_REWRITE_REQUIRED=NO'
+          echo 'DEV_BASE_ACTIVATION=INACTIVE_SLOT_NEXT_BOOT'
