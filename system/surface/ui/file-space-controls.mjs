@@ -7,6 +7,7 @@ import {
   validateFileListing,
   validateTextFile,
 } from "../../contracts/file-space.mjs";
+import { assertNotesFileImporter } from "../../contracts/notes-file-importer.mjs";
 import {
   assertRecentFilesPort,
   validateRecentFilesSnapshot,
@@ -16,6 +17,10 @@ import {
   assertProjectCatalogPort,
   validateProjectCatalogSnapshot,
 } from "../../contracts/project-catalog.mjs";
+import {
+  createFileNotesActionPresentation,
+  importSelectedFileToNotes,
+} from "./file-notes-action.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
@@ -89,8 +94,10 @@ export function mountFileSpaceControls(
   }
   const recentFiles = resources?.recentFiles ?? null;
   const projects = resources?.projects ?? null;
+  const notesFileImporter = resources?.notesFileImporter ?? null;
   const recentPort = recentFiles === null ? null : assertRecentFilesPort(recentFiles);
   const projectPort = projects === null ? null : assertProjectCatalogPort(projects);
+  const notesImporterPort = notesFileImporter === null ? null : assertNotesFileImporter(notesFileImporter);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const documentObject = root.ownerDocument;
 
@@ -124,6 +131,7 @@ export function mountFileSpaceControls(
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
   let creatingProject = false;
   let projectDraft = "";
+  let notesImportPending = false;
 
   const findSlot = () =>
     root.querySelector(`${FILE_WINDOW_SELECTOR} ${FILE_EXTENSION_SELECTOR}`);
@@ -702,37 +710,51 @@ export function mountFileSpaceControls(
     );
 
     const actions = node(documentObject, "div", "ordax-files-details-actions");
+    const itemBusy = pending || previewPending || notesImportPending;
     let duplicate = null;
     let copyTo = null;
     let exportFile = null;
+    let createNote = null;
     if (selected.kind === "file") {
       duplicate = node(documentObject, "button", "ordax-files-action", "Duplicar");
       duplicate.type = "button";
       duplicate.dataset.fileCopyToggle = "";
-      duplicate.disabled = pending || previewPending;
+      duplicate.disabled = itemBusy;
       copyTo = node(documentObject, "button", "ordax-files-action", "Copiar para…");
       copyTo.type = "button";
       copyTo.dataset.fileCopyToToggle = "";
-      copyTo.disabled = pending || previewPending || selected.size > MAX_FILE_COPY_BYTES;
+      copyTo.disabled = itemBusy || selected.size > MAX_FILE_COPY_BYTES;
       if (selected.size > MAX_FILE_COPY_BYTES) {
         copyTo.title = "Cópia limitada a 64 MiB";
       }
       exportFile = node(documentObject, "button", "ordax-files-action", "Exportar");
       exportFile.type = "button";
       exportFile.dataset.fileExport = "";
-      exportFile.disabled = pending || previewPending || selected.size > MAX_FILE_EXPORT_BYTES;
+      exportFile.disabled = itemBusy || selected.size > MAX_FILE_EXPORT_BYTES;
       if (selected.size > MAX_FILE_EXPORT_BYTES) {
         exportFile.title = "Exportação rápida limitada a 64 MiB";
+      }
+      const notesAction = createFileNotesActionPresentation({
+        importerAvailable: Boolean(notesImporterPort),
+        busy: notesImportPending,
+        selected,
+      });
+      if (notesAction.visible) {
+        createNote = node(documentObject, "button", "ordax-files-action", notesAction.label);
+        createNote.type = "button";
+        createNote.dataset.fileCreateNote = "";
+        createNote.disabled = itemBusy || notesAction.disabled;
+        createNote.title = notesAction.title;
       }
     }
     const move = node(documentObject, "button", "ordax-files-action", "Mover");
     move.type = "button";
     move.dataset.fileMoveToggle = "";
-    move.disabled = pending || previewPending;
+    move.disabled = itemBusy;
     const rename = node(documentObject, "button", "ordax-files-action", "Renomear");
     rename.type = "button";
     rename.dataset.fileRenameToggle = "";
-    rename.disabled = pending || previewPending;
+    rename.disabled = itemBusy;
     const open = node(
       documentObject,
       "button",
@@ -741,10 +763,11 @@ export function mountFileSpaceControls(
     );
     open.type = "button";
     open.dataset.fileActivateSelected = "";
-    open.disabled = pending || previewPending;
+    open.disabled = itemBusy;
     if (duplicate) actions.append(duplicate);
     if (copyTo) actions.append(copyTo);
     if (exportFile) actions.append(exportFile);
+    if (createNote) actions.append(createNote);
     actions.append(move, rename, open);
 
     details.append(summary, actions);
@@ -1382,6 +1405,32 @@ export function mountFileSpaceControls(
     }
   };
 
+  const createNoteFromSelected = async () => {
+    const selected = selectedEntry();
+    if (!notesImporterPort || !selected || selected.kind !== "file" || notesImportPending) return;
+    const source = Object.freeze({ kind: "file", path: selected.path, name: selected.name });
+    notesImportPending = true;
+    message = null;
+    replaceView();
+    try {
+      const outcome = await importSelectedFileToNotes(notesImporterPort, source);
+      if (destroyed) return;
+      message = outcome.presentation.text;
+      if (outcome.presentation.openNotes && activationPort) {
+        activationPort.publish({ appId: "notes", target: null });
+      }
+    } catch {
+      if (destroyed) return;
+      message = "Não foi possível criar a nota. O arquivo original não foi alterado.";
+    } finally {
+      if (!destroyed) {
+        notesImportPending = false;
+        replaceView();
+        focusSelectedRow();
+      }
+    }
+  };
+
   const transferToCurrentDirectory = async () => {
     if (!transferEntry || !listing) return;
     const destination = transferDestinationState();
@@ -1866,6 +1915,11 @@ export function mountFileSpaceControls(
       } else {
         selectPath(selected.dataset.fileSelectPath, { focus: true });
       }
+      return;
+    }
+    const createNote = event.target.closest("[data-file-create-note]");
+    if (createNote && root.contains(createNote)) {
+      void createNoteFromSelected();
       return;
     }
     const exportFile = event.target.closest("[data-file-export]");
