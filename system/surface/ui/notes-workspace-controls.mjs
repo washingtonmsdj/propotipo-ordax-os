@@ -8,6 +8,7 @@ import {
   applyNotesRichLink,
   captureNotesRichSelection,
   createNotesRichEditor,
+  handleNotesRichBlockKeyDown,
   normalizeNotesRichEditor,
   notesRichSelectionState,
   pastePlainTextIntoNotesEditor,
@@ -247,6 +248,7 @@ function buildShell(documentObject) {
   title.rows = 1;
   title.maxLength = 1024;
   title.spellcheck = true;
+  title.placeholder = "Título da nota";
   title.dataset.notesTitle = "";
   title.setAttribute("aria-label", "Título da nota");
   form.append(title);
@@ -1215,6 +1217,13 @@ export function mountNotesWorkspaceControls(
   const onEditorKeyDown = (event) => {
     const body = mountedSlot?.querySelector("[data-notes-body]");
     if (!body || !(event.target === body || body.contains(event.target))) return;
+
+    if (handleNotesRichBlockKeyDown(body, event)) {
+      lastEditorRange = captureNotesRichSelection(body) ?? lastEditorRange;
+      syncEditorToolbar();
+      return;
+    }
+
     const modifier = event.ctrlKey || event.metaKey;
     if (!modifier || event.altKey) return;
 
