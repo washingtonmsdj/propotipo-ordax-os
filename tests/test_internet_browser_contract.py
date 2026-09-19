@@ -76,6 +76,7 @@ class InternetBrowserContractTests(unittest.TestCase):
         self.assertIn('title: "Internet"', app)
         self.assertIn('kind: "extension"', app)
         self.assertIn('extensionId: "internet-browser"', app)
+        self.assertIn('optionalCapabilities: ["browser.web-content"]', app)
         self.assertIn('./internet/app.mjs', catalog)
         self.assertIn('internetApp', catalog)
 
@@ -90,6 +91,14 @@ class InternetBrowserContractTests(unittest.TestCase):
         self.assertNotIn('adapters/', controls)
         self.assertNotIn('/__ordax/native/', controls)
         self.assertNotIn('MutationObserver', controls)
+
+    def test_surface_app_activation_target_is_consumed_by_internet(self):
+        controls = self.text(CONTROLS)
+        self.assertIn('lifecycle.getAppTarget("internet")', controls)
+        self.assertIn('const syncSurfaceTarget = () => {', controls)
+        self.assertIn('handledSurfaceTarget', controls)
+        self.assertIn('port.navigate(tab.id, url)', controls)
+        self.assertIn('port.openTab(allocateTabId(), url)', controls)
 
     def test_tab_search_is_functional_and_stays_inside_shared_chrome(self):
         controls = self.text(CONTROLS)
