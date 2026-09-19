@@ -5,10 +5,12 @@ import {
   validateNotificationDraft,
   validateNotificationEntries,
   validateNotificationId,
+  validateNotificationPolicy,
   validateNotificationsSnapshot,
 } from "../../contracts/notifications.mjs";
 import {
   assertNotificationStore,
+  validateNotificationPolicyPayload,
   validateNotificationStorePayload,
 } from "../../contracts/notification-store.mjs";
 
@@ -34,6 +36,8 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
   }
   const durableStore = store === null ? null : assertNotificationStore(store);
   let persistence = durableStore?.scope ?? "session";
+  let policyPersistence = durableStore?.scope ?? "session";
+  let policy = validateNotificationPolicyPayload(null);
   let entries = Object.freeze([]);
   let lastCreatedAt = -1;
   let ordinal = 0;
@@ -50,16 +54,27 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
       entries = Object.freeze([]);
       persistence = "session";
     }
+    try {
+      policy = validateNotificationPolicyPayload(durableStore.loadPolicy());
+    } catch {
+      policy = validateNotificationPolicyPayload(null);
+      policyPersistence = "session";
+    }
   }
 
-  const getSnapshot = () => validateNotificationsSnapshot({ persistence, entries });
+  const getSnapshot = () => validateNotificationsSnapshot({
+    persistence,
+    policyPersistence,
+    doNotDisturb: policy.doNotDisturb,
+    entries,
+  });
 
   const emit = () => {
     const snapshot = getSnapshot();
     for (const listener of [...listeners]) listener(snapshot);
   };
 
-  const persist = () => {
+  const persistEntries = () => {
     if (!durableStore) {
       persistence = "session";
       return;
@@ -72,11 +87,33 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
     }
   };
 
+  const persistPolicy = () => {
+    if (!durableStore) {
+      policyPersistence = "session";
+      return;
+    }
+    try {
+      const saved = durableStore.savePolicy(policy) !== false;
+      policyPersistence = saved && durableStore.scope === "device" ? "device" : "session";
+    } catch {
+      policyPersistence = "session";
+    }
+  };
+
   const replaceEntries = (next) => {
     const validated = validateNotificationEntries(next);
     if (sameEntries(entries, validated)) return false;
     entries = validated;
-    persist();
+    persistEntries();
+    emit();
+    return true;
+  };
+
+  const replacePolicy = (next) => {
+    const validated = validateNotificationPolicy(next);
+    if (validated.doNotDisturb === policy.doNotDisturb) return false;
+    policy = validated;
+    persistPolicy();
     emit();
     return true;
   };
@@ -122,6 +159,13 @@ export function createNotificationsRuntime({ store = null, now = Date.now } = {}
       });
       replaceEntries([entry, ...entries].slice(0, MAX_NOTIFICATIONS));
       return entry;
+    },
+    setDoNotDisturb(enabled) {
+      if (typeof enabled !== "boolean") {
+        throw new TypeError("Do Not Disturb state must be boolean");
+      }
+      replacePolicy({ doNotDisturb: enabled });
+      return getSnapshot();
     },
     markRead(id) {
       const target = validateNotificationId(id);
