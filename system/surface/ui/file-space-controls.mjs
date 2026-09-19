@@ -131,6 +131,8 @@ export function mountFileSpaceControls(
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
   let creatingProject = false;
   let projectDraft = "";
+  let renamingProjectId = null;
+  let projectRenameDraft = "";
   let notesImportPending = false;
 
   const findSlot = () =>
@@ -149,6 +151,9 @@ export function mountFileSpaceControls(
     }
     if (element.dataset.fileSearch !== undefined) {
       return Object.freeze({ kind: "search", value: "" });
+    }
+    if (element.dataset.fileProjectRenameName !== undefined) {
+      return Object.freeze({ kind: "project-rename-name", value: renamingProjectId ?? "" });
     }
     if (element.dataset.fileProjectName !== undefined) {
       return Object.freeze({ kind: "project-name", value: "" });
@@ -391,6 +396,44 @@ export function mountFileSpaceControls(
     cancel.type = "button";
     cancel.dataset.fileProjectCreateCancel = "";
     form.append(input, confirm, cancel);
+    container.append(form);
+  };
+
+  const renderRenameProject = (container) => {
+    if (!renamingProjectId || !projectPort || !listing || recentMode) return;
+    const project = projectSnapshot?.projects.find((candidate) => candidate.id === renamingProjectId);
+    if (!project || project.path !== listing.path) return;
+
+    const form = node(documentObject, "div", "ordax-files-create");
+    const input = node(documentObject, "input", "ordax-files-create-input");
+    input.type = "text";
+    input.maxLength = MAX_PROJECT_NAME_LENGTH;
+    input.autocomplete = "off";
+    input.placeholder = "Novo nome do projeto";
+    input.value = projectRenameDraft;
+    input.dataset.fileProjectRenameName = "";
+    input.setAttribute("aria-label", `Novo nome do projeto ${project.name}`);
+
+    const confirm = node(
+      documentObject,
+      "button",
+      "ordax-files-action ordax-files-action-primary",
+      "Salvar nome",
+    );
+    confirm.type = "button";
+    confirm.dataset.fileProjectRenameConfirm = "";
+
+    const cancel = node(documentObject, "button", "ordax-files-action", "Cancelar");
+    cancel.type = "button";
+    cancel.dataset.fileProjectRenameCancel = "";
+
+    const note = node(
+      documentObject,
+      "p",
+      "ordax-files-boundary",
+      `Isso altera apenas o nome do projeto. A pasta continua em ${project.path}.`,
+    );
+    form.append(input, confirm, cancel, note);
     container.append(form);
   };
 
@@ -1061,6 +1104,28 @@ export function mountFileSpaceControls(
     replaceView();
   };
 
+  const renameProject = () => {
+    if (!projectPort || !renamingProjectId || !listing) return;
+    const project = projectSnapshot?.projects.find((candidate) => candidate.id === renamingProjectId);
+    if (!project || project.path !== listing.path) {
+      renamingProjectId = null;
+      projectRenameDraft = "";
+      message = "Este projeto não está mais disponível nesta pasta.";
+      replaceView();
+      return;
+    }
+    try {
+      projectSnapshot = projectPort.rename(renamingProjectId, projectRenameDraft);
+      const renamed = projectSnapshot.projects.find((candidate) => candidate.id === project.id);
+      renamingProjectId = null;
+      projectRenameDraft = "";
+      message = `Projeto renomeado para “${renamed?.name ?? project.name}”. A pasta continua em ${project.path}.`;
+    } catch {
+      message = "Não foi possível renomear este projeto.";
+    }
+    replaceView();
+  };
+
   const openProject = async (projectId) => {
     if (!projectPort) return;
     const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
@@ -1084,6 +1149,10 @@ export function mountFileSpaceControls(
     if (!projectPort) return;
     try {
       projectSnapshot = projectPort.remove(projectId);
+      if (renamingProjectId === projectId) {
+        renamingProjectId = null;
+        projectRenameDraft = "";
+      }
       message = "Projeto removido do catálogo. Nenhum arquivo foi apagado.";
     } catch {
       message = "Não foi possível remover este projeto do catálogo.";
@@ -1102,6 +1171,8 @@ export function mountFileSpaceControls(
     creatingDirectory = false;
     creatingProject = false;
     projectDraft = "";
+    renamingProjectId = null;
+    projectRenameDraft = "";
     renamingPath = null;
     copyingPath = null;
     previewRequestOrdinal += 1;
@@ -1237,10 +1308,15 @@ export function mountFileSpaceControls(
     actions.append(refresh, importFile, addProject);
     const currentProject = projectSnapshot?.projects.find((project) => project.path === listing?.path);
     if (currentProject) {
-      const removeProject = node(documentObject, "button", "ordax-files-action", "Remover projeto");
-      removeProject.type = "button";
-      removeProject.dataset.fileProjectRemove = currentProject.id;
-      actions.append(removeProject);
+      const renameProjectButton = node(documentObject, "button", "ordax-files-action", "Renomear projeto");
+      renameProjectButton.type = "button";
+      renameProjectButton.dataset.fileProjectRenameStart = currentProject.id;
+      renameProjectButton.disabled = pending;
+      const removeProjectButton = node(documentObject, "button", "ordax-files-action", "Remover projeto");
+      removeProjectButton.type = "button";
+      removeProjectButton.dataset.fileProjectRemove = currentProject.id;
+      removeProjectButton.disabled = pending;
+      actions.append(renameProjectButton, removeProjectButton);
     }
     actions.append(create, importPicker);
     toolbar.append(navigation, breadcrumb, search, actions);
@@ -1265,6 +1341,7 @@ export function mountFileSpaceControls(
     renderTransferOperation(content);
     renderCreateDirectory(content);
     renderCreateProject(content);
+    renderRenameProject(content);
     if (message) content.append(node(documentObject, "p", "ordax-files-message", message));
     renderEntries(content);
     renderSelectionDetails(content);
@@ -1320,6 +1397,10 @@ export function mountFileSpaceControls(
         copyDraft = "";
         creatingDirectory = false;
         directoryDraft = "";
+        creatingProject = false;
+        projectDraft = "";
+        renamingProjectId = null;
+        projectRenameDraft = "";
         previewRequestOrdinal += 1;
         previewPending = false;
         textPreview = null;
@@ -1814,6 +1895,8 @@ export function mountFileSpaceControls(
     if (projectStart && root.contains(projectStart) && projectPort && listing && listing.path !== "/") {
       creatingProject = true;
       projectDraft = breadcrumbParts(listing.path).at(-1) ?? "Projeto";
+      renamingProjectId = null;
+      projectRenameDraft = "";
       message = null;
       requestFocus("project-name");
       replaceView();
@@ -1828,6 +1911,34 @@ export function mountFileSpaceControls(
     if (projectCancel && root.contains(projectCancel)) {
       creatingProject = false;
       projectDraft = "";
+      message = null;
+      replaceView();
+      return;
+    }
+    const projectRenameStart = event.target.closest("[data-file-project-rename-start]");
+    if (projectRenameStart && root.contains(projectRenameStart) && projectPort && listing) {
+      const projectId = projectRenameStart.dataset.fileProjectRenameStart;
+      const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
+      if (project && project.path === listing.path) {
+        creatingProject = false;
+        projectDraft = "";
+        renamingProjectId = project.id;
+        projectRenameDraft = project.name;
+        message = null;
+        requestFocus("project-rename-name", project.id);
+        replaceView();
+      }
+      return;
+    }
+    const projectRenameConfirm = event.target.closest("[data-file-project-rename-confirm]");
+    if (projectRenameConfirm && root.contains(projectRenameConfirm)) {
+      renameProject();
+      return;
+    }
+    const projectRenameCancel = event.target.closest("[data-file-project-rename-cancel]");
+    if (projectRenameCancel && root.contains(projectRenameCancel)) {
+      renamingProjectId = null;
+      projectRenameDraft = "";
       message = null;
       replaceView();
       return;
@@ -2161,6 +2272,8 @@ export function mountFileSpaceControls(
       }
       message = null;
       replaceView();
+    } else if (event.target.matches?.("[data-file-project-rename-name]")) {
+      projectRenameDraft = String(event.target.value ?? "").slice(0, MAX_PROJECT_NAME_LENGTH);
     } else if (event.target.matches?.("[data-file-project-name]")) {
       projectDraft = String(event.target.value ?? "").slice(0, MAX_PROJECT_NAME_LENGTH);
     } else if (event.target.matches?.("[data-file-directory-name]")) {
@@ -2247,6 +2360,20 @@ export function mountFileSpaceControls(
       } else if (event.key === "Escape" && !pending) {
         renamingPath = null;
         renameDraft = "";
+        message = null;
+        replaceView();
+      }
+      return;
+    }
+
+    if (event.target.matches?.("[data-file-project-rename-name]")) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        renameProject();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        renamingProjectId = null;
+        projectRenameDraft = "";
         message = null;
         replaceView();
       }
@@ -2352,6 +2479,13 @@ export function mountFileSpaceControls(
   const unsubscribeProjects = projectPort?.subscribe((snapshot) => {
     if (destroyed) return;
     projectSnapshot = validateProjectCatalogSnapshot(snapshot);
+    if (
+      renamingProjectId
+      && !projectSnapshot.projects.some((project) => project.id === renamingProjectId)
+    ) {
+      renamingProjectId = null;
+      projectRenameDraft = "";
+    }
     replaceView();
   });
   const unsubscribeRender = lifecycle.subscribeRender(() => renderView(false));
