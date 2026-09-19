@@ -1,13 +1,6 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import { assertNotificationsPort } from "../../contracts/notifications.mjs";
-
-const SOURCE_LABELS = Object.freeze({
-  files: "Arquivos",
-  settings: "Ajustes",
-  account: "Conta",
-  system: "Sistema",
-  internet: "Internet",
-});
+import { notificationSourceLabel } from "../../services/notifications/catalog.mjs";
 
 function formatTimestamp(value) {
   const date = new Date(value);
@@ -22,9 +15,6 @@ function formatTimestamp(value) {
   }).format(date);
 }
 
-function sourceLabel(sourceId) {
-  return SOURCE_LABELS[sourceId] ?? sourceId;
-}
 
 function requireHost(root, selector, label) {
   const element = root.querySelector(selector);
@@ -194,7 +184,7 @@ function updateEntryNode(node, entry) {
   const title = node.querySelector("[data-notification-title]");
   const message = node.querySelector("[data-notification-message]");
   const open = node.querySelector("[data-notification-open]");
-  source.textContent = sourceLabel(entry.sourceId);
+  source.textContent = notificationSourceLabel(entry.sourceId);
   time.dateTime = new Date(entry.createdAt).toISOString();
   time.textContent = formatTimestamp(entry.createdAt);
   title.textContent = entry.title;
@@ -276,8 +266,8 @@ export function mountNotificationCenterControls(root, notifications, appActivati
       ? "Histórico salvo neste dispositivo"
       : "Histórico disponível somente nesta sessão";
     const policyPersistence = snapshot.policyPersistence === "device"
-      ? "Não perturbe salvo neste dispositivo"
-      : "Não perturbe vale somente nesta sessão";
+      ? "Política de notificações salva neste dispositivo"
+      : "Política de notificações vale somente nesta sessão";
     persistence.textContent = `${historyPersistence} · ${policyPersistence}`;
   };
 

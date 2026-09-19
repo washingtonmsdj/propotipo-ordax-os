@@ -273,6 +273,7 @@ async function start() {
       networkStatus,
       networkManagement,
       appActivation,
+      notifications,
     );
   } catch (error) {
     reportClientDiagnostic("settings-network-management", error);
@@ -284,6 +285,7 @@ async function start() {
       networkStatus,
       null,
       appActivation,
+      notifications,
     );
   }
   const systemOverviewControls = mountSystemOverviewControls(

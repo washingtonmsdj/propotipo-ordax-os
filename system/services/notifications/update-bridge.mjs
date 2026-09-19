@@ -5,6 +5,7 @@ import {
   updateStatusLabel,
   updateSummaryDetail,
 } from "../update/presentation.mjs";
+import { SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID } from "./catalog.mjs";
 
 const DESTINATION = Object.freeze({ appId: "system", target: "updates" });
 
@@ -26,7 +27,7 @@ function actionableNotification(previous, current) {
 
   if (current.bootRefreshRequired && previous?.bootRefreshRequired !== true) {
     return {
-      sourceId: "system",
+      sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
       level: "warning",
       title: "Atualização de base pendente",
       message: updateSummaryDetail(current),
@@ -37,7 +38,7 @@ function actionableNotification(previous, current) {
   switch (current.status) {
     case "applied":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "success",
         title: "Atualização aplicada",
         message: `${deliveryLabel(current.deliveryNumber)} foi aplicada e confirmada pelo atualizador.`,
@@ -45,7 +46,7 @@ function actionableNotification(previous, current) {
       };
     case "network-error":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "warning",
         title: updateStatusLabel(current.status),
         message: "A origem de atualização não pôde ser consultada. A entrega atual continua em uso.",
@@ -53,7 +54,7 @@ function actionableNotification(previous, current) {
       };
     case "remote-error":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "warning",
         title: updateStatusLabel(current.status),
         message: "A fonte remota ficou indisponível. A entrega atual continua preservada.",
@@ -61,7 +62,7 @@ function actionableNotification(previous, current) {
       };
     case "pull-error":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "error",
         title: updateStatusLabel(current.status),
         message: "A tentativa de atualização falhou antes de substituir a entrega funcional.",
@@ -69,7 +70,7 @@ function actionableNotification(previous, current) {
       };
     case "rejected":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "warning",
         title: updateStatusLabel(current.status),
         message: "A entrega candidata foi bloqueada antes da ativação e a versão atual foi preservada.",
@@ -77,7 +78,7 @@ function actionableNotification(previous, current) {
       };
     case "rolled-back":
       return {
-        sourceId: "system",
+        sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
         level: "warning",
         title: updateStatusLabel(current.status),
         message: "A tentativa foi revertida e a entrega conhecida foi restaurada.",

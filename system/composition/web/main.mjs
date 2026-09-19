@@ -84,6 +84,7 @@ const settingsOverviewControls = mountSettingsOverviewControls(
   null,
   null,
   appActivation,
+  notifications,
 );
 const systemOverviewControls = mountSystemOverviewControls(
   root,

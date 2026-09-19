@@ -16,12 +16,15 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
         self.assertIn('id: "appearance"', controls)
         self.assertIn('id: "accessibility"', controls)
         self.assertIn('id: "network"', controls)
+        self.assertIn('id: "notifications"', controls)
         self.assertIn("validSettingsSection", controls)
         self.assertIn(
             'activeSection === "appearance" || activeSection === "accessibility"',
             controls,
         )
         self.assertIn('activeSection === "network"', controls)
+        self.assertIn('activeSection === "notifications"', controls)
+        self.assertIn("renderNotifications(view)", controls)
         self.assertIn("definition.sectionId !== sectionId", controls)
         self.assertNotIn('id: "audio"', controls)
         self.assertNotIn('id: "display"', controls)
@@ -42,6 +45,18 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
         self.assertIn('settings.dataset.appTarget = "network"', quick)
         self.assertIn('"Abrir Ajustes de rede"', quick)
 
+    def test_notifications_section_reuses_notification_owner(self):
+        controls = SETTINGS.read_text(encoding="utf-8")
+        css = SETTINGS_CSS.read_text(encoding="utf-8")
+        self.assertIn("assertNotificationsPort", controls)
+        self.assertIn("listNotificationSources", controls)
+        self.assertIn("notificationPort.setDoNotDisturb", controls)
+        self.assertIn("notificationPort.setSourceEnabled", controls)
+        self.assertIn("notificationPort?.subscribe", controls)
+        self.assertIn("data-settings-notification-source", controls)
+        self.assertIn(".ordax-settings-notification-row", css)
+        self.assertNotIn("localStorage", controls)
+
     def test_technical_capability_inventory_is_not_duplicated_in_settings(self):
         controls = SETTINGS.read_text(encoding="utf-8")
         css = SETTINGS_CSS.read_text(encoding="utf-8")
@@ -59,19 +74,19 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
         self.assertIn("overflow-x: auto", css)
         self.assertIn("@media (max-width: 760px)", css)
 
-    def test_native_and_web_wire_same_activation_channel(self):
+    def test_native_and_web_wire_same_activation_and_notification_channels(self):
         native = NATIVE.read_text(encoding="utf-8")
         web = WEB.read_text(encoding="utf-8")
         self.assertIn(
-            "networkStatus,\n      networkManagement,\n      appActivation,",
+            "networkStatus,\n      networkManagement,\n      appActivation,\n      notifications,",
             native,
         )
         self.assertIn(
-            "networkStatus,\n      null,\n      appActivation,",
+            "networkStatus,\n      null,\n      appActivation,\n      notifications,",
             native,
         )
         self.assertIn(
-            "surface,\n  null,\n  null,\n  appActivation,",
+            "surface,\n  null,\n  null,\n  appActivation,\n  notifications,",
             web,
         )
 
