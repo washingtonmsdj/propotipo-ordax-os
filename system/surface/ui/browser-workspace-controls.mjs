@@ -100,7 +100,6 @@ function buildShell(documentObject) {
 export function mountBrowserWorkspaceControls(
   root,
   surfaceLifecycle = null,
-  { windowRef = globalThis.window } = {},
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Browser workspace controls require a Surface root Element");
@@ -286,9 +285,6 @@ export function mountBrowserWorkspaceControls(
       root.removeEventListener("keydown", onKeyDown);
       root.removeEventListener("load", onFrameLoad, true);
       mountedSlot = null;
-      if (windowRef?.document === documentObject) {
-        // The owner intentionally leaves page/window lifecycle to the Surface composition.
-      }
     },
   });
 }
