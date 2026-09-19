@@ -25,6 +25,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("WebKit2", "4.1")
 from gi.repository import Gtk, WebKit2  # type: ignore  # noqa: E402
 
+from browser_session_store import load_browser_session, save_browser_session
+
 BRIDGE_NAME = "ordaxBrowser"
 TAB_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 MAX_TABS = 16
@@ -119,9 +121,11 @@ class OrdaXBrowserHost:
     def __init__(self, start_uri: str, profile_root: str) -> None:
         self.start_uri = start_uri
         self.profile_root = os.path.abspath(profile_root)
+        self.session_path = os.path.join(self.profile_root, "session.json")
         self.tabs: dict[str, BrowserTab] = {}
         self.active_tab_id: str | None = None
         self.viewport = {"visible": False, "x": 0, "y": 0, "width": 0, "height": 0}
+        self.restoring_session = False
 
         os.makedirs(self.profile_root, mode=0o700, exist_ok=True)
         profile_data = os.path.join(self.profile_root, "default", "data")
@@ -153,9 +157,10 @@ class OrdaXBrowserHost:
         self.window = Gtk.Window(title="OrdaX")
         self.window.set_default_size(1366, 768)
         self.window.add(self.overlay)
-        self.window.connect("destroy", Gtk.main_quit)
+        self.window.connect("destroy", self.on_window_destroy)
         self.window.fullscreen()
         self.window.show_all()
+        self.restore_session()
 
     def emit_snapshot(self) -> None:
         snapshot = {
@@ -217,6 +222,51 @@ class OrdaXBrowserHost:
             raise ValueError("invalid tab id")
         return tab_id
 
+    def persist_session(self) -> None:
+        if self.restoring_session:
+            return
+        persisted_tabs = [
+            (tab_id, tab.url)
+            for tab_id, tab in self.tabs.items()
+            if tab.url and allowed_external_uri(tab.url)
+        ]
+        active_index = next(
+            (
+                index
+                for index, (tab_id, _url) in enumerate(persisted_tabs)
+                if tab_id == self.active_tab_id
+            ),
+            None,
+        )
+        try:
+            save_browser_session(
+                self.session_path,
+                [url for _tab_id, url in persisted_tabs],
+                active_index,
+                allow_url=allowed_external_uri,
+                max_tabs=MAX_TABS,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"ordax-browser-host: could not persist tab session: {exc}", file=sys.stderr, flush=True)
+
+    def restore_session(self) -> None:
+        state = load_browser_session(
+            self.session_path,
+            allow_url=allowed_external_uri,
+            max_tabs=MAX_TABS,
+        )
+        if not state.urls:
+            return
+        self.restoring_session = True
+        try:
+            for index, url in enumerate(state.urls, start=1):
+                self.open_tab(f"tab-{index}", url)
+            if state.active_index is not None:
+                self.activate_tab(f"tab-{state.active_index + 1}")
+        finally:
+            self.restoring_session = False
+        self.persist_session()
+
     def create_external_view(self, tab_id: str) -> WebKit2.WebView:
         view = WebKit2.WebView.new_with_context(self.external_context)
         view.set_hexpand(False)
@@ -252,6 +302,7 @@ class OrdaXBrowserHost:
             self.navigate(tab_id, url_value)
         else:
             self.emit_snapshot()
+            self.persist_session()
 
     def close_tab(self, tab_id_value: object) -> None:
         tab_id = self.valid_tab_id(tab_id_value)
@@ -263,6 +314,7 @@ class OrdaXBrowserHost:
             self.active_tab_id = next(reversed(self.tabs), None) if self.tabs else None
         self.update_visibility()
         self.emit_snapshot()
+        self.persist_session()
 
     def activate_tab(self, tab_id_value: object) -> None:
         tab_id = self.valid_tab_id(tab_id_value)
@@ -271,6 +323,7 @@ class OrdaXBrowserHost:
         self.active_tab_id = tab_id
         self.update_visibility()
         self.emit_snapshot()
+        self.persist_session()
 
     def navigate(self, tab_id_value: object, url_value: object) -> None:
         tab_id = self.valid_tab_id(tab_id_value)
@@ -284,6 +337,7 @@ class OrdaXBrowserHost:
         tab.view.load_uri(url_value)
         self.update_visibility()
         self.emit_snapshot()
+        self.persist_session()
 
     def history_action(self, tab_id_value: object, action: str) -> None:
         tab_id = self.valid_tab_id(tab_id_value)
@@ -352,6 +406,8 @@ class OrdaXBrowserHost:
             tab.url = uri
         tab.title = view.get_title() or tab.title
         self.emit_snapshot()
+        if event == WebKit2.LoadEvent.FINISHED:
+            self.persist_session()
 
     def on_load_failed(
         self,
@@ -365,6 +421,7 @@ class OrdaXBrowserHost:
         if tab is not None:
             tab.loading = False
             self.emit_snapshot()
+            self.persist_session()
         return False
 
     def on_decide_policy(
@@ -438,6 +495,10 @@ class OrdaXBrowserHost:
             download.cancel()
         except Exception:
             pass
+
+    def on_window_destroy(self, _window: Gtk.Window) -> None:
+        self.persist_session()
+        Gtk.main_quit()
 
 
 def parse_args() -> argparse.Namespace:
