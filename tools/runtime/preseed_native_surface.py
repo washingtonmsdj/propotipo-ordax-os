@@ -216,37 +216,43 @@ def preseed(rootfs: Path, contract_path: Path, max_tree_bytes: int) -> tuple[str
     shutil.rmtree(staging, ignore_errors=True)
     runtime_state.mkdir(parents=True, exist_ok=True)
     staging_root.mkdir(parents=True)
-    copy_trust_material(rootfs, staging_root)
-    write_repositories(staging_root, contract)
 
-    created_dev_null = ensure_dev_null(rootfs)
     try:
-        run_apk(
-            rootfs,
-            target_inside,
-            contract["ORDAX_NATIVE_SURFACE_INSTALL_PACKAGES"].split(),
-        )
-    finally:
-        if created_dev_null:
-            (rootfs / "dev" / "null").unlink(missing_ok=True)
+        copy_trust_material(rootfs, staging_root)
+        write_repositories(staging_root, contract)
 
-    prepare_runtime_directories(staging_root)
-    flattened = CORE.flatten_symlinks(staging_root)
-    if tree_has_symlinks(staging_root):
-        raise PreseedError("runtime seed still contains symlinks after flattening")
-    verify_paths(staging_root, contract)
+        created_dev_null = ensure_dev_null(rootfs)
+        try:
+            run_apk(
+                rootfs,
+                target_inside,
+                contract["ORDAX_NATIVE_SURFACE_INSTALL_PACKAGES"].split(),
+            )
+        finally:
+            if created_dev_null:
+                (rootfs / "dev" / "null").unlink(missing_ok=True)
 
-    (staging / "ready").write_text(runtime_id + "\n", encoding="utf-8")
-    runtime_bytes = CORE.unique_regular_bytes(staging_root)
-    combined_bytes = CORE.unique_regular_bytes(rootfs)
-    if combined_bytes > max_tree_bytes:
-        raise PreseedError(
-            f"development tree exceeds seed budget after runtime preseed: "
-            f"{combined_bytes} > {max_tree_bytes}"
-        )
+        prepare_runtime_directories(staging_root)
+        flattened = CORE.flatten_symlinks(staging_root)
+        if tree_has_symlinks(staging_root):
+            raise PreseedError("runtime seed still contains symlinks after flattening")
+        verify_paths(staging_root, contract)
 
-    shutil.rmtree(final, ignore_errors=True)
-    staging.replace(final)
+        (staging / "ready").write_text(runtime_id + "\n", encoding="utf-8")
+        runtime_bytes = CORE.unique_regular_bytes(staging_root)
+        combined_bytes = CORE.unique_regular_bytes(rootfs)
+        if combined_bytes > max_tree_bytes:
+            raise PreseedError(
+                f"development tree exceeds seed budget after runtime preseed: "
+                f"{combined_bytes} > {max_tree_bytes}"
+            )
+
+        shutil.rmtree(final, ignore_errors=True)
+        staging.replace(final)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
     print(f"ORDAX_NATIVE_SURFACE_PRESEED_ID={runtime_id}", flush=True)
     print(f"ORDAX_NATIVE_SURFACE_PRESEED_BYTES={runtime_bytes}", flush=True)
     print(f"ORDAX_NATIVE_SURFACE_PRESEED_COMBINED_BYTES={combined_bytes}", flush=True)
