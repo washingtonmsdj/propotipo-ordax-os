@@ -4,6 +4,7 @@ import {
 } from "../../adapters/native/client-diagnostics.mjs";
 import { createNativeBrowserSession } from "../../adapters/native/browser-session.mjs";
 import { createNativeBrowserFavoritesStore } from "../../adapters/native/browser-favorites.mjs";
+import { createNativeBrowserHistoryStore } from "../../adapters/native/browser-history.mjs";
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
@@ -28,6 +29,8 @@ import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createBrowserFavoritesRuntime } from "../../services/internet/favorites.mjs";
+import { createBrowserHistoryRuntime } from "../../services/internet/history.mjs";
+import { createBrowserHistoryBridge } from "../../services/internet/history-bridge.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
 import { createProjectWebReferenceRuntime } from "../../services/projects/web-references.mjs";
@@ -151,6 +154,9 @@ async function start() {
   const browserFavorites = createBrowserFavoritesRuntime({
     store: createNativeBrowserFavoritesStore(window),
   });
+  const browserHistory = createBrowserHistoryRuntime({
+    store: createNativeBrowserHistoryStore(window),
+  });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
@@ -175,6 +181,15 @@ async function start() {
       void clientDiagnostics.report(renderedSourceSha(window), stage, error);
     }
   };
+  const browserHistoryBridge = createBrowserHistoryBridge(
+    browserSession,
+    browserHistory,
+    {
+      onError(error) {
+        reportClientDiagnostic("internet-history", error);
+      },
+    },
+  );
   const onWindowError = (event) => {
     reportClientDiagnostic("window-error", event.error ?? new Error("window-error"));
   };
@@ -225,7 +240,12 @@ async function start() {
     root,
     browserSession,
     surface,
-    { projects, projectReferences, favorites: browserFavorites },
+    {
+      projects,
+      projectReferences,
+      favorites: browserFavorites,
+      history: browserHistory,
+    },
   );
   const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
@@ -364,6 +384,8 @@ async function start() {
       notesWorkspaceControls.destroy();
       internetBrowserShortcuts.destroy();
       internetBrowserControls.destroy();
+      browserHistoryBridge.destroy();
+      browserHistory.destroy();
       browserFavorites.destroy();
       projectReferences?.destroy();
       accountOverviewControls.destroy();
