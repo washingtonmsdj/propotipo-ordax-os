@@ -28,7 +28,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
             policy["$schema"],
             "prototype-ordax.runtime-component-package-policy/1",
         )
-        self.assertEqual(policy["status"], "signed-slot-staging")
+        self.assertEqual(policy["status"], "signed-slot-runtime-gated")
         self.assertEqual(policy["supported_components"], ["internet"])
         self.assertEqual(
             policy["release_descriptor_schema"],
@@ -56,6 +56,8 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         self.assertFalse(policy["whole_os_release_trust_may_be_implicitly_reused"])
         self.assertEqual(policy["native_slot_root"], "/var/lib/ordax/components")
         self.assertTrue(policy["immutable_slot_staging_available"])
+        self.assertTrue(policy["native_slot_serving_available"])
+        self.assertTrue(policy["pending_health_loader_available"])
         self.assertFalse(policy["slot_activation_available"])
         self.assertFalse(policy["pending_health_promotion_available"])
         self.assertFalse(policy["publish_allowed"])
