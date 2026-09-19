@@ -6,12 +6,7 @@ on:
     paths:
       - 'bootstrap/base-update/**'
       - 'bootstrap/release-acquisition/**'
-      - 'system/services/base-update/dev_channel.py'
-      - 'system/services/base-update/dev_stage.py'
-      - 'system/services/base-update/esp_discovery.py'
-      - 'system/services/base-update/esp_layout.py'
-      - 'system/services/base-update/esp_layout.py'
-      - 'system/services/base-update/esp_discovery.py'
+      - 'system/services/base-update/*.py'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
@@ -21,8 +16,7 @@ on:
     paths:
       - 'bootstrap/base-update/**'
       - 'bootstrap/release-acquisition/**'
-      - 'system/services/base-update/dev_channel.py'
-      - 'system/services/base-update/dev_stage.py'
+      - 'system/services/base-update/*.py'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
