@@ -101,13 +101,7 @@ jobs:
       - name: Prove signed envelope and immutable slot staging
         run: |
           set -euo pipefail
-          release_mode="$(python - <<'PY'
-import json
-from pathlib import Path
-descriptor = json.loads(Path("out/runtime-components/runtime-component-release.json").read_text(encoding="utf-8"))
-print(descriptor["component"]["release_mode"])
-PY
-)"
+          release_mode="$(python -c 'import json; print(json.load(open("out/runtime-components/runtime-component-release.json", encoding="utf-8"))["component"]["release_mode"])')"
           if [ "$release_mode" = "git-app" ]; then
             echo 'RUNTIME_COMPONENT_SIGNED_STAGING=SKIPPED_GIT_APP'
             echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
