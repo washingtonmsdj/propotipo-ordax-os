@@ -769,8 +769,8 @@ export function mountNotesWorkspaceControls(
         return;
       }
       const title = windowObject.prompt?.("Título da referência:", hostFromHref(href)) || hostFromHref(href);
-      runtime.addReference(note.id, { kind: "link", title, detail: "Link", href });
       resetReferenceFlow();
+      runtime.addReference(note.id, { kind: "link", title, detail: "Link", href });
     }
     if (action === "add-file-reference" && filePort) {
       referenceNoteId = note.id;
@@ -796,14 +796,15 @@ export function mountNotesWorkspaceControls(
       render();
     }
     if (action === "attach-file-reference" && selectedFilePath && referenceNoteId === note.id) {
-      const title = selectedFilePath.split("/").filter(Boolean).at(-1) || "Arquivo";
+      const path = selectedFilePath;
+      const title = path.split("/").filter(Boolean).at(-1) || "Arquivo";
+      resetReferenceFlow();
       runtime.addReference(note.id, {
         kind: "file",
         title,
         detail: "Arquivo local",
-        path: selectedFilePath,
+        path,
       });
-      resetReferenceFlow();
     }
     if (action === "open-file-reference" && activationPort) {
       const path = actionNode.dataset.filePath;
