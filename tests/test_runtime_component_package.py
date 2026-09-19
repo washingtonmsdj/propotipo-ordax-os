@@ -50,7 +50,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         self.assertEqual(component["healthMode"], "runtime")
         self.assertEqual(
             metadata["entrypoint"].as_posix(),
-            "system/components/internet/runtime.mjs",
+            "system/apps/internet/runtime.mjs",
         )
 
     def test_internet_candidate_graph_is_self_contained_and_excludes_platform_code(self):
@@ -58,10 +58,10 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         metadata, graph = builder.component_graph("internet")
         paths = {path.as_posix() for path in graph}
         self.assertIn(metadata["entrypoint"].as_posix(), paths)
-        self.assertIn("system/components/internet/internet.css", paths)
+        self.assertIn("system/apps/internet/internet.css", paths)
         self.assertIn("system/contracts/browser-session.mjs", paths)
-        self.assertIn("system/services/internet/history.mjs", paths)
-        self.assertIn("system/surface/ui/internet-browser-controls.mjs", paths)
+        self.assertIn("system/apps/internet/services/history.mjs", paths)
+        self.assertIn("system/apps/internet/ui/browser-controls.mjs", paths)
         self.assertFalse(any(path.startswith("system/adapters/") for path in paths))
         self.assertFalse(any(path.startswith("system/composition/") for path in paths))
         self.assertFalse(any(path.startswith("system/surface/runtime/") for path in paths))
@@ -113,7 +113,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
                     info.filename: source.read(info.filename)
                     for info in source.infolist()
                 }
-            runtime = "system/components/internet/runtime.mjs"
+            runtime = "system/apps/internet/runtime.mjs"
             entries[runtime] += b"\n// tampered\n"
 
             with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_STORED) as target:
