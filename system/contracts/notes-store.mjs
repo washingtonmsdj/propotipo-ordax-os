@@ -1,13 +1,18 @@
 export const NOTES_STORE_SCHEMA = "ordax.notes-store/1";
-export const NOTES_SNAPSHOT_SCHEMA = "ordax.notes-snapshot/1";
+export const NOTES_SNAPSHOT_SCHEMA = "ordax.notes-snapshot/2";
+export const LEGACY_NOTES_SNAPSHOT_SCHEMA = "ordax.notes-snapshot/1";
 export const MAX_NOTES = 512;
 export const MAX_NOTE_PROJECTS = 64;
 export const MAX_NOTE_REFERENCES = 32;
 export const MAX_NOTE_TASKS = 64;
 export const MAX_NOTE_TEXT_CHARS = 65536;
+export const MAX_NOTE_RICH_BLOCKS = 256;
+export const MAX_NOTE_RICH_MARKS_PER_BLOCK = 64;
 
 const ID_RE = /^[a-z0-9][a-z0-9._:-]{0,95}$/;
 const REFERENCE_KINDS = new Set(["link", "file"]);
+const RICH_BLOCK_TYPES = new Set(["paragraph", "heading", "quote", "bullet"]);
+const RICH_MARK_TYPES = new Set(["bold", "italic", "link"]);
 
 function finiteTimestamp(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -21,6 +26,80 @@ function boundedText(value, label, max = MAX_NOTE_TEXT_CHARS) {
     throw new TypeError(`${label} is invalid`);
   }
   return value;
+}
+
+function freezeRichMark(value, textLength) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Rich-text mark is invalid");
+  }
+  if (!RICH_MARK_TYPES.has(value.type)) {
+    throw new TypeError("Rich-text mark type is invalid");
+  }
+  if (
+    !Number.isInteger(value.start)
+    || !Number.isInteger(value.end)
+    || value.start < 0
+    || value.end <= value.start
+    || value.end > textLength
+  ) {
+    throw new TypeError("Rich-text mark range is invalid");
+  }
+  const href = value.type === "link"
+    ? boundedText(value.href ?? "", "Rich-text link", 4096)
+    : "";
+  if (value.type === "link" && !/^https?:\/\//i.test(href)) {
+    throw new TypeError("Rich-text link must use http or https");
+  }
+  return Object.freeze({
+    type: value.type,
+    start: value.start,
+    end: value.end,
+    href,
+  });
+}
+
+function freezeRichBlock(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Rich-text block is invalid");
+  }
+  if (!RICH_BLOCK_TYPES.has(value.type)) {
+    throw new TypeError("Rich-text block type is invalid");
+  }
+  const text = boundedText(value.text ?? "", "Rich-text block text", MAX_NOTE_TEXT_CHARS);
+  const marks = Array.isArray(value.marks) ? value.marks.map((mark) => freezeRichMark(mark, text.length)) : [];
+  if (marks.length > MAX_NOTE_RICH_MARKS_PER_BLOCK) {
+    throw new TypeError("Rich-text block has too many marks");
+  }
+  return Object.freeze({
+    type: value.type,
+    text,
+    marks: Object.freeze(marks),
+  });
+}
+
+export function validateNotesRichBody(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.blocks)) {
+    throw new TypeError("Rich note body is invalid");
+  }
+  if (value.blocks.length === 0 || value.blocks.length > MAX_NOTE_RICH_BLOCKS) {
+    throw new TypeError("Rich note body block count is invalid");
+  }
+  const blocks = value.blocks.map(freezeRichBlock);
+  const plainText = blocks.map((block) => block.text).join("\n");
+  boundedText(plainText, "Rich note body text");
+  return Object.freeze({ blocks: Object.freeze(blocks) });
+}
+
+export function createNotesRichBodyFromPlainText(value) {
+  const text = boundedText(value ?? "", "Note body");
+  return validateNotesRichBody({
+    blocks: [{ type: "paragraph", text, marks: [] }],
+  });
+}
+
+export function notesRichBodyToPlainText(value) {
+  const richBody = validateNotesRichBody(value);
+  return richBody.blocks.map((block) => block.text).join("\n");
 }
 
 function validId(value, label) {
@@ -90,11 +169,22 @@ function freezeNote(value, projectIds) {
   const references = Array.isArray(value.references) ? value.references.map(freezeReference) : [];
   if (tasks.length > MAX_NOTE_TASKS) throw new TypeError("Note has too many tasks");
   if (references.length > MAX_NOTE_REFERENCES) throw new TypeError("Note has too many references");
+
+  const sourceBody = boundedText(value.body ?? "", "Note body");
+  const richBody = value.richBody === undefined || value.richBody === null
+    ? createNotesRichBodyFromPlainText(sourceBody)
+    : validateNotesRichBody(value.richBody);
+  const body = richBody.blocks.map((block) => block.text).join("\n");
+  if (value.richBody !== undefined && value.richBody !== null && sourceBody !== body) {
+    throw new TypeError("Note body and rich body must describe the same text");
+  }
+
   return Object.freeze({
     id: validId(value.id, "Note id"),
     projectId,
     title: boundedText(value.title, "Note title", 1024),
-    body: boundedText(value.body, "Note body"),
+    body,
+    richBody,
     favorite: value.favorite === true,
     deletedAt: value.deletedAt === null || value.deletedAt === undefined
       ? null
@@ -108,7 +198,7 @@ function freezeNote(value, projectIds) {
 
 export function validateNotesSnapshot(value) {
   if (!value || typeof value !== "object") throw new TypeError("Notes snapshot must be an object");
-  if (value.$schema !== NOTES_SNAPSHOT_SCHEMA) {
+  if (![NOTES_SNAPSHOT_SCHEMA, LEGACY_NOTES_SNAPSHOT_SCHEMA].includes(value.$schema)) {
     throw new TypeError(`Unsupported notes snapshot schema: ${String(value.$schema)}`);
   }
   if (!Array.isArray(value.projects) || !Array.isArray(value.notes)) {

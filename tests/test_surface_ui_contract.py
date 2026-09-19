@@ -45,6 +45,7 @@ DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
+NOTES_RICH_EDITOR = SURFACE / "notes-rich-editor.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
@@ -64,6 +65,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE_LIFECYCLE,
             FILE_SPACE_CONTROLS,
             NOTES_WORKSPACE_CONTROLS,
+            NOTES_RICH_EDITOR,
             SYSTEM_OVERVIEW_CONTROLS,
             ACCOUNT_OVERVIEW_CONTROLS,
             SETTINGS_OVERVIEW_CONTROLS,
@@ -219,12 +221,32 @@ class SurfaceUiContractTests(unittest.TestCase):
 
         self.assertIn('kind: "extension"', notes)
         self.assertIn('extensionId: "notes-workspace"', notes)
+        rich_editor = NOTES_RICH_EDITOR.read_text(encoding="utf-8")
         self.assertIn('NOTES_EXTENSION_SELECTOR', controls)
         self.assertIn("assertNotesRuntime", controls)
+        self.assertIn("./notes-rich-editor.mjs", controls)
+        self.assertIn("renderNotesRichBody", controls)
+        self.assertIn("readNotesRichBody", controls)
+        self.assertIn("toggleNotesRichInlineMark", controls)
+        self.assertIn("setNotesRichBlockType", controls)
         self.assertIn("scheduleSave", controls)
         self.assertIn("Referências", controls)
         self.assertIn("Disponível offline", controls)
+        self.assertNotIn("wrapSelection", controls)
+        self.assertNotIn("prefixSelectedLines", controls)
+        self.assertNotIn('"]()"', controls)
+        self.assertNotIn('"**"', controls)
+        self.assertIn('contentEditable = "true"', rich_editor)
+        self.assertIn("validateNotesRichBody", rich_editor)
+        self.assertIn("pastePlainTextIntoNotesEditor", rich_editor)
+        self.assertNotIn("innerHTML", rich_editor)
+        self.assertNotIn("localStorage", rich_editor)
+        self.assertNotIn("/__ordax/native/", rich_editor)
         self.assertIn(".ordax-notes-view", css)
+        self.assertIn(".ordax-notes-rich-editor", css)
+        self.assertIn('[data-notes-block-type="heading"]', css)
+        self.assertIn('[data-notes-block-type="quote"]', css)
+        self.assertIn('[data-notes-block-type="bullet"]', css)
         self.assertIn("--notes-accent: #ed4b25", css)
         self.assertIn("../../surface/ui/notes.css", web_html)
         self.assertIn("../../surface/ui/notes.css", native_html)

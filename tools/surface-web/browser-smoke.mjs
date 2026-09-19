@@ -538,14 +538,31 @@ function buildCompositionProofExpression(moduleSources, styles) {
     if (notesTitle && notesBody) {
       notesTitle.value = 'Nota persistida no smoke';
       notesTitle.dispatchEvent(new Event('input', { bubbles: true }));
-      notesBody.value = 'Conteúdo salvo localmente e disponível offline.';
+      const richBlock = notesBody.querySelector('[data-notes-rich-block]');
+      if (richBlock) richBlock.textContent = 'Conteúdo salvo localmente e disponível offline.';
       notesBody.dispatchEvent(new Event('input', { bubbles: true }));
+
+      notesBody.focus();
+      const textNode = richBlock?.firstChild;
+      if (textNode?.nodeType === Node.TEXT_NODE) {
+        const range = document.createRange();
+        range.setStart(textNode, 0);
+        range.setEnd(textNode, 'Conteúdo'.length);
+        const selection = document.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new Event('selectionchange'));
+        notesSlot.querySelector('[data-notes-action="bold"]')?.click();
+      }
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 380));
     }
     const notesStorage = parsedStorage('ordax.notes.v1');
     const persistedNote = notesStorage?.notes?.find((item) => item.id === notesStorage.selectedNoteId);
     result.notesAutosavePersisted = persistedNote?.title === 'Nota persistida no smoke'
       && persistedNote?.body === 'Conteúdo salvo localmente e disponível offline.';
+    result.notesRichTextPersisted = persistedNote?.richBody?.blocks?.[0]?.marks
+      ?.some((mark) => mark.type === 'bold' && mark.start === 0 && mark.end === 'Conteúdo'.length) === true;
+    result.notesPlainBodyHasNoMarkup = persistedNote?.body?.includes('**') === false;
 
     const addReferenceButton = notesSlot?.querySelector('[data-notes-action="add-reference"]');
     result.notesReferenceActionPresent = Boolean(addReferenceButton);
@@ -599,6 +616,9 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesWindowRestored = Boolean(restoredNotesSlot);
     result.notesOwnerRestored = Boolean(restoredNotesSlot?.dataset.ordaxNotesMounted === 'true');
     result.notesContentRestored = restoredNotesSlot?.querySelector('[data-notes-title]')?.value === 'Nota persistida no smoke';
+    const restoredNotesBody = restoredNotesSlot?.querySelector('[data-notes-body]');
+    result.notesRichTextRestored = restoredNotesBody?.textContent === 'Conteúdo salvo localmente e disponível offline.'
+      && restoredNotesBody?.querySelector('strong')?.textContent === 'Conteúdo';
 
     const restoredAccountSlot = root?.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
@@ -620,12 +640,14 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
       'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewActionPresent', 'notesAutosavePersisted',
+      'notesRichTextPersisted', 'notesPlainBodyHasNoMarkup',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
       'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
+      'notesRichTextRestored',
       'accountWindowRestored', 'accountOwnerRestored', 'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
       'systemOwnerRestored', 'systemOverviewRestored',
     ];

@@ -36,6 +36,7 @@ class FilesToNotesImportContractTests(unittest.TestCase):
         source = self.source()
         self.assertIn('kind: "file"', source)
         self.assertIn("detail: path", source)
+        self.assertIn("path,", source)
         self.assertIn("title: name", source)
         self.assertIn("body: source.text", source)
         self.assertNotIn("slice(0, MAX_NOTE_TEXT_CHARS)", source)

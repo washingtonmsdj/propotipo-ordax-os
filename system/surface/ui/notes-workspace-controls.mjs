@@ -1,12 +1,29 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import { assertFileSpacePort, validateFileSpacePath } from "../../contracts/file-space.mjs";
 import { assertNotesRuntime } from "../../services/notes/runtime.mjs";
+import {
+  applyNotesRichLink,
+  captureNotesRichSelection,
+  createNotesRichEditor,
+  normalizeNotesRichEditor,
+  notesRichSelectionState,
+  pastePlainTextIntoNotesEditor,
+  preventNotesRichDrop,
+  readNotesRichBody,
+  renderNotesRichBody,
+  restoreNotesRichSelection,
+  setNotesRichBlockType,
+  toggleNotesRichInlineMark,
+  undoNotesRichEditor,
+} from "./notes-rich-editor.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
 const SAVE_DELAY_MS = 320;
 const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
+const IMAGE_FILE_RE = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 
 function node(documentObject, tag, className, text) {
   const element = documentObject.createElement(tag);
@@ -95,28 +112,6 @@ function visibleNotes(documentState, mode, query, newestFirst = true) {
     .sort((a, b) => newestFirst ? b.updatedAt - a.updatedAt : a.updatedAt - b.updatedAt);
 }
 
-function wrapSelection(textarea, before, after = before, fallback = "texto") {
-  const start = textarea.selectionStart ?? textarea.value.length;
-  const end = textarea.selectionEnd ?? start;
-  const selected = textarea.value.slice(start, end) || fallback;
-  textarea.setRangeText(`${before}${selected}${after}`, start, end, "select");
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-  textarea.focus();
-}
-
-function prefixSelectedLines(textarea, prefix) {
-  const start = textarea.selectionStart ?? 0;
-  const end = textarea.selectionEnd ?? start;
-  const lineStart = textarea.value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-  const lineEndRaw = textarea.value.indexOf("\n", end);
-  const lineEnd = lineEndRaw < 0 ? textarea.value.length : lineEndRaw;
-  const selected = textarea.value.slice(lineStart, lineEnd);
-  const next = selected.split("\n").map((line) => `${prefix}${line}`).join("\n");
-  textarea.setRangeText(next, lineStart, lineEnd, "select");
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-  textarea.focus();
-}
-
 function buildShell(documentObject) {
   const view = node(documentObject, "div", "ordax-notes-view");
   view.dataset.ordaxNotesView = "";
@@ -196,7 +191,7 @@ function buildShell(documentObject) {
     node(documentObject, "span", "ordax-notes-tool-separator"),
     button(documentObject, "ordax-notes-tool", "Adicionar item de checklist", "add-task", "☑"),
     button(documentObject, "ordax-notes-tool", "Inserir link no texto", "insert-link", "↗"),
-    button(documentObject, "ordax-notes-tool", "Inserir marcação de imagem", "insert-image", "▧"),
+    button(documentObject, "ordax-notes-tool", "Relacionar imagem local", "insert-image", "▧"),
     node(documentObject, "span", "ordax-notes-tool-separator"),
     button(documentObject, "ordax-notes-tool", "Desfazer", "undo", "↶"),
   );
@@ -223,12 +218,7 @@ function buildShell(documentObject) {
   title.setAttribute("aria-label", "Título da nota");
   form.append(title);
   form.append(node(documentObject, "div", "ordax-notes-meta"));
-  const body = node(documentObject, "textarea", "ordax-notes-body");
-  body.rows = 14;
-  body.maxLength = 65536;
-  body.spellcheck = true;
-  body.dataset.notesBody = "";
-  body.setAttribute("aria-label", "Conteúdo da nota");
+  const body = createNotesRichEditor(documentObject);
   form.append(body);
   const tasksSection = node(documentObject, "section", "ordax-notes-tasks");
   tasksSection.append(node(documentObject, "h3", "", "Para hoje"), node(documentObject, "div", "ordax-notes-task-list"));
@@ -297,8 +287,10 @@ export function mountNotesWorkspaceControls(
   let filePickerListing = null;
   let filePickerPending = false;
   let filePickerError = "";
+  let filePickerPurpose = "file";
   let selectedFilePath = null;
   let filePickerOrdinal = 0;
+  let lastEditorRange = null;
   let mountedSlot = null;
   let saveTimer = null;
   let pendingNoteId = null;
@@ -308,17 +300,35 @@ export function mountNotesWorkspaceControls(
     return state.document.notes.find((note) => note.id === id) ?? null;
   };
 
+  const persistEditor = (noteId) => {
+    if (!mountedSlot || !noteId) return false;
+    const title = mountedSlot.querySelector("[data-notes-title]");
+    const body = mountedSlot.querySelector("[data-notes-body]");
+    if (!body) return false;
+    normalizeNotesRichEditor(body);
+    try {
+      const richBody = readNotesRichBody(body);
+      runtime.updateNote(noteId, {
+        title: title?.value ?? "",
+        richBody,
+      });
+      return true;
+    } catch {
+      const status = mountedSlot.querySelector(".ordax-notes-save-status");
+      if (status) status.textContent = "Não foi possível salvar esta edição";
+      return false;
+    }
+  };
+
   const flushEditor = () => {
     if (!mountedSlot || pendingNoteId === null) return;
     if (saveTimer !== null) {
       windowObject.clearTimeout(saveTimer);
       saveTimer = null;
     }
-    const title = mountedSlot.querySelector("[data-notes-title]");
-    const body = mountedSlot.querySelector("[data-notes-body]");
     const noteId = pendingNoteId;
     pendingNoteId = null;
-    runtime.updateNote(noteId, { title: title?.value ?? "", body: body?.value ?? "" });
+    persistEditor(noteId);
   };
 
   const scheduleSave = () => {
@@ -333,9 +343,7 @@ export function mountNotesWorkspaceControls(
       const noteId = pendingNoteId;
       pendingNoteId = null;
       if (!noteId || !mountedSlot) return;
-      const title = mountedSlot.querySelector("[data-notes-title]");
-      const body = mountedSlot.querySelector("[data-notes-body]");
-      runtime.updateNote(noteId, { title: title?.value ?? "", body: body?.value ?? "" });
+      persistEditor(noteId);
     }, SAVE_DELAY_MS);
   };
 
@@ -346,6 +354,7 @@ export function mountNotesWorkspaceControls(
     filePickerListing = null;
     filePickerPending = false;
     filePickerError = "";
+    filePickerPurpose = "file";
     selectedFilePath = null;
     filePickerOrdinal += 1;
   };
@@ -470,7 +479,12 @@ export function mountNotesWorkspaceControls(
     const header = node(documentObject, "header", "ordax-notes-file-picker-header");
     const heading = node(documentObject, "div", "ordax-notes-file-picker-heading");
     heading.append(
-      node(documentObject, "strong", "", "Relacionar arquivo"),
+      node(
+        documentObject,
+        "strong",
+        "",
+        filePickerPurpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
+      ),
       node(documentObject, "small", "", filePickerPath),
     );
     header.append(
@@ -491,10 +505,16 @@ export function mountNotesWorkspaceControls(
     } else if (filePickerError) {
       list.append(node(documentObject, "p", "ordax-notes-file-picker-message", filePickerError));
     } else if (filePickerListing) {
-      const entries = [...filePickerListing.entries].sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
-        return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
-      });
+      const entries = [...filePickerListing.entries]
+        .filter((entry) => (
+          filePickerPurpose !== "image"
+          || entry.kind === "directory"
+          || IMAGE_FILE_RE.test(entry.name)
+        ))
+        .sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+          return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+        });
       if (entries.length === 0) {
         list.append(node(documentObject, "p", "ordax-notes-file-picker-message", "Esta pasta está vazia."));
       }
@@ -524,9 +544,9 @@ export function mountNotesWorkspaceControls(
     const attach = button(
       documentObject,
       "ordax-notes-file-picker-attach",
-      "Relacionar arquivo selecionado",
+      filePickerPurpose === "image" ? "Relacionar imagem selecionada" : "Relacionar arquivo selecionado",
       "attach-file-reference",
-      "Relacionar arquivo",
+      filePickerPurpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
     );
     attach.disabled = !selectedFilePath || filePickerPending;
     picker.append(attach);
@@ -590,12 +610,45 @@ export function mountNotesWorkspaceControls(
     renderReferenceControls(view, note);
   };
 
+  const syncEditorToolbar = () => {
+    if (!mountedSlot) return;
+    const body = mountedSlot.querySelector("[data-notes-body]");
+    if (!body) return;
+    const selection = notesRichSelectionState(body);
+    const format = mountedSlot.querySelector("[data-notes-format]");
+    const formatValue = {
+      paragraph: "text",
+      heading: "h2",
+      bullet: "list",
+      quote: "quote",
+    }[selection.blockType] ?? "text";
+    if (format) format.value = formatValue;
+    const bold = mountedSlot.querySelector('[data-notes-action="bold"]');
+    const italic = mountedSlot.querySelector('[data-notes-action="italic"]');
+    if (bold) {
+      bold.dataset.active = String(selection.bold);
+      bold.setAttribute("aria-pressed", String(selection.bold));
+    }
+    if (italic) {
+      italic.dataset.active = String(selection.italic);
+      italic.setAttribute("aria-pressed", String(selection.italic));
+    }
+  };
+
+  const restoreEditorRange = () => {
+    if (!mountedSlot || !lastEditorRange) return false;
+    const body = mountedSlot.querySelector("[data-notes-body]");
+    return body ? restoreNotesRichSelection(body, lastEditorRange) : false;
+  };
+
   const renderEditor = (view) => {
     const note = currentNote();
     const empty = view.querySelector("[data-notes-empty]");
     const documentView = view.querySelector("[data-notes-document]");
     const controls = view.querySelectorAll(".ordax-notes-toolbar button, .ordax-notes-format, .ordax-notes-star, .ordax-notes-more");
     for (const control of controls) control.disabled = !note;
+    const imageTool = view.querySelector('[data-notes-action="insert-image"]');
+    if (imageTool) imageTool.disabled = !note || filePort === null;
 
     if (!note) {
       empty.hidden = false;
@@ -615,11 +668,12 @@ export function mountNotesWorkspaceControls(
     const body = view.querySelector("[data-notes-body]");
     if (view.dataset.renderedNoteId !== note.id) {
       title.value = note.title;
-      body.value = note.body;
+      renderNotesRichBody(body, note.richBody);
       view.dataset.renderedNoteId = note.id;
+      lastEditorRange = null;
     } else {
       if (active !== title && pendingNoteId !== note.id) title.value = note.title;
-      if (active !== body && pendingNoteId !== note.id) body.value = note.body;
+      if (active !== body && pendingNoteId !== note.id) renderNotesRichBody(body, note.richBody);
     }
     title.style.height = "auto";
     title.style.height = `${Math.min(150, Math.max(58, title.scrollHeight))}px`;
@@ -669,6 +723,11 @@ export function mountNotesWorkspaceControls(
   };
 
   const onClick = (event) => {
+    const editorLink = event.target.closest?.("[data-notes-body] a");
+    if (editorLink && mountedSlot?.contains(editorLink)) {
+      event.preventDefault();
+      return;
+    }
     const actionNode = event.target.closest("[data-notes-action]");
     if (!actionNode || !mountedSlot?.contains(actionNode)) return;
     const action = actionNode.dataset.notesAction;
@@ -736,14 +795,49 @@ export function mountNotesWorkspaceControls(
       const menu = mountedSlot.querySelector(".ordax-notes-menu");
       menu.hidden = !menu.hidden;
     }
-    if (action === "bold") wrapSelection(body, "**");
-    if (action === "italic") wrapSelection(body, "*");
-    if (action === "insert-link") wrapSelection(body, "[", "]()", "link");
-    if (action === "insert-image") wrapSelection(body, "![", "](imagem)", "descrição");
+    if (action === "bold") {
+      restoreEditorRange();
+      toggleNotesRichInlineMark(body, "bold");
+      syncEditorToolbar();
+    }
+    if (action === "italic") {
+      restoreEditorRange();
+      toggleNotesRichInlineMark(body, "italic");
+      syncEditorToolbar();
+    }
+    if (action === "insert-link") {
+      restoreEditorRange();
+      const href = windowObject.prompt?.("Cole o endereço do link:");
+      if (href) {
+        let valid = false;
+        try {
+          valid = WEB_PROTOCOLS.includes(new URL(href).protocol);
+        } catch {
+          valid = false;
+        }
+        if (!valid) {
+          windowObject.alert?.("Use um endereço da web válido.");
+        } else if (!applyNotesRichLink(body, href)) {
+          windowObject.alert?.("Selecione um trecho da nota antes de adicionar o link.");
+        }
+      }
+      syncEditorToolbar();
+    }
+    if (action === "insert-image" && filePort) {
+      referencesOpen = true;
+      referenceNoteId = note.id;
+      referenceChooserOpen = false;
+      filePickerPurpose = "image";
+      filePickerOpen = true;
+      filePickerPath = "/";
+      filePickerListing = null;
+      selectedFilePath = null;
+      void loadFilePicker("/");
+    }
     if (action === "undo") {
-      body.focus();
-      documentObject.execCommand?.("undo");
-      scheduleSave();
+      restoreEditorRange();
+      undoNotesRichEditor(body);
+      syncEditorToolbar();
     }
     if (action === "add-reference") {
       referenceNoteId = note.id;
@@ -775,6 +869,7 @@ export function mountNotesWorkspaceControls(
     if (action === "add-file-reference" && filePort) {
       referenceNoteId = note.id;
       referenceChooserOpen = false;
+      filePickerPurpose = "file";
       filePickerOpen = true;
       filePickerPath = "/";
       filePickerListing = null;
@@ -797,12 +892,13 @@ export function mountNotesWorkspaceControls(
     }
     if (action === "attach-file-reference" && selectedFilePath && referenceNoteId === note.id) {
       const path = selectedFilePath;
+      const purpose = filePickerPurpose;
       const title = path.split("/").filter(Boolean).at(-1) || "Arquivo";
       resetReferenceFlow();
       runtime.addReference(note.id, {
         kind: "file",
         title,
-        detail: "Arquivo local",
+        detail: purpose === "image" ? "Imagem local" : "Arquivo local",
         path,
       });
     }
@@ -823,6 +919,11 @@ export function mountNotesWorkspaceControls(
       return;
     }
     if (event.target.matches("[data-notes-title], [data-notes-body]")) {
+      if (event.target.matches("[data-notes-body]")) {
+        normalizeNotesRichEditor(event.target);
+        lastEditorRange = captureNotesRichSelection(event.target) ?? lastEditorRange;
+        syncEditorToolbar();
+      }
       scheduleSave();
       if (event.target.matches("[data-notes-title]")) {
         event.target.style.height = "auto";
@@ -843,13 +944,56 @@ export function mountNotesWorkspaceControls(
     }
     if (event.target.matches("[data-notes-format]")) {
       const body = mountedSlot.querySelector("[data-notes-body]");
-      const prefix = { h2: "## ", list: "- ", quote: "> " }[event.target.value];
-      if (prefix) prefixSelectedLines(body, prefix);
-      event.target.value = "text";
+      restoreEditorRange();
+      const blockType = {
+        text: "paragraph",
+        h2: "heading",
+        list: "bullet",
+        quote: "quote",
+      }[event.target.value] ?? "paragraph";
+      setNotesRichBlockType(body, blockType);
+      syncEditorToolbar();
+    }
+  };
+
+  const onPointerDown = (event) => {
+    const actionNode = event.target.closest?.("[data-notes-action]");
+    if (!actionNode || !mountedSlot?.contains(actionNode)) return;
+    if (EDITOR_FORMAT_ACTIONS.has(actionNode.dataset.notesAction)) {
+      event.preventDefault();
+    }
+  };
+
+  const onPaste = (event) => {
+    const body = mountedSlot?.querySelector("[data-notes-body]");
+    if (body && (event.target === body || body.contains(event.target))) {
+      pastePlainTextIntoNotesEditor(body, event);
+    }
+  };
+
+  const onDrop = (event) => {
+    const body = mountedSlot?.querySelector("[data-notes-body]");
+    if (body && (event.target === body || body.contains(event.target))) {
+      preventNotesRichDrop(event);
+    }
+  };
+
+  const onSelectionChange = () => {
+    const body = mountedSlot?.querySelector("[data-notes-body]");
+    if (!body) return;
+    const range = captureNotesRichSelection(body);
+    if (range) {
+      lastEditorRange = range;
+      syncEditorToolbar();
     }
   };
 
   const onReferenceOpen = (event) => {
+    const editorLink = event.target.closest?.("[data-notes-body] a");
+    if (editorLink && mountedSlot?.contains(editorLink)) {
+      event.preventDefault();
+      return;
+    }
     const card = event.target.closest(".ordax-notes-ref-card[data-href]");
     if (!card || event.target.closest("[data-notes-action]")) return;
     if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
@@ -858,10 +1002,14 @@ export function mountNotesWorkspaceControls(
   };
 
   root.addEventListener("click", onClick);
+  root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
+  root.addEventListener("paste", onPaste);
+  root.addEventListener("drop", onDrop);
   root.addEventListener("dblclick", onReferenceOpen);
   root.addEventListener("keydown", onReferenceOpen);
+  documentObject.addEventListener("selectionchange", onSelectionChange);
   const unsubscribeRuntime = runtime.subscribe((next) => {
     state = next;
     render();
@@ -876,10 +1024,15 @@ export function mountNotesWorkspaceControls(
       unsubscribeRuntime?.();
       unsubscribeRender?.();
       root.removeEventListener("click", onClick);
+      root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("input", onInput);
       root.removeEventListener("change", onChange);
+      root.removeEventListener("paste", onPaste);
+      root.removeEventListener("drop", onDrop);
       root.removeEventListener("dblclick", onReferenceOpen);
       root.removeEventListener("keydown", onReferenceOpen);
+      documentObject.removeEventListener("selectionchange", onSelectionChange);
+      lastEditorRange = null;
       mountedSlot = null;
     },
   });

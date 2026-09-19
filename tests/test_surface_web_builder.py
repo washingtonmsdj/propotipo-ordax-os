@@ -41,6 +41,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/surface/ui/surface.css",
             "system/surface/ui/files.css",
             "system/surface/ui/notes.css",
+            "system/surface/ui/notes-rich-editor.mjs",
             "system/surface/ui/notes-workspace-controls.mjs",
             "system/surface/ui/system.css",
             "system/surface/ui/system-overview-controls.mjs",
