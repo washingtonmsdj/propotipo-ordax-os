@@ -32,7 +32,10 @@ class InternetProjectContextContractTests(unittest.TestCase):
         self.assertIn('{ recentFiles, projects }', native)
         self.assertIn('createProjectWebReferenceRuntime', native)
         self.assertIn('createNativeProjectWebReferenceStore', native)
-        self.assertIn('projects, projectReferences, favorites: browserFavorites', native)
+        self.assertIn('projects,', native)
+        self.assertIn('projectReferences,', native)
+        self.assertIn('favorites: browserFavorites', native)
+        self.assertIn('history: browserHistory', native)
         self.assertIn('projectReferences?.destroy()', native)
 
     def test_web_composition_keeps_project_context_unavailable_without_fake_storage(self):
