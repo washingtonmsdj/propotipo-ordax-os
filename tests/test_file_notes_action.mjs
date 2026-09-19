@@ -6,7 +6,7 @@ import {
   createFileNotesActionPresentation,
   importSelectedFileToNotes,
   messageForNotesFileImport,
-} from "../system/surface/ui/file-notes-action.mjs";
+} from "../system/apps/files/ui/file-notes-action.mjs";
 
 const FILE = Object.freeze({
   kind: "file",
