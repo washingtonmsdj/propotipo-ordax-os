@@ -469,7 +469,7 @@ def install_runtime(rootfs: Path, kernel_modules: Path) -> None:
         copy_script(ROOT / f"bootstrap/dev-base/{name}", rootfs / f"usr/local/bin/{name}")
     copy_script(ROOT / "bootstrap/recovery/entrypoint", rootfs / "ordax/bootstrap/recovery/entrypoint")
 
-    for directory in ("workspace", "state", "home", "run", "tmp", "proc", "sys", "dev", "root"):
+    for directory in ("workspace", "state", "home", "versions", "run", "tmp", "proc", "sys", "dev", "root"):
         path = rootfs / directory
         path.mkdir(parents=True, exist_ok=True)
     (rootfs / "tmp").chmod(0o1777)
