@@ -139,7 +139,7 @@ test("Internet stays a first-party app while engine availability remains host-ow
   assert.deepEqual(internetApp.optionalCapabilities, ["browser.web-content"]);
   assert.equal(internetApp.panels[0].extensionId, "internet-browser");
   assert.equal(internetApp.component.owner, "system/apps/internet");
-  assert.equal(internetApp.component.releaseMode, "bundled");
+  assert.equal(internetApp.component.releaseMode, "git-app");
 });
 
 test("app contract rejects obsolete identity-specific panel kinds", () => {
