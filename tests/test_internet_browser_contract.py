@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "system" / "apps" / "internet" / "app.mjs"
 CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-session.mjs"
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
+CONTROLS = ROOT / "system" / "components" / "internet" / "ui" / "browser-controls.mjs"
 STYLES = ROOT / "system" / "components" / "internet" / "internet.css"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "browser-session.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "browser-session.mjs"
@@ -245,8 +245,8 @@ class InternetBrowserContractTests(unittest.TestCase):
         runtime = self.text(INTERNET_RUNTIME)
         manifests = self.text(APP_COMPONENTS)
         self.assertIn('componentId: "internet"', runtime)
-        self.assertIn('version: "0.3.0"', runtime)
-        self.assertIn('version: "0.3.0"', manifests)
+        self.assertIn('version: "0.4.0"', runtime)
+        self.assertIn('version: "0.4.0"', manifests)
         self.assertIn('restartScope: "component"', manifests)
         self.assertIn('healthMode: "runtime"', manifests)
         self.assertIn('mountInternetBrowserControls', runtime)
