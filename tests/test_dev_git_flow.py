@@ -227,6 +227,66 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             self.commit_v2,
         )
 
+    def test_failed_boot_rolls_back_and_retries_only_after_main_advances(self) -> None:
+        self._script(PULL)
+        self.commit_v2 = self._commit_runtime("runtime-v2")
+        self._script(PULL)
+
+        bin_dir = self.root / "auto-recovery-bin"
+        bin_dir.mkdir()
+        (bin_dir / "ordax-network").write_text(
+            "#!/bin/sh\nexit 0\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-pull").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{PULL}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-rollback").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{ROLLBACK}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-run").write_text(
+            "#!/bin/sh\n"
+            "if grep -q runtime-v2 \"$ORDAX_WORKTREE/system/entrypoint\"; then\n"
+            "  exit 42\n"
+            "fi\n"
+            "exec /bin/sh \"$ORDAX_WORKTREE/system/entrypoint\"\n",
+            encoding="utf-8",
+        )
+        for helper in bin_dir.iterdir():
+            helper.chmod(0o755)
+
+        boot_env = self._env()
+        boot_env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+            }
+        )
+
+        recovered = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Rollback automatico ativado", recovered.stdout)
+        self.assertIn("runtime-v1", recovered.stdout)
+        self.assertEqual((self.state / "boot-rejected-commit").read_text().strip(), self.commit_v2)
+        self.assertEqual((self.state / "pinned-commit").read_text().strip(), self.commit_v1)
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            self.commit_v1,
+        )
+
+        commit_v3 = self._commit_runtime("runtime-v3")
+        retried = self._script(DEV_INIT, env=boot_env)
+        self.assertIn("Main avancou alem do commit rejeitado", retried.stdout)
+        self.assertIn("runtime-v3", retried.stdout)
+        self.assertFalse((self.state / "boot-rejected-commit").exists())
+        self.assertFalse((self.state / "pinned-commit").exists())
+        self.assertEqual(
+            self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
+            commit_v3,
+        )
+
     def test_bootstrap_network_and_git_fail_soft_but_bounded(self) -> None:
         network = NETWORK.read_text(encoding="utf-8")
         pull = PULL.read_text(encoding="utf-8")
@@ -250,6 +310,9 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         self.assertNotIn('pull --ff-only', pull)
 
         self.assertIn('BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}', dev_init)
+        self.assertIn("BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit", dev_init)
+        self.assertIn("recover_previous_checkout()", dev_init)
+        self.assertIn("Main avancou alem do commit rejeitado", dev_init)
         self.assertIn('while [ "$attempt" -le "$BOOT_PULL_ATTEMPTS" ]', dev_init)
         self.assertIn("repetindo uma vez apos pausa curta", dev_init)
         self.assertIn("sleep 2", dev_init)
