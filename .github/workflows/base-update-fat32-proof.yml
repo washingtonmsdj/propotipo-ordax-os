@@ -8,6 +8,8 @@ on:
       - 'bootstrap/release-acquisition/**'
       - 'system/services/base-update/dev_channel.py'
       - 'system/services/base-update/dev_stage.py'
+      - 'system/services/base-update/esp_discovery.py'
+      - 'system/services/base-update/esp_discovery.py'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
@@ -66,6 +68,7 @@ jobs:
           python -m unittest tests.test_base_update_plan -v
           python -m unittest tests.test_base_update_stage -v
           python -m unittest tests.test_base_update_dev_stage -v
+          python -m unittest tests.test_base_update_esp_discovery -v
 
       - name: Prove staging on disposable FAT32 loop image
         run: |

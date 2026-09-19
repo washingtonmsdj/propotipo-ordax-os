@@ -187,7 +187,17 @@
     "physical_release_channel_may_be_absent_before_pinned_enrollment": true,
     "bootstrap_component_sentinels_not_required_before_pinned_enrollment": true,
     "versioned_root_subpath_normalization": "strip-terminal-/versions/<commit>-before-seed-state-and-version-store-resolution",
-    "development_version_store_inside_physical_root": "<seed-root-subpath>/versions"
+    "development_version_store_inside_physical_root": "<seed-root-subpath>/versions",
+    "esp_discovery": {
+      "filesystem_label": "ORDAX-ESP",
+      "label_path": "/dev/disk/by-label/ORDAX-ESP",
+      "direct_block_partition_required": true,
+      "same_parent_disk_as_root_required": true,
+      "sysfs_identity_required": true,
+      "discovery_mounts_esp": false,
+      "discovery_authorizes_write": false,
+      "discovery_authorizes_activation": false
+    }
   },
   "release_channel_enrollment": {
     "source_path": "bootstrap/config/release-envelope-url",
