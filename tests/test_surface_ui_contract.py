@@ -50,7 +50,7 @@ UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
 UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
 SURFACE_LIFECYCLE = ROOT / "system" / "contracts" / "surface-render-lifecycle.mjs"
-FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
+FILE_SPACE_CONTROLS = ROOT / "system" / "apps" / "files" / "ui" / "file-space-controls.mjs"
 NOTES_WORKSPACE_CONTROLS = APPS / "notes" / "ui" / "workspace-controls.mjs"
 NOTES_RICH_EDITOR = APPS / "notes" / "ui" / "rich-editor.mjs"
 INTERNET_BROWSER_CONTROLS = APPS / "internet" / "ui" / "browser-controls.mjs"
@@ -84,7 +84,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             NETWORK_QUICK_PANEL,
             SURFACE / "tokens.css",
             SURFACE / "surface.css",
-            SURFACE / "files.css",
+            ROOT / "system" / "apps" / "files" / "files.css",
             APPS / "notes" / "notes.css",
             APPS / "internet" / "internet.css",
             SURFACE / "system.css",
@@ -227,7 +227,7 @@ class SurfaceUiContractTests(unittest.TestCase):
     def test_files_uses_formal_shared_extension_slot(self):
         files = APP_OWNERS["files"].read_text(encoding="utf-8")
         surface = (SURFACE / "surface.mjs").read_text(encoding="utf-8")
-        css = (SURFACE / "files.css").read_text(encoding="utf-8")
+        css = (ROOT / "system" / "apps" / "files" / "files.css").read_text(encoding="utf-8")
         web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
         self.assertIn('kind: "extension"', files)
