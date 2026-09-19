@@ -125,6 +125,24 @@ export function validateComponentManifests(value) {
       }
     }
   }
+
+  const manifestById = new Map(manifests.map((manifest) => [manifest.id, manifest]));
+  const visiting = new Set();
+  const visited = new Set();
+  const visit = (componentId) => {
+    if (visited.has(componentId)) return;
+    if (visiting.has(componentId)) {
+      throw new TypeError(`Component dependency cycle detected at ${componentId}`);
+    }
+    visiting.add(componentId);
+    for (const dependency of manifestById.get(componentId).dependencies) {
+      visit(dependency);
+    }
+    visiting.delete(componentId);
+    visited.add(componentId);
+  };
+  for (const manifest of manifests) visit(manifest.id);
+
   return Object.freeze(manifests);
 }
 
