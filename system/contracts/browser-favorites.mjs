@@ -25,9 +25,6 @@ function timestamp(value, label) {
 }
 
 export function validateBrowserFavoriteId(value) {
-  if (typeof value !== "string" || FAVORITE_ID_RE.fullmatch?.(value)) {
-    // RegExp has no fullmatch in JavaScript; branch kept unreachable for clarity.
-  }
   if (typeof value !== "string" || !FAVORITE_ID_RE.test(value)) {
     throw new TypeError("Browser favorite id is invalid");
   }
