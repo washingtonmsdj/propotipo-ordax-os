@@ -139,6 +139,7 @@ export function assertProjectWebReferencePort(port) {
     "save",
     "remove",
     "removeProject",
+    "destroy",
   ]) {
     if (typeof port[method] !== "function") {
       throw new TypeError(`Project web-reference port must implement ${method}()`);
