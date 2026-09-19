@@ -1,4 +1,5 @@
 import {
+  MAX_NOTE_RICH_BLOCKS,
   MAX_NOTE_TEXT_CHARS,
   validateNotesRichBody,
 } from "../../contracts/notes-store.mjs";
@@ -267,7 +268,191 @@ function fallbackWrapSelection(editor, tagName, attributes = {}) {
   return true;
 }
 
+function isEditorEmpty(editor) {
+  return editorBlocks(editor).every((block) => block.text.length === 0);
+}
+
+function syncNotesRichEmptyState(editor) {
+  editor.dataset.notesEmptyState = String(isEditorEmpty(editor));
+}
+
+function placeholderBreak(documentObject) {
+  const placeholder = documentObject.createElement("br");
+  placeholder.dataset.notesPlaceholder = "";
+  return placeholder;
+}
+
+function ensureEditableBlock(block) {
+  if (readInlineContent(block).text.length === 0) {
+    block.replaceChildren(placeholderBreak(block.ownerDocument));
+  }
+}
+
+function placeCaretAtStart(element) {
+  const documentObject = element.ownerDocument;
+  const selection = documentObject.getSelection?.();
+  if (!selection) return false;
+  const range = documentObject.createRange();
+  range.selectNodeContents(element);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function placeCaretAtEnd(element) {
+  const documentObject = element.ownerDocument;
+  const selection = documentObject.getSelection?.();
+  if (!selection) return false;
+  const range = documentObject.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+function rangeStartsBlock(block, range) {
+  try {
+    const before = block.ownerDocument.createRange();
+    before.selectNodeContents(block);
+    before.setEnd(range.startContainer, range.startOffset);
+    return before.toString().length === 0;
+  } catch {
+    return false;
+  }
+}
+
+function currentPlainLength(editor) {
+  return editorBlocks(editor).map((block) => block.text).join("\n").length;
+}
+
+function convertBlockToParagraph(editor, block) {
+  block.dataset.notesBlockType = "paragraph";
+  block.classList.add("ordax-notes-rich-block");
+  block.dataset.notesRichBlock = "";
+  ensureEditableBlock(block);
+  placeCaretAtStart(block);
+  dispatchEditorInput(editor);
+  return true;
+}
+
+function insertNotesSoftBreak(editor, event) {
+  const selected = selectionInside(editor);
+  if (!selected) return false;
+  const startBlock = directEditorChild(editor, selected.range.startContainer);
+  const endBlock = directEditorChild(editor, selected.range.endContainer);
+  if (!startBlock || startBlock !== endBlock) return false;
+
+  const selectedLength = selected.range.toString().length;
+  if (currentPlainLength(editor) - selectedLength + 1 > MAX_NOTE_TEXT_CHARS) {
+    event.preventDefault();
+    return true;
+  }
+
+  event.preventDefault();
+  selected.range.deleteContents();
+  const textNode = editor.ownerDocument.createTextNode("\n");
+  selected.range.insertNode(textNode);
+  selected.range.setStartAfter(textNode);
+  selected.range.collapse(true);
+  selected.selection.removeAllRanges();
+  selected.selection.addRange(selected.range);
+  dispatchEditorInput(editor);
+  return true;
+}
+
+function splitNotesBlock(editor, event) {
+  const selected = selectionInside(editor);
+  if (!selected) return false;
+  const startBlock = directEditorChild(editor, selected.range.startContainer);
+  const endBlock = directEditorChild(editor, selected.range.endContainer);
+  if (!startBlock || startBlock !== endBlock) return false;
+
+  const currentType = blockTypeFor(startBlock);
+  const currentText = readInlineContent(startBlock).text;
+  if (selected.range.collapsed && currentText.length === 0 && currentType !== "paragraph") {
+    event.preventDefault();
+    return convertBlockToParagraph(editor, startBlock);
+  }
+
+  if (editor.children.length >= MAX_NOTE_RICH_BLOCKS) {
+    event.preventDefault();
+    return true;
+  }
+  const selectedLength = selected.range.toString().length;
+  if (currentPlainLength(editor) - selectedLength + 1 > MAX_NOTE_TEXT_CHARS) {
+    event.preventDefault();
+    return true;
+  }
+
+  event.preventDefault();
+  if (!selected.range.collapsed) {
+    selected.range.deleteContents();
+    selected.range.collapse(true);
+  }
+
+  const trailing = editor.ownerDocument.createRange();
+  trailing.setStart(selected.range.startContainer, selected.range.startOffset);
+  trailing.setEnd(startBlock, startBlock.childNodes.length);
+  const fragment = trailing.extractContents();
+
+  ensureEditableBlock(startBlock);
+  const nextBlock = editor.ownerDocument.createElement("div");
+  nextBlock.className = "ordax-notes-rich-block";
+  nextBlock.dataset.notesRichBlock = "";
+  nextBlock.dataset.notesBlockType = currentType === "bullet" ? "bullet" : "paragraph";
+  nextBlock.append(fragment);
+  ensureEditableBlock(nextBlock);
+  startBlock.after(nextBlock);
+  placeCaretAtStart(nextBlock);
+  dispatchEditorInput(editor);
+  return true;
+}
+
+function handleNotesBackspace(editor, event) {
+  const selected = selectionInside(editor);
+  if (!selected || !selected.range.collapsed) return false;
+  const block = directEditorChild(editor, selected.range.startContainer);
+  if (!block || !rangeStartsBlock(block, selected.range)) return false;
+
+  const type = blockTypeFor(block);
+  if (type !== "paragraph") {
+    event.preventDefault();
+    return convertBlockToParagraph(editor, block);
+  }
+
+  const previous = block.previousElementSibling;
+  if (!previous || previous.parentElement !== editor) return false;
+
+  event.preventDefault();
+  const blockText = readInlineContent(block).text;
+  if (blockText.length === 0) {
+    block.remove();
+    placeCaretAtEnd(previous);
+    dispatchEditorInput(editor);
+    return true;
+  }
+
+  if (readInlineContent(previous).text.length === 0) previous.replaceChildren();
+  const boundary = previous.childNodes.length;
+  while (block.firstChild) previous.append(block.firstChild);
+  block.remove();
+
+  const selection = editor.ownerDocument.getSelection?.();
+  if (selection) {
+    const range = editor.ownerDocument.createRange();
+    range.setStart(previous, Math.min(boundary, previous.childNodes.length));
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  dispatchEditorInput(editor);
+  return true;
+}
+
 function dispatchEditorInput(editor) {
+  syncNotesRichEmptyState(editor);
   editor.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
@@ -277,6 +462,7 @@ export function createNotesRichEditor(documentObject) {
   editor.contentEditable = "true";
   editor.spellcheck = true;
   editor.dataset.notesBody = "";
+  editor.dataset.notesEmptyState = "true";
   editor.setAttribute("role", "textbox");
   editor.setAttribute("aria-multiline", "true");
   editor.setAttribute("aria-label", "Conteúdo da nota");
@@ -298,6 +484,7 @@ export function renderNotesRichBody(editor, value) {
   }
 
   editor.replaceChildren(fragment);
+  syncNotesRichEmptyState(editor);
   return richBody;
 }
 
@@ -314,6 +501,22 @@ export function normalizeNotesRichEditor(editor) {
     child.classList.add("ordax-notes-rich-block");
     child.dataset.notesRichBlock = "";
   }
+  syncNotesRichEmptyState(editor);
+}
+
+export function handleNotesRichBlockKeyDown(editor, event) {
+  if (!editor || !event || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+    return false;
+  }
+  if (event.key === "Enter") {
+    return event.shiftKey
+      ? insertNotesSoftBreak(editor, event)
+      : splitNotesBlock(editor, event);
+  }
+  if (event.key === "Backspace" && !event.shiftKey) {
+    return handleNotesBackspace(editor, event);
+  }
+  return false;
 }
 
 export function setNotesRichBlockType(editor, type) {
