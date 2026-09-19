@@ -80,7 +80,7 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn('"Versão do produto"', overview)
         self.assertIn('"Notas"', overview)
         self.assertIn('"Internet"', overview)
-        self.assertIn("distribuição conjunta · sem versão própria", overview)
+        self.assertIn("Distribuição conjunta · sem versão própria", overview)
         self.assertIn("v1.0 permanece reservado para o produto estável", overview)
 
     def test_surface_uses_delivery_language_not_fake_component_versions(self):
