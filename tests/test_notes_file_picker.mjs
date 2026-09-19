@@ -6,7 +6,7 @@ import {
   createNotesFilePicker,
   joinNotesLogicalPath,
   notesParentLogicalPath,
-} from "../system/surface/ui/notes-file-picker.mjs";
+} from "../system/apps/notes/ui/file-picker.mjs";
 
 function deferred() {
   let resolve;
