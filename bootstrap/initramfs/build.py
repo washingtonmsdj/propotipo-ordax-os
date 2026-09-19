@@ -119,11 +119,14 @@ def check_contract() -> dict:
         raise BuildError(f"legacy/high-level responsibility leaked into fixed initramfs: {found}")
     if "findfs LABEL=ORDAX" not in text or "/ordax/bootstrap/entrypoint" not in text:
         raise BuildError("init must hand off through the canonical ORDAX bootstrap path")
-    rw_mount = 'mount -t ext4 -o rw "$ORDAX_DEVICE" /ordax'
+    rw_mount = 'mount -t ext4 -o rw,errors=remount-ro "$ORDAX_DEVICE" /ordax'
+    health_call = '/sbin/ordax-grow-ext4 --check "$ORDAX_DEVICE"'
     grow_call = '/sbin/ordax-grow-ext4 "$ORDAX_DEVICE" /ordax'
     recovery_mount = 'mount -t ext4 -o ro "$ORDAX_DEVICE" /ordax'
-    if rw_mount not in text or grow_call not in text:
-        raise BuildError("normal boot must mount ORDAX rw and invoke the fixed ext4 growth helper")
+    if rw_mount not in text or health_call not in text or grow_call not in text:
+        raise BuildError("normal boot must health-check ORDAX before writable mount and growth")
+    if text.index(health_call) > text.index(rw_mount):
+        raise BuildError("ext4 health check must run before the rw ORDAX mount")
     if text.index(grow_call) < text.index(rw_mount):
         raise BuildError("ext4 growth helper may run only after the rw ORDAX mount")
     if recovery_mount not in text or text.index(recovery_mount) > text.index(rw_mount):
@@ -424,6 +427,12 @@ def build(work_dir: Path, out_dir: Path, jobs: int) -> dict:
         "busybox_sha256": sha256_file(busybox),
         "toolchain": toolchain,
         "root_init_sha256": sha256_file(init),
+        "filesystem_health": {
+            "pre_mount_check": True,
+            "error_flag_policy": "read-only-recovery",
+            "rw_mount_errors_policy": "remount-ro",
+            "helper_path": "/sbin/ordax-grow-ext4",
+        },
         "filesystem_growth": {
             "mode": "online-ext4-kernel-ioctl",
             "helper_path": "/sbin/ordax-grow-ext4",
@@ -460,6 +469,14 @@ def verify(out_dir: Path) -> dict:
         raise BuildError(f"invalid initramfs provenance: {exc}") from exc
     if provenance.get("$schema") != "prototype-ordax.initramfs-provenance/1":
         raise BuildError("unexpected initramfs provenance schema")
+    health = provenance.get("filesystem_health", {})
+    if (
+        health.get("pre_mount_check") is not True
+        or health.get("error_flag_policy") != "read-only-recovery"
+        or health.get("rw_mount_errors_policy") != "remount-ro"
+        or health.get("helper_path") != "/sbin/ordax-grow-ext4"
+    ):
+        raise BuildError("initramfs provenance is missing the canonical ext4 health policy")
     growth = provenance.get("filesystem_growth", {})
     if growth.get("mode") != "online-ext4-kernel-ioctl" or growth.get("helper_path") != "/sbin/ordax-grow-ext4":
         raise BuildError("initramfs provenance is missing the canonical ext4 growth helper")
