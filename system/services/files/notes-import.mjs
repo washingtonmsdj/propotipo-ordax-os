@@ -72,6 +72,7 @@ export function createNotesFileImporter({ fileSpace, notesRuntime }) {
           kind: "file",
           title: name,
           detail: path,
+          path,
         });
         const note = finalState?.document?.notes?.find((candidate) => candidate.id === noteId);
         if (!note || note.title !== name || note.body !== source.text) {
