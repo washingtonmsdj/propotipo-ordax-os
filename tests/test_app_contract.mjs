@@ -107,7 +107,7 @@ test("Notes stays a first-party app and advertises native file-space as optional
 test("Internet stays a first-party app while engine availability remains host-owned", () => {
   assert.equal(internetApp.id, "internet");
   assert.deepEqual(internetApp.requiredCapabilities, []);
-  assert.deepEqual(internetApp.optionalCapabilities, []);
+  assert.deepEqual(internetApp.optionalCapabilities, ["browser.web-content"]);
   assert.equal(internetApp.panels[0].extensionId, "internet-browser");
 });
 
