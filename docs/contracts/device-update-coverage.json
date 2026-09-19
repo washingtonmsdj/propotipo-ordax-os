@@ -17,7 +17,11 @@
   "layers": [
     {
       "id": "apps-and-surface",
-      "source_roots": ["system/apps", "system/surface", "system/composition"],
+      "source_roots": [
+        "system/apps",
+        "system/surface",
+        "system/composition"
+      ],
       "development_delivery": "runtime-git-checkout",
       "activation": "reload-or-surface-restart",
       "usb_rewrite_required": false,
@@ -25,7 +29,10 @@
     },
     {
       "id": "development-boot-helpers",
-      "source_roots": ["bootstrap/dev-base", "bootstrap/recovery"],
+      "source_roots": [
+        "bootstrap/dev-base",
+        "bootstrap/recovery"
+      ],
       "development_delivery": "runtime-git-checkout-plus-dev-helper-refresh",
       "activation": "atomic-helper-replace",
       "usb_rewrite_required": false,
@@ -33,7 +40,10 @@
     },
     {
       "id": "kernel-and-initramfs",
-      "source_roots": ["bootstrap/kernel", "bootstrap/initramfs"],
+      "source_roots": [
+        "bootstrap/kernel",
+        "bootstrap/initramfs"
+      ],
       "development_delivery": "exact-commit-development-base-candidate",
       "activation": "inactive-base-slot-next-boot",
       "usb_rewrite_required": false,
@@ -41,7 +51,10 @@
     },
     {
       "id": "boot-selection-metadata",
-      "source_roots": ["bootstrap/base-update", "boot/esp/loader"],
+      "source_roots": [
+        "bootstrap/base-update",
+        "boot/esp/loader"
+      ],
       "development_delivery": "base-update-promotion",
       "activation": "atomic-versioned-boot-entry",
       "usb_rewrite_required": false,
@@ -49,7 +62,9 @@
     },
     {
       "id": "uefi-fallback-loader",
-      "source_roots": ["boot/esp/EFI/BOOT"],
+      "source_roots": [
+        "boot/esp/EFI/BOOT"
+      ],
       "development_delivery": "creator-or-recovery-maintenance",
       "activation": "physical-esp-loader-replacement",
       "usb_rewrite_required": "currently-yes-for-loader-byte-change",
@@ -58,7 +73,9 @@
     },
     {
       "id": "creator",
-      "source_roots": ["tools/creator"],
+      "source_roots": [
+        "tools/creator"
+      ],
       "development_delivery": "repository-ci-desktop-tooling",
       "activation": "host-tool-update",
       "usb_rewrite_required": false,
@@ -71,7 +88,11 @@
     "graphical_boot_splash_implemented": false,
     "future_early_splash_owner": "initramfs-or-base",
     "future_surface_loading_owner": "system/apps-or-system/surface",
-    "branding_source_must_remain_repository_owned": true
+    "branding_source_must_remain_repository_owned": true,
+    "surface_loading_implemented": true,
+    "surface_loading_owner": "system/surface/ui/boot-screen.*",
+    "surface_loading_delivery": "runtime-git-checkout",
+    "surface_loading_usb_rewrite_required": false
   },
   "runtime_checkout": {
     "sparse_by_design": true,
