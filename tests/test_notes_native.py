@@ -117,6 +117,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("createWebNotesStore", web_main)
         self.assertIn("createNotesRuntime", web_main)
         self.assertIn("mountNotesWorkspaceControls", web_main)
+        self.assertIn("{ appActivation }", web_main)
         self.assertIn("notesWorkspaceControls.destroy()", web_main)
 
         self.assertIn("createNativeNotesStore", native_main)
@@ -271,6 +272,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("MAX_NOTE_REFERENCES", controls)
         self.assertIn("Prévia disponível no OrdaX Native.", controls)
         self.assertIn('activationPort.publish({ appId: "files"', controls)
+        self.assertIn('activationPort.publish({ appId: "browser"', controls)
         self.assertIn("subscribeRender", controls)
         self.assertNotIn("localStorage", controls)
         self.assertNotIn("/__ordax/native/", controls)
