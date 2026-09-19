@@ -13,6 +13,11 @@ BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit
 PREVIOUS_FILE=$STATE_DIR/previous-commit
 CURRENT_FILE=$STATE_DIR/current-commit
 BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required
+DEV_BASE_READY_FILE=$STATE_DIR/dev-base-ready-sha
+DEV_BASE_FETCHING_FILE=$STATE_DIR/dev-base-fetching-sha
+DEV_BASE_CANDIDATE_ROOT=$STATE_DIR/base-update/dev-candidates
+DEV_BASE_CHANNEL=$WORKTREE/system/services/base-update/dev_channel.py
+DEV_BASE_LOG=$STATE_DIR/base-update/dev-channel.log
 LAST_APPLIED_SHA_FILE=$STATE_DIR/last-applied-sha
 LAST_APPLIED_AT_FILE=$STATE_DIR/last-applied-at
 RUNTIME_SURFACE_SHA_FILE=$STATE_DIR/runtime-surface-sha
@@ -651,6 +656,52 @@ mark_boot_refresh_required() {
     /bin/busybox mv -f "$temporary" "$BOOT_REFRESH_FILE"
 }
 
+
+dev_base_candidate_ready_for() {
+    source_sha=$1
+    [ -s "$DEV_BASE_READY_FILE" ] || return 1
+    ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")
+    [ "$ready_sha" = "$source_sha" ] || return 1
+    [ -d "$DEV_BASE_CANDIDATE_ROOT/$source_sha" ] || return 1
+    return 0
+}
+
+prepare_dev_base_candidate_async() {
+    source_sha=$1
+    case "$source_sha" in
+        ''|*[!0-9a-f]*) return 0 ;;
+    esac
+    [ "${#source_sha}" -eq 40 ] || return 0
+    [ -f "$BOOT_REFRESH_FILE" ] || return 0
+    dev_base_candidate_ready_for "$source_sha" && return 0
+    [ -f "$DEV_BASE_CHANNEL" ] || {
+        log "development Base channel unavailable in runtime checkout; will retry"
+        return 0
+    }
+    if [ -s "$DEV_BASE_FETCHING_FILE" ]; then
+        fetching_sha=$(read_state_value "$DEV_BASE_FETCHING_FILE")
+        [ "$fetching_sha" = "$source_sha" ] && return 0
+        rm -f "$DEV_BASE_FETCHING_FILE"
+    fi
+
+    /bin/busybox mkdir -p "$DEV_BASE_CANDIDATE_ROOT" "$(dirname "$DEV_BASE_LOG")"
+    write_state_value "$DEV_BASE_FETCHING_FILE" "$source_sha"
+    (
+        if /usr/bin/python3 "$DEV_BASE_CHANNEL"                 --source-commit "$source_sha"                 --destination-root "$DEV_BASE_CANDIDATE_ROOT"                 >>"$DEV_BASE_LOG" 2>&1; then
+            write_state_value "$DEV_BASE_READY_FILE" "$source_sha"
+            log "development Base candidate ready for next-boot staging: $source_sha"
+        else
+            rc=$?
+            if [ "$rc" -eq 2 ]; then
+                log "development Base candidate not published yet for $source_sha; retry remains armed"
+            else
+                log "development Base candidate acquisition failed for $source_sha; runtime remains healthy"
+            fi
+        fi
+        rm -f "$DEV_BASE_FETCHING_FILE"
+    ) &
+}
+
 start_surface() {
     [ -x "$SURFACE_ENTRYPOINT" ] || return 1
     ORDAX_SYSTEM_ROOT=$SYSTEM_ROOT
@@ -1014,6 +1065,10 @@ check_for_update() {
     rejected_sha=$(read_state_value "$REJECTED_FILE")
 
     if [ "$remote_sha" = "$current" ]; then
+        if [ -f "$BOOT_REFRESH_FILE" ]; then
+            pending_boot_sha=$(read_state_value "$BOOT_REFRESH_FILE")
+            [ -n "$pending_boot_sha" ] && prepare_dev_base_candidate_async "$pending_boot_sha"
+        fi
         healthy_sha=$(read_state_value "$HEALTH_FILE")
         if [ -n "$rejected_sha" ] && [ "$rejected_sha" = "$current" ] && [ "$healthy_sha" = "$current" ]; then
             rm -f "$REJECTED_FILE"
@@ -1070,7 +1125,8 @@ check_for_update() {
 
     if [ "$LOW_LEVEL_CHANGED" -eq 1 ]; then
         mark_boot_refresh_required "$new_sha"
-        log "boot/bootstrap changes detected; current session remains running and boot refresh is marked pending"
+        prepare_dev_base_candidate_async "$new_sha"
+        log "boot/bootstrap changes detected; current session remains running and Base candidate acquisition runs in background"
     fi
 
     case "$APPLY_MODE" in
