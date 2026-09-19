@@ -16,6 +16,7 @@ import {
   isNotesImageReference,
   notesImageReferenceKey,
 } from "./notes-image-previews.mjs";
+import { createNotesEditorSaveController } from "./notes-editor-save.mjs";
 import {
   createNotesFilePicker,
   joinNotesLogicalPath,
@@ -46,7 +47,6 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
-const SAVE_DELAY_MS = 320;
 const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 const DELETED_NOTE_MUTATIONS = new Set([
@@ -293,8 +293,6 @@ export function mountNotesWorkspaceControls(
   let referenceNoteId = null;
   let lastEditorRange = null;
   let mountedSlot = null;
-  let saveTimer = null;
-  let pendingNoteId = null;
   let destroyed = false;
 
   const currentNote = () => {
@@ -324,31 +322,20 @@ export function mountNotesWorkspaceControls(
     }
   };
 
-  const flushEditor = () => {
-    if (!mountedSlot || pendingNoteId === null) return;
-    if (saveTimer !== null) {
-      windowObject.clearTimeout(saveTimer);
-      saveTimer = null;
-    }
-    const noteId = pendingNoteId;
-    pendingNoteId = null;
-    persistEditor(noteId);
-  };
+  const editorSave = createNotesEditorSaveController({
+    persist: persistEditor,
+    setTimeoutFn: windowObject.setTimeout.bind(windowObject),
+    clearTimeoutFn: windowObject.clearTimeout.bind(windowObject),
+  });
+
+  const flushEditor = () => editorSave.flush();
 
   const scheduleSave = () => {
     const note = currentNote();
-    if (!note || note.deletedAt !== null || !mountedSlot) return;
-    pendingNoteId = note.id;
+    if (!note || note.deletedAt !== null || !mountedSlot) return false;
     const status = mountedSlot.querySelector(".ordax-notes-save-status");
     if (status) status.textContent = "Salvando…";
-    if (saveTimer !== null) windowObject.clearTimeout(saveTimer);
-    saveTimer = windowObject.setTimeout(() => {
-      saveTimer = null;
-      const noteId = pendingNoteId;
-      pendingNoteId = null;
-      if (!noteId || !mountedSlot) return;
-      persistEditor(noteId);
-    }, SAVE_DELAY_MS);
+    return editorSave.schedule(note.id);
   };
 
   const filePicker = createNotesFilePicker({ fileSpace: filePort });
@@ -937,8 +924,8 @@ export function mountNotesWorkspaceControls(
       view.dataset.renderedNoteId = note.id;
       lastEditorRange = null;
     } else {
-      if (active !== title && pendingNoteId !== note.id) title.value = note.title;
-      if (active !== body && pendingNoteId !== note.id) renderNotesRichBody(body, note.richBody);
+      if (active !== title && !editorSave.isPending(note.id)) title.value = note.title;
+      if (active !== body && !editorSave.isPending(note.id)) renderNotesRichBody(body, note.richBody);
     }
     title.readOnly = readOnly;
     body.contentEditable = readOnly ? "false" : "true";
@@ -1514,10 +1501,10 @@ export function mountNotesWorkspaceControls(
 
   return Object.freeze({
     destroy() {
+      editorSave.destroy();
       destroyed = true;
       filePicker.destroy();
       imagePreviewCache.destroy();
-      flushEditor();
       unsubscribeRuntime?.();
       unsubscribeRender?.();
       unsubscribeFilePicker?.();
