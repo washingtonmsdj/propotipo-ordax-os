@@ -91,7 +91,7 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn('target: "updates"', update)
         self.assertIn("Entrega observada", overview)
         self.assertIn("Identidade da entrega", overview)
-        self.assertIn("Nenhum deles é a versão comercial do OrdaX", overview)
+        self.assertIn("não é número de PR nem versão comercial do OrdaX", overview)
         self.assertIn("Distribuição conjunta · sem versão própria", overview)
         self.assertNotIn("Versão global", overview)
         self.assertNotIn("Incluído nesta entrega", overview)
