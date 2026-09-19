@@ -10,6 +10,7 @@ import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
 } from "../../services/notes/runtime.mjs";
+import { createNotesStatistics } from "../../services/notes/statistics.mjs";
 import {
   createNotesImagePreviewCache,
   isNotesImageFileName,
@@ -246,7 +247,11 @@ function buildShell(documentObject) {
   paper.append(empty, form);
   editor.append(paper);
   const editorFooter = node(documentObject, "footer", "ordax-notes-editor-footer");
-  editorFooter.append(node(documentObject, "span", "ordax-notes-offline-status", "Disponível offline"));
+  const offlineStatus = node(documentObject, "span", "ordax-notes-offline-status", "Disponível offline");
+  const statistics = node(documentObject, "span", "ordax-notes-statistics", "0 palavras · 0 caracteres");
+  statistics.dataset.notesStatistics = "";
+  statistics.setAttribute("aria-label", "Estatísticas da nota");
+  editorFooter.append(offlineStatus, statistics);
   editor.append(editorFooter);
 
   const refs = node(documentObject, "aside", "ordax-notes-references");
@@ -901,6 +906,28 @@ export function mountNotesWorkspaceControls(
     }
   };
 
+  const syncEditorStatistics = (view, note, textOverride = null) => {
+    const target = view.querySelector("[data-notes-statistics]");
+    if (!target) return;
+    if (!note) {
+      target.textContent = "Nenhuma nota selecionada";
+      return;
+    }
+
+    const statistics = createNotesStatistics({
+      text: textOverride ?? note.body,
+      tasks: note.tasks,
+      references: note.references,
+    });
+    const words = `${statistics.words} ${statistics.words === 1 ? "palavra" : "palavras"}`;
+    const characters = `${statistics.characters} ${statistics.characters === 1 ? "caractere" : "caracteres"}`;
+    const tasks = statistics.tasks === 0
+      ? "sem tarefas"
+      : `${statistics.completedTasks}/${statistics.tasks} tarefas`;
+    const references = `${statistics.references} ${statistics.references === 1 ? "referência" : "referências"}`;
+    target.textContent = `${words} · ${characters} · ${tasks} · ${references}`;
+  };
+
   const renderEditor = (view) => {
     const note = currentNote();
     const empty = view.querySelector("[data-notes-empty]");
@@ -918,6 +945,7 @@ export function mountNotesWorkspaceControls(
       view.querySelector(".ordax-notes-breadcrumb").textContent = `${modeLabel()}  /  Notas`;
       view.querySelector(".ordax-notes-save-status").textContent = state.persistence.scope === "device" ? "Salvo neste dispositivo" : "Somente nesta sessão";
       view.querySelector(".ordax-notes-references").hidden = true;
+      syncEditorStatistics(view, null);
       return;
     }
 
@@ -981,6 +1009,7 @@ export function mountNotesWorkspaceControls(
         : "Somente nesta sessão";
     view.querySelector(".ordax-notes-device").textContent =
       state.persistence.scope === "device" ? "▱  Neste dispositivo" : "▱  Sessão temporária";
+    syncEditorStatistics(view, note, body.innerText ?? body.textContent ?? note.body);
   };
 
   const render = () => {
@@ -1328,6 +1357,12 @@ export function mountNotesWorkspaceControls(
         normalizeNotesRichEditor(event.target);
         lastEditorRange = captureNotesRichSelection(event.target) ?? lastEditorRange;
         syncEditorToolbar();
+        const view = mountedSlot.querySelector("[data-ordax-notes-view]");
+        syncEditorStatistics(
+          view,
+          note,
+          event.target.innerText ?? event.target.textContent ?? note.body,
+        );
       }
       scheduleSave();
       if (event.target.matches("[data-notes-title]")) {
