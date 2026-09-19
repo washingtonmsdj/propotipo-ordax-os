@@ -213,8 +213,6 @@ function buildShell(documentObject) {
   const tasksSection = node(documentObject, "section", "ordax-notes-tasks");
   tasksSection.append(node(documentObject, "h3", "", "Para hoje"), node(documentObject, "div", "ordax-notes-task-list"));
   form.append(tasksSection);
-  const quote = node(documentObject, "blockquote", "ordax-notes-quote", "Começar pequeno. Manter o que importa.");
-  form.append(quote);
   paper.append(empty, form);
   editor.append(paper);
   const editorFooter = node(documentObject, "footer", "ordax-notes-editor-footer");
