@@ -1,0 +1,88 @@
+{
+  "$schema": "prototype-ordax.device-update-coverage/1",
+  "status": "canonical-prototype-contract",
+  "source_authority": {
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "branch": "main",
+    "git_is_source_authority_for_all_product_layers": true,
+    "runtime_sparse_checkout_is_not_source_authority": true,
+    "physical_media_is_not_source_authority": true
+  },
+  "boot_policy": {
+    "known_good_local_boot_precedes_network": true,
+    "normal_boot_waits_for_git": false,
+    "background_update_after_healthy_local_boot": true,
+    "emergency_fix_may_originate_from_git_for_any_layer": true
+  },
+  "layers": [
+    {
+      "id": "apps-and-surface",
+      "source_roots": ["system/apps", "system/surface", "system/composition"],
+      "development_delivery": "runtime-git-checkout",
+      "activation": "reload-or-surface-restart",
+      "usb_rewrite_required": false,
+      "reboot_required": false
+    },
+    {
+      "id": "development-boot-helpers",
+      "source_roots": ["bootstrap/dev-base", "bootstrap/recovery"],
+      "development_delivery": "runtime-git-checkout-plus-dev-helper-refresh",
+      "activation": "atomic-helper-replace",
+      "usb_rewrite_required": false,
+      "reboot_required": false
+    },
+    {
+      "id": "kernel-and-initramfs",
+      "source_roots": ["bootstrap/kernel", "bootstrap/initramfs"],
+      "development_delivery": "exact-commit-development-base-candidate",
+      "activation": "inactive-base-slot-next-boot",
+      "usb_rewrite_required": false,
+      "reboot_required": true
+    },
+    {
+      "id": "boot-selection-metadata",
+      "source_roots": ["bootstrap/base-update", "boot/esp/loader"],
+      "development_delivery": "base-update-promotion",
+      "activation": "atomic-versioned-boot-entry",
+      "usb_rewrite_required": false,
+      "reboot_required": true
+    },
+    {
+      "id": "uefi-fallback-loader",
+      "source_roots": ["boot/esp/EFI/BOOT"],
+      "development_delivery": "creator-or-recovery-maintenance",
+      "activation": "physical-esp-loader-replacement",
+      "usb_rewrite_required": "currently-yes-for-loader-byte-change",
+      "reboot_required": true,
+      "self_update_gap": true
+    },
+    {
+      "id": "creator",
+      "source_roots": ["tools/creator"],
+      "development_delivery": "repository-ci-desktop-tooling",
+      "activation": "host-tool-update",
+      "usb_rewrite_required": false,
+      "reboot_required": false
+    }
+  ],
+  "branding": {
+    "current_pre_surface_boot_ui": "console-text",
+    "current_text_owner": "bootstrap/dev-base/ordax-dev-init",
+    "graphical_boot_splash_implemented": false,
+    "future_early_splash_owner": "initramfs-or-base",
+    "future_surface_loading_owner": "system/apps-or-system/surface",
+    "branding_source_must_remain_repository_owned": true
+  },
+  "runtime_checkout": {
+    "sparse_by_design": true,
+    "reason": "keep-first-acquisition-and-update-lightweight; source authority remains remote Git plus published exact-commit artifacts",
+    "must_not_expand_to_full_repository_on_boot": true
+  },
+  "known_gap": {
+    "id": "uefi-fallback-loader-self-update",
+    "description": "BOOTX64.EFI is repository-owned but is not yet autonomously replaced by the running development system.",
+    "normal_system_update_blocked_by_gap": false,
+    "kernel_update_blocked_by_gap": false,
+    "app_update_blocked_by_gap": false
+  }
+}
