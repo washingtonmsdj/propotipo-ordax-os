@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "file-space.mjs"
-CONTROLS = ROOT / "system" / "surface" / "ui" / "file-space-controls.mjs"
+CONTROLS = ROOT / "system" / "apps" / "files" / "ui" / "file-space-controls.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "file-space.mjs"
 
 spec = importlib.util.spec_from_file_location("ordax_native_host_import_test", SERVER)
