@@ -1,7 +1,11 @@
 {
   "$schema": "prototype-ordax.runtime-component-package-policy/1",
-  "status": "candidate-packaging",
+  "status": "signed-slot-staging",
   "package_schema": "prototype-ordax.runtime-component-package/1",
+  "release_descriptor_schema": "prototype-ordax.runtime-component-release/1",
+  "envelope_schema": "prototype-ordax.runtime-component-envelope/1",
+  "trust_schema": "prototype-ordax.runtime-component-trust/1",
+  "trust_domain": "runtime-components",
   "source_repository": "washingtonmsdj/prototipo-ordax-os",
   "component_manifest_source": "system/services/components/manifests/",
   "supported_components": [
@@ -13,7 +17,17 @@
   "composition_may_be_packaged": false,
   "signature_required_before_activation": true,
   "activation_allowed_from_unsigned_candidate": false,
-  "publish_allowed": false,
+  "direct_activation_allowed_from_signed_package": false,
+  "pending_health_required_before_promotion": true,
+  "canonical_component_trust_anchor_pinned": false,
+  "ci_ephemeral_component_trust_allowed_for_protocol_proof": true,
+  "whole_os_release_trust_may_be_implicitly_reused": false,
+  "native_slot_root": "/var/lib/ordax/components",
+  "immutable_slot_staging_available": true,
+  "slot_activation_available": false,
+  "pending_health_promotion_available": false,
   "rollback_slot_activation_available": false,
-  "next_gate": "signed Native installer with pending health promotion"
+  "publish_allowed": false,
+  "internet_release_mode": "bundled",
+  "next_gate": "Native slot serving/import plus pending runtime health promotion with atomic current/previous rollback"
 }

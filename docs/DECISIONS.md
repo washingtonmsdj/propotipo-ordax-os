@@ -274,3 +274,40 @@ contracts/services
 Surface/apps/services do not import concrete Web/Mobile/Desktop/native adapters. Adapters implement capabilities and do not own shared screens or application policy. Dependency cycles are forbidden. Temporary compatibility bridges require an owner and removal condition; permanent ownerless bridges are forbidden.
 
 Reason: keep modules replaceable and independently evolvable as the codebase grows, while avoiding both monolithic coupling and premature abstraction.
+
+## ADR-022 - Runtime component trust and activation are independent boundaries
+
+Decision: independently delivered runtime components use a trust domain and activation lifecycle that are distinct from the whole-OS release boundary.
+
+Machine-readable authority: `docs/contracts/runtime-component-package.json`.
+
+A runtime component release is bound as:
+
+```text
+runtime-component public trust
+ -> Ed25519 signed component release descriptor
+ -> exact component id + semantic version + source commit
+ -> exact package size + SHA-256
+ -> exact component-package manifest SHA-256
+ -> exact packaged file hashes
+ -> immutable staged slot
+```
+
+The whole-OS release trust anchor is not implicitly reused as component trust. A canonical component key requires its own explicit custody/promotion decision outside Git. Ephemeral CI keys may prove the protocol but cannot establish product trust.
+
+A valid signature authorizes verification and staging only. It does not authorize direct activation. Promotion requires a separate runtime-health gate:
+
+```text
+signed + verified package
+ -> immutable slot
+ -> pending
+ -> runtime load/mount
+ -> health observation
+ -> promote current
+ -> preserve previous
+```
+
+Until this full path exists for a component, its manifest remains `releaseMode: "bundled"`. Rollback is component-local only after `current/previous` promotion is implemented and proven.
+
+Reason: a cryptographically valid package can still contain a runtime regression. Separating authenticity, staging and health-based activation prevents a signed application update from being able to take the whole OrdaX Surface down or to claim independent rollback before that rollback path actually exists.
+

@@ -22,22 +22,45 @@ def load_builder():
 
 
 class RuntimeComponentPackageTests(unittest.TestCase):
-    def test_policy_is_candidate_only_and_fail_closed(self):
+    def test_policy_is_signed_slot_staging_and_fail_closed(self):
         policy = json.loads(POLICY.read_text(encoding="utf-8"))
         self.assertEqual(
             policy["$schema"],
             "prototype-ordax.runtime-component-package-policy/1",
         )
-        self.assertEqual(policy["status"], "candidate-packaging")
+        self.assertEqual(policy["status"], "signed-slot-staging")
         self.assertEqual(policy["supported_components"], ["internet"])
+        self.assertEqual(
+            policy["release_descriptor_schema"],
+            "prototype-ordax.runtime-component-release/1",
+        )
+        self.assertEqual(
+            policy["envelope_schema"],
+            "prototype-ordax.runtime-component-envelope/1",
+        )
+        self.assertEqual(
+            policy["trust_schema"],
+            "prototype-ordax.runtime-component-trust/1",
+        )
+        self.assertEqual(policy["trust_domain"], "runtime-components")
         self.assertTrue(policy["self_contained_source_graph_required"])
         self.assertFalse(policy["remote_runtime_dependencies_allowed"])
         self.assertFalse(policy["native_adapters_may_be_packaged"])
         self.assertFalse(policy["composition_may_be_packaged"])
         self.assertTrue(policy["signature_required_before_activation"])
         self.assertFalse(policy["activation_allowed_from_unsigned_candidate"])
+        self.assertFalse(policy["direct_activation_allowed_from_signed_package"])
+        self.assertTrue(policy["pending_health_required_before_promotion"])
+        self.assertFalse(policy["canonical_component_trust_anchor_pinned"])
+        self.assertTrue(policy["ci_ephemeral_component_trust_allowed_for_protocol_proof"])
+        self.assertFalse(policy["whole_os_release_trust_may_be_implicitly_reused"])
+        self.assertEqual(policy["native_slot_root"], "/var/lib/ordax/components")
+        self.assertTrue(policy["immutable_slot_staging_available"])
+        self.assertFalse(policy["slot_activation_available"])
+        self.assertFalse(policy["pending_health_promotion_available"])
         self.assertFalse(policy["publish_allowed"])
         self.assertFalse(policy["rollback_slot_activation_available"])
+        self.assertEqual(policy["internet_release_mode"], "bundled")
 
     def test_internet_metadata_comes_from_canonical_component_manifest(self):
         builder = load_builder()
@@ -98,6 +121,49 @@ class RuntimeComponentPackageTests(unittest.TestCase):
             self.assertTrue(verified["signature_required_before_activation"])
             self.assertFalse(verified["native_adapters_packaged"])
             self.assertFalse(verified["composition_packaged"])
+
+    def test_release_descriptor_is_deterministic_and_binds_exact_package(self):
+        builder = load_builder()
+        source_commit = "4" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "internet.zip"
+            first = root / "release-a.json"
+            second = root / "release-b.json"
+            builder.build_package("internet", source_commit, package)
+
+            first_descriptor = builder.write_release_descriptor(package, first)
+            second_descriptor = builder.write_release_descriptor(package, second)
+
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            self.assertEqual(first_descriptor, second_descriptor)
+            self.assertEqual(
+                first_descriptor["$schema"],
+                "prototype-ordax.runtime-component-release/1",
+            )
+            self.assertEqual(
+                first_descriptor["source_repository"],
+                "washingtonmsdj/prototipo-ordax-os",
+            )
+            self.assertEqual(first_descriptor["source_commit"], source_commit)
+            self.assertEqual(first_descriptor["component"]["id"], "internet")
+            self.assertEqual(first_descriptor["component"]["version"], "0.3.0")
+            self.assertEqual(first_descriptor["component"]["release_mode"], "bundled")
+            self.assertEqual(first_descriptor["package"]["name"], "internet.zip")
+            self.assertEqual(
+                first_descriptor["package"]["sha256"],
+                hashlib.sha256(package.read_bytes()).hexdigest(),
+            )
+            with zipfile.ZipFile(package, "r") as archive:
+                manifest_bytes = archive.read(builder.MANIFEST_NAME)
+            self.assertEqual(
+                first_descriptor["package"]["manifest_sha256"],
+                hashlib.sha256(manifest_bytes).hexdigest(),
+            )
+            self.assertFalse(
+                first_descriptor["activation"]["direct_activation_allowed"]
+            )
+            self.assertTrue(first_descriptor["activation"]["pending_health_required"])
 
     def test_tampered_file_is_rejected(self):
         builder = load_builder()

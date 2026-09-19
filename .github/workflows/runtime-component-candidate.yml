@@ -15,6 +15,7 @@ on:
       - 'system/surface/ui/internet-browser-*.mjs'
       - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
+      - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
       - 'tests/test_runtime_component_package.py'
       - '.github/workflows/runtime-component-candidate.yml'
@@ -31,6 +32,7 @@ on:
       - 'system/surface/ui/internet-browser-*.mjs'
       - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
+      - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
       - 'tests/test_runtime_component_package.py'
       - '.github/workflows/runtime-component-candidate.yml'
@@ -55,12 +57,23 @@ jobs:
           python-version: '3.12'
           check-latest: false
 
-      - name: Validate candidate policy and packager regressions
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+
+      - name: Validate package and signed-slot regressions
         run: |
           set -euo pipefail
           node --version
           python -m unittest tests.test_runtime_component_package -v
           python tools/component-package/build.py check --component internet
+          (
+            cd tools/runtime-component-channel
+            go test -count=1 ./...
+          )
 
       - name: Build deterministic Internet candidate twice
         run: |
@@ -82,15 +95,76 @@ jobs:
 
           cmp out/runtime-components/internet.zip "$RUNNER_TEMP/runtime-components-repeat/internet.zip"
           sha256sum out/runtime-components/internet.zip
+          python tools/component-package/build.py describe \
+            --package out/runtime-components/internet.zip \
+            --out out/runtime-components/runtime-component-release.json
           echo 'RUNTIME_COMPONENT_REPEATABILITY=PASS'
-          echo 'RUNTIME_COMPONENT_SIGNED=NO'
-          echo 'RUNTIME_COMPONENT_ACTIVATION_ALLOWED=NO'
+          echo 'RUNTIME_COMPONENT_DIRECT_ACTIVATION_ALLOWED=NO'
           echo 'RUNTIME_COMPONENT_PUBLISHED=NO'
 
-      - name: Upload unsigned candidate for inspection
+      - name: Prove signed envelope and immutable slot staging
+        run: |
+          set -euo pipefail
+          channel="$PWD/out/runtime-components/ordax-runtime-component-channel"
+          (
+            cd tools/runtime-component-channel
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o ../../out/runtime-components/ordax-runtime-component-channel .
+          )
+
+          work="$RUNNER_TEMP/runtime-component-signing-proof"
+          slots="$RUNNER_TEMP/runtime-component-slots"
+          mkdir -p "$work" "$slots"
+          chmod 0700 "$work"
+
+          "$channel" generate-key \
+            --private-key "$work/private.pem" \
+            --trust out/runtime-components/runtime-component-trust.json \
+            --key-id runtime-components-ci-test-1
+
+          "$channel" sign \
+            --release out/runtime-components/runtime-component-release.json \
+            --private-key "$work/private.pem" \
+            --trust out/runtime-components/runtime-component-trust.json \
+            --key-id runtime-components-ci-test-1 \
+            --out out/runtime-components/runtime-component-envelope.json
+
+          "$channel" verify-envelope \
+            --envelope out/runtime-components/runtime-component-envelope.json \
+            --trust out/runtime-components/runtime-component-trust.json
+
+          stage_output="$("$channel" stage \
+            --envelope out/runtime-components/runtime-component-envelope.json \
+            --trust out/runtime-components/runtime-component-trust.json \
+            --package out/runtime-components/internet.zip \
+            --root "$slots")"
+          printf '%s\n' "$stage_output"
+          grep -q 'RUNTIME_COMPONENT_STAGED=YES' <<<"$stage_output"
+          grep -q 'PENDING_HEALTH_REQUIRED=YES' <<<"$stage_output"
+          grep -q 'ACTIVATED=NO' <<<"$stage_output"
+
+          slot="$slots/internet/versions/0.3.0/$GITHUB_SHA"
+          "$channel" verify-slot \
+            --slot "$slot" \
+            --trust out/runtime-components/runtime-component-trust.json
+
+          rm -f "$work/private.pem"
+          test ! -e "$work/private.pem"
+          echo 'RUNTIME_COMPONENT_SIGNED_PROTOCOL=PASS'
+          echo 'RUNTIME_COMPONENT_IMMUTABLE_SLOT_STAGING=PASS'
+          echo 'RUNTIME_COMPONENT_PRIVATE_KEY_REMOVED=YES'
+          echo 'RUNTIME_COMPONENT_CANONICAL_TRUST=NO'
+          echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
+
+      - name: Upload non-activatable signed staging proof
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-runtime-component-internet-${{ github.sha }}
-          path: out/runtime-components/internet.zip
+          path: |
+            out/runtime-components/internet.zip
+            out/runtime-components/runtime-component-release.json
+            out/runtime-components/runtime-component-envelope.json
+            out/runtime-components/runtime-component-trust.json
           if-no-files-found: error
           retention-days: 14
