@@ -47,7 +47,6 @@ on:
       - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
-      - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -163,7 +162,6 @@ on:
       - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
-      - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -269,7 +267,6 @@ jobs:
             system/services/components \
             system/services/files \
             system/services/projects \
-            system/services/notes \
             system/services/preferences \
             system/services/sync \
             system/services/diagnostics \
