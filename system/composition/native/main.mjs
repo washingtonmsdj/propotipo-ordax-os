@@ -44,6 +44,7 @@ import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-co
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountHomeContinuation } from "../../surface/ui/home-continuation.mjs";
+import { mountHomePending } from "../../surface/ui/home-pending.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
@@ -261,6 +262,7 @@ async function start() {
     appActivation,
   );
   const homeContinuation = mountHomeContinuation(root, { projects, recentFiles });
+  const homePending = mountHomePending(root, { notifications, syncRuntime: preferenceSync });
   const filesOwnerSpace = fileSpace === null
     ? null
     : createProjectContinuityFileSpace(fileSpace, projects, {
@@ -324,6 +326,7 @@ async function start() {
       window.removeEventListener("error", onWindowError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       surfaceHeartbeat.dispose();
+      homePending.dispose();
       homeContinuation.dispose();
       powerControls.destroy();
       updateControls.destroy();
