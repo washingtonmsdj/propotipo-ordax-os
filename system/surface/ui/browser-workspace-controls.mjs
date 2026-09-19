@@ -70,9 +70,9 @@ function buildShell(documentObject) {
   const frame = node(documentObject, "iframe", "ordax-browser-frame");
   frame.dataset.browserFrame = "";
   frame.hidden = true;
-  // Remote documents intentionally do not receive allow-same-origin. This keeps
-  // their DOM/storage origin isolated from the OrdaX Surface even when a page
-  // shares an origin with the host shell.
+  // Remote documents intentionally do not receive same-origin sandbox privileges.
+  // Their DOM/storage origin stays isolated from the OrdaX Surface even when a
+  // page shares an origin with the host shell.
   frame.setAttribute(
     "sandbox",
     "allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-scripts",
