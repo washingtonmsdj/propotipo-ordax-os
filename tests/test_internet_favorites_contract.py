@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
+CONTROLS = ROOT / "system" / "components" / "internet" / "ui" / "browser-controls.mjs"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
 INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
