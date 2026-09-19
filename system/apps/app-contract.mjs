@@ -8,6 +8,20 @@ const PANEL_KINDS = new Set([
   "extension",
 ]);
 
+function freezeCapabilities(appId, label, values) {
+  if (!Array.isArray(values)) {
+    throw new TypeError(`First-party app ${appId} has invalid ${label} capabilities`);
+  }
+  const capabilities = [...values];
+  if (
+    capabilities.some((capabilityId) => typeof capabilityId !== "string" || !capabilityId)
+    || new Set(capabilities).size !== capabilities.length
+  ) {
+    throw new TypeError(`First-party app ${appId} has invalid ${label} capabilities`);
+  }
+  return Object.freeze(capabilities);
+}
+
 function freezeChoiceOptions(appId, panel) {
   if (!panel.preferenceId || !Array.isArray(panel.options) || panel.options.length === 0) {
     throw new TypeError(`First-party app ${appId} preference panel is invalid`);
@@ -66,12 +80,21 @@ export function defineFirstPartyApp(spec) {
   if (!Array.isArray(spec.requiredCapabilities) || !Array.isArray(spec.panels)) {
     throw new TypeError(`First-party app ${spec.id} has an invalid contract`);
   }
-  const requiredCapabilities = [...spec.requiredCapabilities];
-  if (
-    requiredCapabilities.some((capabilityId) => typeof capabilityId !== "string" || !capabilityId) ||
-    new Set(requiredCapabilities).size !== requiredCapabilities.length
-  ) {
-    throw new TypeError(`First-party app ${spec.id} has invalid required capabilities`);
+  const requiredCapabilities = freezeCapabilities(
+    spec.id,
+    "required",
+    spec.requiredCapabilities,
+  );
+  const optionalCapabilities = freezeCapabilities(
+    spec.id,
+    "optional",
+    spec.optionalCapabilities ?? [],
+  );
+  const requiredSet = new Set(requiredCapabilities);
+  if (optionalCapabilities.some((capabilityId) => requiredSet.has(capabilityId))) {
+    throw new TypeError(
+      `First-party app ${spec.id} cannot require and optionally consume the same capability`,
+    );
   }
   return Object.freeze({
     id: spec.id,
@@ -79,7 +102,8 @@ export function defineFirstPartyApp(spec) {
     description: spec.description,
     monogram: spec.monogram,
     singleton: spec.singleton !== false,
-    requiredCapabilities: Object.freeze(requiredCapabilities),
+    requiredCapabilities,
+    optionalCapabilities,
     panels: Object.freeze(spec.panels.map((panel) => freezePanel(spec.id, panel))),
   });
 }
