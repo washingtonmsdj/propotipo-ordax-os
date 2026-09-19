@@ -46,6 +46,22 @@ function slotApp() {
   });
 }
 
+function gitApp() {
+  return defineComponentManifest({
+    id: "git-app",
+    title: "Git App",
+    kind: "app",
+    version: "1.2.0",
+    releaseMode: "git-app",
+    criticality: "optional",
+    failureDomain: "app",
+    restartScope: "component",
+    healthMode: "runtime",
+    owner: "test/git-app",
+    dependencies: ["ordax-base"],
+  });
+}
+
 function bundledApp() {
   return defineComponentManifest({
     id: "bundled-app",
@@ -102,7 +118,7 @@ test("canonical component catalog has one unique owner identity per app and serv
   }
   const internet = components.find((component) => component.id === "internet");
   assert.equal(internet.version, "0.3.0");
-  assert.equal(internet.releaseMode, "bundled");
+  assert.equal(internet.releaseMode, "git-app");
   assert.equal(internet.owner, "system/apps/internet");
   const notes = components.find((component) => component.id === "notes");
   assert.equal(notes.version, "0.1.0");
@@ -163,7 +179,7 @@ test("component manager promotes only health-checked independent slots and rolls
   let clock = 1000;
   const store = memoryStore();
   const manager = createComponentManager({
-    manifests: [baseManifest(), slotApp(), bundledApp()],
+    manifests: [baseManifest(), slotApp(), gitApp(), bundledApp()],
     store,
     now: () => clock++,
   });
@@ -173,6 +189,16 @@ test("component manager promotes only health-checked independent slots and rolls
     () => manager.stageCandidate("bundled-app", "1.1.0"),
     /individual slot operations are forbidden/,
   );
+  assert.throws(
+    () => manager.stageCandidate("git-app", "1.3.0"),
+    /individual slot operations are forbidden/,
+  );
+  const gitDelivered = manager.getSnapshot().components.find(
+    (item) => item.manifest.id === "git-app",
+  );
+  assert.equal(gitDelivered.state.currentVersion, "1.2.0");
+  assert.equal(gitDelivered.state.pendingVersion, null);
+  assert.equal(gitDelivered.independentUpdate, false);
 
   manager.stageCandidate("slot-app", "1.1.0");
   let slot = manager.getSnapshot().components.find((item) => item.manifest.id === "slot-app");
