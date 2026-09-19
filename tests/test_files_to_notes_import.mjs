@@ -51,14 +51,16 @@ test("text import creates a note with exact content and a file-origin reference 
   const note = noteById(notes, result.noteId);
   assert.equal(note.title, "roteiro.txt");
   assert.equal(note.body, sourceText);
+  assert.equal(note.richBody.blocks.map((block) => block.text).join("\n"), sourceText);
   assert.equal(note.projectId, result.projectId);
   assert.deepEqual(
     note.references.map((reference) => ({
       kind: reference.kind,
       title: reference.title,
       detail: reference.detail,
+      path: reference.path,
     })),
-    [{ kind: "file", title: "roteiro.txt", detail: sourcePath }],
+    [{ kind: "file", title: "roteiro.txt", detail: sourcePath, path: sourcePath }],
   );
 });
 
