@@ -231,6 +231,35 @@
       "physical_stage_requires_fresh_preflight_revalidation": true,
       "readonly_preflight_failure_blocks_surface": false,
       "readonly_preflight_failure_blocks_candidate_acquisition": false
+    },
+    "development_physical_stage": {
+      "helper": "system/services/base-update/dev_physical_stage.py",
+      "schema": "prototype-ordax.dev-base-physical-stage/1",
+      "candidate_authority": "exact-dev-base-ready-sha",
+      "fresh_readonly_preflight_required_before_rw": true,
+      "same_parent_disk_revalidated_before_rw": true,
+      "rw_mount_filesystem": "vfat",
+      "rw_mount_options": [
+        "rw",
+        "nosuid",
+        "nodev",
+        "noexec"
+      ],
+      "active_slot_derived_from_esp_layout": true,
+      "shared_ab_stager_only": true,
+      "inactive_slot_only": true,
+      "known_good_entries_unchanged": true,
+      "known_good_artifacts_unchanged": true,
+      "same_candidate_retry_idempotent": true,
+      "different_existing_candidate_blocks": true,
+      "mount_released_before_return": true,
+      "loader_entry_oneshot_written": false,
+      "efi_variables_written": false,
+      "reboot_requested": false,
+      "activation_performed": false,
+      "owner_runtime_wiring_enabled": false,
+      "disposable_proof": "bootstrap/base-update/prove_dev_physical_stage.sh",
+      "physical_notebook_proven": false
     }
   },
   "release_channel_enrollment": {
