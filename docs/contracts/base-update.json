@@ -222,7 +222,15 @@
       "identity_revalidated_after_mount": true,
       "unmount_required_before_return": true,
       "disposable_same_disk_proof": "bootstrap/base-update/prove_esp_readonly_preflight.sh",
-      "physical_hardware_proven_by_disposable_proof": false
+      "physical_hardware_proven_by_disposable_proof": false,
+      "readonly_preflight_state_file": "/state/ordax/base-update/esp-readonly-preflight.json",
+      "readonly_preflight_sha_file": "/state/ordax/base-update/esp-readonly-preflight-sha",
+      "runtime_runs_readonly_preflight_only_for_ready_development_candidate": true,
+      "readonly_preflight_cached_per_candidate_sha": true,
+      "cached_readonly_preflight_authorizes_write": false,
+      "physical_stage_requires_fresh_preflight_revalidation": true,
+      "readonly_preflight_failure_blocks_surface": false,
+      "readonly_preflight_failure_blocks_candidate_acquisition": false
     }
   },
   "release_channel_enrollment": {

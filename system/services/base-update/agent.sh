@@ -14,6 +14,9 @@ OWNER_STATE_CHROOT=
 OWNER_BASE_ROOT_CHROOT=
 PHYSICAL_ROOT_SOURCE=
 ESP_DISCOVERY_FILE=$HOST_STATE_ROOT/base-update/esp-discovery.json
+ESP_READONLY_PREFLIGHT_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight.json
+ESP_READONLY_PREFLIGHT_SHA_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight-sha
+ESP_READONLY_MOUNT_ROOT=${ORDAX_BASE_ESP_READONLY_MOUNT_ROOT:-/run/ordax-base-owner/esp-readonly}
 DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha
 DEV_BASE_READY_FILE=$HOST_STATE_ROOT/dev-base-ready-sha
 DEV_BASE_FETCHING_FILE=$HOST_STATE_ROOT/dev-base-fetching-sha
@@ -406,6 +409,47 @@ prepare_dev_base_candidate() {
     return 0
 }
 
+prepare_esp_readonly_preflight() {
+    ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")
+    if ! is_sha "$ready_sha"; then
+        /bin/busybox rm -f "$ESP_READONLY_PREFLIGHT_FILE" "$ESP_READONLY_PREFLIGHT_SHA_FILE" >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    cached_sha=$(read_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE")
+    if [ "$cached_sha" = "$ready_sha" ] && [ -s "$ESP_READONLY_PREFLIGHT_FILE" ]; then
+        return 0
+    fi
+
+    helper=/srv/ordax-system/services/base-update/esp_readonly.py
+    [ -n "$PHYSICAL_ROOT_SOURCE" ] && [ -f "$RUNTIME_ROOT$helper" ] || {
+        /bin/busybox rm -f "$ESP_READONLY_PREFLIGHT_FILE" "$ESP_READONLY_PREFLIGHT_SHA_FILE" >/dev/null 2>&1 || true
+        return 0
+    }
+
+    directory=${ESP_READONLY_PREFLIGHT_FILE%/*}
+    /bin/busybox mkdir -p "$directory" >/dev/null 2>&1 || return 0
+    temporary=$(/bin/busybox mktemp "$directory/.esp-readonly-preflight.XXXXXX") || return 0
+
+    if /bin/busybox chroot "$RUNTIME_ROOT" /usr/bin/python3 "$helper" \
+        --root-source "$PHYSICAL_ROOT_SOURCE" \
+        --mount-root "$ESP_READONLY_MOUNT_ROOT" \
+        >"$temporary" 2>/dev/null
+    then
+        /bin/busybox chmod 600 "$temporary" >/dev/null 2>&1 || true
+        if /bin/busybox mv -f "$temporary" "$ESP_READONLY_PREFLIGHT_FILE"; then
+            write_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE" "$ready_sha" || {
+                /bin/busybox rm -f "$ESP_READONLY_PREFLIGHT_FILE" "$ESP_READONLY_PREFLIGHT_SHA_FILE" >/dev/null 2>&1 || true
+            }
+        else
+            /bin/busybox rm -f "$temporary" "$ESP_READONLY_PREFLIGHT_FILE" "$ESP_READONLY_PREFLIGHT_SHA_FILE" >/dev/null 2>&1 || true
+        fi
+    else
+        /bin/busybox rm -f "$temporary" "$ESP_READONLY_PREFLIGHT_FILE" "$ESP_READONLY_PREFLIGHT_SHA_FILE" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 while :; do
     if [ ! -x "$RUNTIME_ROOT/usr/bin/python3" ]; then
         write_preflight_status runtime-unavailable
@@ -434,6 +478,7 @@ while :; do
             >/dev/null 2>&1 || true
         discover_esp_read_only
         prepare_dev_base_candidate
+        prepare_esp_readonly_preflight
     else
         write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
     fi

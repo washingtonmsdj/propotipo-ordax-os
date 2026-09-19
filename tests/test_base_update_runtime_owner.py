@@ -770,6 +770,45 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("LoaderEntryOneShot", discovery)
         self.assertNotIn("reboot", discovery)
 
+    def test_agent_runs_readonly_esp_preflight_once_per_ready_candidate(self):
+        subprocess.run(["sh", "-n", str(AGENT)], check=True)
+        agent = AGENT.read_text(encoding="utf-8")
+        self.assertIn(
+            "ESP_READONLY_PREFLIGHT_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight.json",
+            agent,
+        )
+        self.assertIn(
+            "ESP_READONLY_PREFLIGHT_SHA_FILE=$HOST_STATE_ROOT/base-update/esp-readonly-preflight-sha",
+            agent,
+        )
+        self.assertIn("prepare_esp_readonly_preflight()", agent)
+        self.assertIn(
+            "helper=/srv/ordax-system/services/base-update/esp_readonly.py",
+            agent,
+        )
+        self.assertIn('ready_sha=$(read_state_value "$DEV_BASE_READY_FILE")', agent)
+        self.assertIn('cached_sha=$(read_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE")', agent)
+        self.assertIn('[ "$cached_sha" = "$ready_sha" ]', agent)
+        self.assertIn('--root-source "$PHYSICAL_ROOT_SOURCE"', agent)
+        self.assertIn('--mount-root "$ESP_READONLY_MOUNT_ROOT"', agent)
+        self.assertIn(
+            'write_state_value "$ESP_READONLY_PREFLIGHT_SHA_FILE" "$ready_sha"',
+            agent,
+        )
+        loop = agent.split("while :; do", 1)[1]
+        self.assertLess(
+            loop.index("prepare_dev_base_candidate"),
+            loop.index("prepare_esp_readonly_preflight"),
+        )
+        preflight = agent.split("prepare_esp_readonly_preflight() {", 1)[1].split(
+            "\n}",
+            1,
+        )[0]
+        self.assertNotIn("stage.py", preflight)
+        self.assertNotIn("activate.py", preflight)
+        self.assertNotIn("LoaderEntryOneShot", preflight)
+        self.assertNotIn("reboot", preflight)
+
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
         self.assertIn('BASE_UPDATE_SOURCE=$SYSTEM_ROOT/services/base-update/agent.sh', text)
