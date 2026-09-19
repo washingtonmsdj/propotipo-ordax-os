@@ -69,8 +69,8 @@ export const componentRuntime = Object.freeze({
     }
     const releaseStyles = await mountInternetStyles(root);
     try {
-        const favoritesStore = createFavoritesStore?.() ?? null;
-        const historyStore = createHistoryStore?.() ?? null;
+      const favoritesStore = createFavoritesStore?.() ?? null;
+      const historyStore = createHistoryStore?.() ?? null;
       const favorites = favoritesStore === null
         ? null
         : createBrowserFavoritesRuntime({ store: favoritesStore });
