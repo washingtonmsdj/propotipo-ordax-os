@@ -795,6 +795,40 @@ function buildCompositionProofExpression(moduleSources, styles) {
         (item) => item.id === notesAfterProjectEdit.selectedNoteId && item.projectId === 'meu-espaco',
       ) === true;
 
+    notesSlot?.querySelector('[data-notes-action="toggle-menu"]')?.click();
+    await Promise.resolve();
+    notesSlot?.querySelector('[data-notes-action="trash-note"]')?.click();
+    await Promise.resolve();
+    notesSlot?.querySelector('[data-notes-action="view-trash"]')?.click();
+    await Promise.resolve();
+
+    const trashTitle = notesSlot?.querySelector('[data-notes-title]');
+    const trashBody = notesSlot?.querySelector('[data-notes-body]');
+    const trashDocument = notesSlot?.querySelector('[data-notes-document]');
+    const trashAddTask = notesSlot?.querySelector('[data-notes-action="add-task"]');
+    const trashAddReference = notesSlot?.querySelector('[data-notes-action="add-reference"]');
+    result.notesTrashIsReadOnly = trashTitle?.readOnly === true
+      && trashBody?.contentEditable === 'false'
+      && trashBody?.getAttribute('aria-readonly') === 'true'
+      && trashDocument?.dataset.deleted === 'true'
+      && trashAddTask?.disabled === true
+      && trashAddReference?.disabled === true
+      && notesSlot?.querySelector('.ordax-notes-save-status')?.textContent
+        ?.includes('Na lixeira') === true;
+
+    notesSlot?.querySelector('[data-notes-action="toggle-menu"]')?.click();
+    await Promise.resolve();
+    notesSlot?.querySelector('[data-notes-action="restore-note"]')?.click();
+    await Promise.resolve();
+
+    const restoredTitle = notesSlot?.querySelector('[data-notes-title]');
+    const restoredBody = notesSlot?.querySelector('[data-notes-body]');
+    result.notesRestoreReenablesEditing = restoredTitle?.readOnly === false
+      && restoredBody?.contentEditable === 'true'
+      && restoredBody?.getAttribute('aria-readonly') === 'false'
+      && notesSlot?.querySelector('[data-notes-document]')?.dataset.deleted === 'false'
+      && restoredTitle?.value === 'Nota persistida no smoke';
+
     const imageToolButton = notesSlot?.querySelector('[data-notes-action="insert-image"]');
     result.notesImageToolPresent = Boolean(imageToolButton);
     result.notesImageToolFailsClosedOnWeb = imageToolButton?.disabled === true;
@@ -882,6 +916,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesEscapeClosesTransientMenu', 'notesPlainBodyHasNoMarkup',
       'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
       'notesMovedToHome', 'notesProjectActionsPresent', 'notesProjectRenamed', 'notesProjectRemovedSafely',
+      'notesTrashIsReadOnly', 'notesRestoreReenablesEditing',
       'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
