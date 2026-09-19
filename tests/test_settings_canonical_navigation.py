@@ -52,7 +52,7 @@ class SettingsCanonicalNavigationTests(unittest.TestCase):
         self.assertIn("listNotificationSources", controls)
         self.assertIn("notificationPort.setDoNotDisturb", controls)
         self.assertIn("notificationPort.setSourceEnabled", controls)
-        self.assertIn("notificationPort.subscribe", controls)
+        self.assertIn("notificationPort?.subscribe", controls)
         self.assertIn("data-settings-notification-source", controls)
         self.assertIn(".ordax-settings-notification-row", css)
         self.assertNotIn("localStorage", controls)
