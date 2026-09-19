@@ -999,6 +999,47 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
     result.notesRichTextRestored = restoredNotesBody?.textContent === 'Conteúdo salvo localmente e disponível offline.'
       && restoredNotesBody?.querySelector('strong')?.textContent === 'Conteúdo';
 
+    const restoredNotesTitle = restoredNotesSlot?.querySelector('[data-notes-title]');
+    const notesBeforeNewShortcut = parsedStorage('ordax.notes.v1');
+    const noteCountBeforeNewShortcut = notesBeforeNewShortcut?.notes?.length ?? 0;
+    restoredNotesTitle?.focus();
+    const newNoteShortcutEvent = new KeyboardEvent('keydown', {
+      key: 'n',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const newNoteShortcutPrevented = restoredNotesTitle?.dispatchEvent(newNoteShortcutEvent) === false;
+    await Promise.resolve();
+    const notesAfterNewShortcut = parsedStorage('ordax.notes.v1');
+    const shortcutTitle = restoredNotesSlot?.querySelector('[data-notes-title]');
+    result.notesNewShortcutCreatesNote = newNoteShortcutPrevented
+      && notesAfterNewShortcut?.notes?.length === noteCountBeforeNewShortcut + 1
+      && notesAfterNewShortcut?.selectedNoteId !== notesBeforeNewShortcut?.selectedNoteId
+      && document.activeElement === shortcutTitle;
+
+    const shortcutSearch = restoredNotesSlot?.querySelector('[data-notes-search]');
+    if (shortcutSearch) {
+      shortcutSearch.value = 'atalho';
+      shortcutSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    shortcutTitle?.focus();
+    const findShortcutEvent = new KeyboardEvent('keydown', {
+      key: 'f',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    const findShortcutPrevented = shortcutTitle?.dispatchEvent(findShortcutEvent) === false;
+    result.notesFindShortcutFocusesSearch = findShortcutPrevented
+      && document.activeElement === shortcutSearch
+      && shortcutSearch?.selectionStart === 0
+      && shortcutSearch?.selectionEnd === 'atalho'.length;
+    if (shortcutSearch) {
+      shortcutSearch.value = '';
+      shortcutSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
     const restoredInternetSlot = root?.querySelector(
       '[data-window-id="internet"] [data-app-extension="internet-browser"]',
     );
@@ -1056,7 +1097,8 @@ function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
       'remountCompositionMounted', 'remountBootScreenCompleted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
       'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
-      'notesRichTextRestored', 'internetWindowRestored', 'internetTargetRestored',
+      'notesRichTextRestored', 'notesNewShortcutCreatesNote', 'notesFindShortcutFocusesSearch',
+      'internetWindowRestored', 'internetTargetRestored',
       'internetStillFailsClosedOnWeb',
       'accountWindowRestored', 'accountOwnerRestored', 'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
       'systemOwnerRestored', 'systemOverviewRestored',
