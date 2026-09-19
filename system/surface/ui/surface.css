@@ -1383,6 +1383,168 @@ button.ordax-tray-item:focus-visible {
   line-height: 1.5;
 }
 
+
+.ordax-tray-notifications {
+  position: relative;
+}
+
+.ordax-notification-bell-shape {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 13px;
+  border: 1.7px solid currentColor;
+  border-bottom: 0;
+  border-radius: 8px 8px 3px 3px;
+}
+
+.ordax-notification-bell-shape::before {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  height: 1.7px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.ordax-notification-bell-shape::after {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.ordax-notification-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border: 2px solid var(--ordax-surface-strong);
+  border-radius: 999px;
+  background: var(--ordax-accent);
+  color: var(--ordax-accent-ink);
+  font-size: 0.55rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 11px;
+  text-align: center;
+}
+
+.ordax-tray-notifications[data-unread="true"] {
+  color: var(--ordax-accent);
+}
+
+.ordax-quick-panel-notifications {
+  width: min(380px, calc(100vw - 36px));
+}
+
+.ordax-notification-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ordax-notification-entry {
+  display: grid;
+  gap: 7px;
+  padding: 12px 13px;
+  border: 1px solid var(--ordax-border-soft);
+  border-left: 3px solid transparent;
+  border-radius: var(--ordax-radius-md);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-notification-entry[data-read="false"] {
+  border-left-color: var(--ordax-accent);
+}
+
+.ordax-notification-entry-header,
+.ordax-notification-actions,
+.ordax-notification-footer,
+.ordax-notification-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ordax-notification-entry-header,
+.ordax-notification-footer {
+  justify-content: space-between;
+}
+
+.ordax-notification-source,
+.ordax-notification-time,
+.ordax-notification-persistence {
+  color: var(--ordax-muted);
+  font-size: 0.66rem;
+}
+
+.ordax-notification-source {
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ordax-notification-title {
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.ordax-notification-message {
+  margin: 0;
+  color: var(--ordax-muted);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.ordax-notification-actions {
+  flex-wrap: wrap;
+}
+
+.ordax-notification-action {
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.69rem;
+}
+
+.ordax-notification-action:hover:not(:disabled),
+.ordax-notification-action:focus-visible:not(:disabled) {
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-notification-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ordax-notification-footer {
+  align-items: flex-start;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notification-footer-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .ordax-area-button:hover:not(:disabled),
 .ordax-area-button:focus-visible:not(:disabled),
 .ordax-status-action:hover,
