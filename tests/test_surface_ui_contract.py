@@ -304,6 +304,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
+        internet_runtime = (
+            ROOT / "system" / "components" / "internet" / "runtime.mjs"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('id: "internet"', internet)
         self.assertIn('extensionId: "internet-browser"', internet)
@@ -322,13 +325,17 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../surface/ui/internet.css", web_html)
         self.assertIn("../../surface/ui/internet.css", native_html)
         self.assertIn("createWebBrowserSession", web_main)
-        self.assertIn("mountInternetBrowserControls", web_main)
         self.assertIn("createNativeBrowserSession", native_main)
-        self.assertIn("mountInternetBrowserControls", native_main)
-        self.assertIn("mountInternetBrowserShortcuts", native_main)
-        self.assertIn("internetBrowserControls.destroy()", web_main)
-        self.assertIn("internetBrowserControls.destroy()", native_main)
-        self.assertIn("internetBrowserShortcuts.destroy()", native_main)
+        self.assertIn("loadOptionalComponentRuntime", web_main)
+        self.assertIn("loadOptionalComponentRuntime", native_main)
+        self.assertIn('import("../../components/internet/runtime.mjs")', web_main)
+        self.assertIn('import("../../components/internet/runtime.mjs")', native_main)
+        self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', web_main)
+        self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', native_main)
+        self.assertIn("mountInternetBrowserControls", internet_runtime)
+        self.assertIn("mountInternetBrowserShortcuts", internet_runtime)
+        self.assertIn("internetComponent?.destroy()", web_main)
+        self.assertIn("internetComponent?.destroy()", native_main)
         self.assertIn("browserSession.dispose()", web_main)
         self.assertIn("browserSession.dispose()", native_main)
 

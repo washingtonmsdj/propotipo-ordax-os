@@ -6,6 +6,7 @@ CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
 CSS = ROOT / "system" / "surface" / "ui" / "internet.css"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
+INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-history.mjs"
 STORE = ROOT / "system" / "contracts" / "browser-history-store.mjs"
 RUNTIME = ROOT / "system" / "services" / "internet" / "history.mjs"
@@ -31,21 +32,24 @@ class InternetHistoryContractTests(unittest.TestCase):
         self.assertNotIn('sessionStorage', controls)
         self.assertNotIn('/__ordax/native/', controls)
 
-    def test_native_composition_owns_history_storage_runtime_and_bridge(self):
+    def test_native_composition_owns_history_store_while_internet_runtime_owns_domain(self):
         native = self.text(NATIVE_MAIN)
+        runtime = self.text(INTERNET_RUNTIME)
         self.assertIn('createNativeBrowserHistoryStore', native)
-        self.assertIn('createBrowserHistoryRuntime', native)
-        self.assertIn('createBrowserHistoryBridge', native)
-        self.assertIn('history: browserHistory', native)
-        self.assertIn('browserHistoryBridge.destroy()', native)
-        self.assertIn('browserHistory.destroy()', native)
+        self.assertNotIn('createBrowserHistoryRuntime', native)
+        self.assertNotIn('createBrowserHistoryBridge', native)
+        self.assertIn('createHistoryStore: () => createNativeBrowserHistoryStore(window)', native)
+        self.assertIn('createBrowserHistoryRuntime', runtime)
+        self.assertIn('createBrowserHistoryBridge', runtime)
+        self.assertIn('historyBridge?.destroy()', runtime)
+        self.assertIn('history?.destroy()', runtime)
 
     def test_web_composition_does_not_fake_native_browser_history(self):
         web = self.text(WEB_MAIN)
         self.assertNotIn('createNativeBrowserHistoryStore', web)
         self.assertNotIn('createBrowserHistoryRuntime', web)
         self.assertNotIn('createBrowserHistoryBridge', web)
-        self.assertIn('mountInternetBrowserControls(root, browserSession, surface)', web)
+        self.assertIn('import("../../components/internet/runtime.mjs")', web)
 
     def test_history_has_bounded_independent_contract_and_privileged_store(self):
         contract = self.text(CONTRACT)

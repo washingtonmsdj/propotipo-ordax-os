@@ -31,9 +31,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { listSystemComponents } from "../../services/components/catalog.mjs";
 import { createComponentManager } from "../../services/components/manager.mjs";
-import { createBrowserFavoritesRuntime } from "../../services/internet/favorites.mjs";
-import { createBrowserHistoryRuntime } from "../../services/internet/history.mjs";
-import { createBrowserHistoryBridge } from "../../services/internet/history-bridge.mjs";
+import { loadOptionalComponentRuntime } from "../../services/components/runtime-loader.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
 import { createProjectWebReferenceRuntime } from "../../services/projects/web-references.mjs";
@@ -47,8 +45,6 @@ import { createPreferenceSyncRuntime } from "../../services/sync/preference-runt
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
-import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
-import { mountInternetBrowserShortcuts } from "../../surface/ui/internet-browser-shortcuts.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
@@ -163,12 +159,6 @@ async function start() {
     store: createNativeProjectWebReferenceStore(window),
     projects,
   });
-  const browserFavorites = createBrowserFavoritesRuntime({
-    store: createNativeBrowserFavoritesStore(window),
-  });
-  const browserHistory = createBrowserHistoryRuntime({
-    store: createNativeBrowserHistoryStore(window),
-  });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
@@ -193,15 +183,6 @@ async function start() {
       void clientDiagnostics.report(renderedSourceSha(window), stage, error);
     }
   };
-  const browserHistoryBridge = createBrowserHistoryBridge(
-    browserSession,
-    browserHistory,
-    {
-      onError(error) {
-        reportClientDiagnostic("internet-history", error);
-      },
-    },
-  );
   const onWindowError = (event) => {
     reportClientDiagnostic("window-error", event.error ?? new Error("window-error"));
   };
@@ -248,18 +229,6 @@ async function start() {
     surface,
     { fileSpace, appActivation },
   );
-  const internetBrowserControls = mountInternetBrowserControls(
-    root,
-    browserSession,
-    surface,
-    {
-      projects,
-      projectReferences,
-      favorites: browserFavorites,
-      history: browserHistory,
-    },
-  );
-  const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
   try {
@@ -371,10 +340,31 @@ async function start() {
   const powerControls = mountPowerControls(root, powerActions);
 
   // Reaching this point proves that the shared Surface composition mounted.
-  // The native supervisor uses this acknowledgement to keep or roll back
-  // a live update without rebooting the notebook.
+  // Optional app runtimes load only after this acknowledgement so an app-level
+  // import or mount failure cannot turn into a failed OrdaX cold boot.
+  componentManager.setCurrentHealth("surface-shell", "healthy");
   void updateWatcher.markHealthy();
   const surfaceHeartbeat = createNativeSurfaceHeartbeat(window);
+
+  const internetComponent = await loadOptionalComponentRuntime({
+    componentId: "internet",
+    importer: () => import("../../components/internet/runtime.mjs"),
+    componentManager,
+    context: {
+      root,
+      browserSession,
+      surfaceLifecycle: surface,
+      projects,
+      projectReferences,
+      createFavoritesStore: () => createNativeBrowserFavoritesStore(window),
+      createHistoryStore: () => createNativeBrowserHistoryStore(window),
+      enableShortcuts: true,
+      reportDiagnostic: reportClientDiagnostic,
+    },
+    onError(error) {
+      reportClientDiagnostic("internet-runtime", error);
+    },
+  });
 
   window.addEventListener(
     "pagehide",
@@ -396,11 +386,7 @@ async function start() {
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
       notesWorkspaceControls.destroy();
-      internetBrowserShortcuts.destroy();
-      internetBrowserControls.destroy();
-      browserHistoryBridge.destroy();
-      browserHistory.destroy();
-      browserFavorites.destroy();
+      internetComponent?.destroy();
       projectReferences?.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();

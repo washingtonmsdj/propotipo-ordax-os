@@ -10,12 +10,12 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { listSystemComponents } from "../../services/components/catalog.mjs";
 import { createComponentManager } from "../../services/components/manager.mjs";
+import { loadOptionalComponentRuntime } from "../../services/components/runtime-loader.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
-import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
@@ -62,7 +62,6 @@ const notesWorkspaceControls = mountNotesWorkspaceControls(
   surface,
   { appActivation },
 );
-const internetBrowserControls = mountInternetBrowserControls(root, browserSession, surface);
 const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
 let quickPanelControls = null;
 let networkQuickPanel = null;
@@ -112,11 +111,27 @@ const systemOverviewControls = mountSystemOverviewControls(
   componentManager,
 );
 
+componentManager.setCurrentHealth("surface-shell", "healthy");
+const internetComponent = await loadOptionalComponentRuntime({
+  componentId: "internet",
+  importer: () => import("../../components/internet/runtime.mjs"),
+  componentManager,
+  context: {
+    root,
+    browserSession,
+    surfaceLifecycle: surface,
+    enableShortcuts: false,
+  },
+  onError(error) {
+    console.warn("OrdaX Internet runtime unavailable", error);
+  },
+});
+
 window.addEventListener(
   "pagehide",
   () => {
     systemOverviewControls.destroy();
-    internetBrowserControls.destroy();
+    internetComponent?.destroy();
     notesWorkspaceControls.destroy();
     networkQuickPanel?.destroy();
     quickPanelControls?.destroy();
