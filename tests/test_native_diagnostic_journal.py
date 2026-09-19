@@ -95,6 +95,11 @@ class NativeDiagnosticJournalTests(unittest.TestCase):
                 user_root=str(root / "user"),
                 power_request_path=str(root / "missing-power-fifo"),
                 network_session_dir=str(root / "network"),
+                component_slots=native_host.ComponentSlotBroker(
+                    root=str(root / "components"),
+                    release_agent=str(root / "missing-release-agent"),
+                    trust_path=str(root / "missing-release-trust"),
+                ),
             )
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -136,6 +141,11 @@ class NativeDiagnosticJournalTests(unittest.TestCase):
                 user_root=str(root / "user"),
                 power_request_path=str(root / "missing-power-fifo"),
                 network_session_dir=str(root / "network"),
+                component_slots=native_host.ComponentSlotBroker(
+                    root=str(root / "components"),
+                    release_agent=str(root / "missing-release-agent"),
+                    trust_path=str(root / "missing-release-trust"),
+                ),
             )
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
