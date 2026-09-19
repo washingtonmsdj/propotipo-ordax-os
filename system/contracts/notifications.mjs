@@ -1,7 +1,8 @@
 import { validateAppActivation } from "./app-activation.mjs";
 
-export const NOTIFICATIONS_SCHEMA = "ordax.notifications/1";
+export const NOTIFICATIONS_SCHEMA = "ordax.notifications/2";
 export const MAX_NOTIFICATIONS = 64;
+export const MAX_DISABLED_NOTIFICATION_SOURCES = 32;
 
 const LEVELS = new Set(["info", "success", "warning", "error"]);
 const PERSISTENCE_SCOPES = new Set(["device", "session"]);
@@ -24,6 +25,13 @@ export function validateNotificationId(value) {
   return boundedText(value, "Notification id", 128);
 }
 
+export function validateNotificationSourceId(value) {
+  if (typeof value !== "string" || !SOURCE_ID_RE.test(value)) {
+    throw new TypeError("Notification sourceId is invalid");
+  }
+  return value;
+}
+
 export function validateNotificationPolicy(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Notification policy must be an object");
@@ -31,16 +39,30 @@ export function validateNotificationPolicy(value) {
   if (typeof value.doNotDisturb !== "boolean") {
     throw new TypeError("Notification doNotDisturb policy must be boolean");
   }
-  return Object.freeze({ doNotDisturb: value.doNotDisturb });
+  const disabledSources = value.disabledSources ?? [];
+  if (
+    !Array.isArray(disabledSources)
+    || disabledSources.length > MAX_DISABLED_NOTIFICATION_SOURCES
+  ) {
+    throw new TypeError(
+      `Notification disabledSources must contain at most ${MAX_DISABLED_NOTIFICATION_SOURCES} items`,
+    );
+  }
+  const normalizedSources = disabledSources.map(validateNotificationSourceId).sort();
+  if (new Set(normalizedSources).size !== normalizedSources.length) {
+    throw new TypeError("Notification disabledSources must contain unique source ids");
+  }
+  return Object.freeze({
+    doNotDisturb: value.doNotDisturb,
+    disabledSources: Object.freeze(normalizedSources),
+  });
 }
 
 export function validateNotificationDraft(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Notification draft must be an object");
   }
-  if (!SOURCE_ID_RE.test(value.sourceId ?? "")) {
-    throw new TypeError("Notification sourceId is invalid");
-  }
+  const sourceId = validateNotificationSourceId(value.sourceId);
   if (!LEVELS.has(value.level)) {
     throw new TypeError("Notification level is invalid");
   }
@@ -48,7 +70,7 @@ export function validateNotificationDraft(value) {
     ? null
     : validateAppActivation(value.destination);
   return Object.freeze({
-    sourceId: value.sourceId,
+    sourceId,
     level: value.level,
     title: boundedText(value.title, "Notification title", 96),
     message: boundedText(value.message, "Notification message", 360),
@@ -102,12 +124,16 @@ export function validateNotificationsSnapshot(value) {
   if (!PERSISTENCE_SCOPES.has(value.policyPersistence)) {
     throw new TypeError("Notification policy persistence must be device or session");
   }
-  const policy = validateNotificationPolicy({ doNotDisturb: value.doNotDisturb });
+  const policy = validateNotificationPolicy({
+    doNotDisturb: value.doNotDisturb,
+    disabledSources: value.disabledSources,
+  });
   const entries = validateNotificationEntries(value.entries);
   return Object.freeze({
     persistence: value.persistence,
     policyPersistence: value.policyPersistence,
     doNotDisturb: policy.doNotDisturb,
+    disabledSources: policy.disabledSources,
     unreadCount: entries.reduce((count, entry) => count + (entry.read ? 0 : 1), 0),
     entries,
   });
@@ -122,6 +148,7 @@ export function assertNotificationsPort(port) {
     "subscribe",
     "publish",
     "setDoNotDisturb",
+    "setSourceEnabled",
     "markRead",
     "markAllRead",
     "dismiss",

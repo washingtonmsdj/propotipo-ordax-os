@@ -212,6 +212,71 @@
   text-align: right;
 }
 
+
+.ordax-settings-notification-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: var(--ordax-radius-sm);
+  background: var(--ordax-subtle-bg);
+}
+
+.ordax-settings-notification-copy {
+  min-width: 0;
+}
+
+.ordax-settings-notification-copy strong,
+.ordax-settings-notification-copy small {
+  display: block;
+}
+
+.ordax-settings-notification-copy strong {
+  font-size: 0.82rem;
+}
+
+.ordax-settings-notification-copy small,
+.ordax-settings-notification-persistence {
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.ordax-settings-notification-copy small {
+  margin-top: 4px;
+}
+
+.ordax-settings-notification-action {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--ordax-border);
+  border-radius: var(--ordax-radius-sm);
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.ordax-settings-notification-action:hover,
+.ordax-settings-notification-action:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 1px;
+}
+
+.ordax-settings-notification-action[aria-pressed="true"] {
+  border-color: var(--ordax-accent);
+}
+
+.ordax-settings-notification-persistence {
+  margin: 12px 0 0;
+}
+
 .ordax-settings-network-service,
 .ordax-settings-network-item {
   display: grid;

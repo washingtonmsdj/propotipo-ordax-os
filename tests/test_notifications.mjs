@@ -5,16 +5,21 @@ import {
   MAX_NOTIFICATIONS,
   NOTIFICATIONS_SCHEMA,
   validateNotificationDraft,
+  validateNotificationPolicy,
 } from "../system/contracts/notifications.mjs";
 import { NOTIFICATION_STORE_SCHEMA } from "../system/contracts/notification-store.mjs";
 import { UPDATE_STATUS_SCHEMA, validateUpdateStatusSnapshot } from "../system/contracts/update-status.mjs";
 import { createNativeNotificationStore } from "../system/adapters/native/notifications.mjs";
+import {
+  SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
+  listNotificationSources,
+} from "../system/services/notifications/catalog.mjs";
 import { createNotificationsRuntime } from "../system/services/notifications/runtime.mjs";
 import { createUpdateNotificationBridge } from "../system/services/notifications/update-bridge.mjs";
 
 function draft(overrides = {}) {
   return {
-    sourceId: "system",
+    sourceId: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
     level: "info",
     title: "Aviso",
     message: "Mensagem local",
@@ -25,7 +30,7 @@ function draft(overrides = {}) {
 
 function memoryStore({ failSave = false, failPolicySave = false } = {}) {
   let entries = [];
-  let policy = { doNotDisturb: false };
+  let policy = { doNotDisturb: false, disabledSources: [] };
   return {
     schema: NOTIFICATION_STORE_SCHEMA,
     scope: "device",
@@ -85,14 +90,47 @@ function updatePort(initial) {
   };
 }
 
-test("notification draft validates bounded levels and app destinations", () => {
+test("notification draft and policy validate bounded sources and app destinations", () => {
   assert.deepEqual(validateNotificationDraft(draft()), draft());
+  assert.deepEqual(validateNotificationPolicy({ doNotDisturb: false }), {
+    doNotDisturb: false,
+    disabledSources: [],
+  });
+  assert.deepEqual(
+    validateNotificationPolicy({
+      doNotDisturb: true,
+      disabledSources: [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID],
+    }),
+    {
+      doNotDisturb: true,
+      disabledSources: [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID],
+    },
+  );
   assert.throws(() => validateNotificationDraft(draft({ level: "critical" })), /level/i);
   assert.throws(
     () => validateNotificationDraft(draft({ destination: { appId: "System", target: "updates" } })),
     /appId/i,
   );
   assert.throws(() => validateNotificationDraft(draft({ title: "bad\nline" })), /printable/i);
+  assert.throws(
+    () => validateNotificationPolicy({
+      doNotDisturb: false,
+      disabledSources: [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID],
+    }),
+    /unique/i,
+  );
+});
+
+test("notification source catalog exposes only the real integrated producer", () => {
+  assert.deepEqual(listNotificationSources(), [
+    {
+      id: SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
+      appId: "system",
+      label: "Sistema",
+      topic: "Atualizações",
+      description: "Avisos de atualização aplicada, falha, rollback e atualização de base pendente.",
+    },
+  ]);
 });
 
 test("notification runtime keeps monotonic bounded unread history", () => {
@@ -122,6 +160,7 @@ test("notification runtime keeps monotonic bounded unread history", () => {
   assert.equal(snapshot.persistence, "session");
   assert.equal(snapshot.policyPersistence, "session");
   assert.equal(snapshot.doNotDisturb, false);
+  assert.deepEqual(snapshot.disabledSources, []);
 });
 
 test("notification runtime persists read state and non-destructive dismissal", () => {
@@ -154,13 +193,41 @@ test("Do Not Disturb persists independently without consuming unread history", (
   assert.equal(snapshot.policyPersistence, "device");
   assert.equal(snapshot.unreadCount, 1);
   assert.equal(snapshot.entries[0].id, entry.id);
-  assert.deepEqual(store.policySnapshot(), { doNotDisturb: true });
+  assert.deepEqual(store.policySnapshot(), { doNotDisturb: true, disabledSources: [] });
 
   runtime.setDoNotDisturb(false);
   snapshot = runtime.getSnapshot();
   assert.equal(snapshot.doNotDisturb, false);
   assert.equal(snapshot.unreadCount, 1, "presentation policy must not mark history read");
   assert.throws(() => runtime.setDoNotDisturb("true"), /boolean/i);
+});
+
+test("per-source policy suppresses only future notifications and preserves existing history", () => {
+  const store = memoryStore();
+  let tick = 1700;
+  const runtime = createNotificationsRuntime({ store, now: () => tick += 1 });
+  const existing = runtime.publish(draft({ title: "Antes da preferência" }));
+
+  runtime.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, false);
+  let snapshot = runtime.getSnapshot();
+  assert.deepEqual(snapshot.disabledSources, [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID]);
+  assert.equal(snapshot.entries[0].id, existing.id);
+  assert.equal(runtime.publish(draft({ title: "Bloqueada" })), null);
+  assert.equal(runtime.getSnapshot().entries.length, 1);
+
+  const other = runtime.publish(draft({ sourceId: "files", title: "Outra fonte" }));
+  assert.ok(other);
+  assert.equal(runtime.getSnapshot().entries.length, 2);
+
+  runtime.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, true);
+  snapshot = runtime.getSnapshot();
+  assert.deepEqual(snapshot.disabledSources, []);
+  assert.ok(runtime.publish(draft({ title: "Reativada" })));
+  assert.equal(runtime.getSnapshot().entries.length, 3);
+  assert.throws(
+    () => runtime.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, "false"),
+    /boolean/i,
+  );
 });
 
 test("notification runtime degrades history and policy persistence independently", () => {
@@ -170,14 +237,16 @@ test("notification runtime degrades history and policy persistence independently
   });
   runtime.publish(draft());
   runtime.setDoNotDisturb(true);
+  runtime.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, false);
   const snapshot = runtime.getSnapshot();
   assert.equal(snapshot.persistence, "session");
   assert.equal(snapshot.policyPersistence, "session");
   assert.equal(snapshot.doNotDisturb, true);
+  assert.deepEqual(snapshot.disabledSources, [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID]);
   assert.equal(snapshot.entries.length, 1);
 });
 
-test("Native notification store round-trips history and Do Not Disturb and fails closed on corruption", () => {
+test("Native notification store migrates old policy and round-trips source preferences", () => {
   const data = new Map();
   const localStorage = {
     getItem(key) {
@@ -187,10 +256,22 @@ test("Native notification store round-trips history and Do Not Disturb and fails
       data.set(key, String(value));
     },
   };
-  const store = createNativeNotificationStore({ localStorage });
-  const runtime = createNotificationsRuntime({ store, now: () => 3000 });
-  runtime.publish(draft({ title: "Persistido" }));
-  runtime.setDoNotDisturb(true);
+  data.set(
+    "ordax.native.notification-policy.v1",
+    JSON.stringify({
+      schema: "ordax.native.notification-policy-record/1",
+      policy: { doNotDisturb: true },
+    }),
+  );
+  const migrated = createNotificationsRuntime({
+    store: createNativeNotificationStore({ localStorage }),
+    now: () => 2500,
+  });
+  assert.equal(migrated.getSnapshot().doNotDisturb, true);
+  assert.deepEqual(migrated.getSnapshot().disabledSources, []);
+
+  migrated.publish(draft({ title: "Persistido" }));
+  migrated.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, false);
 
   const reloaded = createNotificationsRuntime({
     store: createNativeNotificationStore({ localStorage }),
@@ -200,6 +281,7 @@ test("Native notification store round-trips history and Do Not Disturb and fails
   assert.equal(reloaded.getSnapshot().policyPersistence, "device");
   assert.equal(reloaded.getSnapshot().entries[0].title, "Persistido");
   assert.equal(reloaded.getSnapshot().doNotDisturb, true);
+  assert.deepEqual(reloaded.getSnapshot().disabledSources, [SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID]);
 
   data.set("ordax.native.notifications.v1", "{broken-json");
   data.set("ordax.native.notification-policy.v1", "{broken-json");
@@ -209,6 +291,7 @@ test("Native notification store round-trips history and Do Not Disturb and fails
   });
   assert.equal(corrupted.getSnapshot().entries.length, 0);
   assert.equal(corrupted.getSnapshot().doNotDisturb, false);
+  assert.deepEqual(corrupted.getSnapshot().disabledSources, []);
 });
 
 test("update notification bridge ignores startup state and publishes only new actionable transitions", () => {
@@ -226,6 +309,10 @@ test("update notification bridge ignores startup state and publishes only new ac
   }));
   assert.equal(notifications.getSnapshot().entries.length, 1);
   assert.equal(notifications.getSnapshot().entries[0].level, "success");
+  assert.equal(
+    notifications.getSnapshot().entries[0].sourceId,
+    SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID,
+  );
   assert.deepEqual(notifications.getSnapshot().entries[0].destination, {
     appId: "system",
     target: "updates",
@@ -242,22 +329,24 @@ test("update notification bridge ignores startup state and publishes only new ac
   assert.equal(notifications.getSnapshot().doNotDisturb, true);
   assert.equal(notifications.getSnapshot().entries[0].title, "Atualização de base pendente");
 
-  updates.push(updateSnapshot({
-    status: "running",
-    attemptId: "attempt-3",
-    bootRefreshRequired: true,
-  }));
-  assert.equal(notifications.getSnapshot().entries.length, 2, "identical snapshot must not duplicate");
-
+  notifications.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, false);
   updates.push(updateSnapshot({
     status: "pull-error",
     attemptId: "attempt-4",
     bootRefreshRequired: true,
   }));
+  assert.equal(
+    notifications.getSnapshot().entries.length,
+    2,
+    "disabled update source must not create new history",
+  );
+
+  notifications.setSourceEnabled(SYSTEM_UPDATES_NOTIFICATION_SOURCE_ID, true);
+  updates.push(updateSnapshot({ status: "rolled-back", attemptId: "attempt-5" }));
   assert.equal(notifications.getSnapshot().entries.length, 3);
-  assert.equal(notifications.getSnapshot().entries[0].level, "error");
+  assert.equal(notifications.getSnapshot().entries[0].level, "warning");
 
   bridge.destroy();
-  updates.push(updateSnapshot({ status: "rolled-back", attemptId: "attempt-5" }));
+  updates.push(updateSnapshot({ status: "rejected", attemptId: "attempt-6" }));
   assert.equal(notifications.getSnapshot().entries.length, 3, "destroyed bridge must unsubscribe");
 });

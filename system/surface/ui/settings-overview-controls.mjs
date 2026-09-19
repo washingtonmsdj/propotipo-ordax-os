@@ -1,4 +1,5 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
+import { assertNotificationsPort } from "../../contracts/notifications.mjs";
 import {
   assertNetworkManagementPort,
   validateNetworkManagementSnapshot,
@@ -17,6 +18,7 @@ import {
   networkManagementFailureMessage,
   runNetworkManagementAction,
 } from "../../services/network/management-runtime.mjs";
+import { listNotificationSources } from "../../services/notifications/catalog.mjs";
 import { listPreferenceDefinitions } from "../../services/preferences/catalog.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
@@ -27,6 +29,7 @@ const SETTINGS_SECTIONS = Object.freeze([
   Object.freeze({ id: "appearance", label: "Aparência" }),
   Object.freeze({ id: "accessibility", label: "Acessibilidade" }),
   Object.freeze({ id: "network", label: "Rede" }),
+  Object.freeze({ id: "notifications", label: "Notificações" }),
 ]);
 
 const SECTION_COPY = Object.freeze({
@@ -41,6 +44,10 @@ const SECTION_COPY = Object.freeze({
   network: Object.freeze({
     title: "Rede",
     subtitle: "Conectividade observada e gerenciamento Wi-Fi somente quando o host expõe essa capacidade.",
+  }),
+  notifications: Object.freeze({
+    title: "Notificações",
+    subtitle: "Apresentação e fontes reais de notificações, sem criar permissões para apps que ainda não publicam eventos.",
   }),
 });
 
@@ -98,6 +105,7 @@ export function mountSettingsOverviewControls(
   networkStatus = null,
   networkManagement = null,
   appActivation = null,
+  notifications = null,
 ) {
   if (!(root instanceof Element)) {
     throw new TypeError("Settings overview controls require a Surface root Element");
@@ -109,6 +117,7 @@ export function mountSettingsOverviewControls(
   const networkManagementPort =
     networkManagement === null ? null : assertNetworkManagementPort(networkManagement);
   const activationPort = appActivation === null ? null : assertAppActivationPort(appActivation);
+  const notificationPort = notifications === null ? null : assertNotificationsPort(notifications);
   const documentObject = root.ownerDocument;
 
   let hostSnapshot = validateSurfaceSnapshot(hostPort.getSnapshot());
@@ -117,6 +126,7 @@ export function mountSettingsOverviewControls(
   let networkReadFailed = false;
   let networkLastSuccessAt = null;
   let networkManagementSnapshot = null;
+  let notificationSnapshot = notificationPort?.getSnapshot() ?? null;
   let networkManagementReadFailed = false;
   let networkManagementLastSuccessAt = null;
   let networkManagementPending = false;
@@ -153,6 +163,15 @@ export function mountSettingsOverviewControls(
         kind: "network-action",
         value: element.dataset.settingsNetworkAction,
         ssid: element.dataset.settingsWifiSsid ?? null,
+      });
+    }
+    if (element.dataset.settingsNotificationDnd !== undefined) {
+      return Object.freeze({ kind: "notification-dnd", value: "dnd" });
+    }
+    if (element.dataset.settingsNotificationSource) {
+      return Object.freeze({
+        kind: "notification-source",
+        value: element.dataset.settingsNotificationSource,
       });
     }
     if (element.dataset.settingsPreferenceId) {
@@ -299,6 +318,110 @@ export function mountSettingsOverviewControls(
       }
       view.append(section);
     }
+  };
+
+  const renderNotifications = (view) => {
+    const policySection = node(documentObject, "section", "ordax-settings-section");
+    policySection.dataset.settingsNotifications = "";
+    policySection.append(
+      node(documentObject, "span", "ordax-settings-section-kicker", "Apresentação"),
+      node(documentObject, "h4", "ordax-settings-section-title", "Não perturbe"),
+      node(
+        documentObject,
+        "p",
+        "ordax-settings-section-copy",
+        "Silencia o sinal de atenção da bandeja sem apagar histórico nem marcar avisos como lidos.",
+      ),
+    );
+
+    if (!notificationPort || !notificationSnapshot) {
+      policySection.append(
+        node(
+          documentObject,
+          "p",
+          "ordax-settings-empty",
+          "O owner de notificações não está disponível neste ambiente.",
+        ),
+      );
+      view.append(policySection);
+      return;
+    }
+
+    const dndRow = node(documentObject, "div", "ordax-settings-notification-row");
+    const dndCopy = node(documentObject, "span", "ordax-settings-notification-copy");
+    dndCopy.append(
+      node(
+        documentObject,
+        "strong",
+        "",
+        notificationSnapshot.doNotDisturb ? "Não perturbe ativo" : "Avisos de bandeja ativos",
+      ),
+      node(
+        documentObject,
+        "small",
+        "",
+        notificationSnapshot.doNotDisturb
+          ? "Novos eventos continuam no histórico, mas badge e cor de atenção ficam ocultos."
+          : "Eventos não lidos podem sinalizar atenção na bandeja.",
+      ),
+    );
+    const dndButton = node(
+      documentObject,
+      "button",
+      "ordax-settings-notification-action",
+      notificationSnapshot.doNotDisturb ? "Desativar" : "Ativar",
+    );
+    dndButton.type = "button";
+    dndButton.dataset.settingsNotificationDnd = "";
+    dndButton.setAttribute("aria-pressed", String(notificationSnapshot.doNotDisturb));
+    dndRow.append(dndCopy, dndButton);
+    policySection.append(dndRow);
+
+    const sourceSection = node(documentObject, "section", "ordax-settings-section");
+    sourceSection.append(
+      node(documentObject, "span", "ordax-settings-section-kicker", "Por aplicativo"),
+      node(documentObject, "h4", "ordax-settings-section-title", "Fontes que realmente notificam"),
+      node(
+        documentObject,
+        "p",
+        "ordax-settings-section-copy",
+        "Só aparecem produtores conectados ao serviço comum de notificações. Desativar uma fonte não interrompe a operação correspondente e não apaga o histórico existente.",
+      ),
+    );
+
+    for (const source of listNotificationSources()) {
+      const enabled = !notificationSnapshot.disabledSources.includes(source.id);
+      const row = node(documentObject, "div", "ordax-settings-notification-row");
+      row.dataset.enabled = String(enabled);
+      const copy = node(documentObject, "span", "ordax-settings-notification-copy");
+      copy.append(
+        node(documentObject, "strong", "", `${source.label} · ${source.topic}`),
+        node(documentObject, "small", "", source.description),
+      );
+      const action = node(
+        documentObject,
+        "button",
+        "ordax-settings-notification-action",
+        enabled ? "Desativar" : "Ativar",
+      );
+      action.type = "button";
+      action.dataset.settingsNotificationSource = source.id;
+      action.setAttribute("aria-pressed", String(enabled));
+      row.append(copy, action);
+      sourceSection.append(row);
+    }
+
+    sourceSection.append(
+      node(
+        documentObject,
+        "p",
+        "ordax-settings-notification-persistence",
+        notificationSnapshot.policyPersistence === "device"
+          ? "Preferências de notificações salvas neste dispositivo."
+          : "Preferências de notificações válidas somente nesta sessão.",
+      ),
+    );
+    view.append(policySection, sourceSection);
   };
 
   const renderNetworkManagement = (section) => {
@@ -561,6 +684,8 @@ export function mountSettingsOverviewControls(
       renderPreferences(view, activeSection);
     } else if (activeSection === "network") {
       renderNetwork(view);
+    } else if (activeSection === "notifications") {
+      renderNotifications(view);
     }
     slot.append(view);
     restoreInteractionState(slot, interaction);
@@ -684,6 +809,25 @@ export function mountSettingsOverviewControls(
       return;
     }
 
+    const dndButton = event.target.closest("[data-settings-notification-dnd]");
+    if (dndButton && root.contains(dndButton) && notificationPort && notificationSnapshot) {
+      notificationPort.setDoNotDisturb(!notificationSnapshot.doNotDisturb);
+      return;
+    }
+
+    const notificationSourceButton = event.target.closest("[data-settings-notification-source]");
+    if (
+      notificationSourceButton
+      && root.contains(notificationSourceButton)
+      && notificationPort
+      && notificationSnapshot
+    ) {
+      const sourceId = notificationSourceButton.dataset.settingsNotificationSource;
+      const enabled = !notificationSnapshot.disabledSources.includes(sourceId);
+      notificationPort.setSourceEnabled(sourceId, !enabled);
+      return;
+    }
+
     const preferenceButton = event.target.closest("[data-settings-preference-id]");
     if (preferenceButton && root.contains(preferenceButton)) {
       preferences.set(
@@ -785,6 +929,10 @@ export function mountSettingsOverviewControls(
     preferenceSnapshot = snapshot;
     replaceView();
   });
+  const unsubscribeNotifications = notificationPort?.subscribe((snapshot) => {
+    notificationSnapshot = snapshot;
+    if (activeSection === "notifications") replaceView();
+  });
   const networkPoll = networkPort
     ? setInterval(() => void refreshNetwork(), 5000)
     : null;
@@ -802,6 +950,7 @@ export function mountSettingsOverviewControls(
       networkActionOrdinal += 1;
       if (networkPoll !== null) clearInterval(networkPoll);
       if (networkManagementPoll !== null) clearInterval(networkManagementPoll);
+      unsubscribeNotifications?.();
       unsubscribePreferences?.();
       unsubscribeHost?.();
       unsubscribeActivation?.();
