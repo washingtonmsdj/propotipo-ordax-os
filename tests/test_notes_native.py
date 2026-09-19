@@ -15,6 +15,7 @@ NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "notes.mjs"
 NOTES_OWNER = ROOT / "system" / "apps" / "notes" / "app.mjs"
 APP_CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
 NOTES_CONTROLS = ROOT / "system" / "surface" / "ui" / "notes-workspace-controls.mjs"
+NOTES_RICH_EDITOR = ROOT / "system" / "surface" / "ui" / "notes-rich-editor.mjs"
 NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -68,7 +69,10 @@ class NotesNativeTests(unittest.TestCase):
         native = NATIVE_ADAPTER.read_text(encoding="utf-8")
 
         self.assertIn('ordax.notes-store/1', contract)
-        self.assertIn('ordax.notes-snapshot/1', contract)
+        self.assertIn('ordax.notes-snapshot/2', contract)
+        self.assertIn('LEGACY_NOTES_SNAPSHOT_SCHEMA = "ordax.notes-snapshot/1"', contract)
+        self.assertIn("validateNotesRichBody", contract)
+        self.assertIn("createNotesRichBodyFromPlainText", contract)
         self.assertIn("validateNotesSnapshot", contract)
         self.assertIn("createNotesRuntime", runtime)
         self.assertNotIn("Um lugar para criar", runtime)
@@ -107,6 +111,7 @@ class NotesNativeTests(unittest.TestCase):
 
     def test_notes_surface_matches_concept_without_platform_storage_shortcuts(self):
         controls = NOTES_CONTROLS.read_text(encoding="utf-8")
+        rich_editor = NOTES_RICH_EDITOR.read_text(encoding="utf-8")
         css = NOTES_CSS.read_text(encoding="utf-8")
         web_html = WEB_HTML.read_text(encoding="utf-8")
         native_html = NATIVE_HTML.read_text(encoding="utf-8")
@@ -123,6 +128,20 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("scheduleSave", controls)
         self.assertIn("assertNotesRuntime", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
+        self.assertIn("./notes-rich-editor.mjs", controls)
+        self.assertIn("renderNotesRichBody", controls)
+        self.assertIn("readNotesRichBody", controls)
+        self.assertIn("toggleNotesRichInlineMark", controls)
+        self.assertIn("setNotesRichBlockType", controls)
+        self.assertNotIn("wrapSelection", controls)
+        self.assertNotIn("prefixSelectedLines", controls)
+        self.assertNotIn('"]()"', controls)
+        self.assertIn('contentEditable = "true"', rich_editor)
+        self.assertIn("validateNotesRichBody", rich_editor)
+        self.assertIn("pastePlainTextIntoNotesEditor", rich_editor)
+        self.assertNotIn("innerHTML", rich_editor)
+        self.assertNotIn("localStorage", rich_editor)
+        self.assertNotIn("/__ordax/native/", rich_editor)
         self.assertIn("assertFileSpacePort", controls)
         self.assertIn("assertAppActivationPort", controls)
         self.assertIn("Relacionar arquivo", controls)
@@ -138,6 +157,10 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("grid-template-columns: 220px 285px", css)
         self.assertIn("--notes-accent: #ed4b25", css)
         self.assertIn(".ordax-notes-references", css)
+        self.assertIn(".ordax-notes-rich-editor", css)
+        self.assertIn('[data-notes-block-type="heading"]', css)
+        self.assertIn('[data-notes-block-type="quote"]', css)
+        self.assertIn('[data-notes-block-type="bullet"]', css)
         self.assertIn(".ordax-notes-file-picker", css)
         self.assertIn(".ordax-notes-ref-open", css)
         self.assertIn("@media (max-width: 1180px)", css)
