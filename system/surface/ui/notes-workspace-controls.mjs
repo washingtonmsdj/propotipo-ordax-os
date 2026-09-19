@@ -747,6 +747,29 @@ export function mountNotesWorkspaceControls(
     return body ? restoreNotesRichSelection(body, lastEditorRange) : false;
   };
 
+  const focusEditorBody = () => {
+    if (!mountedSlot) return false;
+    const body = mountedSlot.querySelector("[data-notes-body]");
+    if (!body) return false;
+    body.focus();
+    if (lastEditorRange && restoreNotesRichSelection(body, lastEditorRange)) {
+      syncEditorToolbar();
+      return true;
+    }
+
+    const target = body.querySelector("[data-notes-rich-block]") ?? body;
+    const selection = documentObject.getSelection?.();
+    if (!selection) return false;
+    const range = documentObject.createRange();
+    range.selectNodeContents(target);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    lastEditorRange = range.cloneRange();
+    syncEditorToolbar();
+    return true;
+  };
+
   const renderMoveProjects = (view, note) => {
     const list = view.querySelector(".ordax-notes-move-projects");
     list.replaceChildren();
@@ -1214,6 +1237,46 @@ export function mountNotesWorkspaceControls(
     }
   };
 
+  const onWorkspaceKeyDown = (event) => {
+    if (!mountedSlot?.contains(event.target) || event.isComposing) return;
+
+    if (event.key === "Enter" && event.target.matches?.("[data-notes-title]")) {
+      event.preventDefault();
+      flushEditor();
+      focusEditorBody();
+      return;
+    }
+
+    if (event.key !== "Escape") return;
+    let handled = false;
+
+    if (event.target.matches?.("[data-notes-search]") && event.target.value) {
+      event.target.value = "";
+      query = "";
+      handled = true;
+    }
+
+    const menu = mountedSlot.querySelector(".ordax-notes-menu");
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      handled = true;
+    }
+
+    if (projectMenuId !== null) {
+      projectMenuId = null;
+      handled = true;
+    }
+
+    if (referenceChooserOpen || filePickerOpen) {
+      resetReferenceFlow();
+      handled = true;
+    }
+
+    if (!handled) return;
+    event.preventDefault();
+    render();
+  };
+
   const onEditorKeyDown = (event) => {
     const body = mountedSlot?.querySelector("[data-notes-body]");
     if (!body || !(event.target === body || body.contains(event.target))) return;
@@ -1284,6 +1347,7 @@ export function mountNotesWorkspaceControls(
   root.addEventListener("change", onChange);
   root.addEventListener("paste", onPaste);
   root.addEventListener("drop", onDrop);
+  root.addEventListener("keydown", onWorkspaceKeyDown);
   root.addEventListener("keydown", onEditorKeyDown);
   root.addEventListener("dblclick", onReferenceOpen);
   root.addEventListener("keydown", onReferenceOpen);
@@ -1307,6 +1371,7 @@ export function mountNotesWorkspaceControls(
       root.removeEventListener("change", onChange);
       root.removeEventListener("paste", onPaste);
       root.removeEventListener("drop", onDrop);
+      root.removeEventListener("keydown", onWorkspaceKeyDown);
       root.removeEventListener("keydown", onEditorKeyDown);
       root.removeEventListener("dblclick", onReferenceOpen);
       root.removeEventListener("keydown", onReferenceOpen);
