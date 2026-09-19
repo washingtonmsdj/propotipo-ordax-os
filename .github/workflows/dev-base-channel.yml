@@ -118,6 +118,7 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --kernel-dir out/kernel \
             --initramfs-dir out/initramfs \
+            --rootfs-dir out/dev-rootfs \
             --out-dir out/dev-base
           python tools/dev-base-channel/build.py verify --out-dir out/dev-base
 
