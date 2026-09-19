@@ -73,6 +73,12 @@ function mutationPatch(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function duplicateNoteTitle(title) {
+  const source = String(title ?? "").trim() || "Sem título";
+  const suffix = " — cópia";
+  return `${source.slice(0, 1024 - suffix.length)}${suffix}`;
+}
+
 export function createNotesRuntime({ store = null, now = () => Date.now() } = {}) {
   let memoryStore = null;
   if (store === null) {
@@ -202,6 +208,37 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       });
       draft.selectedProjectId = projectId;
       draft.selectedNoteId = noteId;
+      return commit(draft);
+    },
+    duplicateNote(noteId) {
+      const draft = thaw(snapshot);
+      if (draft.notes.length >= MAX_NOTES) return runtime.getSnapshot();
+      const sourceIndex = requireNoteIndex(draft, noteId);
+      const source = draft.notes[sourceIndex];
+      if (source.deletedAt !== null) return runtime.getSnapshot();
+
+      const stamp = now();
+      const duplicateId = id("note");
+      const duplicate = {
+        ...source,
+        id: duplicateId,
+        title: duplicateNoteTitle(source.title),
+        favorite: false,
+        deletedAt: null,
+        createdAt: stamp,
+        updatedAt: stamp,
+        tasks: source.tasks.map((task) => ({
+          ...task,
+          id: id("task"),
+        })),
+        references: source.references.map((reference) => ({
+          ...reference,
+          id: id("ref"),
+        })),
+      };
+      draft.notes.unshift(duplicate);
+      draft.selectedProjectId = duplicate.projectId;
+      draft.selectedNoteId = duplicateId;
       return commit(draft);
     },
     createProject(name) {
@@ -448,6 +485,7 @@ export function assertNotesRuntime(runtime) {
     "selectProject",
     "selectNote",
     "createNote",
+    "duplicateNote",
     "createProject",
     "renameProject",
     "removeProject",

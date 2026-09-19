@@ -55,6 +55,7 @@ const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 const DELETED_NOTE_MUTATIONS = new Set([
   "favorite",
+  "duplicate-note",
   "add-task",
   "remove-task",
   "move-note-project",
@@ -159,6 +160,13 @@ function buildShell(documentObject) {
   );
   const menu = node(documentObject, "div", "ordax-notes-menu");
   menu.hidden = true;
+  const duplicateAction = button(
+    documentObject,
+    "ordax-notes-menu-item ordax-notes-duplicate",
+    "Duplicar nota",
+    "duplicate-note",
+    "Duplicar nota",
+  );
   const trashAction = button(
     documentObject,
     "ordax-notes-menu-item ordax-notes-trash-action",
@@ -179,7 +187,7 @@ function buildShell(documentObject) {
     node(documentObject, "span", "ordax-notes-menu-label", "MOVER PARA"),
     node(documentObject, "div", "ordax-notes-move-projects"),
   );
-  menu.append(trashAction, permanentDeleteAction, moveSection);
+  menu.append(duplicateAction, trashAction, permanentDeleteAction, moveSection);
   top.append(breadcrumb, topActions, menu);
   editor.append(top);
 
@@ -944,8 +952,14 @@ export function mountNotesWorkspaceControls(
     const star = view.querySelector(".ordax-notes-star");
     star.textContent = note.favorite ? "★" : "☆";
     star.setAttribute("aria-label", note.favorite ? "Remover dos favoritos" : "Adicionar aos favoritos");
+    const duplicateAction = view.querySelector(".ordax-notes-duplicate");
     const menuAction = view.querySelector(".ordax-notes-trash-action");
     const permanentDeleteAction = view.querySelector(".ordax-notes-delete-forever");
+    duplicateAction.hidden = note.deletedAt !== null;
+    duplicateAction.disabled = note.deletedAt !== null || state.document.notes.length >= MAX_NOTES;
+    duplicateAction.title = state.document.notes.length >= MAX_NOTES
+      ? `Limite de ${MAX_NOTES} notas atingido`
+      : "Duplicar nota";
     menuAction.textContent = note.deletedAt === null ? "Mover para a lixeira" : "Restaurar nota";
     menuAction.dataset.notesAction = note.deletedAt === null ? "trash-note" : "restore-note";
     permanentDeleteAction.hidden = note.deletedAt === null;
@@ -1131,6 +1145,15 @@ export function mountNotesWorkspaceControls(
 
     const body = mountedSlot.querySelector("[data-notes-body]");
     if (action === "favorite") runtime.toggleFavorite(note.id);
+    if (action === "duplicate-note" && state.document.notes.length < MAX_NOTES) {
+      resetReferenceFlow();
+      flushEditor();
+      mode = "project";
+      runtime.duplicateNote(note.id);
+      const menu = mountedSlot?.querySelector(".ordax-notes-menu");
+      if (menu) menu.hidden = true;
+      queueMicrotask(() => mountedSlot?.querySelector("[data-notes-title]")?.select());
+    }
     if (action === "add-task" && note.tasks.length < MAX_NOTE_TASKS) runtime.addTask(note.id);
     if (action === "remove-task") runtime.removeTask(note.id, actionNode.dataset.taskId);
     if (action === "move-note-project") {
