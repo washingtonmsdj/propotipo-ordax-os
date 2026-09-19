@@ -140,14 +140,14 @@ class DevBaseProducerTests(unittest.TestCase):
 
             self.assertEqual(
                 descriptor["$schema"],
-                "prototype-ordax.dev-base-candidate/2",
+                "prototype-ordax.dev-base-candidate/3",
             )
             self.assertEqual(descriptor["source_commit"], SOURCE)
             self.assertEqual(descriptor["tag"], f"ordax-dev-base-{SOURCE}")
             self.assertEqual(descriptor["activation"], "inactive-slot-next-boot")
             self.assertEqual(
                 descriptor["rootfs_activation"],
-                "materialized-only-selection-not-enabled",
+                "slot-coupled-one-shot-health-gated",
             )
             self.assertFalse(descriptor["manual_usb_rewrite_required"])
             self.assertEqual(descriptor["kernel"]["name"], "vmlinuz")
@@ -229,7 +229,7 @@ class DevBaseConsumerTests(unittest.TestCase):
             "source_commit": source_commit,
             "tag": tag,
             "activation": "inactive-slot-next-boot",
-            "rootfs_activation": "materialized-only-selection-not-enabled",
+            "rootfs_activation": "slot-coupled-one-shot-health-gated",
             "manual_usb_rewrite_required": False,
             "kernel": {
                 "name": "vmlinuz",
@@ -376,6 +376,45 @@ class DevBaseConsumerTests(unittest.TestCase):
                 "rootfs (size|SHA-256) mismatch",
             ):
                 consumer.acquire(SOURCE, Path(temporary), opener=opener)
+
+    def test_materialize_versioned_rootfs_is_atomic_and_reusable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            kernel_dir, initramfs_dir, rootfs_dir, _kernel, _initramfs = (
+                write_provenance_fixture(root)
+            )
+            candidate = root / "candidate"
+            builder.build(
+                source_commit=SOURCE,
+                kernel_dir=kernel_dir,
+                initramfs_dir=initramfs_dir,
+                rootfs_dir=rootfs_dir,
+                out_dir=candidate,
+            )
+
+            versions = root / "versions"
+            target, reused = consumer.materialize_versioned_rootfs(
+                candidate,
+                SOURCE,
+                versions,
+            )
+            self.assertFalse(reused)
+            self.assertEqual(target, versions / SOURCE)
+            self.assertEqual(
+                (target / consumer.ROOTFS_MARKER).read_text(encoding="ascii").strip(),
+                SOURCE,
+            )
+            for relative in consumer.REQUIRED_ROOTFS_PATHS:
+                self.assertTrue((target / relative).is_file())
+            self.assertTrue((target / ".ordax-base").is_dir())
+
+            same, reused = consumer.materialize_versioned_rootfs(
+                candidate,
+                SOURCE,
+                versions,
+            )
+            self.assertTrue(reused)
+            self.assertEqual(same, target)
 
     def test_missing_exact_commit_candidate_is_retryable(self):
         def opener(url, timeout):
