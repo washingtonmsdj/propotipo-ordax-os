@@ -7,6 +7,14 @@ TARGET_ROOT=${ORDAX_DEV_HELPER_TARGET_ROOT:-/}
 SOURCE_SHA=${ORDAX_SOURCE_SHA:-}
 MAX_HELPER_BYTES=1048576
 
+bb() {
+    if [ -x /bin/busybox ]; then
+        /bin/busybox "$@"
+    else
+        command "$@"
+    fi
+}
+
 case "$TARGET_ROOT" in
     /*) ;;
     *)
@@ -39,16 +47,16 @@ receipt_tmp=$receipt.tmp.$$
 cleanup() {
     if [ -f "$stage_manifest" ]; then
         while IFS="$(printf '\t')" read -r temporary _target; do
-            [ -n "$temporary" ] && /bin/busybox rm -f "$temporary" 2>/dev/null || true
+            [ -n "$temporary" ] && bb rm -f "$temporary" 2>/dev/null || true
         done <"$stage_manifest"
     fi
-    /bin/busybox rm -f "$stage_manifest" "$receipt_tmp" 2>/dev/null || true
+    bb rm -f "$stage_manifest" "$receipt_tmp" 2>/dev/null || true
 }
 trap cleanup EXIT HUP INT TERM
 
-/bin/busybox mkdir -p "$STATE_DIR"
+bb mkdir -p "$STATE_DIR"
 : >"$stage_manifest"
-/bin/busybox chmod 600 "$stage_manifest"
+bb chmod 600 "$stage_manifest"
 
 stage_helper() {
     source_relative=$1
@@ -62,7 +70,7 @@ stage_helper() {
         echo "ordax-dev-helpers: source is missing or unsafe: $source_relative" >&2
         exit 1
     }
-    size=$(/bin/busybox wc -c <"$source" | /bin/busybox tr -d ' ')
+    size=$(bb wc -c <"$source" | bb tr -d ' ')
     case "$size" in
         ''|*[!0-9]*) size=0 ;;
     esac
@@ -75,7 +83,7 @@ stage_helper() {
         exit 1
     }
 
-    /bin/busybox mkdir -p "$parent"
+    bb mkdir -p "$parent"
     [ ! -L "$parent" ] || {
         echo "ordax-dev-helpers: target parent is a symlink: $target_relative" >&2
         exit 1
@@ -87,11 +95,11 @@ stage_helper() {
         }
     fi
 
-    /bin/busybox rm -f "$temporary"
-    /bin/busybox cp "$source" "$temporary"
-    /bin/busybox chmod 755 "$temporary"
+    bb rm -f "$temporary"
+    bb cp "$source" "$temporary"
+    bb chmod 755 "$temporary"
     /bin/sh -n "$temporary" || {
-        /bin/busybox rm -f "$temporary"
+        bb rm -f "$temporary"
         echo "ordax-dev-helpers: staged shell syntax is invalid: $target_relative" >&2
         exit 1
     }
@@ -107,13 +115,13 @@ stage_helper bootstrap/recovery/entrypoint ordax/bootstrap/recovery/entrypoint
 
 while IFS="$(printf '\t')" read -r temporary target; do
     [ -n "$temporary" ] && [ -n "$target" ] || exit 1
-    /bin/busybox mv -f "$temporary" "$target"
+    bb mv -f "$temporary" "$target"
 done <"$stage_manifest"
 
 printf '%s\n' "$SOURCE_SHA" >"$receipt_tmp"
-/bin/busybox chmod 600 "$receipt_tmp"
-/bin/busybox mv -f "$receipt_tmp" "$receipt"
+bb chmod 600 "$receipt_tmp"
+bb mv -f "$receipt_tmp" "$receipt"
 
 trap - EXIT HUP INT TERM
-/bin/busybox rm -f "$stage_manifest"
+bb rm -f "$stage_manifest"
 printf 'ORDAX_DEV_HELPERS_SHA=%s\n' "$SOURCE_SHA"
