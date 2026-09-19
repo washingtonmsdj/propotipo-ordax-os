@@ -13,14 +13,30 @@ import (
 	"strings"
 )
 
-func readComponentRelease(path string) (ComponentReleaseManifest, error) {
-	data, err := os.ReadFile(path)
+func readVerifiedInstalledComponentRelease(
+	versionRoot string,
+	trust TrustAnchor,
+	key ed25519.PublicKey,
+	expectedRepo,
+	expectedComponent string,
+) (ComponentReleaseManifest, error) {
+	envelope, err := os.ReadFile(filepath.Join(versionRoot, "component-envelope.json"))
 	if err != nil {
 		return ComponentReleaseManifest{}, err
 	}
-	var manifest ComponentReleaseManifest
-	if err := strictDecode(data, maxPayload, &manifest); err != nil {
+	manifest, payload, err := verifyComponentEnvelope(
+		envelope,
+		trust,
+		key,
+		expectedRepo,
+		expectedComponent,
+	)
+	if err != nil {
 		return ComponentReleaseManifest{}, err
+	}
+	storedPayload, err := os.ReadFile(filepath.Join(versionRoot, "component-release.json"))
+	if err != nil || !bytes.Equal(storedPayload, payload) {
+		return ComponentReleaseManifest{}, errors.New("installed component release payload differs from signed envelope")
 	}
 	return manifest, nil
 }
@@ -51,7 +67,12 @@ func cleanupComponentStages(versions string) error {
 	return syncDir(versions)
 }
 
-func checkComponentRollback(componentRoot string, candidate ComponentReleaseManifest) error {
+func checkComponentRollback(
+	componentRoot string,
+	candidate ComponentReleaseManifest,
+	trust TrustAnchor,
+	key ed25519.PublicKey,
+) error {
 	versions := filepath.Join(componentRoot, "versions")
 	if err := cleanupComponentStages(versions); err != nil {
 		return err
@@ -78,12 +99,15 @@ func checkComponentRollback(componentRoot string, candidate ComponentReleaseMani
 		if !componentVersionPattern.MatchString(entry.Name()) {
 			return fmt.Errorf("runtime component version directory has invalid name: %s", entry.Name())
 		}
-		manifest, err := readComponentRelease(filepath.Join(versions, entry.Name(), "component-release.json"))
+		manifest, err := readVerifiedInstalledComponentRelease(
+			filepath.Join(versions, entry.Name()),
+			trust,
+			key,
+			candidate.SourceRepository,
+			candidate.ComponentID,
+		)
 		if err != nil {
-			return fmt.Errorf("cannot establish runtime component anti-rollback baseline: %w", err)
-		}
-		if err := validateComponentReleaseManifest(manifest, candidate.SourceRepository, candidate.ComponentID); err != nil {
-			return fmt.Errorf("installed runtime component release is invalid: %w", err)
+			return fmt.Errorf("cannot establish signed runtime component anti-rollback baseline: %w", err)
 		}
 		if manifest.Version != entry.Name() {
 			return errors.New("runtime component version directory disagrees with signed release")
@@ -189,12 +213,42 @@ func verifyStagedComponent(path string, release ComponentReleaseManifest, payloa
 		}
 	}
 
+	expectedFiles := map[string]bool{}
+	expectedDirs := map[string]bool{"system": true}
 	for _, record := range manifest.Files {
 		target := filepath.Join(path, filepath.FromSlash(record.Path))
 		actualHash, actualSize, err := hashFile(target)
 		if err != nil || actualSize != record.Size || actualHash != record.SHA256 {
 			return fmt.Errorf("staged runtime component file differs from package: %s", record.Path)
 		}
+		expectedFiles[filepath.Clean(target)] = true
+		parent := filepath.Dir(target)
+		for parent != path && strings.HasPrefix(parent, path+string(os.PathSeparator)) {
+			expectedDirs[filepath.Clean(parent)] = true
+			parent = filepath.Dir(parent)
+		}
+	}
+	systemRoot := filepath.Join(path, "system")
+	if err := filepath.Walk(systemRoot, func(current string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		clean := filepath.Clean(current)
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("staged runtime component contains symlink: %s", current)
+		}
+		if info.IsDir() {
+			if clean == systemRoot || expectedDirs[clean] {
+				return nil
+			}
+			return fmt.Errorf("staged runtime component contains unexpected directory: %s", current)
+		}
+		if !info.Mode().IsRegular() || !expectedFiles[clean] {
+			return fmt.Errorf("staged runtime component contains unexpected file: %s", current)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	return nil
 }
@@ -234,7 +288,7 @@ func stageComponent(
 	if err := ensureDir(versions, 0o755); err != nil {
 		return ComponentStageReceipt{}, err
 	}
-	if err := checkComponentRollback(componentRoot, release); err != nil {
+	if err := checkComponentRollback(componentRoot, release, trust, key); err != nil {
 		return ComponentStageReceipt{}, err
 	}
 
