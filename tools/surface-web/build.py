@@ -7,26 +7,28 @@ import argparse
 import hashlib
 import json
 import os
-import posixpath
 import re
 import shutil
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 
+TOOLS = Path(__file__).resolve().parents[1]
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+from source_graph import (
+    HTML_REF_RE,
+    SourceGraphError,
+    discover_graph as discover_source_graph,
+    resolve_local as resolve_source_local,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = PurePosixPath("system/composition/web/index.html")
 MANIFEST_NAME = "web-client-manifest.json"
 SCHEMA = "prototype-ordax.web-client-bundle/1"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
-HTML_REF_RE = re.compile(r"\b(src|href)=(['\"])([^'\"]+)\2", re.IGNORECASE)
-JS_FROM_RE = re.compile(r"\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?[\"']([^\"']+)[\"']")
-JS_CALL_RE = re.compile(r"\bimport\(\s*[\"']([^\"']+)[\"']\s*\)")
-JS_URL_RE = re.compile(r"\bnew\s+URL\(\s*[\"']([^\"']+)[\"']\s*,\s*import\.meta\.url\s*\)")
-CSS_IMPORT_RE = re.compile(r"@import\s+(?:url\()?\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
-CSS_URL_RE = re.compile(r"url\(\s*[\"']?([^\"')]+)", re.IGNORECASE)
-REMOTE_PREFIXES = ("http://", "https://", "//", "data:", "javascript:")
-
 
 class BundleError(RuntimeError):
     pass
@@ -37,65 +39,24 @@ def sha256_bytes(data: bytes) -> str:
 
 
 def resolve_local(source: PurePosixPath, specifier: str) -> PurePosixPath | None:
-    spec = specifier.strip().replace("\\", "/")
-    if not spec or spec.startswith("#"):
-        return None
-    if spec.lower().startswith(REMOTE_PREFIXES):
-        raise BundleError(f"remote/runtime dependency is not allowed: {specifier}")
-    if spec.startswith("/"):
-        raise BundleError(f"absolute dependency path is not allowed: {specifier}")
-    if not spec.startswith("."):
-        raise BundleError(f"bare dependency is not allowed in the zero-dependency Web baseline: {specifier}")
-
-    candidate = posixpath.normpath(str(source.parent / PurePosixPath(spec)))
-    if candidate == ".." or candidate.startswith("../") or candidate.startswith("/"):
-        raise BundleError(f"dependency escapes repository root: {source} -> {specifier}")
-    if not (candidate == "system" or candidate.startswith("system/")):
-        raise BundleError(f"Web client dependency must remain under system/: {source} -> {candidate}")
-    return PurePosixPath(candidate)
+    try:
+        return resolve_source_local(source, specifier, allowed_prefixes=("system",))
+    except SourceGraphError as exc:
+        raise BundleError(str(exc)) from exc
 
 
-def dependency_specifiers(path: PurePosixPath, text: str) -> list[str]:
-    suffix = path.suffix.lower()
-    if suffix in {".html", ".htm"}:
-        return [match.group(3) for match in HTML_REF_RE.finditer(text)]
-    if suffix in {".mjs", ".js", ".cjs"}:
-        specs = (
-            set(JS_FROM_RE.findall(text))
-            | set(JS_CALL_RE.findall(text))
-            | set(JS_URL_RE.findall(text))
+def discover_graph(
+    root: Path = ROOT,
+    entrypoint: PurePosixPath = ENTRYPOINT,
+) -> list[PurePosixPath]:
+    try:
+        return discover_source_graph(
+            root,
+            entrypoint,
+            allowed_prefixes=("system",),
         )
-        return sorted(specs)
-    if suffix == ".css":
-        specs = set(CSS_IMPORT_RE.findall(text))
-        for value in CSS_URL_RE.findall(text):
-            if value.strip().startswith("#"):
-                continue
-            specs.add(value.strip())
-        return sorted(specs)
-    return []
-
-
-def discover_graph(root: Path = ROOT, entrypoint: PurePosixPath = ENTRYPOINT) -> list[PurePosixPath]:
-    pending = [entrypoint]
-    discovered: set[PurePosixPath] = set()
-
-    while pending:
-        current = pending.pop()
-        if current in discovered:
-            continue
-        file_path = root / current
-        if not file_path.is_file():
-            raise BundleError(f"missing Web client dependency: {current}")
-        discovered.add(current)
-
-        text = file_path.read_text(encoding="utf-8")
-        for specifier in dependency_specifiers(current, text):
-            dependency = resolve_local(current, specifier)
-            if dependency is not None and dependency not in discovered:
-                pending.append(dependency)
-
-    return sorted(discovered, key=str)
+    except SourceGraphError as exc:
+        raise BundleError(str(exc)) from exc
 
 
 def render_root_index(root: Path = ROOT, entrypoint: PurePosixPath = ENTRYPOINT) -> bytes:
