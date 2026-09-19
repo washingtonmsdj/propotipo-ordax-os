@@ -10,6 +10,7 @@ UPDATE_HISTORY = ROOT / "system" / "contracts" / "update-history.mjs"
 UPDATE_CONTROLS = ROOT / "system" / "surface" / "ui" / "update-controls.mjs"
 UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 SYSTEM_OVERVIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
+PRODUCT_VERSION = ROOT / "system" / "contracts" / "product-version.mjs"
 
 
 class UpdateNomenclatureTests(unittest.TestCase):
@@ -19,7 +20,14 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertFalse(contract["development"]["pull_request"]["user_facing_update_identity"])
         self.assertTrue(contract["delivery"]["independent_from_pull_request_number"])
         self.assertFalse(contract["update"]["is_pull_request"])
-        self.assertFalse(contract["product_version"]["currently_assigned"])
+        self.assertTrue(contract["product_version"]["currently_assigned"])
+        self.assertEqual(contract["product_version"]["scheme"], "semantic-versioning")
+        self.assertEqual(contract["product_version"]["current"], "0.1.0")
+        self.assertEqual(contract["product_version"]["display"], "v0.1.0")
+        self.assertEqual(contract["product_version"]["maturity"], "prototype")
+        self.assertFalse(contract["product_version"]["stable_release"])
+        self.assertTrue(contract["product_version"]["independent_from_delivery"])
+        self.assertTrue(contract["product_version"]["v1_reserved_for_stable_product"])
         self.assertFalse(contract["component_version"]["currently_independent"])
         sequence = contract["delivery"]["prototype_sequence"]
         self.assertEqual(sequence["method"], "anchored-first-parent-device-impact-count")
@@ -57,6 +65,24 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn("deliveryNumber:", history)
         self.assertIn("versionNumber:", history)
 
+    def test_product_version_has_one_shared_runtime_identity(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        product = PRODUCT_VERSION.read_text(encoding="utf-8")
+        overview = SYSTEM_OVERVIEW.read_text(encoding="utf-8")
+
+        self.assertIn('semanticVersion: "0.1.0"', product)
+        self.assertIn('displayVersion: "v0.1.0"', product)
+        self.assertIn('displayName: "OrdaX Prototype v0.1.0"', product)
+        self.assertIn("stableRelease: false", product)
+        self.assertEqual(contract["product_version"]["current"], "0.1.0")
+        self.assertIn("productVersionLabel()", overview)
+        self.assertIn('"Versão do protótipo"', overview)
+        self.assertIn('"Versão do produto"', overview)
+        self.assertIn('"Notas"', overview)
+        self.assertIn('"Internet"', overview)
+        self.assertIn("distribuição conjunta · sem versão própria", overview)
+        self.assertIn("v1.0 permanece reservado para o produto estável", overview)
+
     def test_surface_uses_delivery_language_not_fake_component_versions(self):
         update = UPDATE_CONTROLS.read_text(encoding="utf-8")
         presentation = UPDATE_PRESENTATION.read_text(encoding="utf-8")
@@ -65,7 +91,7 @@ class UpdateNomenclatureTests(unittest.TestCase):
         self.assertIn('target: "updates"', update)
         self.assertIn("Entrega observada", overview)
         self.assertIn("Identidade da entrega", overview)
-        self.assertIn("não é número de PR nem versão comercial do OrdaX", overview)
+        self.assertIn("Nenhum deles é a versão comercial do OrdaX", overview)
         self.assertIn("Distribuição conjunta · sem versão própria", overview)
         self.assertNotIn("Versão global", overview)
         self.assertNotIn("Incluído nesta entrega", overview)
