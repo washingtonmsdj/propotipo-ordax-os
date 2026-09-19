@@ -8,6 +8,7 @@ import {
 export const NOTES_RUNTIME_SCHEMA = "ordax.notes-runtime/1";
 
 function defaultSnapshot(now = Date.now()) {
+  const past = (milliseconds) => Math.max(0, now - milliseconds);
   const projects = [
     { id: "meu-espaco", name: "Meu espaço", createdAt: now, updatedAt: now },
     { id: "pesquisa-ordax", name: "Pesquisa OrdaX", createdAt: now, updatedAt: now },
@@ -21,7 +22,7 @@ function defaultSnapshot(now = Date.now()) {
       body: "Reunir ideias, referências e próximos passos em um só lugar.\n\nO que quero construir\nUm ambiente simples para pensar com clareza e continuar de onde parei.",
       favorite: false,
       deletedAt: null,
-      createdAt: now - 60000,
+      createdAt: past(60000),
       updatedAt: now,
       tasks: [
         { id: "organizar-referencias", text: "Organizar minhas referências", done: true },
@@ -45,8 +46,8 @@ function defaultSnapshot(now = Date.now()) {
       body: "Links e observações",
       favorite: false,
       deletedAt: null,
-      createdAt: now - 86400000,
-      updatedAt: now - 86400000,
+      createdAt: past(86400000),
+      updatedAt: past(86400000),
       tasks: [],
       references: [],
     },
@@ -57,8 +58,8 @@ function defaultSnapshot(now = Date.now()) {
       body: "Uma coisa de cada vez",
       favorite: false,
       deletedAt: null,
-      createdAt: now - 3 * 86400000,
-      updatedAt: now - 3 * 86400000,
+      createdAt: past(3 * 86400000),
+      updatedAt: past(3 * 86400000),
       tasks: [],
       references: [],
     },
@@ -69,8 +70,8 @@ function defaultSnapshot(now = Date.now()) {
       body: "Guardar antes de esquecer",
       favorite: false,
       deletedAt: null,
-      createdAt: now - 7 * 86400000,
-      updatedAt: now - 7 * 86400000,
+      createdAt: past(7 * 86400000),
+      updatedAt: past(7 * 86400000),
       tasks: [],
       references: [],
     },
