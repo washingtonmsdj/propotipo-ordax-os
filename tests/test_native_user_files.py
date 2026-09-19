@@ -387,7 +387,7 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn("createNativeRecentFilesStore", composition)
         self.assertIn("createRecentFilesRuntime", composition)
         self.assertIn(
-            "mountFileSpaceControls(root, fileSpace, appActivation, surface, recentFiles)",
+            "{ recentFiles, projects }",
             composition,
         )
         self.assertIn("createAppActivationChannel", composition)

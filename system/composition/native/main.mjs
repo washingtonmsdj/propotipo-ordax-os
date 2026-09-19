@@ -5,6 +5,7 @@ import {
 import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagnostic-journal-store.mjs";
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
+import { createNativeProjectStore } from "../../adapters/native/projects.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
@@ -22,6 +23,7 @@ import { createWebIdentitySession } from "../../adapters/web/identity.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
+import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -115,6 +117,9 @@ async function start() {
   const localWorkspaceStore = createNativeWorkspaceStore(window);
   const recentFiles = fileSpace === null ? null : createRecentFilesRuntime({
     store: createNativeRecentFilesStore(window),
+  });
+  const projects = fileSpace === null ? null : createProjectCatalogRuntime({
+    store: createNativeProjectStore(window),
   });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
@@ -227,7 +232,13 @@ async function start() {
     workspaceMetadata.source,
     appActivation,
   );
-  const fileSpaceControls = mountFileSpaceControls(root, fileSpace, appActivation, surface, recentFiles);
+  const fileSpaceControls = mountFileSpaceControls(
+    root,
+    fileSpace,
+    appActivation,
+    surface,
+    { recentFiles, projects },
+  );
   let settingsOverviewControls;
   try {
     settingsOverviewControls = mountSettingsOverviewControls(
