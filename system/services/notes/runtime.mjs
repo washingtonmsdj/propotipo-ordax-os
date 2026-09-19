@@ -221,6 +221,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
         title: String(reference?.title ?? "Referência").slice(0, 512),
         detail: String(reference?.detail ?? "").slice(0, 1024),
         href: reference?.kind === "file" ? "" : String(reference?.href ?? "").slice(0, 4096),
+        path: reference?.kind === "file" ? String(reference?.path ?? "").slice(0, 4096) : "",
       });
       draft.notes[index].updatedAt = now();
       return commit(draft);
