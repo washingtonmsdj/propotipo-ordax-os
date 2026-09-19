@@ -111,6 +111,29 @@ test("notes contract preserves bounded projects, tasks and references", () => {
   assert.throws(
     () => validateNotesSnapshot({
       ...minimalSnapshot(),
+      selectedNoteId: "nota-divergente",
+      notes: [{
+        id: "nota-divergente",
+        projectId: "meu-espaco",
+        title: "Divergente",
+        body: "texto A",
+        richBody: {
+          blocks: [{ type: "paragraph", text: "texto B", marks: [] }],
+        },
+        favorite: false,
+        deletedAt: null,
+        createdAt: 1,
+        updatedAt: 1,
+        tasks: [],
+        references: [],
+      }],
+    }),
+    /same text/,
+  );
+
+  assert.throws(
+    () => validateNotesSnapshot({
+      ...minimalSnapshot(),
       notes: [{
         id: "nota-2",
         projectId: "projeto-inexistente",
@@ -375,6 +398,50 @@ test("web notes store survives recreation and degrades cleanly when storage is d
   const session = createWebNotesStore(denied);
   assert.equal(session.scope, "session");
   assert.equal(session.load(), null);
+});
+
+test("storage adapters migrate legacy v1 note content without dropping text", async () => {
+  const legacy = {
+    ...minimalSnapshot(),
+    $schema: LEGACY_NOTES_SNAPSHOT_SCHEMA,
+    selectedNoteId: "legacy-adapter-note",
+    notes: [{
+      id: "legacy-adapter-note",
+      projectId: "meu-espaco",
+      title: "Legada",
+      body: "Texto antigo\ncontinua aqui",
+      favorite: false,
+      deletedAt: null,
+      createdAt: 1,
+      updatedAt: 1,
+      tasks: [],
+      references: [],
+    }],
+  };
+
+  const storage = memoryStorage();
+  storage.setItem("ordax.notes.v1", JSON.stringify(legacy));
+  const web = createWebNotesStore({ localStorage: storage });
+  assert.equal(web.load().$schema, NOTES_SNAPSHOT_SCHEMA);
+  assert.equal(web.load().notes[0].body, "Texto antigo\ncontinua aqui");
+  assert.equal(web.load().notes[0].richBody.blocks[0].text, "Texto antigo\ncontinua aqui");
+
+  const native = await createNativeNotesStore({
+    async fetch(_url, options) {
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return { payload: JSON.stringify(legacy) };
+          },
+        };
+      }
+      return { ok: true, status: 204 };
+    },
+  });
+  assert.equal(native.load().$schema, NOTES_SNAPSHOT_SCHEMA);
+  assert.equal(native.load().notes[0].body, "Texto antigo\ncontinua aqui");
 });
 
 test("native notes adapter uses the loopback endpoint and queues durable writes", async () => {
