@@ -1,4 +1,4 @@
-import { getSystemComponent } from "../../system/services/components/catalog.mjs";
+import { getSystemComponent } from "../../system/apps/component-catalog.mjs";
 
 const COMPONENT_ENTRYPOINTS = Object.freeze({
   internet: "system/apps/internet/runtime.mjs",
