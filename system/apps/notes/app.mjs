@@ -6,6 +6,16 @@ export const notesApp = defineFirstPartyApp({
   description: "Escrita local, projetos, tarefas e referências disponíveis offline.",
   monogram: "NO",
   singleton: true,
+  component: {
+    version: "0.1.0",
+    releaseMode: "bundled",
+    criticality: "optional",
+    failureDomain: "app",
+    restartScope: "surface",
+    healthMode: "surface",
+    owner: "system/apps/notes",
+    dependencies: ["surface-shell"],
+  },
   requiredCapabilities: [],
   optionalCapabilities: ["filesystem.user-space"],
   panels: [
