@@ -140,7 +140,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("createNotesRuntime", component_runtime)
         self.assertIn("mountNotesWorkspaceControls", component_runtime)
         self.assertIn('new URL("./notes.css", import.meta.url).href', component_runtime)
-        self.assertIn('NOTES_VERSION = "0.2.0"', version)
+        self.assertIn('NOTES_VERSION = "0.3.0"', version)
 
     def test_notes_surface_matches_concept_without_platform_storage_shortcuts(self):
         controls = NOTES_CONTROLS.read_text(encoding="utf-8")
@@ -164,6 +164,8 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("Disponível offline", controls)
         self.assertNotIn("Começar pequeno. Manter o que importa.", controls)
         self.assertIn("scheduleSave", controls)
+        self.assertIn("captureEditorPayload", controls)
+        self.assertIn("editorSave.schedule(note.id, payload)", controls)
         self.assertIn('if (!slot) {\n      flushEditor();', controls)
         self.assertIn("assertNotesRuntime", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
@@ -230,6 +232,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertNotIn("hostFromHref", controls)
         self.assertNotIn("WEB_PROTOCOLS", controls)
         self.assertIn("createNotesEditorSaveController", controls)
+        self.assertIn("getPendingNoteIds", editor_save)
         self.assertIn("editorSave.isPending(note.id)", controls)
         self.assertNotIn("saveTimer", controls)
         self.assertNotIn("pendingNoteId", controls)

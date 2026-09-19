@@ -317,23 +317,31 @@ export function mountNotesWorkspaceControls(
     return state.document.notes.find((note) => note.id === id) ?? null;
   };
 
-  const persistEditor = (noteId) => {
-    if (!mountedSlot || !noteId) return false;
-    const note = state.document.notes.find((candidate) => candidate.id === noteId);
-    if (!note || note.deletedAt !== null) return false;
+  const captureEditorPayload = () => {
+    if (!mountedSlot) return null;
     const title = mountedSlot.querySelector("[data-notes-title]");
     const body = mountedSlot.querySelector("[data-notes-body]");
-    if (!body) return false;
+    if (!body) return null;
     normalizeNotesRichEditor(body);
+    return Object.freeze({
+      title: title?.value ?? "",
+      richBody: readNotesRichBody(body),
+    });
+  };
+
+  const persistEditor = (noteId, payload = null) => {
+    if (!noteId) return false;
+    const note = state.document.notes.find((candidate) => candidate.id === noteId);
+    if (!note || note.deletedAt !== null) return false;
     try {
-      const richBody = readNotesRichBody(body);
-      runtime.updateNote(noteId, {
-        title: title?.value ?? "",
-        richBody,
-      });
+      const editorPayload = payload ?? (
+        currentNote()?.id === noteId ? captureEditorPayload() : null
+      );
+      if (!editorPayload) return false;
+      runtime.updateNote(noteId, editorPayload);
       return true;
     } catch {
-      const status = mountedSlot.querySelector(".ordax-notes-save-status");
+      const status = mountedSlot?.querySelector(".ordax-notes-save-status");
       if (status) status.textContent = "Não foi possível salvar esta edição";
       return false;
     }
@@ -345,14 +353,21 @@ export function mountNotesWorkspaceControls(
     clearTimeoutFn: windowObject.clearTimeout.bind(windowObject),
   });
 
-  const flushEditor = () => editorSave.flush();
+  const flushEditor = (noteId = null) => editorSave.flush(noteId);
 
   const scheduleSave = () => {
     const note = currentNote();
     if (!note || note.deletedAt !== null || !mountedSlot) return false;
     const status = mountedSlot.querySelector(".ordax-notes-save-status");
-    if (status) status.textContent = "Salvando…";
-    return editorSave.schedule(note.id);
+    try {
+      const payload = captureEditorPayload();
+      if (!payload) return false;
+      if (status) status.textContent = "Salvando…";
+      return editorSave.schedule(note.id, payload);
+    } catch {
+      if (status) status.textContent = "Não foi possível preparar esta edição";
+      return false;
+    }
   };
 
   const filePicker = createNotesFilePicker({ fileSpace: filePort });
