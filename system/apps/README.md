@@ -10,6 +10,7 @@ Each first-party app has one explicit owner:
 
 ```text
 system/apps/files/app.mjs
+system/apps/notes/app.mjs
 system/apps/settings/app.mjs
 system/apps/account/app.mjs
 system/apps/system/app.mjs
@@ -20,6 +21,7 @@ system/apps/system/app.mjs
 The initial owners are:
 
 - Arquivos;
+- Notas;
 - Ajustes;
 - Conta;
 - Sistema.
