@@ -2,13 +2,13 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
+CONTROLS = ROOT / "system" / "apps" / "internet" / "ui" / "browser-controls.mjs"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
-INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
+INTERNET_RUNTIME = ROOT / "system" / "apps" / "internet" / "runtime.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-favorites.mjs"
 STORE = ROOT / "system" / "contracts" / "browser-favorites-store.mjs"
-RUNTIME = ROOT / "system" / "services" / "internet" / "favorites.mjs"
+RUNTIME = ROOT / "system" / "apps" / "internet" / "services" / "favorites.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "browser-favorites.mjs"
 
 
@@ -44,7 +44,7 @@ class InternetFavoritesContractTests(unittest.TestCase):
         runtime = self.text(INTERNET_RUNTIME)
         self.assertNotIn('createNativeBrowserFavoritesStore', web)
         self.assertNotIn('createBrowserFavoritesRuntime', web)
-        self.assertIn('import("../../components/internet/runtime.mjs")', web)
+        self.assertIn('import("../../apps/internet/runtime.mjs")', web)
         self.assertIn('createFavoritesStore = null', runtime)
 
     def test_favorites_have_bounded_independent_contract_and_store(self):
