@@ -86,9 +86,9 @@ The product shell lives in shared source:
 ```text
 system/apps/internet/app.mjs
 system/contracts/browser-session.mjs
-system/components/internet/runtime.mjs
-system/components/internet/internet.css
-system/surface/ui/internet-browser-controls.mjs
+system/apps/internet/runtime.mjs
+system/apps/internet/internet.css
+system/apps/internet/ui/browser-controls.mjs
 ```
 
 Adapters:
