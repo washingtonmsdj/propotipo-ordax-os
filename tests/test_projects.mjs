@@ -199,6 +199,68 @@ test("project file continuity persistence failure degrades to session without lo
   assert.equal(snapshot.projects[0].lastOpenedAt, 301);
 });
 
+test("clearing last file removes only continuity reference without changing project activity or order", () => {
+  let saves = 0;
+  let emissions = 0;
+  let clockReads = 0;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ onSave: () => { saves += 1; } }),
+    now: () => {
+      clockReads += 1;
+      return 400 + clockReads;
+    },
+  });
+  runtime.create({ name: "Projeto A", path: "/Documentos/A" });
+  runtime.create({ name: "Projeto B", path: "/Documentos/B" });
+  runtime.recordFileOpened("project-1", "/Documentos/A/contexto.txt");
+  const before = runtime.getSnapshot();
+  const beforeTarget = before.projects.find((project) => project.id === "project-1");
+  const order = before.projects.map((project) => project.id);
+  const savesBeforeClear = saves;
+  const clockReadsBeforeClear = clockReads;
+  const unsubscribe = runtime.subscribe(() => { emissions += 1; });
+
+  const cleared = runtime.clearLastFile("project-1");
+  const target = cleared.projects.find((project) => project.id === "project-1");
+  assert.equal(target.lastFilePath, null);
+  assert.equal(target.id, beforeTarget.id);
+  assert.equal(target.name, beforeTarget.name);
+  assert.equal(target.path, beforeTarget.path);
+  assert.equal(target.createdAt, beforeTarget.createdAt);
+  assert.equal(target.lastOpenedAt, beforeTarget.lastOpenedAt);
+  assert.deepEqual(cleared.projects.map((project) => project.id), order);
+  assert.equal(clockReads, clockReadsBeforeClear);
+  assert.equal(saves, savesBeforeClear + 1);
+  assert.equal(emissions, 1);
+
+  const unchanged = runtime.clearLastFile("project-1");
+  assert.deepEqual(unchanged, cleared);
+  assert.equal(clockReads, clockReadsBeforeClear);
+  assert.equal(saves, savesBeforeClear + 1);
+  assert.equal(emissions, 1);
+
+  assert.throws(() => runtime.clearLastFile("project-99"), /not registered/);
+  assert.deepEqual(runtime.getSnapshot(), cleared);
+  assert.equal(saves, savesBeforeClear + 1);
+  assert.equal(emissions, 1);
+  unsubscribe();
+});
+
+test("clearing last file degrades to session when persistence fails but keeps reference cleared", () => {
+  let clock = 500;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ failSave: true }),
+    now: () => clock++,
+  });
+  runtime.create({ name: "Projeto", path: "/Documentos/Projeto" });
+  runtime.recordFileOpened("project-1", "/Documentos/Projeto/antigo.txt");
+  const before = runtime.getSnapshot().projects[0];
+  const cleared = runtime.clearLastFile("project-1");
+  assert.equal(cleared.persistence, "session");
+  assert.equal(cleared.projects[0].lastFilePath, null);
+  assert.equal(cleared.projects[0].lastOpenedAt, before.lastOpenedAt);
+});
+
 test("renaming a project changes only its validated display name and preserves identity, path, activity and order", () => {
   let clock = 100;
   const runtime = createProjectCatalogRuntime({
