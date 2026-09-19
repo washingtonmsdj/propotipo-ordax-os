@@ -50,11 +50,14 @@ export const componentRuntime = Object.freeze({
   version: NOTES_VERSION,
   async mount({
     root,
-    store = null,
+    createStore = null,
     surfaceLifecycle,
     fileSpace = null,
     appActivation = null,
   } = {}) {
+    if (createStore !== null && typeof createStore !== "function") {
+      throw new TypeError("Notes createStore must be a function or null");
+    }
     const releaseStyles = await mountNotesStyles(root);
     let notesRuntime = null;
     let controls = null;
@@ -66,6 +69,7 @@ export const componentRuntime = Object.freeze({
     };
 
     try {
+      const store = createStore?.() ?? null;
       notesRuntime = createNotesRuntime({ store });
       controls = mountNotesWorkspaceControls(
         root,
