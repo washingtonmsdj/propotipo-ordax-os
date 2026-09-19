@@ -6,6 +6,8 @@ on:
     paths:
       - 'bootstrap/base-update/**'
       - 'bootstrap/release-acquisition/**'
+      - 'system/services/base-update/dev_channel.py'
+      - 'system/services/base-update/dev_stage.py'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
@@ -15,6 +17,8 @@ on:
     paths:
       - 'bootstrap/base-update/**'
       - 'bootstrap/release-acquisition/**'
+      - 'system/services/base-update/dev_channel.py'
+      - 'system/services/base-update/dev_stage.py'
       - 'tools/release-manifest/**'
       - 'tools/release-signing/**'
       - 'docs/contracts/base-update.json'
@@ -61,6 +65,7 @@ jobs:
           python -m unittest tests.test_base_update_contract -v
           python -m unittest tests.test_base_update_plan -v
           python -m unittest tests.test_base_update_stage -v
+          python -m unittest tests.test_base_update_dev_stage -v
 
       - name: Prove staging on disposable FAT32 loop image
         run: |
