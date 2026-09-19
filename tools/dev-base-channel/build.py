@@ -33,6 +33,15 @@ REQUIRED_ROOTFS_PATHS = (
     "usr/local/bin/ordax-rollback",
     "usr/local/bin/ordax-run",
 )
+REQUIRED_ROOTFS_DIRS = (
+    "state",
+    "workspace",
+    "home",
+    "proc",
+    "sys",
+    "dev",
+    "run",
+)
 
 
 class CandidateError(RuntimeError):
@@ -135,6 +144,10 @@ def validate_rootfs_source(rootfs_dir: Path, source_commit: str) -> Path:
             raise CandidateError(f"development rootfs required file is missing: {relative}")
         if path.stat().st_mode & 0o111 == 0:
             raise CandidateError(f"development rootfs required file is not executable: {relative}")
+    for relative in REQUIRED_ROOTFS_DIRS:
+        path = rootfs / relative
+        if path.is_symlink() or not path.is_dir():
+            raise CandidateError(f"development rootfs required directory is missing: {relative}")
     return rootfs
 
 
@@ -171,7 +184,9 @@ def verify_rootfs_tar(path: Path) -> None:
     names: list[str] = []
     total = 0
     required = set(REQUIRED_ROOTFS_PATHS)
+    required_dirs = set(REQUIRED_ROOTFS_DIRS)
     seen: set[str] = set()
+    seen_dirs: set[str] = set()
     try:
         with tarfile.open(path, "r:") as archive:
             for member in archive.getmembers():
@@ -189,6 +204,7 @@ def verify_rootfs_tar(path: Path) -> None:
                 if member.uid != 0 or member.gid != 0 or member.uname or member.gname or member.mtime != 0:
                     raise CandidateError("development rootfs tar metadata is not deterministic")
                 if member.isdir():
+                    seen_dirs.add(name)
                     continue
                 if not member.isreg():
                     raise CandidateError(f"development rootfs tar contains unsafe member: {name}")
@@ -202,6 +218,11 @@ def verify_rootfs_tar(path: Path) -> None:
     missing = sorted(required - seen)
     if missing:
         raise CandidateError(f"development rootfs tar is missing required files: {missing}")
+    missing_dirs = sorted(required_dirs - seen_dirs)
+    if missing_dirs:
+        raise CandidateError(
+            f"development rootfs tar is missing required directories: {missing_dirs}"
+        )
 
 def binding(name: str, path: Path, source_commit: str) -> dict:
     tag = f"ordax-dev-base-{source_commit}"
