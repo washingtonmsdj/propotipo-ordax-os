@@ -13,6 +13,16 @@ function baseSpec(panel) {
     description: "Example app",
     monogram: "EX",
     singleton: true,
+    component: {
+      version: "0.1.0",
+      releaseMode: "bundled",
+      criticality: "optional",
+      failureDomain: "app",
+      restartScope: "surface",
+      healthMode: "surface",
+      owner: "tests/example",
+      dependencies: [],
+    },
     requiredCapabilities: [],
     panels: [panel],
   };
@@ -98,10 +108,26 @@ test("app contract rejects invalid extension identifiers", () => {
   );
 });
 
+test("app owner exposes validated component identity", () => {
+  const app = defineFirstPartyApp(baseSpec({
+    kind: "extension",
+    extensionId: "example-workspace",
+    label: "Example",
+    title: "Example",
+    body: "Fallback",
+  }));
+  assert.equal(app.component.id, "example");
+  assert.equal(app.component.kind, "app");
+  assert.equal(app.component.version, "0.1.0");
+  assert.equal(app.component.releaseMode, "bundled");
+  assert.equal(Object.isFrozen(app.component), true);
+});
 test("Notes stays a first-party app and advertises native file-space as optional", () => {
   assert.equal(notesApp.id, "notes");
   assert.deepEqual(notesApp.requiredCapabilities, []);
   assert.deepEqual(notesApp.optionalCapabilities, ["filesystem.user-space"]);
+  assert.equal(notesApp.component.owner, "system/apps/notes");
+  assert.equal(notesApp.component.releaseMode, "bundled");
 });
 
 test("Internet stays a first-party app while engine availability remains host-owned", () => {
@@ -109,6 +135,8 @@ test("Internet stays a first-party app while engine availability remains host-ow
   assert.deepEqual(internetApp.requiredCapabilities, []);
   assert.deepEqual(internetApp.optionalCapabilities, ["browser.web-content"]);
   assert.equal(internetApp.panels[0].extensionId, "internet-browser");
+  assert.equal(internetApp.component.owner, "system/apps/internet");
+  assert.equal(internetApp.component.releaseMode, "bundled");
 });
 
 test("app contract rejects obsolete identity-specific panel kinds", () => {
