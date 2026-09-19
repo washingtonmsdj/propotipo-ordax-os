@@ -615,7 +615,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.workspaceTargetPersisted = storedSettings?.target === 'accessibility';
 
     await launch('notes');
-    const notesSlot = root.querySelector(
+    let notesSlot = root.querySelector(
       '[data-window-id="notes"] [data-app-extension="notes-workspace"]',
     );
     result.notesOwnerMounted = Boolean(notesSlot?.dataset.ordaxNotesMounted === 'true');
@@ -841,6 +841,22 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesFileReferenceChoicePresent = Boolean(fileReferenceChoice);
     result.notesFileReferenceFailsClosedOnWeb = fileReferenceChoice?.disabled === true;
 
+    const closePendingTitle = notesSlot?.querySelector('[data-notes-title]');
+    closePendingTitle.value = 'Nota salva ao fechar';
+    closePendingTitle.dispatchEvent(new Event('input', { bubbles: true }));
+    root.querySelector('[data-window-id="notes"] [data-window-action="close"]')?.click();
+    result.notesWindowClosedWithPendingEdit = root.querySelector('[data-window-id="notes"]') === null
+      && parsedStorage('ordax.notes.v1')?.notes?.some(
+        (item) => item.title === 'Nota salva ao fechar',
+      ) === true;
+
+    await launch('notes');
+    notesSlot = root.querySelector(
+      '[data-window-id="notes"] [data-app-extension="notes-workspace"]',
+    );
+    result.notesPendingEditRestoredAfterClose = notesSlot
+      ?.querySelector('[data-notes-title]')?.value === 'Nota salva ao fechar';
+
     await launch('account');
     const accountSlot = root.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
@@ -884,7 +900,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
     );
     result.notesWindowRestored = Boolean(restoredNotesSlot);
     result.notesOwnerRestored = Boolean(restoredNotesSlot?.dataset.ordaxNotesMounted === 'true');
-    result.notesContentRestored = restoredNotesSlot?.querySelector('[data-notes-title]')?.value === 'Nota persistida no smoke';
+    result.notesContentRestored = restoredNotesSlot?.querySelector('[data-notes-title]')?.value === 'Nota salva ao fechar';
     const restoredNotesBody = restoredNotesSlot?.querySelector('[data-notes-body]');
     result.notesRichTextRestored = restoredNotesBody?.textContent === 'Conteúdo salvo localmente e disponível offline.'
       && restoredNotesBody?.querySelector('strong')?.textContent === 'Conteúdo';
@@ -919,6 +935,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesTrashIsReadOnly', 'notesRestoreReenablesEditing',
       'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
+      'notesWindowClosedWithPendingEdit', 'notesPendingEditRestoredAfterClose',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',

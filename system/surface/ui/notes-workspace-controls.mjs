@@ -1015,6 +1015,7 @@ export function mountNotesWorkspaceControls(
     const windowNode = root.querySelector(NOTES_WINDOW_SELECTOR);
     const slot = windowNode?.querySelector(NOTES_EXTENSION_SELECTOR) ?? null;
     if (!slot) {
+      flushEditor();
       imagePreviewCache.clear();
       mountedSlot = null;
       return;

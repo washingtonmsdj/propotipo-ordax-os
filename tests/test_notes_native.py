@@ -141,6 +141,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("Disponível offline", controls)
         self.assertNotIn("Começar pequeno. Manter o que importa.", controls)
         self.assertIn("scheduleSave", controls)
+        self.assertIn('if (!slot) {\n      flushEditor();', controls)
         self.assertIn("assertNotesRuntime", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
         self.assertIn("NOTES_HOME_PROJECT_ID", controls)
