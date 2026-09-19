@@ -51,6 +51,7 @@ The USB/native-disk runtime uses the WebKitGTK 4.1 engine already appropriate to
 - a separate persistent website-data manager for external browsing;
 - one unprivileged WebView per browser tab;
 - tab lifecycle, navigation history and viewport placement;
+- durable restoration of public tab URLs, tab order and the active tab across Surface restarts;
 - default-deny website permission requests in the first implementation slice;
 - fail-closed rejection of localhost, loopback, private/link-local and other non-public literal IP navigation;
 - filtering of external WebView resource requests and redirects so literal/local non-public network targets are not intentionally dispatched by the browser plane;
@@ -59,10 +60,14 @@ The USB/native-disk runtime uses the WebKitGTK 4.1 engine already appropriate to
 The external browsing profile is persisted beneath:
 
 ```text
-/var/lib/ordax-user/browser/default/
-├─ data/
-└─ cache/
+/var/lib/ordax-user/browser/
+├─ session.json
+└─ default/
+   ├─ data/
+   └─ cache/
 ```
+
+`session.json` is a small OrdaX-owned state file. It stores only the filtered public URL list and active-tab index, is written atomically with private permissions, is bounded to 16 tabs, and fails closed on missing, corrupt, oversized, symlinked or unsupported state. It does not serialize page HTML, privileged Surface state or website storage. Website data remains owned by the isolated WebKit profile.
 
 That path is backed by the existing OrdaX user-state mount rather than a new physical partition.
 
@@ -88,6 +93,12 @@ Adapters:
 ```text
 system/adapters/native/browser-session.mjs
 system/adapters/web/browser-session.mjs
+```
+
+Native tab-session persistence is isolated from GTK/WebKit in:
+
+```text
+system/surface/runtime/browser_session_store.py
 ```
 
 The shared app does not import native/Web adapters, call loopback control endpoints directly, or create an iframe for arbitrary sites.
@@ -121,6 +132,7 @@ Implemented in source:
 - activate/close tabs;
 - back/forward/reload;
 - persistent per-profile WebKit website data;
+- safe tab URL/order/active-tab restoration across Surface restarts;
 - external-content isolation from Surface capabilities;
 - direct local/non-public literal network target filtering for external navigation, subresources and redirects;
 - explicit native capability advertisement;
@@ -190,11 +202,12 @@ On the notebook, validate in this order:
 4. External HTTPS page loads and scrolls in the center viewport only.
 5. Top/left/right OrdaX browser chrome remains interactive around the page.
 6. New tab, activate, close, back, forward and reload behave correctly.
-7. Restarting the Surface preserves normal WebKit profile data expected to persist.
-8. `http://127.0.0.1`, `localhost`, private/link-local literal IPs and local-name navigation are rejected in the external content plane.
-9. A remote page attempting local/non-public subresource loads or redirects does not dispatch those literal targets from the external WebView.
-10. Native loopback server request authentication/Host pinning is proven against DNS rebinding before the browser boundary is marked security-complete.
-11. Website permission prompts fail closed in this slice.
-12. Download attempts do not write files until the download contract exists.
-13. Existing Files, Ajustes, Conta, Sistema, network, power and update paths remain healthy.
-14. Update/health rollback still recovers if the new graphical host cannot remain healthy.
+7. Restarting the Surface restores the filtered public tab URL list, order and active tab, while normal WebKit profile data also persists.
+8. Corrupt or invalid `session.json` state fails closed to a clean browser session.
+9. `http://127.0.0.1`, `localhost`, private/link-local literal IPs and local-name navigation are rejected in the external content plane.
+10. A remote page attempting local/non-public subresource loads or redirects does not dispatch those literal targets from the external WebView.
+11. Native loopback server request authentication/Host pinning is proven against DNS rebinding before the browser boundary is marked security-complete.
+12. Website permission prompts fail closed in this slice.
+13. Download attempts do not write files until the download contract exists.
+14. Existing Files, Ajustes, Conta, Sistema, network, power and update paths remain healthy.
+15. Update/health rollback still recovers if the new graphical host cannot remain healthy.
