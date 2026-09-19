@@ -39,7 +39,9 @@ class NativeUserFilesTests(unittest.TestCase):
         )
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", contract)
         self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", contract)
+        self.assertIn("MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 * 1024", contract)
         self.assertIn("validateTextFile", contract)
+        self.assertIn("validateImagePreview", contract)
         self.assertIn('/__ordax/native/files', adapter)
         self.assertIn('/__ordax/native/file-content', adapter)
         self.assertIn("validateFileListing", adapter)
@@ -55,6 +57,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('"move-entry"', adapter)
         self.assertIn("exportFile", adapter)
         self.assertIn('/__ordax/native/file-export', adapter)
+        self.assertIn('IMAGE_PREVIEW_ENDPOINT = "/__ordax/native/image-preview"', adapter)
+        self.assertIn("readImagePreview", adapter)
+        self.assertIn("validateImagePreview", adapter)
+        self.assertIn("MAX_IMAGE_PREVIEW_BYTES", adapter)
         self.assertIn("importFile", adapter)
         self.assertIn('/__ordax/native/file-import', adapter)
         self.assertIn("FileSpaceOperationError", adapter)
@@ -109,6 +115,41 @@ class NativeUserFilesTests(unittest.TestCase):
             (user_root / "folder").mkdir()
             with self.assertRaises(ValueError):
                 native_host.read_user_text_file(str(user_root), "/folder")
+
+    def test_image_preview_reads_only_bounded_supported_raster_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            user_root = base / "home"
+            outside = base / "outside"
+            user_root.mkdir()
+            outside.mkdir()
+
+            png_bytes = b"\x89PNG\r\n\x1a\npreview"
+            (user_root / "preview.png").write_bytes(png_bytes)
+            name, mime, payload = native_host.read_user_image_preview(
+                str(user_root),
+                "/preview.png",
+            )
+            self.assertEqual(name, "preview.png")
+            self.assertEqual(mime, "image/png")
+            self.assertEqual(payload, png_bytes)
+
+            (user_root / "vector.svg").write_text("<svg/>", encoding="utf-8")
+            with self.assertRaises(native_host.FileSpaceImagePreviewTypeError):
+                native_host.read_user_image_preview(str(user_root), "/vector.svg")
+
+            (user_root / "large.jpg").write_bytes(b"x" * 9)
+            with self.assertRaises(native_host.FileSpaceExportTooLargeError):
+                native_host.read_user_image_preview(
+                    str(user_root),
+                    "/large.jpg",
+                    max_bytes=8,
+                )
+
+            (outside / "secret.png").write_bytes(png_bytes)
+            os.symlink(outside / "secret.png", user_root / "escape.png")
+            with self.assertRaises(OSError):
+                native_host.read_user_image_preview(str(user_root), "/escape.png")
 
     def test_rename_is_atomic_no_clobber_and_symlink_safe(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -397,6 +438,7 @@ class NativeUserFilesTests(unittest.TestCase):
         server = SERVER.read_text(encoding="utf-8")
         self.assertIn('FILE_CONTENT_PATH = "/__ordax/native/file-content"', server)
         self.assertIn('FILE_EXPORT_PATH = "/__ordax/native/file-export"', server)
+        self.assertIn('IMAGE_PREVIEW_PATH = "/__ordax/native/image-preview"', server)
         self.assertIn('FILE_IMPORT_PATH = "/__ordax/native/file-import"', server)
         self.assertIn("MAX_TEXT_FILE_BYTES = 256 * 1024", server)
         self.assertIn("read_user_text_file", server)
@@ -408,6 +450,10 @@ class NativeUserFilesTests(unittest.TestCase):
         self.assertIn('action == "rename-entry"', server)
         self.assertIn("MAX_FILE_COPY_BYTES = 64 * 1024 * 1024", server)
         self.assertIn("MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024", server)
+        self.assertIn("MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 * 1024", server)
+        self.assertIn("read_user_image_preview", server)
+        self.assertIn("FileSpaceImagePreviewTypeError", server)
+        self.assertIn("_write_image_preview", server)
         self.assertIn("MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024", server)
         self.assertIn("import_user_file", server)
         self.assertIn("FileSpaceImportTooLargeError", server)
