@@ -15,6 +15,7 @@ PULL = ROOT / "bootstrap/dev-base/ordax-pull"
 ROLLBACK = ROOT / "bootstrap/dev-base/ordax-rollback"
 RUN = ROOT / "bootstrap/dev-base/ordax-run"
 DEV_INIT = ROOT / "bootstrap/dev-base/ordax-dev-init"
+NETWORK = ROOT / "bootstrap/dev-base/ordax-network"
 
 
 class DevelopmentGitFlowTest(unittest.TestCase):
@@ -225,6 +226,28 @@ class DevelopmentGitFlowTest(unittest.TestCase):
             self._run(["git", "-C", str(self.worktree), "rev-parse", "HEAD"]).stdout.strip(),
             self.commit_v2,
         )
+
+    def test_bootstrap_network_and_git_fail_soft_but_bounded(self) -> None:
+        network = NETWORK.read_text(encoding="utf-8")
+        pull = PULL.read_text(encoding="utf-8")
+        dev_init = DEV_INIT.read_text(encoding="utf-8")
+
+        self.assertIn("if ! sync_clock; then", network)
+        self.assertIn("continuando com IP disponivel", network)
+        finish_network = network.split("finish_network() {", 1)[1].split("\\n}", 1)[0]
+        self.assertIn("return 0", finish_network)
+
+        self.assertIn('GIT_TIMEOUT_SECONDS=${ORDAX_BOOT_GIT_TIMEOUT_SECONDS:-45}', pull)
+        self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_BOOT_GIT_LOW_SPEED_SECONDS:-15}', pull)
+        self.assertIn("GIT_TERMINAL_PROMPT=0", pull)
+        self.assertIn('timeout -k 5 "$GIT_TIMEOUT_SECONDS"', pull)
+        self.assertIn("run_bounded_git clone", pull)
+        self.assertIn('run_bounded_git -C "$WORKTREE" pull --ff-only', pull)
+
+        self.assertIn('BOOT_PULL_ATTEMPTS=${ORDAX_BOOT_PULL_ATTEMPTS:-2}', dev_init)
+        self.assertIn('while [ "$attempt" -le "$BOOT_PULL_ATTEMPTS" ]', dev_init)
+        self.assertIn("repetindo uma vez apos pausa curta", dev_init)
+        self.assertIn("sleep 2", dev_init)
 
     def test_pull_rejects_dirty_checkout_and_unexpected_origin(self) -> None:
         self._script(PULL)
