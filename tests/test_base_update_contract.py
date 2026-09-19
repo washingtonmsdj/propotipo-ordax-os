@@ -200,6 +200,18 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(owner["physical_root_bound_into_chroot"])
         self.assertTrue(owner["mount_tree_must_not_recurse_into_ordax_filesystem"])
         self.assertTrue(owner["state_root_derived_from_mountinfo_subpath"])
+        self.assertEqual(
+            owner["development_state_inside_physical_root"],
+            "<seed-root-subpath>/state/ordax",
+        )
+        self.assertEqual(
+            owner["development_version_store_inside_physical_root"],
+            "<seed-root-subpath>/versions",
+        )
+        self.assertIn(
+            "versions/<commit>",
+            owner["versioned_root_subpath_normalization"],
+        )
         self.assertTrue(
             owner["physical_release_agent_may_be_absent_before_pinned_enrollment"]
         )
