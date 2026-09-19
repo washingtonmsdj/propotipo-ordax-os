@@ -86,8 +86,9 @@ The product shell lives in shared source:
 ```text
 system/apps/internet/app.mjs
 system/contracts/browser-session.mjs
+system/components/internet/runtime.mjs
+system/components/internet/internet.css
 system/surface/ui/internet-browser-controls.mjs
-system/surface/ui/internet.css
 ```
 
 Adapters:
@@ -104,6 +105,8 @@ system/surface/runtime/browser_session_store.py
 ```
 
 The shared app does not import native/Web adapters, call loopback control endpoints directly, or create an iframe for arbitrary sites.
+
+The Surface composition no longer loads Internet JavaScript or CSS as a static boot dependency. The version-checked optional component runtime owns the browser UI lifecycle and loads its own stylesheet only after the Surface health boundary. A runtime or stylesheet failure marks Internet unhealthy without converting the Surface into a failed cold boot. Internet remains `bundled` until an immutable physical component slot is implemented; this isolation must not be confused with independent delivery yet.
 
 ## Capability
 

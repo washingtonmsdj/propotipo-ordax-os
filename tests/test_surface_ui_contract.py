@@ -86,7 +86,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface.css",
             SURFACE / "files.css",
             SURFACE / "notes.css",
-            SURFACE / "internet.css",
+            ROOT / "system" / "components" / "internet" / "internet.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
             SURFACE / "settings.css",
@@ -298,7 +298,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         internet = APP_OWNERS["internet"].read_text(encoding="utf-8")
         controls = INTERNET_BROWSER_CONTROLS.read_text(encoding="utf-8")
         shortcuts = INTERNET_BROWSER_SHORTCUTS.read_text(encoding="utf-8")
-        css = (SURFACE / "internet.css").read_text(encoding="utf-8")
+        css = (ROOT / "system" / "components" / "internet" / "internet.css").read_text(encoding="utf-8")
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
@@ -322,8 +322,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("assertBrowserSessionPort", shortcuts)
         self.assertIn(".ordax-internet-view", css)
         self.assertIn(".ordax-internet-project-panel", css)
-        self.assertIn("../../surface/ui/internet.css", web_html)
-        self.assertIn("../../surface/ui/internet.css", native_html)
+        self.assertNotIn("../../surface/ui/internet.css", web_html)
+        self.assertNotIn("../../surface/ui/internet.css", native_html)
         self.assertIn("createWebBrowserSession", web_main)
         self.assertIn("createNativeBrowserSession", native_main)
         self.assertIn("loadOptionalComponentRuntime", web_main)
@@ -334,6 +334,9 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', native_main)
         self.assertIn("mountInternetBrowserControls", internet_runtime)
         self.assertIn("mountInternetBrowserShortcuts", internet_runtime)
+        self.assertIn('new URL("./internet.css", import.meta.url)', internet_runtime)
+        self.assertIn("mountInternetStyles", internet_runtime)
+        self.assertIn("releaseStyles()", internet_runtime)
         self.assertIn("internetComponent?.destroy()", web_main)
         self.assertIn("internetComponent?.destroy()", native_main)
         self.assertIn("browserSession.dispose()", web_main)
@@ -626,7 +629,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertNotIn("<style", html.lower())
 
     def test_visual_surface_has_no_remote_asset_or_runtime_dependency(self):
-        roots = [SURFACE, APPS, COMPOSITION, NATIVE_COMPOSITION, PREFERENCES]
+        roots = [SURFACE, APPS, ROOT / "system" / "components", COMPOSITION, NATIVE_COMPOSITION, PREFERENCES]
         for path in [item for root in roots for item in root.rglob("*")]:
             if not path.is_file():
                 continue

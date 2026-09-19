@@ -32,7 +32,7 @@ export const internetComponent = defineComponentManifest({
   id: "internet",
   title: "Internet",
   kind: "app",
-  version: "0.2.0",
+  version: "0.3.0",
   releaseMode: "bundled",
   criticality: "optional",
   failureDomain: "app",
