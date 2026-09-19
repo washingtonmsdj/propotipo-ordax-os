@@ -26,6 +26,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
+import { createProjectContinuityFileSpace } from "../../services/files/project-continuity-file-space.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createUpdateNotificationBridge } from "../../services/notifications/update-bridge.mjs";
 import { createNotesRuntime } from "../../services/notes/runtime.mjs";
@@ -256,9 +257,16 @@ async function start() {
     workspaceMetadata.source,
     appActivation,
   );
+  const filesOwnerSpace = fileSpace === null
+    ? null
+    : createProjectContinuityFileSpace(fileSpace, projects, {
+        onContinuityError(error) {
+          reportClientDiagnostic("files-project-continuity", error);
+        },
+      });
   const fileSpaceControls = mountFileSpaceControls(
     root,
-    fileSpace,
+    filesOwnerSpace,
     appActivation,
     surface,
     { recentFiles, projects },
