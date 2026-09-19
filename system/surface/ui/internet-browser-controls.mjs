@@ -1,6 +1,9 @@
 import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
 import { assertProjectCatalogPort } from "../../contracts/project-catalog.mjs";
-import { assertProjectWebReferencePort } from "../../contracts/project-web-references.mjs";
+import {
+  assertProjectWebReferencePort,
+  validateProjectWebUrl,
+} from "../../contracts/project-web-references.mjs";
 import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const INTERNET_WINDOW_SELECTOR = '[data-window-id="internet"]';
@@ -277,17 +280,27 @@ export function mountInternetBrowserControls(
   const findSlot = () => root.querySelector(`${INTERNET_WINDOW_SELECTOR} ${INTERNET_EXTENSION_SELECTOR}`);
   const activeTab = () => snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId) ?? null;
   const selectedProject = () => projectSnapshot?.projects.find((project) => project.id === selectedProjectId) ?? null;
+  const activeReferenceUrl = () => {
+    const url = activeTab()?.url;
+    if (!url) return null;
+    try {
+      return validateProjectWebUrl(url);
+    } catch {
+      return null;
+    }
+  };
+
   const activeSavedReference = () => {
-    const tab = activeTab();
-    if (!referenceSnapshot || !selectedProjectId || !tab?.url) return null;
+    const url = activeReferenceUrl();
+    if (!referenceSnapshot || !selectedProjectId || !url) return null;
     return referenceSnapshot.references.find((reference) => (
-      reference.projectId === selectedProjectId && reference.url === tab.url
+      reference.projectId === selectedProjectId && reference.url === url
     )) ?? null;
   };
 
   const currentReferenceKey = () => {
-    const tab = activeTab();
-    return selectedProjectId && tab?.url ? `${selectedProjectId}\u0000${tab.url}` : "";
+    const url = activeReferenceUrl();
+    return selectedProjectId && url ? `${selectedProjectId}\u0000${url}` : "";
   };
 
   const syncNoteDraft = () => {
