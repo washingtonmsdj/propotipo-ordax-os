@@ -53,8 +53,8 @@ SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
 NOTES_RICH_EDITOR = SURFACE / "notes-rich-editor.mjs"
-INTERNET_BROWSER_CONTROLS = SURFACE / "internet-browser-controls.mjs"
-INTERNET_BROWSER_SHORTCUTS = SURFACE / "internet-browser-shortcuts.mjs"
+INTERNET_BROWSER_CONTROLS = APPS / "internet" / "ui" / "browser-controls.mjs"
+INTERNET_BROWSER_SHORTCUTS = APPS / "internet" / "ui" / "browser-shortcuts.mjs"
 SYSTEM_OVERVIEW_CONTROLS = SURFACE / "system-overview-controls.mjs"
 ACCOUNT_OVERVIEW_CONTROLS = SURFACE / "account-overview-controls.mjs"
 SETTINGS_OVERVIEW_CONTROLS = SURFACE / "settings-overview-controls.mjs"
@@ -86,7 +86,7 @@ class SurfaceUiContractTests(unittest.TestCase):
             SURFACE / "surface.css",
             SURFACE / "files.css",
             SURFACE / "notes.css",
-            ROOT / "system" / "components" / "internet" / "internet.css",
+            APPS / "internet" / "internet.css",
             SURFACE / "system.css",
             SURFACE / "account.css",
             SURFACE / "settings.css",
@@ -174,12 +174,17 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("getAppTarget(appId)", surface)
         self.assertIn("setAppTarget(appId, target)", surface)
         self.assertIn('type: "app.target"', surface)
-        for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, INTERNET_BROWSER_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
+        for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
             self.assertIn("./surface-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
             self.assertIn("subscribeRender", text, path)
             self.assertNotIn("MutationObserver", text, path)
+        internet_controls = INTERNET_BROWSER_CONTROLS.read_text(encoding="utf-8")
+        self.assertIn("surface/ui/surface-lifecycle.mjs", internet_controls)
+        self.assertIn("assertSurfaceRenderLifecycle", internet_controls)
+        self.assertIn("subscribeRender", internet_controls)
+        self.assertNotIn("MutationObserver", internet_controls)
 
         files = FILE_SPACE_CONTROLS.read_text(encoding="utf-8")
         self.assertIn('lifecycle.setAppTarget("files", next.path)', files)
@@ -197,7 +202,10 @@ class SurfaceUiContractTests(unittest.TestCase):
             self.assertIn(f'id: "{app_id}"', owner)
             self.assertIn("defineFirstPartyApp", owner)
             self.assertIn("component:", owner)
-            self.assertIn("../../services/components/manifests/apps.mjs", owner)
+            if app_id == "internet":
+                self.assertIn("./component.mjs", owner)
+            else:
+                self.assertIn("../../services/components/manifests/apps.mjs", owner)
             self.assertIn(f'./{app_id}/app.mjs', catalog)
         self.assertIn("listFirstPartyApps", catalog)
         self.assertIn("getFirstPartyApp", catalog)
@@ -298,14 +306,14 @@ class SurfaceUiContractTests(unittest.TestCase):
         internet = APP_OWNERS["internet"].read_text(encoding="utf-8")
         controls = INTERNET_BROWSER_CONTROLS.read_text(encoding="utf-8")
         shortcuts = INTERNET_BROWSER_SHORTCUTS.read_text(encoding="utf-8")
-        css = (ROOT / "system" / "components" / "internet" / "internet.css").read_text(encoding="utf-8")
+        css = (APPS / "internet" / "internet.css").read_text(encoding="utf-8")
         shell = DESKTOP_SHELL.read_text(encoding="utf-8")
         web_html = (COMPOSITION / "index.html").read_text(encoding="utf-8")
         native_html = (NATIVE_COMPOSITION / "index.html").read_text(encoding="utf-8")
         web_main = (COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         native_main = (NATIVE_COMPOSITION / "main.mjs").read_text(encoding="utf-8")
         internet_runtime = (
-            ROOT / "system" / "components" / "internet" / "runtime.mjs"
+            APPS / "internet" / "runtime.mjs"
         ).read_text(encoding="utf-8")
 
         self.assertIn('id: "internet"', internet)
@@ -328,8 +336,8 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("createNativeBrowserSession", native_main)
         self.assertIn("loadOptionalComponentRuntime", web_main)
         self.assertIn("loadOptionalComponentRuntime", native_main)
-        self.assertIn('import("../../components/internet/runtime.mjs")', web_main)
-        self.assertIn('import("../../components/internet/runtime.mjs")', native_main)
+        self.assertIn('import("../../apps/internet/runtime.mjs")', web_main)
+        self.assertIn('import("../../apps/internet/runtime.mjs")', native_main)
         self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', web_main)
         self.assertNotIn('from "../../surface/ui/internet-browser-controls.mjs"', native_main)
         self.assertIn("mountInternetBrowserControls", internet_runtime)
