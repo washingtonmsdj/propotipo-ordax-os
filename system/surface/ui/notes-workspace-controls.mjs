@@ -723,6 +723,11 @@ export function mountNotesWorkspaceControls(
   };
 
   const onClick = (event) => {
+    const editorLink = event.target.closest?.("[data-notes-body] a");
+    if (editorLink && mountedSlot?.contains(editorLink)) {
+      event.preventDefault();
+      return;
+    }
     const actionNode = event.target.closest("[data-notes-action]");
     if (!actionNode || !mountedSlot?.contains(actionNode)) return;
     const action = actionNode.dataset.notesAction;
