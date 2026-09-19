@@ -172,6 +172,11 @@ class NativeRequestBoundaryIntegrationTests(unittest.TestCase):
             user_root=str(root),
             power_request_path=str(root / "power-request"),
             network_session_dir=str(root),
+            component_slots=native_host.ComponentSlotBroker(
+                root=str(root / "components"),
+                release_agent=str(root / "missing-release-agent"),
+                trust_path=str(root / "missing-release-trust"),
+            ),
         )
         self.port = self.server.server_address[1]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
