@@ -63,6 +63,12 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         for authority_path in (
             "/system/",
             "/bootstrap/base-update/",
+            "/bootstrap/dev-base/ordax-dev-init",
+            "/bootstrap/dev-base/ordax-network",
+            "/bootstrap/dev-base/ordax-pull",
+            "/bootstrap/dev-base/ordax-rollback",
+            "/bootstrap/dev-base/ordax-run",
+            "/bootstrap/recovery/entrypoint",
             "/bootstrap/trust/",
             "/bootstrap/config/release-envelope-url",
             "/docs/contracts/release-trust-policy.json",
@@ -285,6 +291,37 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
                 "system/apps/*|system/adapters/*|system/contracts/*|system/services/*",
                 1,
             )[1],
+        )
+
+    def test_git_owned_development_helpers_refresh_without_base_candidate(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        classification = text.split("classify_changes() {", 1)[1].split(
+            "check_for_update() {",
+            1,
+        )[0]
+        helper_case = (
+            "bootstrap/dev-base/ordax-dev-init|"
+            "bootstrap/dev-base/ordax-network|"
+            "bootstrap/dev-base/ordax-pull|"
+            "bootstrap/dev-base/ordax-rollback|"
+            "bootstrap/dev-base/ordax-run|"
+            "bootstrap/recovery/entrypoint|"
+            "system/services/base-update/dev-helpers.sh)"
+        )
+        self.assertIn(helper_case, classification)
+        self.assertIn("DEV_HELPERS_CHANGED=1", classification)
+        self.assertLess(
+            classification.index(helper_case),
+            classification.index("boot/*|bootstrap/*)"),
+        )
+        self.assertIn("configure_runtime_sparse_checkout()", text)
+        self.assertIn("refresh_dev_helpers()", text)
+        self.assertIn('refresh_dev_helpers "$expected_sha"', text)
+        self.assertIn('refresh_dev_helpers "$current"', text)
+        self.assertIn("DEV_HELPERS_SHA_FILE=$STATE_DIR/dev-helpers-sha", text)
+        self.assertIn(
+            "system/services/base-update/dev-helpers.sh",
+            text,
         )
 
     def test_low_level_git_update_prefetches_exact_commit_base_without_blocking_surface(self):
