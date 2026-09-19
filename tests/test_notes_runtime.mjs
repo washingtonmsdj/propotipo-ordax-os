@@ -422,6 +422,78 @@ test("project lifecycle moves notes safely and protects the home project", () =>
   );
 });
 
+test("trashed notes are immutable until explicitly restored", () => {
+  let clock = 60_000;
+  const runtime = createNotesRuntime({ now: () => clock++ });
+
+  runtime.createProject("Destino");
+  let state = runtime.getSnapshot();
+  const destinationId = state.document.projects.find((project) => project.name === "Destino").id;
+
+  runtime.createNote(NOTES_HOME_PROJECT_ID);
+  state = runtime.getSnapshot();
+  const noteId = state.document.selectedNoteId;
+  runtime.updateNote(noteId, { title: "Original", body: "Texto protegido" });
+  runtime.addTask(noteId, "Checklist protegido");
+  runtime.addReference(noteId, {
+    kind: "link",
+    title: "Fonte protegida",
+    detail: "Link",
+    href: "https://example.org/protegida",
+  });
+
+  state = runtime.getSnapshot();
+  const active = state.document.notes.find((note) => note.id === noteId);
+  const taskId = active.tasks[0].id;
+  const referenceId = active.references[0].id;
+
+  runtime.trashNote(noteId);
+  state = runtime.getSnapshot();
+  const trashed = state.document.notes.find((note) => note.id === noteId);
+  assert.notEqual(trashed.deletedAt, null);
+  assert.equal(trashed.deletedAt, trashed.updatedAt);
+
+  const immutable = state.document;
+  runtime.updateNote(noteId, { title: "Não deve mudar", body: "Mutação bloqueada" });
+  runtime.toggleFavorite(noteId);
+  runtime.moveNote(noteId, destinationId);
+  runtime.addTask(noteId, "Outro item");
+  runtime.updateTask(noteId, taskId, { text: "Alterado", done: true });
+  runtime.removeTask(noteId, taskId);
+  runtime.addReference(noteId, {
+    kind: "link",
+    title: "Outra fonte",
+    detail: "Link",
+    href: "https://example.org/outra",
+  });
+  runtime.removeReference(noteId, referenceId);
+  runtime.trashNote(noteId);
+  assert.deepEqual(runtime.getSnapshot().document, immutable);
+
+  runtime.restoreNote(noteId);
+  state = runtime.getSnapshot();
+  let restored = state.document.notes.find((note) => note.id === noteId);
+  assert.equal(restored.deletedAt, null);
+  assert.equal(state.document.selectedNoteId, noteId);
+
+  const restoredSnapshot = state.document;
+  runtime.restoreNote(noteId);
+  assert.deepEqual(runtime.getSnapshot().document, restoredSnapshot);
+
+  runtime.updateNote(noteId, { title: "Restaurada" });
+  runtime.toggleFavorite(noteId);
+  runtime.updateTask(noteId, taskId, { done: true });
+  runtime.removeReference(noteId, referenceId);
+  runtime.moveNote(noteId, destinationId);
+
+  restored = runtime.getSnapshot().document.notes.find((note) => note.id === noteId);
+  assert.equal(restored.title, "Restaurada");
+  assert.equal(restored.favorite, true);
+  assert.equal(restored.tasks[0].done, true);
+  assert.equal(restored.references.length, 0);
+  assert.equal(restored.projectId, destinationId);
+});
+
 test("trash requires explicit permanent deletion and supports emptying all deleted notes", () => {
   let clock = 50_000;
   const runtime = createNotesRuntime({ now: () => clock++ });
