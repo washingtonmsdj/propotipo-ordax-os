@@ -62,8 +62,10 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('sparse-checkout set --no-cone', text)
         for authority_path in (
             "/system/",
+            "/bootstrap/base-update/",
             "/bootstrap/trust/",
             "/bootstrap/config/release-envelope-url",
+            "/docs/contracts/base-update.json",
             "/docs/contracts/release-trust-policy.json",
             "/docs/contracts/minimal-bootstrap.json",
             "/docs/evidence/release-trust-ceremony.json",
@@ -237,7 +239,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_system_markdown_is_runtime_neutral_before_system_fallback(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         markdown = text.index("system/*.md|boot/*.md|bootstrap/*.md|boot/*/prove_*|bootstrap/*/prove_*)")
-        next_case = text.index("boot/*|bootstrap/*)", markdown + 1)
+        next_case = text.index("bootstrap/kernel/*|bootstrap/initramfs/*)", markdown + 1)
         broad_system = text.index("system/*)", next_case + 1)
         self.assertLess(markdown, next_case)
         self.assertLess(next_case, broad_system)
@@ -286,14 +288,25 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             )[1],
         )
 
-    def test_low_level_changes_are_marked_not_auto_rebooted(self):
+    def test_only_kernel_and_initramfs_changes_mark_base_refresh(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
-        self.assertIn("boot/*|bootstrap/*", text)
-        self.assertIn("boot/*/prove_*|bootstrap/*/prove_*", text)
-        self.assertLess(
-            text.index("boot/*/prove_*|bootstrap/*/prove_*"),
-            text.index("boot/*|bootstrap/*"),
-        )
+        classification = text.split("classify_changes() {", 1)[1].split(
+            "check_for_update() {",
+            1,
+        )[0]
+        self.assertIn("bootstrap/kernel/*|bootstrap/initramfs/*", classification)
+        self.assertIn("LOW_LEVEL_CHANGED=1", classification)
+        self.assertIn("bootstrap/base-update/*", classification)
+        base_update_case = classification.split(
+            "bootstrap/base-update/*)",
+            1,
+        )[1].split(";;", 1)[0]
+        self.assertNotIn("LOW_LEVEL_CHANGED=1", base_update_case)
+        generic_bootstrap_case = classification.split(
+            "boot/*|bootstrap/*)",
+            1,
+        )[1].split(";;", 1)[0]
+        self.assertNotIn("LOW_LEVEL_CHANGED=1", generic_bootstrap_case)
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
         self.assertIn("boot refresh is marked pending", text)
