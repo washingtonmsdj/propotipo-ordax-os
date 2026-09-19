@@ -418,6 +418,52 @@ test("project lifecycle moves notes safely and protects the home project", () =>
   );
 });
 
+test("trash requires explicit permanent deletion and supports emptying all deleted notes", () => {
+  let clock = 50_000;
+  const runtime = createNotesRuntime({ now: () => clock++ });
+
+  runtime.createNote();
+  let state = runtime.getSnapshot();
+  const keepId = state.document.selectedNoteId;
+  runtime.updateNote(keepId, { title: "Manter" });
+
+  runtime.createNote();
+  state = runtime.getSnapshot();
+  const deleteId = state.document.selectedNoteId;
+  runtime.updateNote(deleteId, { title: "Apagar" });
+
+  const activeBeforeDelete = runtime.getSnapshot().document;
+  runtime.permanentlyDeleteNote(deleteId);
+  assert.deepEqual(runtime.getSnapshot().document, activeBeforeDelete);
+
+  runtime.trashNote(deleteId);
+  state = runtime.getSnapshot();
+  assert.notEqual(state.document.notes.find((note) => note.id === deleteId).deletedAt, null);
+
+  runtime.permanentlyDeleteNote(deleteId);
+  state = runtime.getSnapshot();
+  assert.equal(state.document.notes.some((note) => note.id === deleteId), false);
+  assert.equal(state.document.notes.some((note) => note.id === keepId), true);
+
+  runtime.createNote();
+  const trashOne = runtime.getSnapshot().document.selectedNoteId;
+  runtime.trashNote(trashOne);
+  runtime.createNote();
+  const trashTwo = runtime.getSnapshot().document.selectedNoteId;
+  runtime.trashNote(trashTwo);
+
+  state = runtime.getSnapshot();
+  assert.equal(state.document.notes.filter((note) => note.deletedAt !== null).length, 2);
+  runtime.emptyTrash();
+  state = runtime.getSnapshot();
+  assert.equal(state.document.notes.filter((note) => note.deletedAt !== null).length, 0);
+  assert.equal(state.document.notes.some((note) => note.id === keepId), true);
+
+  const unchanged = runtime.getSnapshot().document;
+  runtime.emptyTrash();
+  assert.deepEqual(runtime.getSnapshot().document, unchanged);
+});
+
 test("checklist items can be removed without affecting sibling items", () => {
   let clock = 40_000;
   const runtime = createNotesRuntime({ now: () => clock++ });
