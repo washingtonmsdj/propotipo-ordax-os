@@ -521,6 +521,23 @@ def verify_rootfs(rootfs: Path) -> None:
         path = rootfs / rel
         if not path.is_file() or not os.access(path, os.X_OK):
             raise BuildError(f"required executable missing: /{rel}")
+    stage("verify-rootfs-busybox-applets")
+    completed = subprocess.run(
+        ["chroot", str(rootfs), "/bin/busybox", "--list"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise BuildError("development BusyBox applet discovery failed")
+    applets = set(completed.stdout.splitlines())
+    required_applets = {"mount", "pivot_root", "reboot", "sync"}
+    missing_applets = sorted(required_applets - applets)
+    if missing_applets:
+        raise BuildError(
+            f"development BusyBox is missing rootfs selector applets: {missing_applets}"
+        )
+
     stage("verify-rootfs-native-chroot-git")
     dev_null = rootfs / "dev/null"
     dev_null.touch(mode=0o666)
