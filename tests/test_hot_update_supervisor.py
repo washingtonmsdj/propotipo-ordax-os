@@ -62,6 +62,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('sparse-checkout set --no-cone', text)
         for authority_path in (
             "/system/",
+            "/bootstrap/base-update/",
             "/bootstrap/trust/",
             "/bootstrap/config/release-envelope-url",
             "/docs/contracts/release-trust-policy.json",
@@ -286,6 +287,55 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
             )[1],
         )
 
+    def test_low_level_git_update_prefetches_exact_commit_base_without_blocking_surface(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn("DEV_BASE_READY_FILE=$STATE_DIR/dev-base-ready-sha", text)
+        self.assertIn("DEV_BASE_FETCHING_FILE=$STATE_DIR/dev-base-fetching-sha", text)
+        self.assertIn(
+            "DEV_BASE_CANDIDATE_ROOT=$STATE_DIR/base-update/dev-candidates",
+            text,
+        )
+        self.assertIn(
+            "DEV_BASE_CHANNEL=$WORKTREE/system/services/base-update/dev_channel.py",
+            text,
+        )
+        self.assertIn("prepare_dev_base_candidate_async()", text)
+        self.assertIn(
+            'prepare_dev_base_candidate_async "$new_sha"',
+            text,
+        )
+        self.assertIn(
+            'prepare_dev_base_candidate_async "$pending_boot_sha"',
+            text,
+        )
+        self.assertIn(
+            '/usr/bin/python3 "$DEV_BASE_CHANNEL"',
+            text,
+        )
+        self.assertIn(
+            '--source-commit "$source_sha"',
+            text,
+        )
+        self.assertIn(
+            '--destination-root "$DEV_BASE_CANDIDATE_ROOT"',
+            text,
+        )
+        self.assertIn(
+            'development Base candidate not published yet',
+            text,
+        )
+        self.assertIn(
+            'runtime remains healthy',
+            text,
+        )
+        background = text.split(
+            "prepare_dev_base_candidate_async() {",
+            1,
+        )[1].split("\n}", 1)[0]
+        self.assertIn(") &", background)
+        self.assertNotIn("reboot", background)
+        self.assertNotIn("poweroff", background)
+
     def test_low_level_changes_are_marked_not_auto_rebooted(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("boot/*|bootstrap/*", text)
@@ -296,7 +346,7 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         )
         self.assertIn("BOOT_REFRESH_FILE=$STATE_DIR/boot-refresh-required", text)
         self.assertIn("mark_boot_refresh_required", text)
-        self.assertIn("boot refresh is marked pending", text)
+        self.assertIn("Base candidate acquisition runs in background", text)
 
     def test_rollback_pin_disables_automatic_pull(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
