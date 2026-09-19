@@ -59,7 +59,7 @@ def dependency_specifiers(path: PurePosixPath, text: str) -> list[str]:
     if suffix in {".html", ".htm"}:
         return [match.group(3) for match in HTML_REF_RE.finditer(text)]
     if suffix in {".mjs", ".js", ".cjs"}:
-        return sorted(set(JS_FROM_RE.findall(text)) | set(JS_CALL_RE.findall(text)))
+        return sorted(set(JS_FROM_RE.findall(text)) | set(JS_CALL_RE.findall(text)) | set(JS_URL_RE.findall(text)))
     if suffix == ".css":
         specs = set(CSS_IMPORT_RE.findall(text))
         for value in CSS_URL_RE.findall(text):
