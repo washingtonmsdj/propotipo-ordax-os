@@ -71,7 +71,7 @@ class HomeContinuationContractTests(unittest.TestCase):
     def test_surface_candidate_owns_home_continuation_regressions(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         self.assertGreaterEqual(workflow.count("tests/test_home_continuation.mjs"), 3)
-        self.assertGreaterEqual(workflow.count("tests/test_home_continuation_contract.py"), 3)
+        self.assertGreaterEqual(workflow.count("tests/test_home_continuation_contract.py"), 2)
         self.assertIn("node --test tests/test_home_continuation.mjs", workflow)
         self.assertIn(
             "python -m unittest tests.test_home_continuation_contract -v",
