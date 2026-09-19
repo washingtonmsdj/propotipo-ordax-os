@@ -196,7 +196,10 @@
       "sysfs_identity_required": true,
       "discovery_mounts_esp": false,
       "discovery_authorizes_write": false,
-      "discovery_authorizes_activation": false
+      "discovery_authorizes_activation": false,
+      "state_file": "/state/ordax/base-update/esp-discovery.json",
+      "runtime_preflight_fail_soft": true,
+      "candidate_acquisition_continues_without_esp": true
     }
   },
   "release_channel_enrollment": {
