@@ -301,8 +301,17 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
     def test_rollback_pin_disables_automatic_pull(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
         self.assertIn("PINNED_FILE=$STATE_DIR/pinned-commit", text)
+        self.assertIn("BOOT_REJECTED_FILE=$STATE_DIR/boot-rejected-commit", text)
         self.assertIn('if [ -s "$PINNED_FILE" ]', text)
         self.assertIn('write_update_state "$current" pinned none', text)
+
+    def test_boot_rollback_pin_retries_only_after_remote_main_advances(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('boot_rejected_sha=$(read_state_value "$BOOT_REJECTED_FILE")', text)
+        self.assertIn('if [ "$remote_sha" = "$boot_rejected_sha" ]; then', text)
+        self.assertIn('"boot-rollback-pinned"', text)
+        self.assertIn('rm -f "$PINNED_FILE" "$BOOT_REJECTED_FILE"', text)
+        self.assertIn("remote main advanced beyond boot-rejected", text)
 
     def test_failed_update_is_rolled_back_and_rejected(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
