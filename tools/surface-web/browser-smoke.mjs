@@ -538,10 +538,12 @@ function buildCompositionProofExpression(moduleSources, styles) {
     if (notesTitle && notesBody) {
       notesTitle.value = 'Nota persistida no smoke';
       notesTitle.dispatchEvent(new Event('input', { bubbles: true }));
-      notesBody.textContent = 'Conteúdo salvo localmente e disponível offline.';
+      const richBlock = notesBody.querySelector('[data-notes-rich-block]');
+      if (richBlock) richBlock.textContent = 'Conteúdo salvo localmente e disponível offline.';
       notesBody.dispatchEvent(new Event('input', { bubbles: true }));
 
-      const textNode = notesBody.firstChild;
+      notesBody.focus();
+      const textNode = richBlock?.firstChild;
       if (textNode?.nodeType === Node.TEXT_NODE) {
         const range = document.createRange();
         range.setStart(textNode, 0);
