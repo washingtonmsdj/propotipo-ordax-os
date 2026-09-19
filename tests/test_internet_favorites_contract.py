@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
+INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-favorites.mjs"
 STORE = ROOT / "system" / "contracts" / "browser-favorites-store.mjs"
 RUNTIME = ROOT / "system" / "services" / "internet" / "favorites.mjs"
@@ -29,18 +30,22 @@ class InternetFavoritesContractTests(unittest.TestCase):
         self.assertNotIn('sessionStorage', controls)
         self.assertNotIn('/__ordax/native/', controls)
 
-    def test_native_composition_owns_device_store_and_runtime(self):
+    def test_native_composition_owns_device_store_while_internet_runtime_owns_domain(self):
         native = self.text(NATIVE_MAIN)
+        runtime = self.text(INTERNET_RUNTIME)
         self.assertIn('createNativeBrowserFavoritesStore', native)
-        self.assertIn('createBrowserFavoritesRuntime', native)
-        self.assertIn('favorites: browserFavorites', native)
-        self.assertIn('browserFavorites.destroy()', native)
+        self.assertNotIn('createBrowserFavoritesRuntime', native)
+        self.assertIn('createFavoritesStore: () => createNativeBrowserFavoritesStore(window)', native)
+        self.assertIn('createBrowserFavoritesRuntime', runtime)
+        self.assertIn('favorites?.destroy()', runtime)
 
     def test_web_composition_does_not_fake_browser_favorites(self):
         web = self.text(WEB_MAIN)
+        runtime = self.text(INTERNET_RUNTIME)
         self.assertNotIn('createNativeBrowserFavoritesStore', web)
         self.assertNotIn('createBrowserFavoritesRuntime', web)
-        self.assertIn('mountInternetBrowserControls(root, browserSession, surface)', web)
+        self.assertIn('import("../../components/internet/runtime.mjs")', web)
+        self.assertIn('createFavoritesStore = null', runtime)
 
     def test_favorites_have_bounded_independent_contract_and_store(self):
         contract = self.text(CONTRACT)
