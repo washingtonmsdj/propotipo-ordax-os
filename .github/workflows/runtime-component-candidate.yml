@@ -5,14 +5,12 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/runtime-component-package.json'
-      - 'system/components/**'
+      - 'system/apps/internet/**'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
       - 'system/contracts/project-*.mjs'
       - 'system/services/components/**'
-      - 'system/services/internet/**'
-      - 'system/surface/ui/internet-browser-*.mjs'
       - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
       - 'tools/source_graph.py'
@@ -21,14 +19,12 @@ on:
   pull_request:
     paths:
       - 'docs/contracts/runtime-component-package.json'
-      - 'system/components/**'
+      - 'system/apps/internet/**'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
       - 'system/contracts/project-*.mjs'
       - 'system/services/components/**'
-      - 'system/services/internet/**'
-      - 'system/surface/ui/internet-browser-*.mjs'
       - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
       - 'tools/source_graph.py'
