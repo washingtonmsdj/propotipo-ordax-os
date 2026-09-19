@@ -143,11 +143,12 @@ Implemented in source:
 - architecture regression tests;
 - explicit project-owned web-reference persistence on Native/USB;
 - bounded per-reference user notes stored with the saved page;
-- automatic cleanup of saved web references when their project is removed.
+- automatic cleanup of saved web references when their project is removed;
+- device-local browser favorites with canonical URL identity, explicit add/remove controls and session fallback when privileged profile storage is unavailable.
 
 Intentionally not faked yet:
 
-- collections/favorites/history persistence;
+- collections/read-later/history persistence;
 - downloads;
 - website permission UI;
 - private-session lifecycle;
@@ -162,7 +163,9 @@ The concept surfaces these future controls, but disabled controls must remain ho
 
 The persisted record contains a stable reference id, project id, canonical HTTP/HTTPS URL, captured title, optional user note and created/updated timestamps. The same project/URL pair is updated in place rather than duplicated. Removing a project prunes its saved web references through the project-reference runtime. Persistence is device-scoped in the Native privileged profile and degrades honestly to session scope if durable storage is unavailable.
 
-The shared Internet UI receives only the neutral project/reference ports. It does not use `localStorage`, Native endpoints or adapters directly.
+The shared Internet UI receives only neutral project/reference and browser-favorites ports. It does not use `localStorage`, Native endpoints or adapters directly.
+
+Favorites are browser-owned rather than project-owned. The Native/USB composition persists them in the privileged Surface profile through `ordax.browser-favorites/1`; arbitrary website WebViews never receive that storage capability. A favorite stores only a stable local id, canonical HTTP/HTTPS URL, captured title and timestamps. Persistence degrades explicitly to session scope if privileged profile storage is unavailable.
 
 Download and offline-copy semantics remain separate operations and still need separate storage, size, provenance and permission rules.
 
