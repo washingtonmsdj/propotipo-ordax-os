@@ -436,16 +436,16 @@ export function mountNotesWorkspaceControls(
 
       if (projectMenuId === project.id) {
         const projectMenu = node(documentObject, "div", "ordax-notes-project-menu");
-        const rename = button(
-          documentObject,
-          "ordax-notes-project-menu-item",
-          `Renomear projeto ${project.name}`,
-          "rename-project",
-          "Renomear",
-        );
-        rename.dataset.projectId = project.id;
-        projectMenu.append(rename);
         if (project.id !== NOTES_HOME_PROJECT_ID) {
+          const rename = button(
+            documentObject,
+            "ordax-notes-project-menu-item",
+            `Renomear projeto ${project.name}`,
+            "rename-project",
+            "Renomear",
+          );
+          rename.dataset.projectId = project.id;
+          projectMenu.append(rename);
           const remove = button(
             documentObject,
             "ordax-notes-project-menu-item ordax-notes-project-menu-danger",
