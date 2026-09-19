@@ -12,7 +12,6 @@ on:
       - 'tests/test_notifications.mjs'
       - 'tests/test_notification_center_ui_contract.py'
       - 'tools/surface-web/materialize-notification-center.py'
-      - 'tools/surface-web/materialize-notification-icon-fix.py'
       - '.github/workflows/temp-notification-center-proof.yml'
   workflow_dispatch:
 
@@ -39,11 +38,8 @@ jobs:
       - name: Materialize fail-closed integration
         run: |
           set -euo pipefail
-          python -m py_compile \
-            tools/surface-web/materialize-notification-center.py \
-            tools/surface-web/materialize-notification-icon-fix.py
+          python -m py_compile tools/surface-web/materialize-notification-center.py
           python tools/surface-web/materialize-notification-center.py
-          python tools/surface-web/materialize-notification-icon-fix.py
 
       - name: Validate modules and notification contracts
         run: |
@@ -113,8 +109,7 @@ jobs:
           git add \
             system/composition/web/main.mjs \
             system/composition/native/main.mjs \
-            system/surface/ui/surface.css \
-            system/surface/ui/notification-center-controls.mjs
+            system/surface/ui/surface.css
           git diff --cached --exit-code && {
             echo 'Expected materialized product changes were not produced.' >&2
             exit 1

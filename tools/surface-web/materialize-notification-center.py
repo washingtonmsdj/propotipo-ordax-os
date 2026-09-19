@@ -66,4 +66,50 @@ rewrite(
 )''',
 )
 
+rewrite(
+'''.ordax-notification-bell svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+''',
+'''.ordax-notification-bell-shape {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 13px;
+  border: 1.7px solid currentColor;
+  border-bottom: 0;
+  border-radius: 8px 8px 3px 3px;
+}
+
+.ordax-notification-bell-shape::before {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  height: 1.7px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.ordax-notification-bell-shape::after {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  transform: translateX(-50%);
+}
+''',
+)
+
 exec(compile(source, str(BASE), "exec"), {"__name__": "__main__", "__file__": str(BASE)})
