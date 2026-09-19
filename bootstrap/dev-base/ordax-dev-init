@@ -39,7 +39,7 @@ is_commit_sha() {
 write_state() {
     destination=$1
     value=$2
-    temporary=$destination.tmp.$
+    temporary=$destination.tmp.$$
     printf '%s\n' "$value" >"$temporary"
     mv -f "$temporary" "$destination"
 }
