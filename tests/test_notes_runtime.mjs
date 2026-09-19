@@ -366,6 +366,105 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   assert.equal(reloaded.references[1].path, "/Documentos/brief.pdf");
 });
 
+test("note duplication creates an independent active copy with fresh nested identities", () => {
+  let clock = 25_000;
+  const runtime = createNotesRuntime({ now: () => clock++ });
+
+  runtime.createNote();
+  let state = runtime.getSnapshot();
+  const sourceId = state.document.selectedNoteId;
+  runtime.updateNote(sourceId, {
+    title: "Plano",
+    richBody: {
+      blocks: [{
+        type: "paragraph",
+        text: "Conteúdo estruturado",
+        marks: [{ type: "bold", start: 0, end: 8 }],
+      }],
+    },
+  });
+  runtime.toggleFavorite(sourceId);
+  runtime.addTask(sourceId, "Revisar");
+  runtime.addReference(sourceId, {
+    kind: "link",
+    title: "Fonte",
+    detail: "Link",
+    href: "https://example.org/fonte",
+  });
+
+  state = runtime.getSnapshot();
+  const source = state.document.notes.find((note) => note.id === sourceId);
+  const sourceTaskId = source.tasks[0].id;
+  const sourceReferenceId = source.references[0].id;
+
+  runtime.duplicateNote(sourceId);
+  state = runtime.getSnapshot();
+  const copyId = state.document.selectedNoteId;
+  const copy = state.document.notes.find((note) => note.id === copyId);
+
+  assert.notEqual(copyId, sourceId);
+  assert.equal(copy.projectId, source.projectId);
+  assert.equal(copy.title, "Plano — cópia");
+  assert.equal(copy.body, source.body);
+  assert.deepEqual(copy.richBody, source.richBody);
+  assert.equal(copy.favorite, false);
+  assert.equal(copy.deletedAt, null);
+  assert.notEqual(copy.createdAt, source.createdAt);
+  assert.equal(copy.createdAt, copy.updatedAt);
+  assert.equal(copy.tasks[0].text, "Revisar");
+  assert.notEqual(copy.tasks[0].id, sourceTaskId);
+  assert.equal(copy.references[0].href, "https://example.org/fonte");
+  assert.notEqual(copy.references[0].id, sourceReferenceId);
+
+  runtime.updateTask(copyId, copy.tasks[0].id, { text: "Revisar cópia" });
+  const afterEdit = runtime.getSnapshot().document;
+  assert.equal(
+    afterEdit.notes.find((note) => note.id === sourceId).tasks[0].text,
+    "Revisar",
+  );
+  assert.equal(
+    afterEdit.notes.find((note) => note.id === copyId).tasks[0].text,
+    "Revisar cópia",
+  );
+});
+
+test("duplicate note fails closed for trash and collection capacity", () => {
+  const runtime = createNotesRuntime({ now: () => 26_000 });
+  runtime.createNote();
+  let state = runtime.getSnapshot();
+  const noteId = state.document.selectedNoteId;
+  runtime.trashNote(noteId);
+  const trashedBefore = runtime.getSnapshot().document;
+  runtime.duplicateNote(noteId);
+  assert.deepEqual(runtime.getSnapshot().document, trashedBefore);
+
+  const fullNotes = Array.from({ length: MAX_NOTES }, (_, index) => ({
+    id: `full-${index}`,
+    projectId: NOTES_HOME_PROJECT_ID,
+    title: `Nota ${index}`,
+    body: "",
+    favorite: false,
+    deletedAt: null,
+    createdAt: index + 1,
+    updatedAt: index + 1,
+    tasks: [],
+    references: [],
+  }));
+  const fullRuntime = createNotesRuntime({
+    store: memoryStore({
+      initial: validateNotesSnapshot({
+        ...minimalSnapshot(),
+        selectedNoteId: "full-0",
+        notes: fullNotes,
+      }),
+    }),
+    now: () => 27_000,
+  });
+  const fullBefore = fullRuntime.getSnapshot().document;
+  fullRuntime.duplicateNote("full-0");
+  assert.deepEqual(fullRuntime.getSnapshot().document, fullBefore);
+});
+
 test("project lifecycle moves notes safely and protects the home project", () => {
   let clock = 30_000;
   const runtime = createNotesRuntime({ now: () => clock++ });
