@@ -8,6 +8,7 @@ import { createServer } from 'node:net';
 
 const STATIC_IMPORT_RE = /\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?["']([^"']+)["']/g;
 const DYNAMIC_IMPORT_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
+const ASSET_HREF_RE = /\bnew\s+URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\.href/g;
 const SURFACE_ROOT_MODULE = 'system/surface/ui/surface.mjs';
 const WEB_COMPOSITION_ROOT_MODULE = 'system/composition/web/main.mjs';
 const ROOT_MODULES = [SURFACE_ROOT_MODULE, WEB_COMPOSITION_ROOT_MODULE];
@@ -17,11 +18,13 @@ const CSS_FILES = [
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
   'system/surface/ui/notes.css',
-  'system/surface/ui/internet.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
 ];
+const COMPONENT_ASSET_FILES = Object.freeze({
+  'system/components/internet/internet.css': 'text/css',
+});
 
 function parseArgs(argv) {
   let bundleDir = 'out/web-client';
@@ -68,14 +71,23 @@ function moduleKey(path, namespace = 'shell') {
   return `ordax-module/${namespace}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-function rewriteModule(source, sourcePath, bundleDir, namespace = 'shell') {
+function rewriteModule(source, sourcePath, bundleDir, namespace = 'shell', assetUrls = {}) {
   const rewrite = (full, specifier) => {
     const dependency = resolveModule(bundleDir, sourcePath, specifier);
     return full.replace(specifier, moduleKey(dependency, namespace));
   };
+  const rewriteAssetHref = (_full, specifier) => {
+    const dependency = resolveModule(bundleDir, sourcePath, specifier);
+    const assetUrl = assetUrls[dependency];
+    if (!assetUrl) {
+      throw new Error(`browser smoke asset is not registered: ${sourcePath} -> ${dependency}`);
+    }
+    return JSON.stringify(assetUrl);
+  };
   return source
     .replace(STATIC_IMPORT_RE, rewrite)
-    .replace(DYNAMIC_IMPORT_RE, rewrite);
+    .replace(DYNAMIC_IMPORT_RE, rewrite)
+    .replace(ASSET_HREF_RE, rewriteAssetHref);
 }
 
 async function collectModules(bundleDir) {
@@ -91,6 +103,16 @@ async function collectModules(bundleDir) {
     }
   }
   return sources;
+}
+
+async function loadComponentAssetUrls(bundleDir) {
+  const entries = await Promise.all(
+    Object.entries(COMPONENT_ASSET_FILES).map(async ([path, mediaType]) => {
+      const bytes = await readFile(join(bundleDir, path));
+      return [path, `data:${mediaType};base64,${bytes.toString('base64')}`];
+    }),
+  );
+  return Object.freeze(Object.fromEntries(entries));
 }
 
 function which(command) {
@@ -247,10 +269,13 @@ class CdpClient {
   }
 }
 
-function buildProofExpression(moduleSources, styles) {
+function buildProofExpression(moduleSources, styles, assetUrls) {
   const namespace = 'shell';
   const rewritten = Object.fromEntries(
-    [...moduleSources.entries()].map(([path, source]) => [path, rewriteModule(source, path, bundleDirGlobal, namespace)]),
+    [...moduleSources.entries()].map(([path, source]) => [
+      path,
+      rewriteModule(source, path, bundleDirGlobal, namespace, assetUrls),
+    ]),
   );
   const moduleKeys = Object.fromEntries(
     [...moduleSources.keys()].map((path) => [path, moduleKey(path, namespace)]),
@@ -401,7 +426,7 @@ function buildProofExpression(moduleSources, styles) {
   })()`;
 }
 
-function buildCompositionProofExpression(moduleSources, styles) {
+function buildCompositionProofExpression(moduleSources, styles, assetUrls) {
   const namespaces = ['composition-first', 'composition-remount'];
   const namespaceSources = Object.fromEntries(
     namespaces.map((namespace) => [
@@ -409,7 +434,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       Object.fromEntries(
         [...moduleSources.entries()].map(([path, source]) => [
           path,
-          rewriteModule(source, path, bundleDirGlobal, namespace),
+          rewriteModule(source, path, bundleDirGlobal, namespace, assetUrls),
         ]),
       ),
     ]),
@@ -575,6 +600,12 @@ function buildCompositionProofExpression(moduleSources, styles) {
     await Promise.resolve();
     let root = document.querySelector('#ordax-root');
     result.compositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    const firstInternetStyle = document.querySelector(
+      'link[data-ordax-component-style="internet"]',
+    );
+    result.internetComponentStyleMounted = Boolean(
+      firstInternetStyle?.href?.startsWith('data:text/css;base64,'),
+    );
 
     await launch('settings');
     let settingsWindow = root.querySelector('[data-window-id="settings"]');
@@ -920,6 +951,9 @@ function buildCompositionProofExpression(moduleSources, styles) {
     await Promise.resolve();
     result.firstMountDestroyed = root.childElementCount === 0;
     result.textScaleClearedOnDestroy = document.documentElement.dataset.ordaxTextScale === undefined;
+    result.internetComponentStyleRemovedOnDestroy = document.querySelector(
+      'link[data-ordax-component-style="internet"]',
+    ) === null;
 
     document.body.replaceChildren();
     const remountRoot = document.createElement('div');
@@ -929,6 +963,9 @@ function buildCompositionProofExpression(moduleSources, styles) {
     await Promise.resolve();
     root = document.querySelector('#ordax-root');
     result.remountCompositionMounted = Boolean(root?.querySelector('[data-workspace]'));
+    result.internetComponentStyleRestored = Boolean(
+      document.querySelector('link[data-ordax-component-style="internet"]'),
+    );
     result.themeRestored = root?.dataset.ordaxTheme === 'dark';
     result.textScaleRestored = document.documentElement.dataset.ordaxTextScale === 'extra-large';
 
@@ -984,7 +1021,8 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
-      'workspaceTargetPersisted', 'notesEmptyEditorState', 'notesHeadingEnterHandled',
+      'workspaceTargetPersisted', 'internetComponentStyleMounted',
+      'notesEmptyEditorState', 'notesHeadingEnterHandled',
       'notesBackspaceExitsBlock', 'notesBulletEnterContinuesList', 'notesShiftEnterKeepsBlock',
       'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
       'notesNewActionPresent', 'notesTitleEnterFocusesEditor', 'notesAutosavePersisted',
@@ -1069,6 +1107,7 @@ async function main() {
   }
   if (!existsSync(bundleDir)) throw new Error(`bundle directory does not exist: ${bundleDir}`);
   const modules = await collectModules(bundleDir);
+  const assetUrls = await loadComponentAssetUrls(bundleDir);
   const styles = (await Promise.all(CSS_FILES.map((path) => readFile(join(bundleDir, path), 'utf8')))).join('\n');
   const browser = findBrowser();
   const cdpPort = await reserveLoopbackPort();
@@ -1124,14 +1163,14 @@ async function main() {
     await client.send('Log.enable');
     const shellResult = await evaluateProof(
       client,
-      buildProofExpression(modules, styles),
+      buildProofExpression(modules, styles, assetUrls),
       'Surface shell',
     );
     await client.send('Page.navigate', { url: 'about:blank' });
     await waitForPageReady(client);
     const compositionResult = await evaluateProof(
       client,
-      buildCompositionProofExpression(modules, styles),
+      buildCompositionProofExpression(modules, styles, assetUrls),
       'Web composition',
     );
     const runtimeErrors = client.events.filter((event) => event.method === 'Runtime.exceptionThrown');
