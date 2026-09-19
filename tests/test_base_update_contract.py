@@ -263,6 +263,26 @@ class BaseUpdateContractTests(unittest.TestCase):
         self.assertTrue(discovery["candidate_presence_reported"])
         self.assertFalse(discovery["inspection_authorizes_write"])
         self.assertFalse(discovery["inspection_authorizes_activation"])
+        self.assertEqual(
+            discovery["readonly_preflight_helper"],
+            "system/services/base-update/esp_readonly.py",
+        )
+        self.assertEqual(
+            discovery["readonly_preflight_schema"],
+            "prototype-ordax.esp-readonly-preflight/1",
+        )
+        self.assertEqual(discovery["readonly_mount_filesystem"], "vfat")
+        self.assertEqual(
+            discovery["readonly_mount_options"],
+            ["ro", "nosuid", "nodev", "noexec"],
+        )
+        self.assertTrue(discovery["identity_revalidated_after_mount"])
+        self.assertTrue(discovery["unmount_required_before_return"])
+        self.assertEqual(
+            discovery["disposable_same_disk_proof"],
+            "bootstrap/base-update/prove_esp_readonly_preflight.sh",
+        )
+        self.assertFalse(discovery["physical_hardware_proven_by_disposable_proof"])
 
     def test_release_channel_enrollment_is_pinned_and_non_destructive(self):
         channel = CONTRACT["release_channel_enrollment"]
