@@ -1,13 +1,16 @@
 import {
   FILE_SPACE_SCHEMA,
+  MAX_IMAGE_PREVIEW_BYTES,
   assertFileSpacePort,
   validateFileListing,
+  validateImagePreview,
   validateTextFile,
 } from "../../contracts/file-space.mjs";
 
 const FILES_ENDPOINT = "/__ordax/native/files";
 const FILE_CONTENT_ENDPOINT = "/__ordax/native/file-content";
 const FILE_EXPORT_ENDPOINT = "/__ordax/native/file-export";
+const IMAGE_PREVIEW_ENDPOINT = "/__ordax/native/image-preview";
 const FILE_IMPORT_ENDPOINT = "/__ordax/native/file-import";
 
 export class FileSpaceOperationError extends Error {
@@ -36,6 +39,10 @@ function contentEndpointFor(path) {
 
 function exportEndpointFor(path) {
   return `${FILE_EXPORT_ENDPOINT}?path=${encodeURIComponent(path)}`;
+}
+
+function imagePreviewEndpointFor(path) {
+  return `${IMAGE_PREVIEW_ENDPOINT}?path=${encodeURIComponent(path)}`;
 }
 
 function fileNameFromPath(path) {
@@ -78,6 +85,25 @@ export async function createNativeFileSpace(windowRef = globalThis.window) {
       });
       requireSuccess(response, "text-read");
       return validateTextFile(await response.json());
+    },
+    async readImagePreview(path) {
+      const response = await windowRef.fetch(imagePreviewEndpointFor(path), {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      requireSuccess(response, "image-preview");
+      const mime = response.headers.get("Content-Type")?.split(";", 1)[0]?.trim()?.toLowerCase() ?? "";
+      const buffer = await response.arrayBuffer();
+      if (buffer.byteLength > MAX_IMAGE_PREVIEW_BYTES) {
+        throw new FileSpaceOperationError("image-preview", 413);
+      }
+      return validateImagePreview({
+        path,
+        size: buffer.byteLength,
+        mime,
+        bytes: new Uint8Array(buffer),
+      });
     },
     async copyFile(sourcePath, name, destinationPath, newName) {
       const response = await windowRef.fetch(FILES_ENDPOINT, {
