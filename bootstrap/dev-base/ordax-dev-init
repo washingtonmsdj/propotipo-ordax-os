@@ -234,10 +234,21 @@ select_development_rootfs() {
         return 0
     fi
 
-    mkdir -p "$ROOTFS_SELECTION_DIR" "$ROOTFS_VERSIONS_ROOT"
-
     candidate_sha=$(cmdline_value ordax.base_candidate 2>/dev/null || true)
     base_slot=$(cmdline_value ordax.base_slot 2>/dev/null || true)
+
+    # The normal seed boot must stay local-first and must not require access to
+    # the version store. Only an explicit OrdaX A/B slot/candidate context owns
+    # rootfs selection and its persistent mapping.
+    if [ -z "$candidate_sha" ] && [ -z "$base_slot" ]; then
+        ORDAX_DEV_ROOT_COMMIT=seed
+        ORDAX_DEV_ROOT_MODE=seed
+        ORDAX_DEV_VERSION_ROOT=/versions
+        export ORDAX_DEV_ROOT_COMMIT ORDAX_DEV_ROOT_MODE ORDAX_DEV_VERSION_ROOT
+        return 0
+    fi
+
+    mkdir -p "$ROOTFS_SELECTION_DIR" "$ROOTFS_VERSIONS_ROOT"
 
     if [ -n "$candidate_sha" ]; then
         is_commit_sha "$candidate_sha" || candidate_root_failure "identidade de commit invalida"
