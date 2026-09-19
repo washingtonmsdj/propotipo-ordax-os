@@ -1,5 +1,9 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import { assertFileSpacePort, validateFileSpacePath } from "../../contracts/file-space.mjs";
+import {
+  assertFileSpacePort,
+  validateFileSpacePath,
+  validateImagePreview,
+} from "../../contracts/file-space.mjs";
 import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
@@ -26,7 +30,7 @@ const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
 const SAVE_DELAY_MS = 320;
 const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
-const IMAGE_FILE_RE = /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i;
+const IMAGE_FILE_RE = /\.(?:avif|bmp|gif|jpe?g|png|webp)$/i;
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 
 function node(documentObject, tag, className, text) {
@@ -255,6 +259,10 @@ function buildShell(documentObject) {
   form.append(node(documentObject, "div", "ordax-notes-meta"));
   const body = createNotesRichEditor(documentObject);
   form.append(body);
+  const inlineMedia = node(documentObject, "section", "ordax-notes-inline-media");
+  inlineMedia.dataset.notesInlineMedia = "";
+  inlineMedia.hidden = true;
+  form.append(inlineMedia);
   const tasksSection = node(documentObject, "section", "ordax-notes-tasks");
   tasksSection.append(node(documentObject, "h3", "", "Para hoje"), node(documentObject, "div", "ordax-notes-task-list"));
   form.append(tasksSection);
@@ -330,6 +338,9 @@ export function mountNotesWorkspaceControls(
   let mountedSlot = null;
   let saveTimer = null;
   let pendingNoteId = null;
+  const imagePreviews = new Map();
+  let imagePreviewOrdinal = 0;
+  let destroyed = false;
 
   const currentNote = () => {
     const id = state.document.selectedNoteId;
@@ -393,6 +404,98 @@ export function mountNotesWorkspaceControls(
     filePickerPurpose = "file";
     selectedFilePath = null;
     filePickerOrdinal += 1;
+  };
+
+  const imageReferenceKey = (noteId, reference) => `${noteId}:${reference.id}`;
+
+  const isImageReference = (reference) => (
+    reference?.kind === "file"
+    && reference.detail === "Imagem local"
+    && IMAGE_FILE_RE.test(reference.path ?? reference.title ?? "")
+  );
+
+  const revokeImagePreview = (entry) => {
+    if (!entry?.url) return;
+    windowObject.URL?.revokeObjectURL?.(entry.url);
+  };
+
+  const releaseImagePreviewsExcept = (activeKeys = new Set()) => {
+    for (const [key, entry] of imagePreviews) {
+      if (activeKeys.has(key)) continue;
+      revokeImagePreview(entry);
+      imagePreviews.delete(key);
+    }
+  };
+
+  const releaseAllImagePreviews = () => {
+    for (const entry of imagePreviews.values()) revokeImagePreview(entry);
+    imagePreviews.clear();
+    imagePreviewOrdinal += 1;
+  };
+
+  const loadImagePreview = async (noteId, reference) => {
+    if (
+      destroyed
+      || !filePort
+      || typeof filePort.readImagePreview !== "function"
+      || !reference?.path
+    ) {
+      return;
+    }
+    const key = imageReferenceKey(noteId, reference);
+    const requestId = ++imagePreviewOrdinal;
+    imagePreviews.set(key, {
+      path: reference.path,
+      status: "loading",
+      requestId,
+      url: "",
+      mime: "",
+    });
+    try {
+      const preview = validateImagePreview(await filePort.readImagePreview(reference.path));
+      const current = imagePreviews.get(key);
+      if (destroyed || !current || current.requestId !== requestId || current.path !== reference.path) {
+        return;
+      }
+
+      const createObjectURL = windowObject.URL?.createObjectURL?.bind(windowObject.URL);
+      const BlobCtor = windowObject.Blob;
+      if (typeof createObjectURL !== "function" || typeof BlobCtor !== "function") {
+        throw new TypeError("Image preview requires browser object URLs");
+      }
+      const url = createObjectURL(new BlobCtor([preview.bytes], { type: preview.mime }));
+      const activeNote = currentNote();
+      const stillRelated = activeNote?.id === noteId
+        && activeNote.references.some((candidate) => (
+          candidate.id === reference.id
+          && candidate.path === reference.path
+          && isImageReference(candidate)
+        ));
+      if (!stillRelated || destroyed) {
+        windowObject.URL?.revokeObjectURL?.(url);
+        return;
+      }
+
+      imagePreviews.set(key, {
+        path: reference.path,
+        status: "ready",
+        requestId,
+        url,
+        mime: preview.mime,
+      });
+    } catch {
+      const current = imagePreviews.get(key);
+      if (!destroyed && current?.requestId === requestId) {
+        imagePreviews.set(key, {
+          path: reference.path,
+          status: "failed",
+          requestId,
+          url: "",
+          mime: "",
+        });
+      }
+    }
+    if (!destroyed) render();
   };
 
   const loadFilePicker = async (path) => {
@@ -528,6 +631,81 @@ export function mountNotesWorkspaceControls(
     for (const action of ["all", "favorites", "recent", "trash"]) {
       const actionButton = view.querySelector(`[data-notes-action="view-${action}"]`);
       if (actionButton) actionButton.dataset.active = String(mode === action);
+    }
+  };
+
+  const renderInlineMedia = (view, note) => {
+    const media = view.querySelector("[data-notes-inline-media]");
+    const references = note.references.filter(isImageReference);
+    const activeKeys = new Set(references.map((reference) => imageReferenceKey(note.id, reference)));
+    releaseImagePreviewsExcept(activeKeys);
+    media.replaceChildren();
+    media.hidden = references.length === 0;
+    if (references.length === 0) return;
+
+    for (const reference of references) {
+      const key = imageReferenceKey(note.id, reference);
+      let preview = imagePreviews.get(key);
+      if (preview && preview.path !== reference.path) {
+        revokeImagePreview(preview);
+        imagePreviews.delete(key);
+        preview = null;
+      }
+
+      const figure = node(documentObject, "figure", "ordax-notes-inline-image");
+      figure.dataset.referenceId = reference.id;
+      const frame = node(documentObject, "div", "ordax-notes-inline-image-frame");
+
+      if (preview?.status === "ready" && preview.url) {
+        const image = node(documentObject, "img", "ordax-notes-inline-image-preview");
+        image.src = preview.url;
+        image.alt = reference.title || "Imagem relacionada à nota";
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.draggable = false;
+        frame.append(image);
+      } else {
+        const message = !filePort || typeof filePort.readImagePreview !== "function"
+          ? "Prévia disponível no OrdaX Native."
+          : preview?.status === "failed"
+            ? "Não foi possível carregar a prévia. O arquivo continua relacionado."
+            : "Carregando imagem…";
+        frame.append(node(documentObject, "span", "ordax-notes-inline-image-placeholder", message));
+        if (!preview && filePort && typeof filePort.readImagePreview === "function") {
+          void loadImagePreview(note.id, reference);
+        }
+      }
+
+      const caption = node(documentObject, "figcaption", "ordax-notes-inline-image-caption");
+      const copy = node(documentObject, "span", "ordax-notes-inline-image-copy");
+      copy.append(
+        node(documentObject, "strong", "", reference.title || "Imagem"),
+        node(documentObject, "small", "", reference.path || "Arquivo local"),
+      );
+      const actions = node(documentObject, "span", "ordax-notes-inline-image-actions");
+      if (activationPort && reference.path) {
+        const open = button(
+          documentObject,
+          "ordax-notes-inline-image-action",
+          "Abrir localização da imagem no Arquivos",
+          "open-file-reference",
+          "Abrir no Arquivos",
+        );
+        open.dataset.filePath = reference.path;
+        actions.append(open);
+      }
+      const remove = button(
+        documentObject,
+        "ordax-notes-inline-image-action ordax-notes-inline-image-remove",
+        "Remover imagem da nota",
+        "remove-reference",
+        "Remover",
+      );
+      remove.dataset.referenceId = reference.id;
+      actions.append(remove);
+      caption.append(copy, actions);
+      figure.append(frame, caption);
+      media.append(figure);
     }
   };
 
@@ -799,6 +977,7 @@ export function mountNotesWorkspaceControls(
     if (imageTool) imageTool.disabled = !note || filePort === null;
 
     if (!note) {
+      releaseImagePreviewsExcept(new Set());
       empty.hidden = false;
       documentView.hidden = true;
       view.querySelector(".ordax-notes-breadcrumb").textContent = `${modeLabel()}  /  Notas`;
@@ -837,6 +1016,7 @@ export function mountNotesWorkspaceControls(
     menuAction.dataset.notesAction = note.deletedAt === null ? "trash-note" : "restore-note";
     permanentDeleteAction.hidden = note.deletedAt === null;
     renderMoveProjects(view, note);
+    renderInlineMedia(view, note);
     renderTasks(view, note);
     renderReferences(view, note);
 
@@ -854,6 +1034,7 @@ export function mountNotesWorkspaceControls(
     const windowNode = root.querySelector(NOTES_WINDOW_SELECTOR);
     const slot = windowNode?.querySelector(NOTES_EXTENSION_SELECTOR) ?? null;
     if (!slot) {
+      releaseAllImagePreviews();
       mountedSlot = null;
       return;
     }
@@ -1361,7 +1542,9 @@ export function mountNotesWorkspaceControls(
 
   return Object.freeze({
     destroy() {
+      destroyed = true;
       filePickerOrdinal += 1;
+      releaseAllImagePreviews();
       flushEditor();
       unsubscribeRuntime?.();
       unsubscribeRender?.();
