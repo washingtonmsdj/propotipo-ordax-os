@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
+from functools import partial
 from pathlib import Path
 import stat
 import sys
 import tempfile
+import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +20,7 @@ if str(RUNTIME_DIR) not in sys.path:
     sys.path.insert(0, str(RUNTIME_DIR))
 
 import component_slots  # noqa: E402
+import native_host_server as native_host  # noqa: E402
 
 
 SOURCE_COMMIT = "a" * 40
@@ -252,6 +256,148 @@ class ComponentSlotBrokerTests(unittest.TestCase):
             self.assertFalse(
                 (fixture.component_root / "internet" / "slot-state.json").exists()
             )
+
+
+class ComponentSlotHTTPTests(unittest.TestCase):
+    def test_loopback_slot_mutation_requires_token_and_serves_only_active_assets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = ComponentSlotFixture(root)
+            fixture.stage("0.3.0")
+            broker = fixture.broker()
+
+            static_root = root / "static"
+            static_root.mkdir()
+            (static_root / "index.html").write_text(
+                "<!doctype html><title>OrdaX</title>",
+                encoding="utf-8",
+            )
+            handler = partial(
+                native_host.NativeHostHandler,
+                directory=str(static_root),
+            )
+            server = native_host.NativeHostServer(
+                ("127.0.0.1", 0),
+                handler,
+                user_root=str(root / "user"),
+                power_request_path=str(root / "missing-power-request"),
+                network_session_dir=str(root / "network"),
+                component_slots=broker,
+            )
+            thread = threading.Thread(
+                target=server.serve_forever,
+                daemon=True,
+            )
+            thread.start()
+            port = server.server_address[1]
+            origin = f"http://127.0.0.1:{port}"
+
+            def request(method, path, *, body=None, headers=None):
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1",
+                    port,
+                    timeout=3,
+                )
+                try:
+                    request_headers = {
+                        "Origin": origin,
+                        "Sec-Fetch-Site": "same-origin",
+                        **(headers or {}),
+                    }
+                    payload = None
+                    if body is not None:
+                        payload = json.dumps(body).encode("utf-8")
+                        request_headers["Content-Type"] = "application/json"
+                    connection.request(
+                        method,
+                        path,
+                        body=payload,
+                        headers=request_headers,
+                    )
+                    response = connection.getresponse()
+                    data = response.read()
+                    return response.status, data
+                finally:
+                    connection.close()
+
+            try:
+                status, body = request("GET", native_host.SESSION_PATH)
+                self.assertEqual(status, 200)
+                token = json.loads(body)["componentSlotToken"]
+                self.assertGreaterEqual(len(token), 24)
+
+                status, _ = request(
+                    "POST",
+                    native_host.COMPONENT_SLOT_PATH,
+                    body={
+                        "action": "prepare",
+                        "componentId": "internet",
+                        "version": "0.3.0",
+                    },
+                )
+                self.assertEqual(status, 403)
+
+                status, body = request(
+                    "POST",
+                    native_host.COMPONENT_SLOT_PATH,
+                    body={
+                        "action": "prepare",
+                        "componentId": "internet",
+                        "version": "0.3.0",
+                    },
+                    headers={
+                        native_host.COMPONENT_SLOT_TOKEN_HEADER: token,
+                    },
+                )
+                self.assertEqual(status, 200)
+                snapshot = json.loads(body)
+                self.assertEqual(snapshot["pending"]["version"], "0.3.0")
+
+                asset = (
+                    "/__ordax/component/internet/0.3.0/"
+                    "system/components/internet/runtime.mjs"
+                )
+                status, payload = request("GET", asset)
+                self.assertEqual(status, 200)
+                self.assertIn(b'0.3.0', payload)
+
+                status, _ = request(
+                    "GET",
+                    "/__ordax/component/internet/0.4.0/"
+                    "system/components/internet/runtime.mjs",
+                )
+                self.assertEqual(status, 404)
+
+                status, _ = request(
+                    "GET",
+                    "/__ordax/component/internet/0.3.0/"
+                    "system/components/internet/%2e%2e/runtime.mjs",
+                )
+                self.assertEqual(status, 409)
+
+                connection = http.client.HTTPConnection(
+                    "127.0.0.1",
+                    port,
+                    timeout=3,
+                )
+                try:
+                    connection.request(
+                        "GET",
+                        f"{native_host.COMPONENT_SLOT_PATH}?component=internet",
+                        headers={
+                            "Origin": "https://attacker.example",
+                            "Sec-Fetch-Site": "cross-site",
+                        },
+                    )
+                    response = connection.getresponse()
+                    response.read()
+                    self.assertEqual(response.status, 403)
+                finally:
+                    connection.close()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=3)
 
 
 if __name__ == "__main__":
