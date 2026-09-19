@@ -26,12 +26,129 @@ function sourceLabel(sourceId) {
   return SOURCE_LABELS[sourceId] ?? sourceId;
 }
 
-function requireElement(root, selector, label) {
+function requireHost(root, selector, label) {
   const element = root.querySelector(selector);
   if (!(element instanceof HTMLElement)) {
     throw new Error(`Notification center requires ${label}`);
   }
   return element;
+}
+
+function createBellIcon(documentRef) {
+  const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const bell = documentRef.createElementNS("http://www.w3.org/2000/svg", "path");
+  bell.setAttribute("d", "M6.5 17h11l-1.3-2v-4.2a4.2 4.2 0 0 0-8.4 0V15z");
+  const clapper = documentRef.createElementNS("http://www.w3.org/2000/svg", "path");
+  clapper.setAttribute("d", "M10 19a2.2 2.2 0 0 0 4 0");
+  svg.append(bell, clapper);
+  return svg;
+}
+
+function ensureNotificationMarkup(root) {
+  if (root.querySelector("[data-notification-tray], [data-quick-panel='notifications']")) {
+    throw new Error("Notification center is already mounted");
+  }
+  const documentRef = root.ownerDocument;
+  const trayHost = requireHost(root, ".ordax-system-tray", "system tray host");
+  const panelHost = requireHost(root, "[data-quick-panel-layer]", "quick-panel layer");
+
+  const tray = documentRef.createElement("button");
+  tray.type = "button";
+  tray.className = "ordax-tray-item ordax-tray-notifications";
+  tray.dataset.notificationTray = "";
+  tray.dataset.quickPanelToggle = "notifications";
+  tray.setAttribute("aria-expanded", "false");
+  tray.setAttribute("aria-controls", "ordax-quick-notifications");
+  tray.setAttribute("aria-label", "Abrir notificações — nenhuma nova");
+
+  const icon = documentRef.createElement("span");
+  icon.className = "ordax-tray-icon ordax-notification-bell";
+  icon.setAttribute("aria-hidden", "true");
+  icon.append(createBellIcon(documentRef));
+
+  const badge = documentRef.createElement("span");
+  badge.className = "ordax-notification-badge";
+  badge.dataset.notificationUnreadCount = "";
+  badge.setAttribute("aria-hidden", "true");
+  badge.hidden = true;
+  tray.append(icon, badge);
+  trayHost.prepend(tray);
+
+  const panel = documentRef.createElement("section");
+  panel.id = "ordax-quick-notifications";
+  panel.className = "ordax-quick-panel ordax-quick-panel-notifications";
+  panel.dataset.quickPanel = "notifications";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "false");
+  panel.setAttribute("aria-labelledby", "ordax-quick-notifications-title");
+  panel.hidden = true;
+
+  const header = documentRef.createElement("header");
+  header.className = "ordax-quick-panel-header";
+  const headingWrap = documentRef.createElement("div");
+  const kicker = documentRef.createElement("span");
+  kicker.className = "ordax-quick-kicker";
+  kicker.textContent = "Atividade";
+  const heading = documentRef.createElement("h2");
+  heading.id = "ordax-quick-notifications-title";
+  heading.textContent = "Notificações";
+  headingWrap.append(kicker, heading);
+  const close = documentRef.createElement("button");
+  close.type = "button";
+  close.className = "ordax-quick-close";
+  close.dataset.quickPanelClose = "";
+  close.setAttribute("aria-label", "Fechar notificações");
+  close.textContent = "×";
+  header.append(headingWrap, close);
+
+  const empty = documentRef.createElement("p");
+  empty.className = "ordax-quick-empty ordax-notification-empty";
+  empty.dataset.notificationEmpty = "";
+  empty.textContent = "Nenhuma notificação registrada nesta sessão.";
+
+  const list = documentRef.createElement("div");
+  list.className = "ordax-notification-list";
+  list.dataset.notificationList = "";
+
+  const footer = documentRef.createElement("footer");
+  footer.className = "ordax-notification-footer";
+  const persistence = documentRef.createElement("span");
+  persistence.className = "ordax-notification-persistence";
+  persistence.dataset.notificationPersistence = "";
+  const actions = documentRef.createElement("div");
+  actions.className = "ordax-notification-footer-actions";
+  const markAllRead = documentRef.createElement("button");
+  markAllRead.type = "button";
+  markAllRead.className = "ordax-notification-action";
+  markAllRead.dataset.notificationMarkAllRead = "";
+  markAllRead.textContent = "Marcar lidas";
+  const clearRead = documentRef.createElement("button");
+  clearRead.type = "button";
+  clearRead.className = "ordax-notification-action";
+  clearRead.dataset.notificationClearRead = "";
+  clearRead.textContent = "Limpar lidas";
+  actions.append(markAllRead, clearRead);
+  footer.append(persistence, actions);
+
+  panel.append(header, empty, list, footer);
+  panelHost.prepend(panel);
+
+  return Object.freeze({
+    tray,
+    badge,
+    panel,
+    list,
+    empty,
+    persistence,
+    markAllRead,
+    clearRead,
+    remove() {
+      panel.remove();
+      tray.remove();
+    },
+  });
 }
 
 function buildEntryNode(documentRef, entry) {
@@ -41,40 +158,33 @@ function buildEntryNode(documentRef, entry) {
 
   const header = documentRef.createElement("div");
   header.className = "ordax-notification-entry-header";
-
   const source = documentRef.createElement("span");
   source.dataset.notificationSource = "";
   source.className = "ordax-notification-source";
-
   const time = documentRef.createElement("time");
   time.dataset.notificationTime = "";
   time.className = "ordax-notification-time";
-
   header.append(source, time);
 
   const title = documentRef.createElement("strong");
   title.dataset.notificationTitle = "";
   title.className = "ordax-notification-title";
-
   const message = documentRef.createElement("p");
   message.dataset.notificationMessage = "";
   message.className = "ordax-notification-message";
 
   const actions = documentRef.createElement("div");
   actions.className = "ordax-notification-actions";
-
   const open = documentRef.createElement("button");
   open.type = "button";
   open.className = "ordax-notification-action";
   open.dataset.notificationOpen = entry.id;
   open.textContent = "Abrir";
-
   const dismiss = documentRef.createElement("button");
   dismiss.type = "button";
   dismiss.className = "ordax-notification-action";
   dismiss.dataset.notificationDismiss = entry.id;
   dismiss.textContent = "Dispensar";
-
   actions.append(open, dismiss);
   article.append(header, title, message, actions);
   return article;
@@ -108,14 +218,8 @@ export function mountNotificationCenterControls(root, notifications, appActivati
   }
   const center = assertNotificationsPort(notifications);
   const activation = assertAppActivationPort(appActivation);
-  const tray = requireElement(root, "[data-notification-tray]", "notification tray trigger");
-  const badge = requireElement(root, "[data-notification-unread-count]", "notification unread badge");
-  const panel = requireElement(root, "[data-quick-panel='notifications']", "notification quick panel");
-  const list = requireElement(root, "[data-notification-list]", "notification list");
-  const empty = requireElement(root, "[data-notification-empty]", "notification empty state");
-  const persistence = requireElement(root, "[data-notification-persistence]", "notification persistence label");
-  const markAllRead = requireElement(root, "[data-notification-mark-all-read]", "mark-all-read action");
-  const clearRead = requireElement(root, "[data-notification-clear-read]", "clear-read action");
+  const markup = ensureNotificationMarkup(root);
+  const { tray, badge, panel, list, empty, persistence, markAllRead, clearRead } = markup;
   const entryNodes = new Map();
   let snapshot = center.getSnapshot();
 
@@ -165,19 +269,16 @@ export function mountNotificationCenterControls(root, notifications, appActivati
       center.markAllRead();
       return;
     }
-
     const clear = event.target.closest("[data-notification-clear-read]");
     if (clear && panel.contains(clear)) {
       center.clearRead();
       return;
     }
-
     const dismiss = event.target.closest("[data-notification-dismiss]");
     if (dismiss && panel.contains(dismiss)) {
       center.dismiss(dismiss.dataset.notificationDismiss);
       return;
     }
-
     const open = event.target.closest("[data-notification-open]");
     if (open && panel.contains(open)) {
       const entry = snapshot.entries.find((candidate) => candidate.id === open.dataset.notificationOpen);
@@ -202,6 +303,7 @@ export function mountNotificationCenterControls(root, notifications, appActivati
       unsubscribe();
       panel.removeEventListener("click", onClick);
       panel.removeEventListener("ordax:quick-panel-open", onPanelOpen);
+      markup.remove();
     },
   });
 }
