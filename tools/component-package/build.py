@@ -27,6 +27,9 @@ from source_graph import (  # noqa: E402
 )
 
 SCHEMA = "prototype-ordax.runtime-component-package/1"
+RELEASE_SCHEMA = "prototype-ordax.runtime-component-release/1"
+SOURCE_REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
+CREATED_FROM_CI_RECIPE = "runtime-component/package/1"
 MANIFEST_NAME = "component-package.json"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -406,6 +409,86 @@ def verify_package(package: Path) -> dict:
     return manifest
 
 
+
+def render_release_descriptor(package: Path) -> dict:
+    manifest = verify_package(package)
+    component_id = manifest["component"]["id"]
+    if package.name != f"{component_id}.zip":
+        raise ComponentPackageError(
+            "runtime component release package filename must match <component>.zip"
+        )
+    info = package.lstat()
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise ComponentPackageError("runtime component release package must be a regular file")
+    if info.st_size <= 0 or info.st_size > 32 * 1024 * 1024:
+        raise ComponentPackageError("runtime component release package size is invalid")
+    with zipfile.ZipFile(package, "r") as archive:
+        manifest_bytes = archive.read(MANIFEST_NAME)
+    package_bytes = package.read_bytes()
+    descriptor = {
+        "$schema": RELEASE_SCHEMA,
+        "source_repository": SOURCE_REPOSITORY,
+        "source_commit": manifest["source_commit"],
+        "created_from_ci_recipe": CREATED_FROM_CI_RECIPE,
+        "component": {
+            "id": component_id,
+            "version": manifest["component"]["version"],
+            "release_mode": manifest["component"]["releaseMode"],
+            "package_schema": manifest["$schema"],
+        },
+        "package": {
+            "name": package.name,
+            "sha256": sha256_bytes(package_bytes),
+            "size": len(package_bytes),
+            "manifest_sha256": sha256_bytes(manifest_bytes),
+        },
+        "activation": {
+            "direct_activation_allowed": False,
+            "pending_health_required": True,
+        },
+    }
+    return descriptor
+
+
+def write_release_descriptor(package: Path, output: Path) -> dict:
+    if output.exists():
+        raise ComponentPackageError(
+            f"refusing to overwrite existing release descriptor: {output}"
+        )
+    descriptor = render_release_descriptor(package)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = (
+        json.dumps(descriptor, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    ).encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    fd = os.open(output, flags, 0o644)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        try:
+            output.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    return descriptor
+
+
+def command_describe(args: argparse.Namespace) -> int:
+    descriptor = write_release_descriptor(
+        Path(args.package),
+        Path(args.out),
+    )
+    print("RUNTIME_COMPONENT_RELEASE_DESCRIPTOR=PASS")
+    print(f"RUNTIME_COMPONENT_ID={descriptor['component']['id']}")
+    print(f"RUNTIME_COMPONENT_VERSION={descriptor['component']['version']}")
+    print(f"RUNTIME_COMPONENT_SOURCE_COMMIT={descriptor['source_commit']}")
+    print("RUNTIME_COMPONENT_DIRECT_ACTIVATION_ALLOWED=NO")
+    print("RUNTIME_COMPONENT_PENDING_HEALTH_REQUIRED=YES")
+    return 0
+
 def command_check(args: argparse.Namespace) -> int:
     metadata, graph = component_graph(args.component)
     print("RUNTIME_COMPONENT_SOURCE_GRAPH=PASS")
@@ -455,12 +538,18 @@ def main(argv: list[str] | None = None) -> int:
     verify = sub.add_parser("verify")
     verify.add_argument("--package", required=True)
 
+    describe = sub.add_parser("describe")
+    describe.add_argument("--package", required=True)
+    describe.add_argument("--out", required=True)
+
     args = parser.parse_args(argv)
     try:
         if args.command == "check":
             return command_check(args)
         if args.command == "build":
             return command_build(args)
+        if args.command == "describe":
+            return command_describe(args)
         return command_verify(args)
     except (
         ComponentPackageError,
