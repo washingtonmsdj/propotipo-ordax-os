@@ -758,6 +758,21 @@
   outline: none;
 }
 
+.ordax-notes-document[data-deleted="true"] .ordax-notes-title,
+.ordax-notes-document[data-deleted="true"] .ordax-notes-rich-editor {
+  cursor: default;
+}
+
+.ordax-notes-document[data-deleted="true"] .ordax-notes-rich-editor {
+  caret-color: transparent;
+}
+
+.ordax-notes-document[data-deleted="true"] .ordax-notes-title,
+.ordax-notes-document[data-deleted="true"] .ordax-notes-rich-editor,
+.ordax-notes-document[data-deleted="true"] .ordax-notes-task-text {
+  color: color-mix(in srgb, var(--ordax-text) 82%, var(--ordax-muted));
+}
+
 .ordax-notes-inline-media {
   display: grid;
   gap: 18px;
@@ -1006,6 +1021,20 @@
 .ordax-notes-ref-remove:hover {
   background: var(--ordax-hover-bg);
   color: var(--ordax-text);
+}
+
+.ordax-notes-ref-remove:disabled,
+.ordax-notes-inline-image-action:disabled,
+.ordax-notes-task-remove:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.ordax-notes-ref-remove:disabled:hover,
+.ordax-notes-inline-image-action:disabled:hover,
+.ordax-notes-task-remove:disabled:hover {
+  background: transparent;
+  color: var(--ordax-muted);
 }
 
 .ordax-notes-refs-content {
