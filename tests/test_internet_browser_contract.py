@@ -9,7 +9,7 @@ APP = ROOT / "system" / "apps" / "internet" / "app.mjs"
 CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-session.mjs"
 CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
-STYLES = ROOT / "system" / "surface" / "ui" / "internet.css"
+STYLES = ROOT / "system" / "components" / "internet" / "internet.css"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "browser-session.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "browser-session.mjs"
 NATIVE_HOST = ROOT / "system" / "surface" / "runtime" / "ordax_browser_host.py"
@@ -245,15 +245,18 @@ class InternetBrowserContractTests(unittest.TestCase):
         runtime = self.text(INTERNET_RUNTIME)
         manifests = self.text(APP_COMPONENTS)
         self.assertIn('componentId: "internet"', runtime)
-        self.assertIn('version: "0.2.0"', runtime)
-        self.assertIn('version: "0.2.0"', manifests)
+        self.assertIn('version: "0.3.0"', runtime)
+        self.assertIn('version: "0.3.0"', manifests)
         self.assertIn('restartScope: "component"', manifests)
         self.assertIn('healthMode: "runtime"', manifests)
         self.assertIn('mountInternetBrowserControls', runtime)
+        self.assertIn('new URL("./internet.css", import.meta.url)', runtime)
+        self.assertIn('mountInternetStyles', runtime)
+        self.assertIn('releaseStyles()', runtime)
         for composition in (WEB_COMPOSITION, NATIVE_COMPOSITION):
             html = self.text(composition / "index.html")
             main = self.text(composition / "main.mjs")
-            self.assertIn('../../surface/ui/internet.css', html)
+            self.assertNotIn('../../surface/ui/internet.css', html)
             self.assertIn('import("../../components/internet/runtime.mjs")', main)
             self.assertIn('loadOptionalComponentRuntime', main)
             self.assertIn('browserSession', main)
