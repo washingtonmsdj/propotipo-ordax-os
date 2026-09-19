@@ -28,7 +28,8 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}', text)
         self.assertIn('STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}', text)
-        self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}', text)
+        self.assertIn('SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}', text)
+        self.assertIn('INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}', text)
         self.assertIn('RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}', text)
         self.assertIn('RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-$SURFACE_HEALTH_TIMEOUT}', text)
         self.assertIn('GIT_TERMINAL_PROMPT=0', text)
@@ -416,12 +417,30 @@ class HotUpdateSupervisorContractTests(unittest.TestCase):
         self.assertIn('clear_surface_health', text)
         self.assertIn('stop_surface', text)
         self.assertIn('start_surface || fail_closed "Surface heartbeat recovery restart failed"', text)
+        self.assertIn('wait_for_surface_health "$expected_sha" "$SURFACE_HEALTH_TIMEOUT"', text)
+        self.assertIn('fail_closed "Surface heartbeat recovery restart did not acknowledge healthy state"', text)
+        self.assertIn("Surface heartbeat recovery restart acknowledged healthy state", text)
         self.assertIn("recover_stale_surface_if_needed\n    check_for_update", text)
 
         recovery = text.split("recover_stale_surface_if_needed() {", 1)[1].split("\n}\n", 1)[0]
         self.assertEqual(recovery.count('stop_surface'), 1)
         self.assertEqual(recovery.count('start_surface'), 1)
         self.assertIn('[ "$SURFACE_STALE_RECOVERY_ARMED" -eq 1 ] || return 0', recovery)
+        self.assertIn('SURFACE_STALE_RECOVERY_ARMED=1', recovery)
+
+    def test_cold_boot_requires_health_and_can_restore_last_rendered_runtime(self):
+        text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")
+        self.assertIn('boot_runtime_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")', text)
+        self.assertIn('clear_surface_health\nlog "starting shared OrdaX Surface', text)
+        self.assertIn('wait_for_surface_health "$initial_sha" "$INITIAL_SURFACE_HEALTH_TIMEOUT"', text)
+        self.assertIn('rollback_boot_candidate()', text)
+        self.assertIn('validate_candidate_tree "$previous_sha" supervisor-restart', text)
+        self.assertIn('reset --hard "$previous_sha"', text)
+        self.assertIn('cold-boot Surface candidate $failed_sha failed health', text)
+        self.assertIn('exit 75', text)
+        self.assertIn('cold-boot Surface did not become healthy; retrying current checkout once', text)
+        self.assertIn('fail_closed "cold-boot Surface failed health after one retry"', text)
+        self.assertIn('record_runtime_surface_sha "$initial_sha"', text)
 
     def test_runtime_surface_sha_tracks_only_runtime_effective_updates(self):
         text = SYSTEM_SUPERVISOR.read_text(encoding="utf-8")

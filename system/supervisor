@@ -40,7 +40,8 @@ REMOTE_TIMEOUT=${ORDAX_REMOTE_TIMEOUT_SECONDS:-20}
 FETCH_TIMEOUT=${ORDAX_FETCH_TIMEOUT_SECONDS:-45}
 STAGE_TIMEOUT=${ORDAX_STAGE_TIMEOUT_SECONDS:-8}
 GIT_LOW_SPEED_TIME=${ORDAX_GIT_LOW_SPEED_SECONDS:-15}
-SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-30}
+SURFACE_HEALTH_TIMEOUT=${ORDAX_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}
+INITIAL_SURFACE_HEALTH_TIMEOUT=${ORDAX_INITIAL_SURFACE_HEALTH_TIMEOUT_SECONDS:-180}
 RELOAD_HEALTH_TIMEOUT=${ORDAX_RELOAD_HEALTH_TIMEOUT_SECONDS:-8}
 RELOAD_FALLBACK_HEALTH_TIMEOUT=${ORDAX_RELOAD_FALLBACK_HEALTH_TIMEOUT_SECONDS:-$SURFACE_HEALTH_TIMEOUT}
 SURFACE_STALE_SECONDS=${ORDAX_SURFACE_STALE_SECONDS:-90}
@@ -83,9 +84,14 @@ esac
 [ "$GIT_LOW_SPEED_TIME" -ge 5 ] 2>/dev/null || GIT_LOW_SPEED_TIME=15
 
 case "$SURFACE_HEALTH_TIMEOUT" in
-    ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=30 ;;
+    ''|*[!0-9]*) SURFACE_HEALTH_TIMEOUT=180 ;;
 esac
-[ "$SURFACE_HEALTH_TIMEOUT" -ge 12 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=30
+[ "$SURFACE_HEALTH_TIMEOUT" -ge 30 ] 2>/dev/null || SURFACE_HEALTH_TIMEOUT=180
+
+case "$INITIAL_SURFACE_HEALTH_TIMEOUT" in
+    ''|*[!0-9]*) INITIAL_SURFACE_HEALTH_TIMEOUT=180 ;;
+esac
+[ "$INITIAL_SURFACE_HEALTH_TIMEOUT" -ge 30 ] 2>/dev/null || INITIAL_SURFACE_HEALTH_TIMEOUT=180
 
 case "$RELOAD_HEALTH_TIMEOUT" in
     ''|*[!0-9]*) RELOAD_HEALTH_TIMEOUT=8 ;;
@@ -693,6 +699,11 @@ recover_stale_surface_if_needed() {
     clear_surface_health
     stop_surface
     start_surface || fail_closed "Surface heartbeat recovery restart failed"
+    if ! surface_stays_running 4 || ! wait_for_surface_health "$expected_sha" "$SURFACE_HEALTH_TIMEOUT"; then
+        fail_closed "Surface heartbeat recovery restart did not acknowledge healthy state"
+    fi
+    SURFACE_STALE_RECOVERY_ARMED=1
+    log "Surface heartbeat recovery restart acknowledged healthy state"
 }
 
 clear_surface_health() {
@@ -787,6 +798,44 @@ validate_updated_tree() {
             return 1
             ;;
     esac
+}
+
+rollback_boot_candidate() {
+    previous_sha=$1
+    failed_sha=$2
+    reason=$3
+
+    [ "${#previous_sha}" -eq 40 ] 2>/dev/null || return 1
+    [ "${#failed_sha}" -eq 40 ] 2>/dev/null || return 1
+    case "$previous_sha$failed_sha" in
+        *[!0-9a-f]*) return 1 ;;
+    esac
+    [ "$previous_sha" != "$failed_sha" ] || return 1
+    validate_candidate_tree "$previous_sha" supervisor-restart || {
+        log "last runtime Surface SHA $previous_sha is not a valid rollback tree"
+        return 1
+    }
+
+    set_update_context rollback "$failed_sha" "" "$reason"
+    write_update_state "$failed_sha" applied supervisor-restart
+    append_application_history "$failed_sha" supervisor-restart rolled-back "$(utc_now)"
+    log "cold-boot Surface candidate $failed_sha failed health; rolling back to last rendered runtime $previous_sha"
+
+    temporary=$REJECTED_FILE.tmp.$
+    printf '%s\n' "$failed_sha" >"$temporary"
+    /bin/busybox mv -f "$temporary" "$REJECTED_FILE"
+    clear_surface_health
+    stop_surface
+
+    if ! "$GIT_BIN" -C "$WORKTREE" reset --hard "$previous_sha" >>"$UPDATE_LOG" 2>&1; then
+        log "cold-boot rollback reset to $previous_sha failed"
+        return 1
+    fi
+
+    record_runtime_surface_sha "$previous_sha"
+    write_update_state "$previous_sha" rolled-back supervisor-restart
+    log "cold-boot rollback restored $previous_sha; guardian refresh required"
+    return 0
 }
 
 rollback_update() {
@@ -1039,12 +1088,11 @@ trap terminate HUP INT TERM
 [ -x "$SURFACE_ENTRYPOINT" ] || fail_closed "surface entrypoint is missing"
 
 initial_sha=$(current_sha)
+boot_runtime_sha=$(read_state_value "$RUNTIME_SURFACE_SHA_FILE")
 refresh_release_history
-if [ ! -s "$RUNTIME_SURFACE_SHA_FILE" ]; then
-    record_runtime_surface_sha "$initial_sha"
-fi
 clear_update_context
 write_update_state "$initial_sha" running initial
+clear_surface_health
 log "starting shared OrdaX Surface with Git hot-update supervisor"
 start_surface || fail_closed "surface entrypoint could not be started"
 
@@ -1071,6 +1119,33 @@ if [ -s "$SUPERVISOR_GUARD_FILE" ]; then
         fi
     else
         rm -f "$SUPERVISOR_GUARD_FILE"
+    fi
+else
+    set_update_context health-wait "$initial_sha" "" ""
+    write_update_state "$initial_sha" applied initial
+    log "validating cold-boot Surface health for $initial_sha"
+
+    if surface_stays_running 4 && wait_for_surface_health "$initial_sha" "$INITIAL_SURFACE_HEALTH_TIMEOUT"; then
+        record_runtime_surface_sha "$initial_sha"
+        clear_update_context
+        write_update_state "$initial_sha" running initial
+        log "cold-boot Surface acknowledged healthy state"
+    else
+        if rollback_boot_candidate "$boot_runtime_sha" "$initial_sha" "cold-boot Surface did not become healthy"; then
+            exit 75
+        fi
+
+        log "cold-boot Surface did not become healthy; retrying current checkout once"
+        clear_surface_health
+        stop_surface
+        start_surface || fail_closed "cold-boot Surface retry could not be started"
+        if ! surface_stays_running 4 || ! wait_for_surface_health "$initial_sha" "$INITIAL_SURFACE_HEALTH_TIMEOUT"; then
+            fail_closed "cold-boot Surface failed health after one retry"
+        fi
+        record_runtime_surface_sha "$initial_sha"
+        clear_update_context
+        write_update_state "$initial_sha" running initial
+        log "cold-boot Surface retry acknowledged healthy state"
     fi
 fi
 
