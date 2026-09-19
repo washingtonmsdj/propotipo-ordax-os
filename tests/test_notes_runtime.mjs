@@ -211,7 +211,8 @@ test("rich note bodies stay bounded, structured and plain-text compatible", () =
     ],
   });
   assert.equal(notesRichBodyToPlainText(rich), "Plano\nLeia a fonte\nContinuar simples\nRevisar");
-  assert.equal(createNotesRichBodyFromPlainText("A\nB").blocks.length, 2);
+  assert.equal(createNotesRichBodyFromPlainText("A\nB").blocks.length, 1);
+  assert.equal(createNotesRichBodyFromPlainText("A\nB").blocks[0].text, "A\nB");
   assert.throws(
     () => validateNotesRichBody({
       blocks: [{
@@ -256,8 +257,8 @@ test("legacy v1 snapshots migrate in memory and all future saves emit v2", () =>
   const migrated = validateNotesSnapshot(legacy);
   assert.equal(migrated.$schema, NOTES_SNAPSHOT_SCHEMA);
   assert.equal(migrated.notes[0].body, "Linha 1\nLinha 2");
-  assert.equal(migrated.notes[0].richBody.blocks.length, 2);
-  assert.equal(migrated.notes[0].richBody.blocks[1].text, "Linha 2");
+  assert.equal(migrated.notes[0].richBody.blocks.length, 1);
+  assert.equal(migrated.notes[0].richBody.blocks[0].text, "Linha 1\nLinha 2");
 });
 
 test("notes runtime edits, organizes and reloads durable state", () => {
