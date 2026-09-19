@@ -20,7 +20,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-SCHEMA = "prototype-ordax.dev-base-candidate/2"
+SCHEMA = "prototype-ordax.dev-base-candidate/3"
 REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -101,7 +101,7 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         raise DevBaseChannelError("development Base tag does not match requested checkout")
     if value["activation"] != "inactive-slot-next-boot":
         raise DevBaseChannelError("development Base activation policy is invalid")
-    if value["rootfs_activation"] != "materialized-only-selection-not-enabled":
+    if value["rootfs_activation"] != "pending-one-boot-health-gated":
         raise DevBaseChannelError("development Base rootfs activation policy is invalid")
     if value["manual_usb_rewrite_required"] is not False:
         raise DevBaseChannelError("development Base unexpectedly requires USB rewrite")
@@ -393,14 +393,34 @@ def main() -> int:
         type=Path,
         default=Path("/state/ordax/base-update/dev-candidates"),
     )
+    parser.add_argument(
+        "--rootfs-version-root",
+        type=Path,
+        default=Path("/versions"),
+    )
+    parser.add_argument(
+        "--rootfs-state-dir",
+        type=Path,
+        default=Path("/state/ordax/base-update/rootfs"),
+    )
     args = parser.parse_args()
     try:
         path, reused = acquire(args.source_commit, args.destination_root)
+        from dev_rootfs import materialize_rootfs_candidate
+        rootfs_path, rootfs_reused = materialize_rootfs_candidate(
+            path,
+            args.source_commit,
+            version_root=args.rootfs_version_root,
+            state_dir=args.rootfs_state_dir,
+        )
         print(json.dumps({
             "status": "ready",
             "source_commit": args.source_commit,
             "path": str(path),
             "reused": reused,
+            "rootfs_path": str(rootfs_path),
+            "rootfs_reused": rootfs_reused,
+            "rootfs_pending": True,
         }, sort_keys=True))
         return 0
     except DevBaseCandidateUnavailable as exc:
