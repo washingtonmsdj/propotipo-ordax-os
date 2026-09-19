@@ -622,7 +622,7 @@ export function mountSystemOverviewControls(
           documentObject,
           "p",
           "ordax-system-placeholder",
-          "Este host ainda não publicou uma identidade técnica de entrega.",
+          "Este host não informa uma identidade técnica de entrega. A versão do produto permanece disponível separadamente.",
         ),
       );
       view.append(section);
@@ -648,7 +648,7 @@ export function mountSystemOverviewControls(
           documentObject,
           "span",
           "",
-          `${PRODUCT_VERSION.displayVersion} · distribuição conjunta · sem versão própria`,
+          `Distribuição conjunta · sem versão própria · OrdaX ${PRODUCT_VERSION.displayVersion}`,
         ),
       );
       list.append(item);
