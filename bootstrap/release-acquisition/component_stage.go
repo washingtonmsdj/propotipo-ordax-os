@@ -363,6 +363,105 @@ func stageComponent(
 	}, nil
 }
 
+type VerifiedStagedComponent struct {
+	Status          string `json:"status"`
+	ComponentID     string `json:"component_id"`
+	Version         string `json:"version"`
+	SourceCommit    string `json:"source_commit"`
+	ReleaseSequence int64  `json:"release_sequence"`
+	Entrypoint      string `json:"entrypoint"`
+	StagePath       string `json:"stage_path"`
+}
+
+func verifyInstalledComponentVersion(
+	root,
+	componentID,
+	version string,
+	trust TrustAnchor,
+	key ed25519.PublicKey,
+	expectedRepo string,
+) (VerifiedStagedComponent, error) {
+	if !componentIDPattern.MatchString(componentID) {
+		return VerifiedStagedComponent{}, errors.New("runtime component id is invalid")
+	}
+	if !componentVersionPattern.MatchString(version) {
+		return VerifiedStagedComponent{}, errors.New("runtime component version is invalid")
+	}
+	stagePath := filepath.Join(root, componentID, "versions", version)
+	envelope, err := os.ReadFile(filepath.Join(stagePath, "component-envelope.json"))
+	if err != nil {
+		return VerifiedStagedComponent{}, err
+	}
+	release, payload, err := verifyComponentEnvelope(
+		envelope,
+		trust,
+		key,
+		expectedRepo,
+		componentID,
+	)
+	if err != nil {
+		return VerifiedStagedComponent{}, err
+	}
+	if release.Version != version {
+		return VerifiedStagedComponent{}, errors.New(
+			"runtime component version directory disagrees with signed release",
+		)
+	}
+	if err := verifyStagedComponent(stagePath, release, payload, envelope); err != nil {
+		return VerifiedStagedComponent{}, err
+	}
+	packageBytes, err := os.ReadFile(filepath.Join(stagePath, "component-package.zip"))
+	if err != nil {
+		return VerifiedStagedComponent{}, err
+	}
+	packageManifest, err := verifyComponentPackageBytes(packageBytes, release)
+	if err != nil {
+		return VerifiedStagedComponent{}, err
+	}
+	return VerifiedStagedComponent{
+		Status:          "verified-staged",
+		ComponentID:     release.ComponentID,
+		Version:         release.Version,
+		SourceCommit:    release.SourceCommit,
+		ReleaseSequence: release.ReleaseSequence,
+		Entrypoint:      packageManifest.Entrypoint,
+		StagePath:       stagePath,
+	}, nil
+}
+
+func verifyStagedComponentCommand(args []string) error {
+	fs := flag.NewFlagSet("verify-staged-component", flag.ContinueOnError)
+	trustPath := fs.String("trust", "", "release trust anchor file")
+	root := fs.String("root", "/var/lib/ordax/components", "runtime component immutable stage root")
+	repository := fs.String("repository", defaultRepo, "expected source repository")
+	componentID := fs.String("component", "", "runtime component id")
+	version := fs.String("version", "", "exact staged semantic version")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *trustPath == "" || *componentID == "" || *version == "" || fs.NArg() != 0 {
+		return errors.New(
+			"verify-staged-component requires --trust, --component and --version",
+		)
+	}
+	trust, key, err := loadTrust(*trustPath)
+	if err != nil {
+		return err
+	}
+	verified, err := verifyInstalledComponentVersion(
+		*root,
+		*componentID,
+		*version,
+		trust,
+		key,
+		*repository,
+	)
+	if err != nil {
+		return err
+	}
+	return printJSON(verified)
+}
+
 func verifyComponentCommand(args []string) error {
 	fs := flag.NewFlagSet("verify-component-envelope", flag.ContinueOnError)
 	envelopePath := fs.String("envelope", "", "signed runtime component envelope file")
