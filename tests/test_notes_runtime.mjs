@@ -142,8 +142,10 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   const seeded = first.getSnapshot();
   assert.equal(seeded.persistence.scope, "device");
   assert.equal(seeded.persistence.ok, true);
+  assert.equal(seeded.document.projects.length, 1);
   assert.equal(seeded.document.projects[0].name, "Meu espaço");
-  assert.ok(seeded.document.notes.length >= 1);
+  assert.equal(seeded.document.notes.length, 0);
+  assert.equal(seeded.document.selectedNoteId, null);
 
   first.createProject("Projeto real");
   let state = first.getSnapshot();
