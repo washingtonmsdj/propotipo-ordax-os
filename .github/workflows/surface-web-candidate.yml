@@ -23,6 +23,7 @@ on:
       - 'system/contracts/update-status.mjs'
       - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
+      - 'system/contracts/component-*.mjs'
       - 'system/contracts/recent-files.mjs'
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
@@ -43,6 +44,7 @@ on:
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
       - 'system/services/internet/**'
@@ -88,6 +90,8 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
+      - 'tests/test_component_manager.mjs'
+      - 'tests/test_native_component_state.py'
       - 'tests/test_browser_session_integration_contract.py'
       - 'tests/test_browser_session_store.py'
       - 'tests/test_internet_accessibility_contract.py'
@@ -134,6 +138,7 @@ on:
       - 'system/contracts/update-status.mjs'
       - 'system/contracts/update-history.mjs'
       - 'system/contracts/app-activation.mjs'
+      - 'system/contracts/component-*.mjs'
       - 'system/contracts/recent-files.mjs'
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
@@ -154,6 +159,7 @@ on:
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
+      - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
       - 'system/services/internet/**'
@@ -199,6 +205,8 @@ on:
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
+      - 'tests/test_component_manager.mjs'
+      - 'tests/test_native_component_state.py'
       - 'tests/test_browser_session_integration_contract.py'
       - 'tests/test_browser_session_store.py'
       - 'tests/test_internet_accessibility_contract.py'
@@ -256,6 +264,7 @@ jobs:
             system/contracts \
             system/services/account \
             system/services/apps \
+            system/services/components \
             system/services/files \
             system/services/projects \
             system/services/internet \
@@ -294,6 +303,7 @@ jobs:
           node --test tests/test_file_notes_action.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
+          node --test tests/test_component_manager.mjs
           node --test tests/test_identity_session.mjs
           node --test tests/test_identity_actions.mjs
           node --test tests/test_power_actions.mjs
@@ -318,6 +328,7 @@ jobs:
           python -m unittest tests.test_files_to_notes_import_contract -v
           python -m unittest tests.test_file_notes_action_contract -v
           python -m unittest tests.test_notes_native -v
+          python -m unittest tests.test_native_component_state -v
           python -m unittest tests.test_browser_session_integration_contract -v
           python -m unittest tests.test_browser_session_store -v
           python -m unittest tests.test_internet_accessibility_contract -v
