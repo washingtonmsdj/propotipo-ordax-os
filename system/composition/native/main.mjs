@@ -348,7 +348,7 @@ async function start() {
 
   const internetComponent = await loadOptionalComponentRuntime({
     componentId: "internet",
-    importer: () => import("../../components/internet/runtime.mjs"),
+    importer: () => import("../../apps/internet/runtime.mjs"),
     componentManager,
     context: {
       root,
