@@ -1008,6 +1008,17 @@ export function mountNotesWorkspaceControls(
     if (first) runtime.selectNote(first.id);
   };
 
+  const openWebReference = (value) => {
+    const parsed = parseNotesWebHref(value);
+    if (!parsed) return false;
+    if (activationPort) {
+      activationPort.publish({ appId: "browser", target: parsed.href });
+      return true;
+    }
+    windowObject.open?.(parsed.href, "_blank", "noopener,noreferrer");
+    return typeof windowObject.open === "function";
+  };
+
   const promptEditorLink = (body) => {
     const input = windowObject.prompt?.("Cole o endereço do link:");
     if (!input) return false;
@@ -1028,7 +1039,7 @@ export function mountNotesWorkspaceControls(
     if (editorLink && mountedSlot?.contains(editorLink)) {
       event.preventDefault();
       if (event.ctrlKey || event.metaKey) {
-        windowObject.open?.(editorLink.href, "_blank", "noopener,noreferrer");
+        openWebReference(editorLink.href);
       }
       return;
     }
@@ -1491,7 +1502,7 @@ export function mountNotesWorkspaceControls(
     if (!card || event.target.closest("[data-notes-action]")) return;
     if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
     event.preventDefault();
-    windowObject.open?.(card.dataset.href, "_blank", "noopener,noreferrer");
+    openWebReference(card.dataset.href);
   };
 
   root.addEventListener("click", onClick);
