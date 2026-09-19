@@ -838,8 +838,27 @@ function buildCompositionProofExpression(moduleSources, styles) {
     addReferenceButton?.click();
     await Promise.resolve();
     const fileReferenceChoice = notesSlot?.querySelector('[data-notes-action="add-file-reference"]');
+    const linkReferenceChoice = notesSlot?.querySelector('[data-notes-action="add-link-reference"]');
     result.notesFileReferenceChoicePresent = Boolean(fileReferenceChoice);
     result.notesFileReferenceFailsClosedOnWeb = fileReferenceChoice?.disabled === true;
+
+    const referencePromptValues = ['  https://Example.COM/docs?q=1  ', 'Documentação'];
+    window.prompt = () => referencePromptValues.shift() ?? null;
+    try {
+      linkReferenceChoice?.click();
+      await Promise.resolve();
+    } finally {
+      window.prompt = originalPrompt;
+    }
+    const storedReference = parsedStorage('ordax.notes.v1')?.notes
+      ?.flatMap((item) => item.references ?? [])
+      ?.find((reference) => reference.title === 'Documentação');
+    const renderedReference = [...(notesSlot?.querySelectorAll('.ordax-notes-ref-card[data-href]') ?? [])]
+      .find((card) => card.dataset.href === 'https://example.com/docs?q=1');
+    result.notesWebReferenceAdded = storedReference?.href === 'https://example.com/docs?q=1'
+      && storedReference?.kind === 'link';
+    result.notesWebReferenceHostRendered = renderedReference
+      ?.querySelector('small')?.textContent === 'example.com';
 
     const closePendingTitle = notesSlot?.querySelector('[data-notes-title]');
     closePendingTitle.value = 'Nota salva ao fechar';
@@ -935,6 +954,7 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'notesTrashIsReadOnly', 'notesRestoreReenablesEditing',
       'notesImageToolPresent', 'notesImageToolFailsClosedOnWeb',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
+      'notesWebReferenceAdded', 'notesWebReferenceHostRendered',
       'notesWindowClosedWithPendingEdit', 'notesPendingEditRestoredAfterClose',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',

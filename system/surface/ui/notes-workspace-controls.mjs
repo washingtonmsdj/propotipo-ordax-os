@@ -28,6 +28,11 @@ import {
   visibleNotes,
 } from "./notes-list-model.mjs";
 import {
+  createNotesLinkReference,
+  notesWebReferenceHost,
+  parseNotesWebHref,
+} from "./notes-reference-links.mjs";
+import {
   applyNotesRichLink,
   captureNotesRichSelection,
   createNotesRichEditor,
@@ -47,7 +52,6 @@ import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
-const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 const DELETED_NOTE_MUTATIONS = new Set([
   "favorite",
@@ -719,7 +723,7 @@ export function mountNotesWorkspaceControls(
       const copy = node(documentObject, "span", "ordax-notes-ref-copy");
       copy.append(
         node(documentObject, "strong", "", reference.title),
-        node(documentObject, "small", "", hostFromHref(reference.href)),
+        node(documentObject, "small", "", notesWebReferenceHost(reference.href)),
         node(documentObject, "span", "", reference.detail || "Link"),
       );
       const remove = button(documentObject, "ordax-notes-ref-remove", "Remover referência", "remove-reference", "×");
@@ -991,19 +995,14 @@ export function mountNotesWorkspaceControls(
   };
 
   const promptEditorLink = (body) => {
-    const href = windowObject.prompt?.("Cole o endereço do link:");
-    if (!href) return false;
-    let valid = false;
-    try {
-      valid = WEB_PROTOCOLS.includes(new URL(href).protocol);
-    } catch {
-      valid = false;
-    }
-    if (!valid) {
+    const input = windowObject.prompt?.("Cole o endereço do link:");
+    if (!input) return false;
+    const parsed = parseNotesWebHref(input);
+    if (!parsed) {
       windowObject.alert?.("Use um endereço da web válido.");
       return false;
     }
-    if (!applyNotesRichLink(body, href)) {
+    if (!applyNotesRichLink(body, parsed.href)) {
       windowObject.alert?.("Selecione um trecho da nota antes de adicionar o link.");
       return false;
     }
@@ -1221,22 +1220,16 @@ export function mountNotesWorkspaceControls(
     if (action === "add-link-reference") {
       if (note.references.length >= MAX_NOTE_REFERENCES) return;
       referenceNoteId = note.id;
-      const href = windowObject.prompt?.("Cole o endereço da referência:");
-      if (!href) return;
-      let valid;
-      try {
-        const parsed = new URL(href);
-        valid = WEB_PROTOCOLS.includes(parsed.protocol);
-      } catch {
-        valid = false;
-      }
-      if (!valid) {
+      const input = windowObject.prompt?.("Cole o endereço da referência:");
+      if (!input) return;
+      const parsed = parseNotesWebHref(input);
+      if (!parsed) {
         windowObject.alert?.("Use um endereço da web válido.");
         return;
       }
-      const title = windowObject.prompt?.("Título da referência:", hostFromHref(href)) || hostFromHref(href);
+      const title = windowObject.prompt?.("Título da referência:", parsed.host) || parsed.host;
       resetReferenceFlow();
-      runtime.addReference(note.id, { kind: "link", title, detail: "Link", href });
+      runtime.addReference(note.id, createNotesLinkReference(parsed.href, title));
     }
     if (
       action === "add-file-reference"

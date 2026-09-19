@@ -62,6 +62,7 @@ on:
       - 'tests/test_notes_list_model.mjs'
       - 'tests/test_notes_file_picker.mjs'
       - 'tests/test_notes_editor_save.mjs'
+      - 'tests/test_notes_reference_links.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
       - 'tests/test_file_notes_action.mjs'
@@ -146,6 +147,7 @@ on:
       - 'tests/test_notes_list_model.mjs'
       - 'tests/test_notes_file_picker.mjs'
       - 'tests/test_notes_editor_save.mjs'
+      - 'tests/test_notes_reference_links.mjs'
       - 'tests/test_files_to_notes_import.mjs'
       - 'tests/test_files_to_notes_import_contract.py'
       - 'tests/test_file_notes_action.mjs'
@@ -228,6 +230,7 @@ jobs:
           node --test tests/test_notes_list_model.mjs
           node --test tests/test_notes_file_picker.mjs
           node --test tests/test_notes_editor_save.mjs
+          node --test tests/test_notes_reference_links.mjs
           node --test tests/test_files_to_notes_import.mjs
           node --test tests/test_file_notes_action.mjs
           node --test tests/test_app_activation.mjs

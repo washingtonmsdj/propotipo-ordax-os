@@ -20,6 +20,7 @@ NOTES_IMAGE_PREVIEWS = ROOT / "system" / "surface" / "ui" / "notes-image-preview
 NOTES_LIST_MODEL = ROOT / "system" / "surface" / "ui" / "notes-list-model.mjs"
 NOTES_FILE_PICKER = ROOT / "system" / "surface" / "ui" / "notes-file-picker.mjs"
 NOTES_EDITOR_SAVE = ROOT / "system" / "surface" / "ui" / "notes-editor-save.mjs"
+NOTES_REFERENCE_LINKS = ROOT / "system" / "surface" / "ui" / "notes-reference-links.mjs"
 NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
@@ -131,6 +132,7 @@ class NotesNativeTests(unittest.TestCase):
         list_model = NOTES_LIST_MODEL.read_text(encoding="utf-8")
         file_picker = NOTES_FILE_PICKER.read_text(encoding="utf-8")
         editor_save = NOTES_EDITOR_SAVE.read_text(encoding="utf-8")
+        reference_links = NOTES_REFERENCE_LINKS.read_text(encoding="utf-8")
         css = NOTES_CSS.read_text(encoding="utf-8")
         web_html = WEB_HTML.read_text(encoding="utf-8")
         native_html = NATIVE_HTML.read_text(encoding="utf-8")
@@ -201,7 +203,13 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("./notes-list-model.mjs", controls)
         self.assertIn("./notes-file-picker.mjs", controls)
         self.assertIn("./notes-editor-save.mjs", controls)
+        self.assertIn("./notes-reference-links.mjs", controls)
         self.assertIn("createNotesFilePicker", controls)
+        self.assertIn("parseNotesWebHref", controls)
+        self.assertIn("notesWebReferenceHost", controls)
+        self.assertIn("createNotesLinkReference", controls)
+        self.assertNotIn("hostFromHref", controls)
+        self.assertNotIn("WEB_PROTOCOLS", controls)
         self.assertIn("createNotesEditorSaveController", controls)
         self.assertIn("editorSave.isPending(note.id)", controls)
         self.assertNotIn("saveTimer", controls)
@@ -246,6 +254,14 @@ class NotesNativeTests(unittest.TestCase):
         self.assertNotIn("document.", editor_save)
         self.assertNotIn("localStorage", editor_save)
         self.assertNotIn("/__ordax/native/", editor_save)
+        self.assertIn("parseNotesWebHref", reference_links)
+        self.assertIn("notesWebReferenceHost", reference_links)
+        self.assertIn("createNotesLinkReference", reference_links)
+        self.assertIn('"http:"', reference_links)
+        self.assertIn('"https:"', reference_links)
+        self.assertNotIn("document.", reference_links)
+        self.assertNotIn("localStorage", reference_links)
+        self.assertNotIn("/__ordax/native/", reference_links)
         self.assertIn("MAX_NOTES", controls)
         self.assertIn("MAX_NOTE_PROJECTS", controls)
         self.assertIn("MAX_NOTE_TASKS", controls)
