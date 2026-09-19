@@ -46,6 +46,15 @@ export function validateProjectPath(value) {
   return path;
 }
 
+export function validateProjectFilePath(projectPathValue, filePathValue) {
+  const projectPath = validateProjectPath(projectPathValue);
+  const filePath = validateFileSpacePath(filePathValue);
+  if (filePath === projectPath || !filePath.startsWith(`${projectPath}/`)) {
+    throw new TypeError("Project file path must be inside the project folder");
+  }
+  return filePath;
+}
+
 function validateTimestamp(value, field) {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new TypeError(`Project ${field} must be a non-negative epoch millisecond`);
@@ -57,17 +66,22 @@ export function validateProjectEntry(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Project entry must be an object");
   }
+  const path = validateProjectPath(value.path);
   const createdAt = validateTimestamp(value.createdAt, "createdAt");
   const lastOpenedAt = validateTimestamp(value.lastOpenedAt, "lastOpenedAt");
   if (lastOpenedAt < createdAt) {
     throw new TypeError("Project lastOpenedAt cannot precede createdAt");
   }
+  const lastFilePath = value.lastFilePath === undefined || value.lastFilePath === null
+    ? null
+    : validateProjectFilePath(path, value.lastFilePath);
   return Object.freeze({
     id: validateProjectId(value.id),
     name: validateProjectName(value.name),
-    path: validateProjectPath(value.path),
+    path,
     createdAt,
     lastOpenedAt,
+    lastFilePath,
   });
 }
 
@@ -104,7 +118,15 @@ export function assertProjectCatalogPort(port) {
   if (!port || typeof port !== "object" || port.schema !== PROJECT_CATALOG_SCHEMA) {
     throw new TypeError("A compatible project-catalog port is required");
   }
-  for (const method of ["getSnapshot", "subscribe", "create", "rename", "recordOpened", "remove"]) {
+  for (const method of [
+    "getSnapshot",
+    "subscribe",
+    "create",
+    "rename",
+    "recordOpened",
+    "recordFileOpened",
+    "remove",
+  ]) {
     if (typeof port[method] !== "function") {
       throw new TypeError(`Project-catalog port must implement ${method}()`);
     }
