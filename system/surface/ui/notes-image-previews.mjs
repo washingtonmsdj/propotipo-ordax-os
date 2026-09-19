@@ -76,6 +76,9 @@ export function createNotesImagePreviewCache({
 
     try {
       const preview = validateImagePreview(await fileSpace.readImagePreview(reference.path));
+      if (preview.path !== reference.path) {
+        throw new TypeError("Image preview path does not match the requested reference");
+      }
       const current = entries.get(key);
       if (
         destroyed
