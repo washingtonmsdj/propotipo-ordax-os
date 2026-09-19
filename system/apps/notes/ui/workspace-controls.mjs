@@ -1,38 +1,38 @@
-import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import { assertFileSpacePort } from "../../contracts/file-space.mjs";
+import { assertAppActivationPort } from "../../../contracts/app-activation.mjs";
+import { assertFileSpacePort } from "../../../contracts/file-space.mjs";
 import {
   MAX_NOTES,
   MAX_NOTE_PROJECTS,
   MAX_NOTE_REFERENCES,
   MAX_NOTE_TASKS,
-} from "../../contracts/notes-store.mjs";
+} from "../../../contracts/notes-store.mjs";
 import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
-} from "../../services/notes/runtime.mjs";
-import { createNotesStatistics } from "../../services/notes/statistics.mjs";
+} from "../domain/runtime.mjs";
+import { createNotesStatistics } from "../domain/statistics.mjs";
 import {
   createNotesImagePreviewCache,
   isNotesImageFileName,
   isNotesImageReference,
   notesImageReferenceKey,
-} from "./notes-image-previews.mjs";
-import { createNotesEditorSaveController } from "./notes-editor-save.mjs";
+} from "./image-previews.mjs";
+import { createNotesEditorSaveController } from "./editor-save.mjs";
 import {
   createNotesFilePicker,
   joinNotesLogicalPath,
   notesParentLogicalPath,
-} from "./notes-file-picker.mjs";
+} from "./file-picker.mjs";
 import {
   firstNotesBodyLine,
   formatNotesRelativeTime,
   visibleNotes,
-} from "./notes-list-model.mjs";
+} from "./list-model.mjs";
 import {
   createNotesLinkReference,
   notesWebReferenceHost,
   parseNotesWebHref,
-} from "./notes-reference-links.mjs";
+} from "./reference-links.mjs";
 import {
   applyNotesRichLink,
   captureNotesRichSelection,
@@ -48,8 +48,8 @@ import {
   setNotesRichBlockType,
   toggleNotesRichInlineMark,
   undoNotesRichEditor,
-} from "./notes-rich-editor.mjs";
-import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
+} from "./rich-editor.mjs";
+import { assertSurfaceRenderLifecycle } from "../../../contracts/surface-render-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';

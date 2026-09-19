@@ -153,11 +153,13 @@ test("native composition decorates only the Files owner while Notes retains raw 
   assert.match(composition, /const filesOwnerSpace = fileSpace === null/);
   assert.match(composition, /reportClientDiagnostic\("files-project-continuity", error\)/);
 
-  const notesMount = composition
-    .split("const notesWorkspaceControls = mountNotesWorkspaceControls(", 2)[1]
-    .split("const notificationCenter", 1)[0];
-  assert.match(notesMount, /\{ fileSpace, appActivation \}/);
-  assert.doesNotMatch(notesMount, /filesOwnerSpace/);
+  const notesRuntime = composition
+    .split('const notesComponent = await loadOptionalComponentRuntime({', 2)[1]
+    .split('const internetComponent = await loadOptionalComponentRuntime({', 1)[0];
+  assert.match(notesRuntime, /componentId: "notes"/);
+  assert.match(notesRuntime, /\n\s*fileSpace,/);
+  assert.match(notesRuntime, /\n\s*appActivation,/);
+  assert.doesNotMatch(notesRuntime, /filesOwnerSpace/);
 
   const filesMount = composition
     .split("const fileSpaceControls = mountFileSpaceControls(", 2)[1]

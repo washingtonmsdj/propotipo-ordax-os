@@ -121,7 +121,9 @@ test("canonical component catalog has one unique owner identity per app and serv
   assert.equal(internet.releaseMode, "git-app");
   assert.equal(internet.owner, "system/apps/internet");
   const notes = components.find((component) => component.id === "notes");
-  assert.equal(notes.version, "0.1.0");
+  assert.equal(notes.version, "0.2.0");
+  assert.equal(notes.releaseMode, "git-app");
+  assert.equal(notes.owner, "system/apps/notes");
   const shell = components.find((component) => component.id === "surface-shell");
   assert.equal(shell.version, "0.3.0");
   const base = components.find((component) => component.id === "ordax-base");

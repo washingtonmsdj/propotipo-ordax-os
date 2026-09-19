@@ -1,4 +1,4 @@
-import { validateImagePreview } from "../../contracts/file-space.mjs";
+import { validateImagePreview } from "../../../contracts/file-space.mjs";
 
 const IMAGE_FILE_RE = /\.(?:avif|bmp|gif|jpe?g|png|webp)$/i;
 

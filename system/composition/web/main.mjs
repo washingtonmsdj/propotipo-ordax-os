@@ -12,13 +12,11 @@ import { listSystemComponents } from "../../apps/component-catalog.mjs";
 import { createComponentManager } from "../../services/components/manager.mjs";
 import { loadOptionalComponentRuntime } from "../../services/components/runtime-loader.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
-import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
 import { createWorkspaceMetadataBridge } from "../../services/sync/workspace-metadata.mjs";
 import { mountAccountOverviewControls } from "../../surface/ui/account-overview-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
-import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
 import { mountSurface } from "../../surface/ui/surface.mjs";
 import { mountSettingsOverviewControls } from "../../surface/ui/settings-overview-controls.mjs";
 import { mountSystemOverviewControls } from "../../surface/ui/system-overview-controls.mjs";
@@ -43,7 +41,6 @@ const componentManager = createComponentManager({
   manifests: listSystemComponents(),
 });
 const notifications = createNotificationsRuntime();
-const notesRuntime = createNotesRuntime({ store: createWebNotesStore(window) });
 validateAccountRuntime(
   host.getSnapshot(),
   identitySession.getSnapshot(),
@@ -55,12 +52,6 @@ const surface = mountSurface(
   preferenceStore,
   workspaceStore,
   appActivation,
-);
-const notesWorkspaceControls = mountNotesWorkspaceControls(
-  root,
-  notesRuntime,
-  surface,
-  { appActivation },
 );
 const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
 let quickPanelControls = null;
@@ -112,6 +103,20 @@ const systemOverviewControls = mountSystemOverviewControls(
 );
 
 componentManager.setCurrentHealth("surface-shell", "healthy");
+const notesComponent = await loadOptionalComponentRuntime({
+  componentId: "notes",
+  importer: () => import("../../apps/notes/runtime.mjs"),
+  componentManager,
+  context: {
+    root,
+    createStore: () => createWebNotesStore(window),
+    surfaceLifecycle: surface,
+    appActivation,
+  },
+  onError(error) {
+    console.warn("OrdaX Notes runtime unavailable", error);
+  },
+});
 const internetComponent = await loadOptionalComponentRuntime({
   componentId: "internet",
   importer: () => import("../../apps/internet/runtime.mjs"),
@@ -132,7 +137,7 @@ window.addEventListener(
   () => {
     systemOverviewControls.destroy();
     internetComponent?.destroy();
-    notesWorkspaceControls.destroy();
+    notesComponent?.destroy();
     networkQuickPanel?.destroy();
     quickPanelControls?.destroy();
     notificationCenter.destroy();
@@ -142,7 +147,6 @@ window.addEventListener(
     browserSession.dispose();
     componentManager.destroy();
     surface.destroy();
-    notesRuntime.destroy();
     identityActions.dispose();
     identitySession.dispose();
     host.dispose();

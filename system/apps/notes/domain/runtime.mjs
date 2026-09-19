@@ -10,7 +10,7 @@ import {
   notesRichBodyToPlainText,
   validateNotesRichBody,
   validateNotesSnapshot,
-} from "../../contracts/notes-store.mjs";
+} from "../../../contracts/notes-store.mjs";
 
 export const NOTES_RUNTIME_SCHEMA = "ordax.notes-runtime/1";
 export const NOTES_HOME_PROJECT_ID = "meu-espaco";

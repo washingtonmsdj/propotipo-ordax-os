@@ -38,7 +38,6 @@ import { createProjectWebReferenceRuntime } from "../../services/projects/web-re
 import { createProjectContinuityFileSpace } from "../../services/files/project-continuity-file-space.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createUpdateNotificationBridge } from "../../services/notifications/update-bridge.mjs";
-import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -48,7 +47,6 @@ import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
-import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountHomeContinuation } from "../../surface/ui/home-continuation.mjs";
@@ -164,7 +162,6 @@ async function start() {
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
-  const notesRuntime = createNotesRuntime({ store: notesStore });
   const updateWatcher = createNativeUpdateWatcher(window);
   const notifications = createNotificationsRuntime({
     store: createNativeNotificationStore(window),
@@ -222,12 +219,6 @@ async function start() {
     preferenceStore,
     workspaceStore,
     appActivation,
-  );
-  const notesWorkspaceControls = mountNotesWorkspaceControls(
-    root,
-    notesRuntime,
-    surface,
-    { fileSpace, appActivation },
   );
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
@@ -346,6 +337,22 @@ async function start() {
   void updateWatcher.markHealthy();
   const surfaceHeartbeat = createNativeSurfaceHeartbeat(window);
 
+  const notesComponent = await loadOptionalComponentRuntime({
+    componentId: "notes",
+    importer: () => import("../../apps/notes/runtime.mjs"),
+    componentManager,
+    context: {
+      root,
+      createStore: () => notesStore,
+      surfaceLifecycle: surface,
+      fileSpace,
+      appActivation,
+    },
+    onError(error) {
+      reportClientDiagnostic("notes-runtime", error);
+    },
+  });
+
   const internetComponent = await loadOptionalComponentRuntime({
     componentId: "internet",
     importer: () => import("../../apps/internet/runtime.mjs"),
@@ -385,7 +392,7 @@ async function start() {
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
-      notesWorkspaceControls.destroy();
+      notesComponent?.destroy();
       internetComponent?.destroy();
       projectReferences?.destroy();
       accountOverviewControls.destroy();
@@ -396,7 +403,6 @@ async function start() {
       updateWatcher.dispose();
       componentManager.destroy();
       surface.destroy();
-      notesRuntime.destroy();
       identityActions.dispose();
       identitySession.dispose();
       host.dispose();

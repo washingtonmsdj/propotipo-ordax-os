@@ -2,16 +2,16 @@ import {
   assertFileSpacePort,
   validateFileSpacePath,
   validateTextFile,
-} from "../../contracts/file-space.mjs";
+} from "../../../contracts/file-space.mjs";
 import {
   NOTES_FILE_IMPORTER_SCHEMA,
   assertNotesFileImporter,
   validateNotesFileImportResult,
-} from "../../contracts/notes-file-importer.mjs";
-import { MAX_NOTE_TEXT_CHARS } from "../../contracts/notes-store.mjs";
+} from "../../../contracts/notes-file-importer.mjs";
+import { MAX_NOTE_TEXT_CHARS } from "../../../contracts/notes-store.mjs";
 import {
   assertNotesRuntime,
-} from "../notes/runtime.mjs";
+} from "../domain/runtime.mjs";
 
 const MAX_REFERENCE_TITLE_CHARS = 512;
 const MAX_REFERENCE_DETAIL_CHARS = 1024;

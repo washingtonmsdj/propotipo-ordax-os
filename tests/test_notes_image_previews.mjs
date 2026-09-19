@@ -6,7 +6,7 @@ import {
   isNotesImageFileName,
   isNotesImageReference,
   notesImageReferenceKey,
-} from "../system/surface/ui/notes-image-previews.mjs";
+} from "../system/apps/notes/ui/image-previews.mjs";
 
 function imageReference(overrides = {}) {
   return {

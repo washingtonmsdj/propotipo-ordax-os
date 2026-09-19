@@ -1,7 +1,7 @@
 import {
   assertFileSpacePort,
   validateFileSpacePath,
-} from "../../contracts/file-space.mjs";
+} from "../../../contracts/file-space.mjs";
 
 const PURPOSES = new Set(["file", "image"]);
 

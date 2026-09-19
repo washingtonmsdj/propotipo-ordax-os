@@ -9,19 +9,21 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HOST_SERVER = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
 NOTES_CONTRACT = ROOT / "system" / "contracts" / "notes-store.mjs"
-NOTES_RUNTIME = ROOT / "system" / "services" / "notes" / "runtime.mjs"
+NOTES_RUNTIME = ROOT / "system" / "apps" / "notes" / "domain" / "runtime.mjs"
+NOTES_COMPONENT_RUNTIME = ROOT / "system" / "apps" / "notes" / "runtime.mjs"
+NOTES_VERSION = ROOT / "system" / "apps" / "notes" / "version.mjs"
 WEB_ADAPTER = ROOT / "system" / "adapters" / "web" / "notes.mjs"
 NATIVE_ADAPTER = ROOT / "system" / "adapters" / "native" / "notes.mjs"
 NOTES_OWNER = ROOT / "system" / "apps" / "notes" / "app.mjs"
 APP_CATALOG = ROOT / "system" / "apps" / "catalog.mjs"
-NOTES_CONTROLS = ROOT / "system" / "surface" / "ui" / "notes-workspace-controls.mjs"
-NOTES_RICH_EDITOR = ROOT / "system" / "surface" / "ui" / "notes-rich-editor.mjs"
-NOTES_IMAGE_PREVIEWS = ROOT / "system" / "surface" / "ui" / "notes-image-previews.mjs"
-NOTES_LIST_MODEL = ROOT / "system" / "surface" / "ui" / "notes-list-model.mjs"
-NOTES_FILE_PICKER = ROOT / "system" / "surface" / "ui" / "notes-file-picker.mjs"
-NOTES_EDITOR_SAVE = ROOT / "system" / "surface" / "ui" / "notes-editor-save.mjs"
-NOTES_REFERENCE_LINKS = ROOT / "system" / "surface" / "ui" / "notes-reference-links.mjs"
-NOTES_CSS = ROOT / "system" / "surface" / "ui" / "notes.css"
+NOTES_CONTROLS = ROOT / "system" / "apps" / "notes" / "ui" / "workspace-controls.mjs"
+NOTES_RICH_EDITOR = ROOT / "system" / "apps" / "notes" / "ui" / "rich-editor.mjs"
+NOTES_IMAGE_PREVIEWS = ROOT / "system" / "apps" / "notes" / "ui" / "image-previews.mjs"
+NOTES_LIST_MODEL = ROOT / "system" / "apps" / "notes" / "ui" / "list-model.mjs"
+NOTES_FILE_PICKER = ROOT / "system" / "apps" / "notes" / "ui" / "file-picker.mjs"
+NOTES_EDITOR_SAVE = ROOT / "system" / "apps" / "notes" / "ui" / "editor-save.mjs"
+NOTES_REFERENCE_LINKS = ROOT / "system" / "apps" / "notes" / "ui" / "reference-links.mjs"
+NOTES_CSS = ROOT / "system" / "apps" / "notes" / "notes.css"
 DESKTOP_SHELL = ROOT / "system" / "surface" / "ui" / "desktop-shell.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
@@ -114,18 +116,31 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn('./notes/app.mjs', catalog)
         self.assertIn('railButton("notes", "Notas", ICONS.notes)', shell)
 
+        component_runtime = NOTES_COMPONENT_RUNTIME.read_text(encoding="utf-8")
+        version = NOTES_VERSION.read_text(encoding="utf-8")
+
         self.assertIn("createWebNotesStore", web_main)
-        self.assertIn("createNotesRuntime", web_main)
-        self.assertIn("mountNotesWorkspaceControls", web_main)
-        self.assertIn("{ appActivation }", web_main)
-        self.assertIn("notesWorkspaceControls.destroy()", web_main)
+        self.assertNotIn("createNotesRuntime", web_main)
+        self.assertNotIn("mountNotesWorkspaceControls", web_main)
+        self.assertIn('componentId: "notes"', web_main)
+        self.assertIn('import("../../apps/notes/runtime.mjs")', web_main)
+        self.assertIn("createStore: () => createWebNotesStore(window)", web_main)
+        self.assertIn("notesComponent?.destroy()", web_main)
 
         self.assertIn("createNativeNotesStore", native_main)
         self.assertIn('"OrdaX native notes persistence unavailable"', native_main)
-        self.assertIn("createNotesRuntime({ store: notesStore })", native_main)
-        self.assertIn("mountNotesWorkspaceControls", native_main)
-        self.assertIn("{ fileSpace, appActivation }", native_main)
-        self.assertIn("notesWorkspaceControls.destroy()", native_main)
+        self.assertNotIn("createNotesRuntime({ store: notesStore })", native_main)
+        self.assertNotIn("mountNotesWorkspaceControls", native_main)
+        self.assertIn('componentId: "notes"', native_main)
+        self.assertIn('import("../../apps/notes/runtime.mjs")', native_main)
+        self.assertIn("createStore: () => notesStore", native_main)
+        self.assertIn("notesComponent?.destroy()", native_main)
+
+        self.assertIn('componentId: "notes"', component_runtime)
+        self.assertIn("createNotesRuntime", component_runtime)
+        self.assertIn("mountNotesWorkspaceControls", component_runtime)
+        self.assertIn('new URL("./notes.css", import.meta.url).href', component_runtime)
+        self.assertIn('NOTES_VERSION = "0.2.0"', version)
 
     def test_notes_surface_matches_concept_without_platform_storage_shortcuts(self):
         controls = NOTES_CONTROLS.read_text(encoding="utf-8")
@@ -164,7 +179,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn('"delete-note-forever"', controls)
         self.assertIn("runtime.emptyTrash()", controls)
         self.assertIn("runtime.permanentlyDeleteNote", controls)
-        self.assertIn("./notes-rich-editor.mjs", controls)
+        self.assertIn("./rich-editor.mjs", controls)
         self.assertIn("renderNotesRichBody", controls)
         self.assertIn("readNotesRichBody", controls)
         self.assertIn("toggleNotesRichInlineMark", controls)
@@ -203,11 +218,11 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("Relacionar arquivo", controls)
         self.assertIn("file-picker-open-directory", controls)
         self.assertIn("attach-file-reference", controls)
-        self.assertIn("./notes-image-previews.mjs", controls)
-        self.assertIn("./notes-list-model.mjs", controls)
-        self.assertIn("./notes-file-picker.mjs", controls)
-        self.assertIn("./notes-editor-save.mjs", controls)
-        self.assertIn("./notes-reference-links.mjs", controls)
+        self.assertIn("./image-previews.mjs", controls)
+        self.assertIn("./list-model.mjs", controls)
+        self.assertIn("./file-picker.mjs", controls)
+        self.assertIn("./editor-save.mjs", controls)
+        self.assertIn("./reference-links.mjs", controls)
         self.assertIn("createNotesFilePicker", controls)
         self.assertIn("parseNotesWebHref", controls)
         self.assertIn("notesWebReferenceHost", controls)
@@ -301,8 +316,8 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn('.ordax-notes-document[data-deleted="true"]', css)
         self.assertIn(".ordax-notes-ref-remove:disabled", css)
         self.assertIn("@media (max-width: 1180px)", css)
-        self.assertIn("../../surface/ui/notes.css", web_html)
-        self.assertIn("../../surface/ui/notes.css", native_html)
+        self.assertNotIn("../../apps/notes/notes.css", web_html)
+        self.assertNotIn("../../apps/notes/notes.css", native_html)
 
 
 if __name__ == "__main__":

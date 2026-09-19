@@ -31,7 +31,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/services/preferences/appearance.mjs",
             "system/services/preferences/catalog.mjs",
             "system/services/apps/activation.mjs",
-            "system/services/notes/runtime.mjs",
+            "system/apps/notes/runtime.mjs",
             "system/adapters/web/runtime.mjs",
             "system/adapters/web/notes.mjs",
             "system/adapters/web/preferences.mjs",
@@ -42,9 +42,9 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
             "system/surface/ui/files.css",
-            "system/surface/ui/notes.css",
-            "system/surface/ui/notes-rich-editor.mjs",
-            "system/surface/ui/notes-workspace-controls.mjs",
+            "system/apps/notes/notes.css",
+            "system/apps/notes/ui/rich-editor.mjs",
+            "system/apps/notes/ui/workspace-controls.mjs",
             "system/surface/ui/system.css",
             "system/surface/ui/system-overview-controls.mjs",
             "system/surface/ui/account-overview-controls.mjs",
@@ -165,7 +165,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         self.assertNotIn("../", rendered)
         self.assertIn("./system/surface/ui/tokens.css", rendered)
         self.assertIn("./system/surface/ui/files.css", rendered)
-        self.assertIn("./system/surface/ui/notes.css", rendered)
+        self.assertNotIn("notes.css", rendered)
         self.assertNotIn("internet.css", rendered)
         self.assertIn("./system/surface/ui/system.css", rendered)
         self.assertIn("./system/surface/ui/account.css", rendered)

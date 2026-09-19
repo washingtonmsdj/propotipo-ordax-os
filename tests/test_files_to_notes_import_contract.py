@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE = ROOT / "system" / "services" / "files" / "notes-import.mjs"
+SERVICE = ROOT / "system" / "apps" / "notes" / "services" / "file-import.mjs"
 WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
 
@@ -57,8 +57,9 @@ class FilesToNotesImportContractTests(unittest.TestCase):
         self.assertNotIn("String(error)", source)
         self.assertIn("exception text is never returned", source)
 
-    def test_surface_candidate_owns_the_import_service_and_regressions(self):
+    def test_notes_app_owns_the_import_service_and_surface_regressions(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertGreaterEqual(workflow.count("system/apps/**"), 2)
         self.assertGreaterEqual(workflow.count("system/services/files/**"), 2)
         self.assertGreaterEqual(workflow.count("tests/test_files_to_notes_import.mjs"), 3)
         self.assertGreaterEqual(workflow.count("tests/test_files_to_notes_import_contract.py"), 2)

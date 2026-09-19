@@ -6,7 +6,7 @@ import {
   formatNotesRelativeTime,
   noteMatchesQuery,
   visibleNotes,
-} from "../system/surface/ui/notes-list-model.mjs";
+} from "../system/apps/notes/ui/list-model.mjs";
 
 function note({
   id,

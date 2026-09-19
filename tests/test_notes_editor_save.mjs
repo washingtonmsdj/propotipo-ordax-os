@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createNotesEditorSaveController } from "../system/surface/ui/notes-editor-save.mjs";
+import { createNotesEditorSaveController } from "../system/apps/notes/ui/editor-save.mjs";
 
 function fakeTimers() {
   let nextId = 1;

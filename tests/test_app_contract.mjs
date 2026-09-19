@@ -130,7 +130,7 @@ test("Notes stays a first-party app and advertises native file-space as optional
   assert.deepEqual(notesApp.requiredCapabilities, []);
   assert.deepEqual(notesApp.optionalCapabilities, ["filesystem.user-space"]);
   assert.equal(notesApp.component.owner, "system/apps/notes");
-  assert.equal(notesApp.component.releaseMode, "bundled");
+  assert.equal(notesApp.component.releaseMode, "git-app");
 });
 
 test("Internet stays a first-party app while engine availability remains host-owned", () => {

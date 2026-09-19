@@ -2,7 +2,7 @@ import {
   MAX_NOTE_RICH_BLOCKS,
   MAX_NOTE_TEXT_CHARS,
   validateNotesRichBody,
-} from "../../contracts/notes-store.mjs";
+} from "../../../contracts/notes-store.mjs";
 
 const BLOCK_TYPES = new Set(["paragraph", "heading", "quote", "bullet"]);
 const INLINE_MARK_COMMANDS = Object.freeze({
