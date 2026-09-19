@@ -2181,7 +2181,7 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, IMAGE_PREVIEW_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
-        if parsed_path in {SYNC_STATE_PATH, NOTES_PATH} and self.client_address[0] != "127.0.0.1":
+        if parsed_path in {SYNC_STATE_PATH, NOTES_PATH, COMPONENT_STATE_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
         if parsed_path == METRICS_PATH:
