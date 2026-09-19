@@ -25,6 +25,11 @@ class DeviceUpdateCoverageTests(unittest.TestCase):
         )
         self.assertTrue(contract["boot_policy"]["known_good_local_boot_precedes_network"])
         self.assertFalse(contract["boot_policy"]["normal_boot_waits_for_git"])
+        self.assertEqual(contract["boot_policy"]["surface_health_default_timeout_seconds"], 30)
+        self.assertEqual(contract["boot_policy"]["surface_health_minimum_override_seconds"], 15)
+        self.assertTrue(
+            contract["boot_policy"]["recovery_must_not_wait_minutes_for_surface_health"]
+        )
         self.assertTrue(contract["runtime_checkout"]["sparse_by_design"])
         self.assertTrue(contract["runtime_checkout"]["must_not_expand_to_full_repository_on_boot"])
 
