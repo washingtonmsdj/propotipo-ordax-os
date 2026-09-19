@@ -5,6 +5,7 @@ import {
   PROJECT_CATALOG_SCHEMA,
   validateProjectCatalogSnapshot,
   validateProjectEntry,
+  validateProjectFilePath,
 } from "../system/contracts/project-catalog.mjs";
 import {
   PROJECT_STORE_SCHEMA,
@@ -78,6 +79,33 @@ test("project catalog contract rejects root paths, duplicates and malformed time
   );
 });
 
+test("project file continuity is optional for old records and confined to the project folder", () => {
+  const legacy = validateProjectEntry({
+    id: "project-1",
+    name: "Legado",
+    path: "/Documentos/Legado",
+    createdAt: 1,
+    lastOpenedAt: 2,
+  });
+  assert.equal(legacy.lastFilePath, null);
+  assert.equal(
+    validateProjectFilePath("/Documentos/Legado", "/Documentos/Legado/roteiro.txt"),
+    "/Documentos/Legado/roteiro.txt",
+  );
+  assert.throws(
+    () => validateProjectFilePath("/Documentos/Legado", "/Documentos/Legado"),
+    /inside the project folder/,
+  );
+  assert.throws(
+    () => validateProjectFilePath("/Documentos/Legado", "/Documentos/Legado-2/roteiro.txt"),
+    /inside the project folder/,
+  );
+  assert.throws(
+    () => validateProjectFilePath("/Documentos/Legado", "/Downloads/roteiro.txt"),
+    /inside the project folder/,
+  );
+});
+
 test("project runtime creates stable ids, records successful opens and never reuses ids", () => {
   let clock = 10;
   const runtime = createProjectCatalogRuntime({
@@ -92,6 +120,7 @@ test("project runtime creates stable ids, records successful opens and never reu
   assert.equal(snapshot.persistence, "device");
   assert.deepEqual(snapshot.projects.map((project) => project.id), ["project-2", "project-1"]);
   assert.equal(snapshot.projects[1].name, "Cliente A");
+  assert.equal(snapshot.projects[1].lastFilePath, null);
 
   runtime.recordOpened("project-1");
   snapshot = runtime.getSnapshot();
@@ -103,6 +132,71 @@ test("project runtime creates stable ids, records successful opens and never reu
   snapshot = runtime.getSnapshot();
   assert.equal(snapshot.projects[0].id, "project-3");
   assert.equal(snapshot.projects.some((project) => project.id === "project-1"), false);
+});
+
+test("recording an opened file preserves project identity and promotes real content continuity", () => {
+  let clock = 20;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore(),
+    now: () => clock++,
+  });
+  runtime.create({ name: "Projeto A", path: "/Documentos/A" });
+  runtime.create({ name: "Projeto B", path: "/Documentos/B" });
+  const before = runtime.getSnapshot();
+  const projectA = before.projects.find((project) => project.path === "/Documentos/A");
+
+  const after = runtime.recordFileOpened(projectA.id, "/Documentos/A/notas/roteiro.txt");
+  assert.equal(after.projects[0].id, projectA.id);
+  assert.equal(after.projects[0].name, projectA.name);
+  assert.equal(after.projects[0].path, projectA.path);
+  assert.equal(after.projects[0].createdAt, projectA.createdAt);
+  assert.equal(after.projects[0].lastOpenedAt, 22);
+  assert.equal(after.projects[0].lastFilePath, "/Documentos/A/notas/roteiro.txt");
+  assert.equal(after.persistence, "device");
+
+  const renamed = runtime.rename(projectA.id, "Projeto A renomeado");
+  assert.equal(renamed.projects[0].lastFilePath, "/Documentos/A/notas/roteiro.txt");
+});
+
+test("recording project file context validates before clock, persistence or mutation", () => {
+  let saves = 0;
+  let clockReads = 0;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ onSave: () => { saves += 1; } }),
+    now: () => {
+      clockReads += 1;
+      return 100 + clockReads;
+    },
+  });
+  runtime.create({ name: "Projeto", path: "/Documentos/Projeto" });
+  const before = runtime.getSnapshot();
+  assert.equal(saves, 1);
+  assert.equal(clockReads, 1);
+
+  assert.throws(
+    () => runtime.recordFileOpened("project-1", "/Documentos/Outro/segredo.txt"),
+    /inside the project folder/,
+  );
+  assert.throws(
+    () => runtime.recordFileOpened("project-99", "/Documentos/Projeto/arquivo.txt"),
+    /not registered/,
+  );
+  assert.deepEqual(runtime.getSnapshot(), before);
+  assert.equal(saves, 1);
+  assert.equal(clockReads, 1);
+});
+
+test("project file continuity persistence failure degrades to session without losing in-memory context", () => {
+  let clock = 300;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ failSave: true }),
+    now: () => clock++,
+  });
+  runtime.create({ name: "Local", path: "/Documentos/Local" });
+  const snapshot = runtime.recordFileOpened("project-1", "/Documentos/Local/tarefa.txt");
+  assert.equal(snapshot.persistence, "session");
+  assert.equal(snapshot.projects[0].lastFilePath, "/Documentos/Local/tarefa.txt");
+  assert.equal(snapshot.projects[0].lastOpenedAt, 301);
 });
 
 test("renaming a project changes only its validated display name and preserves identity, path, activity and order", () => {
@@ -122,6 +216,7 @@ test("renaming a project changes only its validated display name and preserves i
   assert.equal(after.projects[1].path, target.path);
   assert.equal(after.projects[1].createdAt, target.createdAt);
   assert.equal(after.projects[1].lastOpenedAt, target.lastOpenedAt);
+  assert.equal(after.projects[1].lastFilePath, target.lastFilePath);
   assert.deepEqual(after.projects.map((project) => project.id), before.projects.map((project) => project.id));
   assert.equal(after.persistence, "device");
 });
@@ -186,25 +281,36 @@ test("project persistence failure degrades to session while preserving in-memory
   assert.equal(snapshot.projects[0].path, "/Documentos/Local");
 });
 
-test("native project store survives recreation and fails closed on corrupt records", () => {
+test("native project store accepts legacy records without file continuity and survives recreation", () => {
   const windowRef = localStorageWindow();
-  const first = createNativeProjectStore(windowRef);
-  first.save({
-    nextOrdinal: 2,
-    projects: [
-      {
-        id: "project-1",
-        name: "Persistido",
-        path: "/Documentos/Persistido",
-        createdAt: 1,
-        lastOpenedAt: 2,
+  windowRef.values.set(
+    "ordax.native.projects.v1",
+    JSON.stringify({
+      schema: "ordax.native.projects-record/1",
+      state: {
+        nextOrdinal: 2,
+        projects: [
+          {
+            id: "project-1",
+            name: "Persistido",
+            path: "/Documentos/Persistido",
+            createdAt: 1,
+            lastOpenedAt: 2,
+          },
+        ],
       },
-    ],
-  });
+    }),
+  );
+
+  const first = createNativeProjectStore(windowRef);
+  const loaded = first.load();
+  assert.equal(loaded.projects[0].name, "Persistido");
+  assert.equal(loaded.projects[0].lastFilePath, null);
+  first.save(loaded);
 
   const second = createNativeProjectStore(windowRef);
   assert.equal(second.scope, "device");
-  assert.equal(second.load().projects[0].name, "Persistido");
+  assert.equal(second.load().projects[0].lastFilePath, null);
 
   windowRef.values.set("ordax.native.projects.v1", "{not-json");
   const corrupt = createNativeProjectStore(windowRef);
