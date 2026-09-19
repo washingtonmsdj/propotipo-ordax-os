@@ -3,8 +3,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "system" / "contracts" / "notes-file-importer.mjs"
-ACTION = ROOT / "system" / "surface" / "ui" / "file-notes-action.mjs"
-FILES_OWNER = ROOT / "system" / "surface" / "ui" / "file-space-controls.mjs"
+ACTION = ROOT / "system" / "apps" / "files" / "ui" / "file-notes-action.mjs"
+FILES_OWNER = ROOT / "system" / "apps" / "files" / "ui" / "file-space-controls.mjs"
 WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
 
