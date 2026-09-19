@@ -407,10 +407,15 @@ test("project lifecycle moves notes safely and protects the home project", () =>
   );
 
   const beforeHomeRemoval = state.document;
+  runtime.renameProject(NOTES_HOME_PROJECT_ID, "Outro nome");
+  assert.deepEqual(runtime.getSnapshot().document, beforeHomeRemoval);
   runtime.removeProject(NOTES_HOME_PROJECT_ID);
   state = runtime.getSnapshot();
   assert.deepEqual(state.document, beforeHomeRemoval);
-  assert.ok(state.document.projects.some((project) => project.id === NOTES_HOME_PROJECT_ID));
+  assert.equal(
+    state.document.projects.find((project) => project.id === NOTES_HOME_PROJECT_ID).name,
+    "Meu espaço",
+  );
 });
 
 test("checklist items can be removed without affecting sibling items", () => {
