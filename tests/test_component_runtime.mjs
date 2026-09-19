@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createNativeComponentSlotSource } from "../system/adapters/native/component-slot-source.mjs";
 import { COMPONENT_RUNTIME_SCHEMA } from "../system/contracts/component-runtime.mjs";
 import { listSystemComponents } from "../system/services/components/catalog.mjs";
 import { createComponentManager } from "../system/services/components/manager.mjs";
@@ -333,4 +334,30 @@ test("pending runtime without explicit health probe cannot be promoted", async (
   assert.equal(componentState(manager, "internet").rejectedVersion, "0.4.0");
   mounted.destroy();
   manager.destroy();
+});
+
+
+test("native component slot source emits canonical same-origin runtime URLs", () => {
+  const source = createNativeComponentSlotSource({
+    location: { href: "http://127.0.0.1:8765/index.html" },
+  });
+  assert.equal(
+    source.runtimeUrl("internet", "0.4.0"),
+    "http://127.0.0.1:8765/__ordax/native/component-slot/internet/0.4.0/"
+      + "system/components/internet/runtime.mjs",
+  );
+  assert.throws(
+    () => source.runtimeUrl("Internet", "0.4.0"),
+    /component id/i,
+  );
+  assert.throws(
+    () => source.runtimeUrl("internet", "latest"),
+    /version/i,
+  );
+  assert.throws(
+    () => createNativeComponentSlotSource({
+      location: { href: "https://example.com/index.html" },
+    }),
+    /loopback Surface origin/,
+  );
 });
