@@ -8,6 +8,7 @@ STATE_DIR=${ORDAX_STATE_DIR:-/state/ordax}
 PREVIOUS_FILE=$STATE_DIR/previous-commit
 CURRENT_FILE=$STATE_DIR/current-commit
 PINNED_FILE=$STATE_DIR/pinned-commit
+DIRTY_CHECKOUT_DIR=$STATE_DIR/dirty-checkout
 GIT_TIMEOUT_SECONDS=${ORDAX_BOOT_GIT_TIMEOUT_SECONDS:-45}
 GIT_LOW_SPEED_TIME=${ORDAX_BOOT_GIT_LOW_SPEED_SECONDS:-15}
 
@@ -35,9 +36,54 @@ run_bounded_git() {
 write_state() {
     destination=$1
     value=$2
-    temporary=$destination.tmp.$$
+    temporary=$destination.tmp.$
     printf '%s\n' "$value" > "$temporary"
     mv -f "$temporary" "$destination"
+}
+
+record_dirty_checkout() {
+    mkdir -p "$DIRTY_CHECKOUT_DIR"
+    chmod 700 "$DIRTY_CHECKOUT_DIR" 2>/dev/null || true
+
+    head=$(
+        git -C "$WORKTREE" rev-parse HEAD 2>/dev/null || true
+    )
+    status_file=$DIRTY_CHECKOUT_DIR/last-status.txt
+    status_tmp=$status_file.tmp.$
+    {
+        printf 'head=%s\n' "${head:-unknown}"
+        git -C "$WORKTREE" status --porcelain=v1 2>/dev/null || true
+    } >"$status_tmp"
+    mv -f "$status_tmp" "$status_file"
+
+    patch_file=$DIRTY_CHECKOUT_DIR/last-tracked-changes.patch
+    patch_tmp=$patch_file.tmp.$
+    if run_bounded_git -C "$WORKTREE" diff --binary --no-ext-diff HEAD >"$patch_tmp" 2>/dev/null; then
+        mv -f "$patch_tmp" "$patch_file"
+    else
+        rm -f "$patch_tmp"
+    fi
+}
+
+repair_dirty_checkout() {
+    record_dirty_checkout
+    echo "ordax-git: checkout local alterado; restaurando cache controlado pelo Git" >&2
+
+    if ! run_bounded_git -C "$WORKTREE" reset --hard HEAD >/dev/null 2>&1; then
+        echo "ordax-git: nao foi possivel restaurar arquivos rastreados; checkout preservado" >&2
+        return 1
+    fi
+    if ! run_bounded_git -C "$WORKTREE" clean -ffd >/dev/null 2>&1; then
+        echo "ordax-git: nao foi possivel remover residuos nao rastreados; checkout preservado" >&2
+        return 1
+    fi
+    if [ -n "$(git -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
+        echo "ordax-git: checkout continua inconsistente apos restauracao automatica" >&2
+        return 1
+    fi
+
+    echo "ordax-git: checkout local restaurado; diagnostico preservado em $DIRTY_CHECKOUT_DIR" >&2
+    return 0
 }
 
 configure_runtime_checkout() {
@@ -77,9 +123,8 @@ else
         exit 1
     }
 
-    if [ -n "$(git -C "$WORKTREE" status --porcelain)" ]; then
-        echo "ordax-git: checkout possui alteracoes locais; pull bloqueado" >&2
-        exit 1
+    if [ -n "$(git -C "$WORKTREE" status --porcelain 2>/dev/null || true)" ]; then
+        repair_dirty_checkout || exit 1
     fi
 
     previous=$(git -C "$WORKTREE" rev-parse HEAD)
