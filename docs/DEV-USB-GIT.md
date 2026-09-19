@@ -35,10 +35,13 @@ edit/commit on remote main
 https://github.com/washingtonmsdj/prototipo-ordax-os.git
 branch: main
 checkout: /workspace/ordax
-materialized runtime path: system/
+materialized runtime paths:
+- system/
+- bootstrap/base-update/ (control logic only)
+- selected trust/update contracts
 ```
 
-A new checkout uses Git partial clone (`blob:none`) plus sparse checkout. Git commit/history metadata remains available for update/rollback, while ordinary non-runtime trees such as `docs/`, `tools/`, `bootstrap/` and `tests/` are not materialized into the runtime worktree.
+A new checkout uses Git partial clone (`blob:none`) plus sparse checkout. Git commit/history metadata remains available for update/rollback. The live product tree `system/` is materialized together with the small repository-owned base-update control plane under `bootstrap/base-update/` and the trust/contracts it needs. Kernel/initramfs binaries and build toolchains are not copied into the runtime checkout; base bytes are built separately and staged for the next boot.
 
 Before updating an existing checkout, `ordax-pull` fails closed when:
 
@@ -115,7 +118,9 @@ A normal source change under `system/` does **not** require:
 - rebuilding the kernel;
 - rebooting the notebook unless that component genuinely requires it.
 
-A base-level change is different. Changes to the bootloader, kernel, initramfs, development-network substrate, Git client, or a driver/firmware needed before Git is reachable can require a base update and reboot. This does not change the normal daily loop above.
+A base-level change is different. Changes to the bootloader, kernel, initramfs, development-network substrate, Git client, or a driver/firmware needed before Git is reachable require a base candidate and reboot to activate. The repository checkout now carries the base-update control logic so this path can be driven from the current main without reflashing the USB by hand. The running kernel cannot replace itself in-place; the candidate is prepared in the inactive boot slot and selected on the next boot.
+
+Early boot branding follows the same rule. Anything displayed only after the development base hands control to `system/` may update with the normal Git loop. A logo/splash shown before Git exists is part of the base/initramfs path and therefore changes on the next base boot. The current prototype still uses text-mode early boot; a branded graphical splash renderer has not yet been implemented.
 
 ## Network behavior
 
