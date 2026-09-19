@@ -11,7 +11,7 @@ import {
   validateComponentManifests,
 } from "../system/contracts/component-manifest.mjs";
 import { createNativeComponentStateStore } from "../system/adapters/native/component-state.mjs";
-import { listSystemComponents } from "../system/services/components/catalog.mjs";
+import { listSystemComponents } from "../system/apps/component-catalog.mjs";
 import { createComponentManager } from "../system/services/components/manager.mjs";
 
 function baseManifest() {
