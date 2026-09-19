@@ -1,0 +1,657 @@
+.ordax-app-extension[data-app-extension="internet-browser"] {
+  grid-column: 1 / -1;
+  min-height: min(690px, calc(100vh - 180px));
+  padding: 0;
+  overflow: hidden;
+}
+
+.ordax-app-extension[data-app-extension="internet-browser"] > .ordax-app-panel-label,
+.ordax-app-extension[data-app-extension="internet-browser"] > .ordax-app-panel-title,
+.ordax-app-extension[data-app-extension="internet-browser"] > .ordax-app-panel-body {
+  display: none;
+}
+
+.ordax-internet-view {
+  height: 100%;
+  min-height: 620px;
+  display: grid;
+  grid-template-rows: 52px minmax(0, 1fr);
+  background: var(--ordax-surface, #efede6);
+  color: var(--ordax-ink, #171613);
+}
+
+.ordax-internet-toolbar {
+  display: grid;
+  grid-template-columns: 36px 36px 36px minmax(220px, 1fr) 36px 36px 36px;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  background: color-mix(in srgb, var(--ordax-surface, #efede6) 94%, white);
+}
+
+.ordax-internet-icon-button,
+.ordax-internet-panel-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.ordax-internet-icon-button:hover:not(:disabled),
+.ordax-internet-panel-close:hover:not(:disabled) {
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.ordax-internet-icon-button:disabled { opacity: .32; cursor: default; }
+
+.ordax-internet-address-form {
+  height: 36px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ordax-surface, #efede6) 88%, white);
+  overflow: hidden;
+}
+
+.ordax-internet-site-control {
+  text-align: center;
+  color: #5f5b54;
+  font-size: 12px;
+}
+
+.ordax-internet-address {
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  padding: 0 10px 0 0;
+}
+
+.ordax-internet-address-form:focus-within {
+  border-color: #9d2f18;
+  box-shadow: 0 0 0 2px #9d2f18;
+}
+
+.ordax-internet-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 190px minmax(320px, 1fr) 265px;
+}
+
+.ordax-internet-body.project-collapsed { grid-template-columns: 190px minmax(320px, 1fr); }
+
+.ordax-internet-sidebar,
+.ordax-internet-project-panel {
+  min-height: 0;
+  background: color-mix(in srgb, var(--ordax-surface, #efede6) 92%, white);
+}
+
+.ordax-internet-sidebar {
+  border-right: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  padding: 14px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ordax-internet-workspace,
+.ordax-internet-new-tab,
+.ordax-internet-collection-row {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ordax-internet-workspace {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 4px;
+  opacity: 1;
+}
+
+.ordax-internet-workspace-mark {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ed4b25;
+  border-radius: 50%;
+}
+
+.ordax-internet-new-tab {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ordax-internet-new-tab:hover { background: color-mix(in srgb, currentColor 5%, transparent); }
+
+.ordax-internet-tab-search {
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: inherit;
+  font-size: 12px;
+}
+
+.ordax-internet-tab-search:focus-within {
+  border-color: #9d2f18;
+  box-shadow: 0 0 0 2px #9d2f18;
+  background: color-mix(in srgb, var(--ordax-surface, #efede6) 82%, white);
+}
+
+.ordax-internet-tab-search-icon {
+  color: #5f5b54;
+  text-align: center;
+}
+
+.ordax-internet-tab-search-input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.ordax-internet-tab-search-input::placeholder { color: #5f5b54; opacity: 1; }
+.ordax-internet-tab-search-input::-webkit-search-cancel-button { cursor: pointer; }
+
+.ordax-internet-section-label {
+  display: block;
+  margin: 7px 0 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: #5f5b54;
+}
+
+.ordax-internet-tabs { display: grid; gap: 3px; }
+
+.ordax-internet-tab {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.ordax-internet-tab[data-selected="true"] {
+  background: color-mix(in srgb, #ed4b25 14%, transparent);
+  box-shadow: inset 3px 0 #ed4b25;
+}
+
+.ordax-internet-tab:hover:not([data-selected="true"]) { background: color-mix(in srgb, currentColor 5%, transparent); }
+
+.ordax-internet-tab-activate {
+  min-width: 0;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-tab-icon { color: #5f5b54; }
+.ordax-internet-tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+.ordax-internet-tab-close {
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #5f5b54;
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.ordax-internet-tab-close:hover { background: color-mix(in srgb, currentColor 9%, transparent); color: inherit; }
+.ordax-internet-tab-placeholder { padding: 10px 8px; font-size: 12px; color: #5f5b54; }
+
+.ordax-internet-collections {
+  margin-top: 7px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.ordax-internet-collection-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 6px;
+  padding: 8px 6px;
+  opacity: .74;
+}
+
+.ordax-internet-sidebar-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 12px;
+  padding: 12px 5px 4px;
+  font-size: 11px;
+  color: #5f5b54;
+}
+
+.ordax-internet-center {
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  background: #f8f7f3;
+  overflow: hidden;
+}
+
+.ordax-internet-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #f8f7f3;
+}
+
+.ordax-internet-home {
+  width: min(680px, calc(100% - 64px));
+  margin: clamp(56px, 10vh, 110px) auto 0;
+  text-align: center;
+}
+
+.ordax-internet-home[hidden] { display: none; }
+.ordax-internet-home-mark { display: inline-grid; place-items: center; color: #ed4b25; font-size: 34px; }
+.ordax-internet-home h2 { margin: 8px 0 5px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; }
+.ordax-internet-home > p { margin: 0 auto; max-width: 540px; color: #5f5b54; font-size: 14px; line-height: 1.5; }
+.ordax-internet-home-hint { display: block; margin-top: 22px; font-size: 12px; color: #5f5b54; }
+
+.ordax-internet-home-links {
+  margin-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  text-align: left;
+}
+
+.ordax-internet-home-link {
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid rgba(23, 22, 19, .12);
+  border-radius: 10px;
+  background: rgba(255,255,255,.58);
+}
+
+.ordax-internet-home-link span { display: block; font-size: 9px; letter-spacing: .08em; color: #5f5b54; margin-bottom: 8px; }
+.ordax-internet-home-link strong { font-size: 12px; }
+
+.ordax-internet-unavailable {
+  max-width: 520px;
+  margin: 22px auto 0;
+  padding: 13px 15px;
+  border: 1px solid rgba(23,22,19,.13);
+  border-radius: 9px;
+  background: rgba(255,255,255,.55);
+  text-align: left;
+  font-size: 12px;
+}
+.ordax-internet-unavailable strong,
+.ordax-internet-unavailable span { display: block; }
+.ordax-internet-unavailable span { margin-top: 4px; color: #5f5b54; line-height: 1.4; }
+
+.ordax-internet-message {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  padding: 9px 12px;
+  border: 1px solid rgba(23,22,19,.14);
+  border-radius: 8px;
+  background: #f5f2eb;
+  box-shadow: 0 8px 24px rgba(23,22,19,.08);
+  font-size: 11px;
+}
+
+.ordax-internet-project-panel {
+  border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  padding: 13px 14px;
+  overflow: auto;
+}
+
+.ordax-internet-project-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 11%, transparent);
+}
+.ordax-internet-project-header h2 { margin: 0; font-size: 17px; }
+.ordax-internet-project-context-name { display: block; margin-top: 6px; font-size: 13px; }
+.ordax-internet-project-intro p { margin: 7px 0 14px; font-size: 12px; line-height: 1.4; color: #5f5b54; }
+.ordax-internet-project-section { padding: 10px 0 13px; border-bottom: 1px solid color-mix(in srgb, currentColor 10%, transparent); }
+.ordax-internet-project-section h3,
+.ordax-internet-assistance h3 { margin: 0 0 9px; font-size: 12px; }
+
+.ordax-internet-project-options { display: grid; }
+
+.ordax-internet-page-reference {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, currentColor 13%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ordax-surface, #efede6) 84%, white);
+}
+.ordax-internet-page-copy { min-width: 0; }
+.ordax-internet-page-copy strong,
+.ordax-internet-page-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ordax-internet-page-copy strong { font-size: 11px; }
+.ordax-internet-page-copy small { margin-top: 3px; font-size: 9px; color: #5f5b54; }
+
+.ordax-internet-save-button {
+  width: 100%;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ed4b25;
+  color: white;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ordax-internet-save-button:disabled { opacity: .52; }
+
+.ordax-internet-reference-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  color: #5f5b54;
+  font-size: 9px;
+}
+
+.ordax-internet-reference-state[hidden] {
+  display: none;
+}
+
+.ordax-internet-reference-remove {
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: #9d2f18;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ordax-internet-note {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 8px;
+  padding: 9px;
+  background: rgba(255,255,255,.45);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+}
+.ordax-internet-note:disabled {
+  opacity: .58;
+  resize: none;
+}
+.ordax-internet-note:focus {
+  border-color: color-mix(in srgb, #ed4b25 68%, transparent);
+  outline: 2px solid color-mix(in srgb, #ed4b25 16%, transparent);
+  outline-offset: 1px;
+}
+.ordax-internet-project-pending { display: block; margin-top: 6px; font-size: 9px; color: #5f5b54; }
+
+.ordax-internet-material-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 5px;
+  align-items: center;
+  padding: 9px 7px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-bottom: 0;
+  font-size: 10px;
+}
+.ordax-internet-material-row:first-of-type { border-radius: 8px 8px 0 0; }
+.ordax-internet-material-row:last-child { border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); border-radius: 0 0 8px 8px; }
+
+.ordax-internet-project-option {
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-project-option:hover,
+.ordax-internet-project-option[aria-pressed="true"] {
+  background: color-mix(in srgb, #ed4b25 10%, transparent);
+}
+
+.ordax-internet-assistance { padding-top: 13px; }
+.ordax-internet-ask-button {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, currentColor 13%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  text-align: left;
+}
+.ordax-internet-assistance > span { display: block; margin-top: 7px; font-size: 9px; line-height: 1.35; color: #5f5b54; }
+
+.ordax-internet-view button:focus-visible,
+.ordax-internet-project-panel button:focus-visible {
+  outline: 3px solid #9d2f18;
+  outline-offset: 2px;
+}
+
+@media (max-width: 1020px) {
+  .ordax-internet-body { grid-template-columns: 165px minmax(300px, 1fr); }
+  .ordax-internet-project-panel { display: none; }
+  .ordax-internet-toolbar [data-browser-action="more"] { display: none; }
+}
+
+@media (max-width: 760px) {
+  .ordax-internet-body { grid-template-columns: 1fr; }
+  .ordax-internet-sidebar { display: none; }
+  .ordax-internet-toolbar { grid-template-columns: 32px 32px 32px minmax(140px, 1fr); }
+  .ordax-internet-toolbar [data-browser-action="bookmark"],
+  .ordax-internet-toolbar [data-browser-action="downloads"] { display: none; }
+  .ordax-internet-home-links { grid-template-columns: 1fr; }
+}
+
+
+.ordax-internet-collection-row[data-browser-favorites-toggle]:not(:disabled) {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.ordax-internet-favorites-list {
+  display: grid;
+  gap: 4px;
+  padding: 2px 0 5px;
+}
+
+.ordax-internet-favorites-list[hidden] {
+  display: none;
+}
+
+.ordax-internet-favorite-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 3px;
+}
+
+.ordax-internet-favorite-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-favorite-open:hover,
+.ordax-internet-favorite-open:focus-visible {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.ordax-internet-favorite-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f5b54;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ordax-internet-favorite-remove:hover,
+.ordax-internet-favorite-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+}
+
+.ordax-internet-history {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.ordax-internet-history-list {
+  display: grid;
+  gap: 4px;
+  max-height: 290px;
+  overflow: auto;
+  padding: 2px 0 5px;
+}
+
+.ordax-internet-history-list[hidden] {
+  display: none;
+}
+
+.ordax-internet-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  color: #5f5b54;
+  font-size: 9px;
+}
+
+.ordax-internet-history-clear {
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: #9d2f18;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ordax-internet-history-clear:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.ordax-internet-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 3px;
+}
+
+.ordax-internet-history-open {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ordax-internet-history-open:hover,
+.ordax-internet-history-open:focus-visible {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.ordax-internet-history-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #5f5b54;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ordax-internet-history-remove:hover,
+.ordax-internet-history-remove:focus-visible {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+}
