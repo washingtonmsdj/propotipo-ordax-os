@@ -7,10 +7,15 @@ HOST_STATE_ROOT=${ORDAX_BASE_HOST_STATE_ROOT:-/state/ordax}
 INTERVAL=${ORDAX_BASE_INTERVAL_SECONDS:-30}
 MOUNTINFO_FILE=${ORDAX_BASE_MOUNTINFO_FILE:-/proc/self/mountinfo}
 MOUNT_STAGE_HOST=${ORDAX_BASE_MOUNT_STAGE_ROOT:-/run/ordax-base-owner}
+ESP_LABEL_PATH=${ORDAX_BASE_ESP_LABEL_PATH:-/dev/disk/by-label/ORDAX-ESP}
 PHYSICAL_MOUNT_HOST=
 PHYSICAL_BIND_HOST=
 PHYSICAL_MOUNT_CHROOT=/mnt/ordax-device
+ESP_MOUNT_HOST=
+ESP_BIND_HOST=
+ESP_MOUNT_CHROOT=/mnt/ordax-esp
 OWNER_STATE_CHROOT=
+OWNER_ESP_CHROOT=
 PREPARE_BLOCKER=
 LOG_PREFIX=ordax-base-update-agent
 
@@ -26,7 +31,7 @@ log() {
 write_preflight_status() {
     blocker=${1:-physical-root-unavailable}
     case "$blocker" in
-        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|mount-stage-conflict|mount-stage-failed|physical-mountpoint-conflict|physical-mount-failed|physical-bind-conflict|physical-bind-failed|development-state-missing|development-state-unsafe)
+        runtime-unavailable|owner-source-unavailable|repo-bind-unavailable|root-mount-unavailable|root-subpath-unsafe|root-filesystem-unsupported|root-source-unsafe|mount-stage-conflict|mount-stage-failed|physical-mountpoint-conflict|physical-mount-failed|physical-bind-conflict|physical-bind-failed|development-state-missing|development-state-unsafe|esp-label-unavailable|esp-device-unsafe|esp-mount-conflict|esp-mount-failed|esp-bind-conflict|esp-bind-failed)
             ;;
         *) blocker=physical-root-unavailable ;;
     esac
@@ -103,6 +108,124 @@ safe_block_source() {
         *'\\'*|*[!A-Za-z0-9_./:+-]*) return 1 ;;
     esac
     return 0
+}
+
+resolve_esp_source() {
+    [ -e "$ESP_LABEL_PATH" ] || {
+        PREPARE_BLOCKER=esp-label-unavailable
+        return 1
+    }
+    esp_source=$(/bin/busybox readlink -f "$ESP_LABEL_PATH" 2>/dev/null || true)
+    safe_block_source "$esp_source" || {
+        PREPARE_BLOCKER=esp-device-unsafe
+        return 1
+    }
+    [ -b "$esp_source" ] || {
+        PREPARE_BLOCKER=esp-device-unsafe
+        return 1
+    }
+    printf '%s' "$esp_source"
+}
+
+prepare_esp_mount() {
+    esp_source=$(resolve_esp_source) || return 1
+    ensure_mount_stage || return 1
+
+    ESP_MOUNT_HOST=$MOUNT_STAGE_HOST/esp
+    /bin/busybox mkdir -p "$ESP_MOUNT_HOST" || {
+        PREPARE_BLOCKER=esp-mount-failed
+        return 1
+    }
+
+    mounted=$(mount_record_for "$ESP_MOUNT_HOST")
+    if [ -n "$mounted" ]; then
+        mounted_root=""
+        mounted_fstype=""
+        mounted_source=""
+        old_ifs=$IFS
+        IFS='|'
+        read -r mounted_root mounted_fstype mounted_source <<EOF
+$mounted
+EOF
+        IFS=$old_ifs
+        if [ "$mounted_root" != "/" ] ||
+           [ "$mounted_fstype" != "vfat" ] ||
+           [ "$mounted_source" != "$esp_source" ]; then
+            PREPARE_BLOCKER=esp-mount-conflict
+            log "ESP mountpoint is occupied by an unexpected filesystem"
+            return 1
+        fi
+    else
+        if ! /bin/busybox mount -t vfat -o rw "$esp_source" "$ESP_MOUNT_HOST"; then
+            PREPARE_BLOCKER=esp-mount-failed
+            log "cannot mount ORDAX-ESP"
+            return 1
+        fi
+        mounted=$(mount_record_for "$ESP_MOUNT_HOST")
+        [ -n "$mounted" ] || {
+            PREPARE_BLOCKER=esp-mount-failed
+            log "ORDAX-ESP mount was not observable"
+            return 1
+        }
+    fi
+
+    ESP_BIND_HOST=$RUNTIME_ROOT$ESP_MOUNT_CHROOT
+    /bin/busybox mkdir -p "$ESP_BIND_HOST" || {
+        PREPARE_BLOCKER=esp-bind-failed
+        return 1
+    }
+    bound=$(mount_record_for "$ESP_BIND_HOST")
+    if [ -n "$bound" ]; then
+        bound_root=""
+        bound_fstype=""
+        bound_source=""
+        old_ifs=$IFS
+        IFS='|'
+        read -r bound_root bound_fstype bound_source <<EOF
+$bound
+EOF
+        IFS=$old_ifs
+        if [ "$bound_root" != "/" ] ||
+           [ "$bound_fstype" != "vfat" ] ||
+           [ "$bound_source" != "$esp_source" ]; then
+            PREPARE_BLOCKER=esp-bind-conflict
+            log "ORDAX-ESP chroot bind is occupied unexpectedly"
+            return 1
+        fi
+    else
+        if ! /bin/busybox mount -o bind "$ESP_MOUNT_HOST" "$ESP_BIND_HOST"; then
+            PREPARE_BLOCKER=esp-bind-failed
+            log "cannot bind ORDAX-ESP into graphical runtime"
+            return 1
+        fi
+        bound=$(mount_record_for "$ESP_BIND_HOST")
+        [ -n "$bound" ] || {
+            PREPARE_BLOCKER=esp-bind-failed
+            log "ORDAX-ESP chroot bind was not observable"
+            return 1
+        }
+    fi
+
+    OWNER_ESP_CHROOT=$ESP_MOUNT_CHROOT
+    return 0
+}
+
+cleanup_owner_mounts() {
+    [ -n "$ESP_BIND_HOST" ] &&
+        /bin/busybox umount "$ESP_BIND_HOST" >/dev/null 2>&1 || true
+    [ -n "$PHYSICAL_BIND_HOST" ] &&
+        /bin/busybox umount "$PHYSICAL_BIND_HOST" >/dev/null 2>&1 || true
+    [ -n "$ESP_MOUNT_HOST" ] &&
+        /bin/busybox umount "$ESP_MOUNT_HOST" >/dev/null 2>&1 || true
+    [ -n "$PHYSICAL_MOUNT_HOST" ] &&
+        /bin/busybox umount "$PHYSICAL_MOUNT_HOST" >/dev/null 2>&1 || true
+    /bin/busybox umount "$MOUNT_STAGE_HOST" >/dev/null 2>&1 || true
+}
+
+terminate_owner() {
+    trap - EXIT HUP INT TERM
+    cleanup_owner_mounts
+    exit 0
 }
 
 ensure_mount_stage() {
@@ -273,6 +396,9 @@ EOF
     return 0
 }
 
+trap cleanup_owner_mounts EXIT
+trap terminate_owner HUP INT TERM
+
 while :; do
     if [ ! -x "$RUNTIME_ROOT/usr/bin/python3" ]; then
         write_preflight_status runtime-unavailable
@@ -280,7 +406,7 @@ while :; do
         write_preflight_status owner-source-unavailable
     elif [ ! -d "$RUNTIME_ROOT/srv/ordax-repo" ]; then
         write_preflight_status repo-bind-unavailable
-    elif prepare_physical_root; then
+    elif prepare_physical_root && prepare_esp_mount; then
         source_sha=""
         if [ -x /usr/bin/git ]; then
             source_sha=$(/usr/bin/git -C "$HOST_REPO_ROOT" rev-parse HEAD 2>/dev/null || true)
@@ -298,6 +424,8 @@ while :; do
             --repo-root /srv/ordax-repo \
             --state-root "$OWNER_STATE_CHROOT" \
             --physical-root "$PHYSICAL_MOUNT_CHROOT" \
+            --esp-root "$OWNER_ESP_CHROOT" \
+            --efivarfs-root /sys/firmware/efi/efivars \
             >/dev/null 2>&1 || true
     else
         write_preflight_status "${PREPARE_BLOCKER:-physical-root-unavailable}"
