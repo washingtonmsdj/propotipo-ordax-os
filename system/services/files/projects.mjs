@@ -3,6 +3,7 @@ import {
   PROJECT_CATALOG_SCHEMA,
   assertProjectCatalogPort,
   validateProjectCatalogSnapshot,
+  validateProjectFilePath,
   validateProjectId,
   validateProjectName,
   validateProjectPath,
@@ -29,7 +30,8 @@ function sameProjects(left, right) {
       && project.name === candidate.name
       && project.path === candidate.path
       && project.createdAt === candidate.createdAt
-      && project.lastOpenedAt === candidate.lastOpenedAt;
+      && project.lastOpenedAt === candidate.lastOpenedAt
+      && project.lastFilePath === candidate.lastFilePath;
   });
 }
 
@@ -114,6 +116,7 @@ export function createProjectCatalogRuntime({ store = null, now = Date.now } = {
         path: validatedPath,
         createdAt: timestamp,
         lastOpenedAt: timestamp,
+        lastFilePath: null,
       });
       replaceState({
         nextOrdinal: state.nextOrdinal + 1,
@@ -146,6 +149,28 @@ export function createProjectCatalogRuntime({ store = null, now = Date.now } = {
       }
       const timestamp = Math.max(readClock(now), existing.lastOpenedAt, existing.createdAt);
       const updated = Object.freeze({ ...existing, lastOpenedAt: timestamp });
+      replaceState({
+        nextOrdinal: state.nextOrdinal,
+        projects: [
+          updated,
+          ...state.projects.filter((project) => project.id !== projectId),
+        ],
+      });
+      return getSnapshot();
+    },
+    recordFileOpened(id, filePath) {
+      const projectId = validateProjectId(id);
+      const existing = state.projects.find((project) => project.id === projectId);
+      if (!existing) {
+        throw new TypeError("Project id is not registered");
+      }
+      const validatedFilePath = validateProjectFilePath(existing.path, filePath);
+      const timestamp = Math.max(readClock(now), existing.lastOpenedAt, existing.createdAt);
+      const updated = Object.freeze({
+        ...existing,
+        lastOpenedAt: timestamp,
+        lastFilePath: validatedFilePath,
+      });
       replaceState({
         nextOrdinal: state.nextOrdinal,
         projects: [
