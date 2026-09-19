@@ -571,17 +571,6 @@
   border-bottom-color: var(--ordax-border);
 }
 
-.ordax-notes-quote {
-  margin: 28px 0 0;
-  padding: 13px 18px;
-  border-left: 3px solid var(--notes-accent);
-  border-radius: 4px;
-  background: var(--notes-soft);
-  color: var(--ordax-text);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 0.92rem;
-  font-style: italic;
-}
 
 .ordax-notes-empty {
   display: grid;
