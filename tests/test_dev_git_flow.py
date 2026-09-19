@@ -391,6 +391,85 @@ class DevelopmentGitFlowTest(unittest.TestCase):
         boot_metrics = (self.state / "boot-last.tsv").read_text(encoding="utf-8")
         self.assertTrue(boot_metrics.startswith("fast-local\t"))
 
+    def test_seed_boot_does_not_require_or_create_version_store(self) -> None:
+        self._script(PULL)
+
+        bin_dir = self.root / "seed-boot-bin"
+        bin_dir.mkdir()
+        (bin_dir / "ordax-network").write_text(
+            "#!/bin/sh\nexit 0\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-run").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{RUN}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-rollback").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{ROLLBACK}'\n",
+            encoding="utf-8",
+        )
+        for helper in bin_dir.iterdir():
+            helper.chmod(0o755)
+
+        versions = self.root / "versions"
+        cmdline = self.root / "cmdline"
+        cmdline.write_text("quiet splash\n", encoding="utf-8")
+        env = self._env()
+        env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+                "ORDAX_DEV_VERSION_ROOT": str(versions),
+                "ORDAX_CMDLINE_FILE": str(cmdline),
+            }
+        )
+
+        result = self._script(DEV_INIT, env=env)
+
+        self.assertIn("runtime-v1", result.stdout)
+        self.assertFalse(versions.exists())
+
+    def test_unmapped_ab_slot_falls_back_to_seed_rootfs(self) -> None:
+        self._script(PULL)
+
+        bin_dir = self.root / "slot-fallback-bin"
+        bin_dir.mkdir()
+        (bin_dir / "ordax-network").write_text(
+            "#!/bin/sh\nexit 0\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-run").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{RUN}'\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "ordax-rollback").write_text(
+            f"#!/bin/sh\nexec /bin/sh '{ROLLBACK}'\n",
+            encoding="utf-8",
+        )
+        for helper in bin_dir.iterdir():
+            helper.chmod(0o755)
+
+        versions = self.root / "versions"
+        cmdline = self.root / "cmdline"
+        cmdline.write_text("quiet ordax.base_slot=a\n", encoding="utf-8")
+        env = self._env()
+        env.update(
+            {
+                "ORDAX_BIN_DIR": str(bin_dir),
+                "ORDAX_WORKSPACE_DIR": str(self.worktree.parent),
+                "ORDAX_NETWORK_STATE_DIR": str(self.root / "state/network"),
+                "ORDAX_DEV_VERSION_ROOT": str(versions),
+                "ORDAX_CMDLINE_FILE": str(cmdline),
+            }
+        )
+
+        result = self._script(DEV_INIT, env=env)
+
+        self.assertIn("runtime-v1", result.stdout)
+        self.assertTrue(versions.is_dir())
+        self.assertFalse((self.state / "base-update/rootfs/slot-a").exists())
+
     def test_bootstrap_network_and_git_fail_soft_but_bounded(self) -> None:
         network = NETWORK.read_text(encoding="utf-8")
         pull = PULL.read_text(encoding="utf-8")
