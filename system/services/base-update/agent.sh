@@ -342,7 +342,7 @@ discover_esp_read_only() {
     }
 
     directory=${ESP_DISCOVERY_FILE%/*}
-    temporary=$ESP_DISCOVERY_FILE.tmp.$
+    temporary=$(/bin/busybox mktemp "$directory/.esp-discovery.XXXXXX") || return 0
     /bin/busybox mkdir -p "$directory" >/dev/null 2>&1 || return 0
 
     if /bin/busybox chroot "$RUNTIME_ROOT" /usr/bin/python3 "$discovery" --root-source "$PHYSICAL_ROOT_SOURCE" >"$temporary" 2>/dev/null
