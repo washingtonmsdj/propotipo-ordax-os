@@ -38,7 +38,7 @@ import { createProjectWebReferenceRuntime } from "../../services/projects/web-re
 import { createProjectContinuityFileSpace } from "../../services/files/project-continuity-file-space.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createUpdateNotificationBridge } from "../../services/notifications/update-bridge.mjs";
-import { createNotesRuntime } from "../../services/notes/runtime.mjs";
+import { createNotesRuntime } from "../../apps/notes/runtime.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -48,7 +48,7 @@ import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
 import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
-import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
+import { mountNotesWorkspaceControls } from "../../apps/notes/ui/workspace-controls.mjs";
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountHomeContinuation } from "../../surface/ui/home-continuation.mjs";
