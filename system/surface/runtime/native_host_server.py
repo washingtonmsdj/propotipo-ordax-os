@@ -1493,15 +1493,19 @@ def read_user_image_preview(
     logical_path: str,
     max_bytes: int = MAX_IMAGE_PREVIEW_BYTES,
 ) -> tuple[str, str, bytes]:
+    if not valid_logical_file_path(logical_path) or logical_path == "/":
+        raise ValueError("invalid image preview path")
+    requested_name = logical_path.rsplit("/", 1)[-1]
+    extension = os.path.splitext(requested_name)[1].lower()
+    mime = IMAGE_PREVIEW_TYPES.get(extension)
+    if mime is None:
+        raise FileSpaceImagePreviewTypeError("unsupported image preview type")
+
     name, payload = read_user_export_file(
         user_root,
         logical_path,
         max_bytes=max_bytes,
     )
-    extension = os.path.splitext(name)[1].lower()
-    mime = IMAGE_PREVIEW_TYPES.get(extension)
-    if mime is None:
-        raise FileSpaceImagePreviewTypeError("unsupported image preview type")
     return name, mime, payload
 
 
