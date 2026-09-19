@@ -103,12 +103,52 @@ function blockTypeFor(element) {
   return "paragraph";
 }
 
+function coalesceMarks(marks) {
+  const merged = [];
+  for (const mark of marks) {
+    const previous = merged[merged.length - 1];
+    if (
+      previous
+      && previous.type === mark.type
+      && previous.href === mark.href
+      && mark.start <= previous.end
+    ) {
+      previous.end = Math.max(previous.end, mark.end);
+    } else if (
+      previous
+      && previous.type === mark.type
+      && previous.href === mark.href
+      && mark.start === previous.end
+    ) {
+      previous.end = mark.end;
+    } else {
+      merged.push({ ...mark });
+    }
+  }
+  return merged;
+}
+
 function serializeBlock(element, type = blockTypeFor(element)) {
   const inline = readInlineContent(element);
+  const rootMark = markDescriptor(element);
+  if (rootMark && inline.text.length > 0) {
+    inline.marks.push({
+      type: rootMark.type,
+      start: 0,
+      end: inline.text.length,
+      href: rootMark.href,
+    });
+  }
+  inline.marks.sort((left, right) => (
+    left.type.localeCompare(right.type)
+    || left.href.localeCompare(right.href)
+    || left.start - right.start
+    || left.end - right.end
+  ));
   return {
     type: BLOCK_TYPES.has(type) ? type : "paragraph",
     text: inline.text,
-    marks: inline.marks,
+    marks: coalesceMarks(inline.marks),
   };
 }
 
@@ -228,11 +268,7 @@ function fallbackWrapSelection(editor, tagName, attributes = {}) {
 }
 
 function dispatchEditorInput(editor) {
-  editor.dispatchEvent(new InputEvent("input", {
-    bubbles: true,
-    inputType: "formatBackColor",
-    data: null,
-  }));
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 export function createNotesRichEditor(documentObject) {
