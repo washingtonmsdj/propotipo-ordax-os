@@ -68,29 +68,44 @@ export const componentRuntime = Object.freeze({
       throw new TypeError("Internet createHistoryStore must be a function or null");
     }
     const releaseStyles = await mountInternetStyles(root);
+    let favorites = null;
+    let history = null;
+    let historyBridge = null;
+    let controls = null;
+    let shortcuts = null;
+
+    const cleanup = () => {
+      shortcuts?.destroy();
+      controls?.destroy();
+      historyBridge?.destroy();
+      history?.destroy();
+      favorites?.destroy();
+      releaseStyles();
+    };
+
     try {
       const favoritesStore = createFavoritesStore?.() ?? null;
       const historyStore = createHistoryStore?.() ?? null;
-      const favorites = favoritesStore === null
+      favorites = favoritesStore === null
         ? null
         : createBrowserFavoritesRuntime({ store: favoritesStore });
-      const history = historyStore === null
+      history = historyStore === null
         ? null
         : createBrowserHistoryRuntime({ store: historyStore });
-      const historyBridge = history === null
+      historyBridge = history === null
         ? null
         : createBrowserHistoryBridge(browserSession, history, {
             onError(error) {
               reportDiagnostic?.("internet-history", error);
             },
           });
-      const controls = mountInternetBrowserControls(
+      controls = mountInternetBrowserControls(
         root,
         browserSession,
         surfaceLifecycle,
         { projects, projectReferences, favorites, history },
       );
-      const shortcuts = enableShortcuts
+      shortcuts = enableShortcuts
         ? mountInternetBrowserShortcuts(root, browserSession)
         : null;
       let destroyed = false;
@@ -99,16 +114,11 @@ export const componentRuntime = Object.freeze({
         destroy() {
           if (destroyed) return;
           destroyed = true;
-          shortcuts?.destroy();
-          controls.destroy();
-          historyBridge?.destroy();
-          history?.destroy();
-          favorites?.destroy();
-          releaseStyles();
+          cleanup();
         },
       });
     } catch (error) {
-      releaseStyles();
+      cleanup();
       throw error;
     }
   },
