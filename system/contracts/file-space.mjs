@@ -3,6 +3,16 @@ export const MAX_TEXT_FILE_BYTES = 256 * 1024;
 export const MAX_FILE_COPY_BYTES = 64 * 1024 * 1024;
 export const MAX_FILE_EXPORT_BYTES = 64 * 1024 * 1024;
 export const MAX_FILE_IMPORT_BYTES = 64 * 1024 * 1024;
+export const MAX_IMAGE_PREVIEW_BYTES = 8 * 1024 * 1024;
+
+const IMAGE_PREVIEW_MIME_TYPES = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
 const ENTRY_KINDS = new Set(["file", "directory"]);
 
@@ -73,6 +83,28 @@ export function validateTextFile(value) {
     throw new TypeError("Text-file content must be valid text");
   }
   return Object.freeze({ path, size: value.size, text: value.text });
+}
+
+export function validateImagePreview(value) {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("Image-preview payload must be an object");
+  }
+  const path = validateFileSpacePath(value.path);
+  if (!Number.isInteger(value.size) || value.size < 0 || value.size > MAX_IMAGE_PREVIEW_BYTES) {
+    throw new TypeError("Image-preview size is outside the preview boundary");
+  }
+  if (!IMAGE_PREVIEW_MIME_TYPES.has(value.mime)) {
+    throw new TypeError("Image-preview MIME type is unsupported");
+  }
+  if (!(value.bytes instanceof Uint8Array) || value.bytes.byteLength !== value.size) {
+    throw new TypeError("Image-preview bytes must match the declared size");
+  }
+  return Object.freeze({
+    path,
+    size: value.size,
+    mime: value.mime,
+    bytes: value.bytes,
+  });
 }
 
 export function assertFileSpacePort(port) {
