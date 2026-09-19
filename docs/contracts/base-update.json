@@ -151,9 +151,10 @@
     "initial_supported_migration": {
       "from_sha256": [
         "9d76eec25ba07c436b21aa59ea88b5c972e531ebd8ec345cf10aa590fb8122f4",
-        "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0"
+        "19f36d913321d9f073717f335b52d6850856cca6c98fa4dec4136738b6ff35e0",
+        "74a03bd9901c33b7281d529fb0d379a735d20b5ef7495e0af2f73ca2ff40c90e"
       ],
-      "to_sha256": "74a03bd9901c33b7281d529fb0d379a735d20b5ef7495e0af2f73ca2ff40c90e"
+      "to_sha256": "adf432353eeb31dcca9669d23690abb130f222e3366d0665d5f4e1fb1da37405"
     },
     "unknown_installed_hash": "block",
     "replacement": "same-directory-temp-fsync-atomic-replace",
@@ -164,7 +165,9 @@
     "absent_agent_enrollment": true,
     "absent_agent_enrollment_requires_explicit_descriptor_gate": true,
     "existing_unknown_hash_still_blocks": true,
-    "target_persists_verified_envelope": true
+    "target_persists_verified_envelope": true,
+    "physical_baseline_may_lag_refresh_target": true,
+    "physical_baseline_hash_must_be_allowed_from": true
   },
   "runtime_owner": {
     "development_host_state_root": "/state/ordax",
