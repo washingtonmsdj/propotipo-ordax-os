@@ -2,8 +2,8 @@ import { COMPONENT_RUNTIME_SCHEMA } from "../../contracts/component-runtime.mjs"
 import { createBrowserFavoritesRuntime } from "../../services/internet/favorites.mjs";
 import { createBrowserHistoryRuntime } from "../../services/internet/history.mjs";
 import { createBrowserHistoryBridge } from "../../services/internet/history-bridge.mjs";
-import { mountInternetBrowserControls } from "../../surface/ui/internet-browser-controls.mjs";
-import { mountInternetBrowserShortcuts } from "../../surface/ui/internet-browser-shortcuts.mjs";
+import { mountInternetBrowserControls } from "./ui/browser-controls.mjs";
+import { mountInternetBrowserShortcuts } from "./ui/browser-shortcuts.mjs";
 
 const INTERNET_STYLESHEET_URL = new URL("./internet.css", import.meta.url).href;
 const INTERNET_STYLE_SELECTOR = 'link[data-ordax-component-style="internet"]';
@@ -49,7 +49,7 @@ async function mountInternetStyles(root) {
 export const componentRuntime = Object.freeze({
   schema: COMPONENT_RUNTIME_SCHEMA,
   componentId: "internet",
-  version: "0.3.0",
+  version: "0.4.0",
   async mount({
     root,
     browserSession,
