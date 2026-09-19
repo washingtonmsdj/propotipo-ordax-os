@@ -56,7 +56,12 @@ jobs:
       - name: Install disposable FAT32 proof dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends dosfstools util-linux
+          sudo apt-get install -y --no-install-recommends dosfstools e2fsprogs fdisk util-linux
+
+      - name: Prove read-only ESP preflight on a disposable same-disk layout
+        run: |
+          bash bootstrap/base-update/prove_esp_readonly_preflight.sh \
+            out/base-update/esp-readonly-preflight-proof.json
 
       - name: Run base update regressions
         run: |
@@ -141,5 +146,6 @@ jobs:
           path: |
             out/base-update/fat32-staging-proof.json
             out/base-update/signed-fat32-staging-proof.json
+            out/base-update/esp-readonly-preflight-proof.json
           if-no-files-found: error
           retention-days: 14
