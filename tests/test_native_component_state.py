@@ -15,6 +15,7 @@ MANIFEST = ROOT / "system" / "contracts" / "component-manifest.mjs"
 STATE_STORE = ROOT / "system" / "contracts" / "component-state-store.mjs"
 MANAGER_CONTRACT = ROOT / "system" / "contracts" / "component-manager.mjs"
 CATALOG = ROOT / "system" / "services" / "components" / "catalog.mjs"
+APP_MANIFESTS = ROOT / "system" / "services" / "components" / "manifests" / "apps.mjs"
 MANAGER = ROOT / "system" / "services" / "components" / "manager.mjs"
 SYSTEM_VIEW = ROOT / "system" / "surface" / "ui" / "system-overview-controls.mjs"
 
@@ -65,6 +66,10 @@ class NativeComponentStateTests(unittest.TestCase):
         self.assertIn("read_component_state_payload", text)
         self.assertIn("write_component_state_payload", text)
         self.assertIn("if self.path == COMPONENT_STATE_PATH:", text)
+        self.assertIn(
+            "{SYNC_STATE_PATH, NOTES_PATH, COMPONENT_STATE_PATH}",
+            text,
+        )
         self.assertNotIn("Access-Control-Allow-Origin", text)
 
     def test_component_manager_preserves_platform_boundaries(self):
@@ -72,6 +77,7 @@ class NativeComponentStateTests(unittest.TestCase):
         state = STATE_STORE.read_text(encoding="utf-8")
         contract = MANAGER_CONTRACT.read_text(encoding="utf-8")
         catalog = CATALOG.read_text(encoding="utf-8")
+        app_manifests = APP_MANIFESTS.read_text(encoding="utf-8")
         manager = MANAGER.read_text(encoding="utf-8")
         adapter = NATIVE_ADAPTER.read_text(encoding="utf-8")
         native = NATIVE_MAIN.read_text(encoding="utf-8")
@@ -85,8 +91,11 @@ class NativeComponentStateTests(unittest.TestCase):
         self.assertIn("dependency cycle", manifest)
         self.assertIn('ordax.component-state/1', state)
         self.assertIn('ordax.component-manager/1', contract)
-        self.assertIn("listFirstPartyApps", catalog)
-        self.assertIn("app.component", catalog)
+        self.assertIn("appComponentManifests", catalog)
+        self.assertIn("coreComponentManifests", catalog)
+        self.assertNotIn("system/apps", catalog)
+        self.assertIn('id: "internet"', app_manifests)
+        self.assertIn('owner: "system/apps/internet"', app_manifests)
         self.assertIn("stageCandidate", manager)
         self.assertIn("markPendingHealthy", manager)
         self.assertIn("promotePending", manager)
