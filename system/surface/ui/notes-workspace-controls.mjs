@@ -2,7 +2,6 @@ import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
 import {
   assertFileSpacePort,
   validateFileSpacePath,
-  validateImagePreview,
 } from "../../contracts/file-space.mjs";
 import {
   MAX_NOTES,
@@ -14,6 +13,12 @@ import {
   NOTES_HOME_PROJECT_ID,
   assertNotesRuntime,
 } from "../../services/notes/runtime.mjs";
+import {
+  createNotesImagePreviewCache,
+  isNotesImageFileName,
+  isNotesImageReference,
+  notesImageReferenceKey,
+} from "./notes-image-previews.mjs";
 import {
   applyNotesRichLink,
   captureNotesRichSelection,
@@ -36,7 +41,6 @@ const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
 const SAVE_DELAY_MS = 320;
 const WEB_PROTOCOLS = Object.freeze(["http:", "https:"]);
-const IMAGE_FILE_RE = /\.(?:avif|bmp|gif|jpe?g|png|webp)$/i;
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 
 function node(documentObject, tag, className, text) {
@@ -344,8 +348,6 @@ export function mountNotesWorkspaceControls(
   let mountedSlot = null;
   let saveTimer = null;
   let pendingNoteId = null;
-  const imagePreviews = new Map();
-  let imagePreviewOrdinal = 0;
   let destroyed = false;
 
   const currentNote = () => {
@@ -412,97 +414,10 @@ export function mountNotesWorkspaceControls(
     filePickerOrdinal += 1;
   };
 
-  const imageReferenceKey = (noteId, reference) => `${noteId}:${reference.id}`;
-
-  const isImageReference = (reference) => (
-    reference?.kind === "file"
-    && reference.detail === "Imagem local"
-    && IMAGE_FILE_RE.test(reference.path ?? reference.title ?? "")
-  );
-
-  const revokeImagePreview = (entry) => {
-    if (!entry?.url) return;
-    windowObject.URL?.revokeObjectURL?.(entry.url);
-  };
-
-  const releaseImagePreviewsExcept = (activeKeys = new Set()) => {
-    for (const [key, entry] of imagePreviews) {
-      if (activeKeys.has(key)) continue;
-      revokeImagePreview(entry);
-      imagePreviews.delete(key);
-    }
-  };
-
-  const releaseAllImagePreviews = () => {
-    for (const entry of imagePreviews.values()) revokeImagePreview(entry);
-    imagePreviews.clear();
-    imagePreviewOrdinal += 1;
-  };
-
-  const loadImagePreview = async (noteId, reference) => {
-    if (
-      destroyed
-      || !filePort
-      || typeof filePort.readImagePreview !== "function"
-      || !reference?.path
-    ) {
-      return;
-    }
-    const key = imageReferenceKey(noteId, reference);
-    const requestId = ++imagePreviewOrdinal;
-    imagePreviews.set(key, {
-      path: reference.path,
-      status: "loading",
-      requestId,
-      url: "",
-      mime: "",
-    });
-    try {
-      const preview = validateImagePreview(await filePort.readImagePreview(reference.path));
-      const current = imagePreviews.get(key);
-      if (destroyed || !current || current.requestId !== requestId || current.path !== reference.path) {
-        return;
-      }
-
-      const createObjectURL = windowObject.URL?.createObjectURL?.bind(windowObject.URL);
-      const BlobCtor = windowObject.Blob;
-      if (typeof createObjectURL !== "function" || typeof BlobCtor !== "function") {
-        throw new TypeError("Image preview requires browser object URLs");
-      }
-      const url = createObjectURL(new BlobCtor([preview.bytes], { type: preview.mime }));
-      const activeNote = currentNote();
-      const stillRelated = activeNote?.id === noteId
-        && activeNote.references.some((candidate) => (
-          candidate.id === reference.id
-          && candidate.path === reference.path
-          && isImageReference(candidate)
-        ));
-      if (!stillRelated || destroyed) {
-        windowObject.URL?.revokeObjectURL?.(url);
-        return;
-      }
-
-      imagePreviews.set(key, {
-        path: reference.path,
-        status: "ready",
-        requestId,
-        url,
-        mime: preview.mime,
-      });
-    } catch {
-      const current = imagePreviews.get(key);
-      if (!destroyed && current?.requestId === requestId) {
-        imagePreviews.set(key, {
-          path: reference.path,
-          status: "failed",
-          requestId,
-          url: "",
-          mime: "",
-        });
-      }
-    }
-    if (!destroyed) render();
-  };
+  const imagePreviewCache = createNotesImagePreviewCache({
+    fileSpace: filePort,
+    windowRef: windowObject,
+  });
 
   const loadFilePicker = async (path) => {
     if (!filePort) return;
@@ -642,21 +557,15 @@ export function mountNotesWorkspaceControls(
 
   const renderInlineMedia = (view, note) => {
     const media = view.querySelector("[data-notes-inline-media]");
-    const references = note.references.filter(isImageReference);
-    const activeKeys = new Set(references.map((reference) => imageReferenceKey(note.id, reference)));
-    releaseImagePreviewsExcept(activeKeys);
+    const references = note.references.filter(isNotesImageReference);
+    const activeKeys = new Set(references.map((reference) => notesImageReferenceKey(note.id, reference)));
+    imagePreviewCache.releaseExcept(activeKeys);
     media.replaceChildren();
     media.hidden = references.length === 0;
     if (references.length === 0) return;
 
     for (const reference of references) {
-      const key = imageReferenceKey(note.id, reference);
-      let preview = imagePreviews.get(key);
-      if (preview && preview.path !== reference.path) {
-        revokeImagePreview(preview);
-        imagePreviews.delete(key);
-        preview = null;
-      }
+      const preview = imagePreviewCache.get(note.id, reference);
 
       const figure = node(documentObject, "figure", "ordax-notes-inline-image");
       figure.dataset.referenceId = reference.id;
@@ -671,14 +580,28 @@ export function mountNotesWorkspaceControls(
         image.draggable = false;
         frame.append(image);
       } else {
-        const message = !filePort || typeof filePort.readImagePreview !== "function"
+        const message = !imagePreviewCache.available
           ? "Prévia disponível no OrdaX Native."
           : preview?.status === "failed"
             ? "Não foi possível carregar a prévia. O arquivo continua relacionado."
             : "Carregando imagem…";
         frame.append(node(documentObject, "span", "ordax-notes-inline-image-placeholder", message));
-        if (!preview && filePort && typeof filePort.readImagePreview === "function") {
-          void loadImagePreview(note.id, reference);
+        if (!preview && imagePreviewCache.available) {
+          void imagePreviewCache.ensure(
+            note.id,
+            reference,
+            () => {
+              const activeNote = currentNote();
+              return activeNote?.id === note.id
+                && activeNote.references.some((candidate) => (
+                  candidate.id === reference.id
+                  && candidate.path === reference.path
+                  && isNotesImageReference(candidate)
+                ));
+            },
+          ).finally(() => {
+            if (!destroyed) render();
+          });
         }
       }
 
@@ -807,7 +730,7 @@ export function mountNotesWorkspaceControls(
         .filter((entry) => (
           filePickerPurpose !== "image"
           || entry.kind === "directory"
-          || IMAGE_FILE_RE.test(entry.name)
+          || isNotesImageFileName(entry.name)
         ))
         .sort((a, b) => {
           if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
@@ -1041,7 +964,7 @@ export function mountNotesWorkspaceControls(
     renderCapacityControls(view, note);
 
     if (!note) {
-      releaseImagePreviewsExcept(new Set());
+      imagePreviewCache.releaseExcept(new Set());
       empty.hidden = false;
       documentView.hidden = true;
       view.querySelector(".ordax-notes-breadcrumb").textContent = `${modeLabel()}  /  Notas`;
@@ -1098,7 +1021,7 @@ export function mountNotesWorkspaceControls(
     const windowNode = root.querySelector(NOTES_WINDOW_SELECTOR);
     const slot = windowNode?.querySelector(NOTES_EXTENSION_SELECTOR) ?? null;
     if (!slot) {
-      releaseAllImagePreviews();
+      imagePreviewCache.clear();
       mountedSlot = null;
       return;
     }
@@ -1625,7 +1548,7 @@ export function mountNotesWorkspaceControls(
     destroy() {
       destroyed = true;
       filePickerOrdinal += 1;
-      releaseAllImagePreviews();
+      imagePreviewCache.destroy();
       flushEditor();
       unsubscribeRuntime?.();
       unsubscribeRender?.();
