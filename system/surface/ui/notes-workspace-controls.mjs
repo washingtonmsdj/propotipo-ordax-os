@@ -1,8 +1,5 @@
 import { assertAppActivationPort } from "../../contracts/app-activation.mjs";
-import {
-  assertFileSpacePort,
-  validateFileSpacePath,
-} from "../../contracts/file-space.mjs";
+import { assertFileSpacePort } from "../../contracts/file-space.mjs";
 import {
   MAX_NOTES,
   MAX_NOTE_PROJECTS,
@@ -19,6 +16,11 @@ import {
   isNotesImageReference,
   notesImageReferenceKey,
 } from "./notes-image-previews.mjs";
+import {
+  createNotesFilePicker,
+  joinNotesLogicalPath,
+  notesParentLogicalPath,
+} from "./notes-file-picker.mjs";
 import {
   firstNotesBodyLine,
   formatNotesRelativeTime,
@@ -289,14 +291,6 @@ export function mountNotesWorkspaceControls(
   let projectMenuId = null;
   let referenceChooserOpen = false;
   let referenceNoteId = null;
-  let filePickerOpen = false;
-  let filePickerPath = "/";
-  let filePickerListing = null;
-  let filePickerPending = false;
-  let filePickerError = "";
-  let filePickerPurpose = "file";
-  let selectedFilePath = null;
-  let filePickerOrdinal = 0;
   let lastEditorRange = null;
   let mountedSlot = null;
   let saveTimer = null;
@@ -357,47 +351,18 @@ export function mountNotesWorkspaceControls(
     }, SAVE_DELAY_MS);
   };
 
+  const filePicker = createNotesFilePicker({ fileSpace: filePort });
+
   const resetReferenceFlow = () => {
     referenceChooserOpen = false;
     referenceNoteId = null;
-    filePickerOpen = false;
-    filePickerListing = null;
-    filePickerPending = false;
-    filePickerError = "";
-    filePickerPurpose = "file";
-    selectedFilePath = null;
-    filePickerOrdinal += 1;
+    filePicker.close();
   };
 
   const imagePreviewCache = createNotesImagePreviewCache({
     fileSpace: filePort,
     windowRef: windowObject,
   });
-
-  const loadFilePicker = async (path) => {
-    if (!filePort) return;
-    const target = validateFileSpacePath(path);
-    const ordinal = ++filePickerOrdinal;
-    filePickerPending = true;
-    filePickerError = "";
-    selectedFilePath = null;
-    render();
-    try {
-      const listing = await filePort.list(target);
-      if (ordinal !== filePickerOrdinal) return;
-      filePickerListing = listing;
-      filePickerPath = listing.path;
-    } catch {
-      if (ordinal !== filePickerOrdinal) return;
-      filePickerListing = null;
-      filePickerError = "Não foi possível abrir esta pasta.";
-    } finally {
-      if (ordinal === filePickerOrdinal) {
-        filePickerPending = false;
-        render();
-      }
-    }
-  };
 
   const renderProjects = (view) => {
     const projects = view.querySelector(".ordax-notes-projects");
@@ -635,11 +600,13 @@ export function mountNotesWorkspaceControls(
 
   const renderReferenceControls = (view, note) => {
     const readOnly = note.deletedAt !== null;
+    let pickerState = filePicker.getSnapshot();
     if (
       (referenceNoteId !== null && referenceNoteId !== note.id)
-      || (readOnly && (referenceChooserOpen || filePickerOpen))
+      || (readOnly && (referenceChooserOpen || pickerState.open))
     ) {
       resetReferenceFlow();
+      pickerState = filePicker.getSnapshot();
     }
     const choices = view.querySelector("[data-notes-reference-choices]");
     choices.hidden = !referenceChooserOpen;
@@ -662,9 +629,9 @@ export function mountNotesWorkspaceControls(
           : "Arquivos locais estão disponíveis no OrdaX Native";
 
     const picker = view.querySelector("[data-notes-file-picker]");
-    picker.hidden = !filePickerOpen;
+    picker.hidden = !pickerState.open;
     picker.replaceChildren();
-    if (!filePickerOpen) return;
+    if (!pickerState.open) return;
 
     const header = node(documentObject, "header", "ordax-notes-file-picker-header");
     const heading = node(documentObject, "div", "ordax-notes-file-picker-heading");
@@ -673,9 +640,9 @@ export function mountNotesWorkspaceControls(
         documentObject,
         "strong",
         "",
-        filePickerPurpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
+        pickerState.purpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
       ),
-      node(documentObject, "small", "", filePickerPath),
+      node(documentObject, "small", "", pickerState.path),
     );
     header.append(
       heading,
@@ -685,19 +652,19 @@ export function mountNotesWorkspaceControls(
 
     const navigation = node(documentObject, "div", "ordax-notes-file-picker-nav");
     const up = button(documentObject, "ordax-notes-file-picker-up", "Subir uma pasta", "file-picker-up", "↑  Pasta acima");
-    up.disabled = filePickerPath === "/" || filePickerPending;
+    up.disabled = pickerState.path === "/" || pickerState.pending;
     navigation.append(up);
     picker.append(navigation);
 
     const list = node(documentObject, "div", "ordax-notes-file-picker-list");
-    if (filePickerPending) {
+    if (pickerState.pending) {
       list.append(node(documentObject, "p", "ordax-notes-file-picker-message", "Carregando arquivos…"));
-    } else if (filePickerError) {
-      list.append(node(documentObject, "p", "ordax-notes-file-picker-message", filePickerError));
-    } else if (filePickerListing) {
-      const entries = [...filePickerListing.entries]
+    } else if (pickerState.error) {
+      list.append(node(documentObject, "p", "ordax-notes-file-picker-message", pickerState.error));
+    } else if (pickerState.listing) {
+      const entries = [...pickerState.listing.entries]
         .filter((entry) => (
-          filePickerPurpose !== "image"
+          pickerState.purpose !== "image"
           || entry.kind === "directory"
           || isNotesImageFileName(entry.name)
         ))
@@ -709,7 +676,7 @@ export function mountNotesWorkspaceControls(
         list.append(node(documentObject, "p", "ordax-notes-file-picker-message", "Esta pasta está vazia."));
       }
       for (const entry of entries) {
-        const fullPath = joinLogicalPath(filePickerListing.path, entry.name);
+        const fullPath = joinNotesLogicalPath(pickerState.listing.path, entry.name);
         const action = entry.kind === "directory" ? "file-picker-open-directory" : "file-picker-select-file";
         const row = button(
           documentObject,
@@ -720,7 +687,7 @@ export function mountNotesWorkspaceControls(
         );
         row.dataset.filePath = fullPath;
         row.dataset.kind = entry.kind;
-        row.dataset.selected = String(entry.kind === "file" && selectedFilePath === fullPath);
+        row.dataset.selected = String(entry.kind === "file" && pickerState.selectedPath === fullPath);
         row.append(
           node(documentObject, "span", "ordax-notes-file-picker-icon", entry.kind === "directory" ? "□" : "▱"),
           node(documentObject, "span", "ordax-notes-file-picker-name", entry.name),
@@ -734,13 +701,13 @@ export function mountNotesWorkspaceControls(
     const attach = button(
       documentObject,
       "ordax-notes-file-picker-attach",
-      filePickerPurpose === "image" ? "Relacionar imagem selecionada" : "Relacionar arquivo selecionado",
+      pickerState.purpose === "image" ? "Relacionar imagem selecionada" : "Relacionar arquivo selecionado",
       "attach-file-reference",
-      filePickerPurpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
+      pickerState.purpose === "image" ? "Relacionar imagem" : "Relacionar arquivo",
     );
     attach.disabled = readOnly
-      || !selectedFilePath
-      || filePickerPending
+      || !pickerState.selectedPath
+      || pickerState.pending
       || note.references.length >= MAX_NOTE_REFERENCES;
     picker.append(attach);
   };
@@ -1250,12 +1217,7 @@ export function mountNotesWorkspaceControls(
       referencesOpen = true;
       referenceNoteId = note.id;
       referenceChooserOpen = false;
-      filePickerPurpose = "image";
-      filePickerOpen = true;
-      filePickerPath = "/";
-      filePickerListing = null;
-      selectedFilePath = null;
-      void loadFilePicker("/");
+      void filePicker.open("image");
     }
     if (action === "undo") {
       restoreEditorRange();
@@ -1266,9 +1228,7 @@ export function mountNotesWorkspaceControls(
       if (note.references.length >= MAX_NOTE_REFERENCES) return;
       referenceNoteId = note.id;
       referenceChooserOpen = !referenceChooserOpen;
-      filePickerOpen = false;
-      filePickerOrdinal += 1;
-      selectedFilePath = null;
+      filePicker.close();
       render();
     }
     if (action === "add-link-reference") {
@@ -1298,47 +1258,42 @@ export function mountNotesWorkspaceControls(
     ) {
       referenceNoteId = note.id;
       referenceChooserOpen = false;
-      filePickerPurpose = "file";
-      filePickerOpen = true;
-      filePickerPath = "/";
-      filePickerListing = null;
-      selectedFilePath = null;
-      void loadFilePicker("/");
+      void filePicker.open("file");
     }
     if (action === "close-file-picker") {
       resetReferenceFlow();
       render();
     }
     if (action === "file-picker-up" && filePort) {
-      void loadFilePicker(parentLogicalPath(filePickerPath));
+      void filePicker.up();
     }
     if (action === "file-picker-open-directory" && filePort) {
-      void loadFilePicker(actionNode.dataset.filePath);
+      void filePicker.navigate(actionNode.dataset.filePath);
     }
     if (action === "file-picker-select-file") {
-      selectedFilePath = actionNode.dataset.filePath;
-      render();
+      filePicker.select(actionNode.dataset.filePath);
     }
     if (
       action === "attach-file-reference"
-      && selectedFilePath
       && referenceNoteId === note.id
       && note.references.length < MAX_NOTE_REFERENCES
     ) {
-      const path = selectedFilePath;
-      const purpose = filePickerPurpose;
-      const title = path.split("/").filter(Boolean).at(-1) || "Arquivo";
-      resetReferenceFlow();
-      runtime.addReference(note.id, {
-        kind: "file",
-        title,
-        detail: purpose === "image" ? "Imagem local" : "Arquivo local",
-        path,
-      });
+      const selection = filePicker.consumeSelection();
+      if (selection) {
+        const title = selection.path.split("/").filter(Boolean).at(-1) || "Arquivo";
+        referenceChooserOpen = false;
+        referenceNoteId = null;
+        runtime.addReference(note.id, {
+          kind: "file",
+          title,
+          detail: selection.purpose === "image" ? "Imagem local" : "Arquivo local",
+          path: selection.path,
+        });
+      }
     }
     if (action === "open-file-reference" && activationPort) {
       const path = actionNode.dataset.filePath;
-      if (path) activationPort.publish({ appId: "files", target: parentLogicalPath(path) });
+      if (path) activationPort.publish({ appId: "files", target: notesParentLogicalPath(path) });
     }
     if (action === "remove-reference") {
       runtime.removeReference(note.id, actionNode.dataset.referenceId);
@@ -1460,7 +1415,7 @@ export function mountNotesWorkspaceControls(
       handled = true;
     }
 
-    if (referenceChooserOpen || filePickerOpen) {
+    if (referenceChooserOpen || filePicker.getSnapshot().open) {
       resetReferenceFlow();
       handled = true;
     }
@@ -1552,16 +1507,20 @@ export function mountNotesWorkspaceControls(
     render();
   });
   const unsubscribeRender = lifecycle.subscribeRender(render);
+  const unsubscribeFilePicker = filePicker.subscribe(() => {
+    if (!destroyed) render();
+  });
   render();
 
   return Object.freeze({
     destroy() {
       destroyed = true;
-      filePickerOrdinal += 1;
+      filePicker.destroy();
       imagePreviewCache.destroy();
       flushEditor();
       unsubscribeRuntime?.();
       unsubscribeRender?.();
+      unsubscribeFilePicker?.();
       root.removeEventListener("click", onClick);
       root.removeEventListener("pointerdown", onPointerDown);
       root.removeEventListener("input", onInput);
