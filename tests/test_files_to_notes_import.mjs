@@ -11,7 +11,7 @@ import {
   NOTES_STORE_SCHEMA,
 } from "../system/contracts/notes-store.mjs";
 import { createNotesRuntime } from "../system/apps/notes/domain/runtime.mjs";
-import { createNotesFileImporter } from "../system/services/files/notes-import.mjs";
+import { createNotesFileImporter } from "../system/apps/notes/services/file-import.mjs";
 
 function fileSpace(readTextFile, calls = []) {
   return Object.freeze({
