@@ -28,6 +28,6 @@
   "pending_health_promotion_available": false,
   "rollback_slot_activation_available": false,
   "publish_allowed": false,
-  "internet_release_mode": "bundled",
+  "internet_release_mode": "git-app",
   "next_gate": "Native slot serving/import plus pending runtime health promotion with atomic current/previous rollback"
 }

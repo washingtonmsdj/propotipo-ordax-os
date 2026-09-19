@@ -6,12 +6,12 @@ import {
   validateBrowserHistoryId,
   validateBrowserHistorySnapshot,
   validateBrowserHistoryUrl,
-} from "../../contracts/browser-history.mjs";
+} from "../../../contracts/browser-history.mjs";
 import {
   assertBrowserHistoryStore,
   createEmptyBrowserHistoryStoreState,
   validateBrowserHistoryStoreState,
-} from "../../contracts/browser-history-store.mjs";
+} from "../../../contracts/browser-history-store.mjs";
 
 function readClock(now) {
   const value = now();

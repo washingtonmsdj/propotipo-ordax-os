@@ -16,7 +16,7 @@ import {
   assertWorkspaceMetadataSource,
   validateWorkspaceMetadata,
 } from "../../contracts/workspace-metadata-source.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
 
 const ACCOUNT_WINDOW_SELECTOR = '[data-window-id="account"]';
 const ACCOUNT_EXTENSION_SELECTOR = '[data-app-extension="account-overview"]';

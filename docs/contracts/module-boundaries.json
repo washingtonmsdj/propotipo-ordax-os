@@ -1,5 +1,5 @@
 {
-  "$schema": "prototype-ordax.module-boundaries/2",
+  "$schema": "prototype-ordax.module-boundaries/3",
   "status": "canonical-prototype-contract",
   "principles": {
     "dependency_cycles_allowed": false,
@@ -11,7 +11,8 @@
     "composition_owns_product_policy": false,
     "composition_owns_shared_visual_assets": false,
     "new_module_requires_named_owner": true,
-    "adapter_modes_may_import_each_other": false
+    "adapter_modes_may_import_each_other": false,
+    "composition_mounts_apps_through_public_entrypoints": true
   },
   "layers": [
     {
@@ -86,16 +87,15 @@
     {
       "id": "composition",
       "root": "system/composition",
-      "responsibility": "thin target wiring that selects adapters and mounts shared product entrypoints",
+      "responsibility": "thin target wiring that selects adapters and mounts shared Surface and app entrypoints",
       "allowed_dependencies": [
         "contracts",
         "services",
+        "apps",
         "surface",
         "adapters"
       ],
-      "forbidden_dependencies": [
-        "apps"
-      ]
+      "forbidden_dependencies": []
     }
   ],
   "adapter_modes": [

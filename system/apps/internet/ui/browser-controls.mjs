@@ -1,15 +1,15 @@
-import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
+import { assertBrowserSessionPort } from "../../../contracts/browser-session.mjs";
 import {
   assertBrowserFavoritesPort,
   validateBrowserFavoriteUrl,
-} from "../../contracts/browser-favorites.mjs";
-import { assertBrowserHistoryPort } from "../../contracts/browser-history.mjs";
-import { assertProjectCatalogPort } from "../../contracts/project-catalog.mjs";
+} from "../../../contracts/browser-favorites.mjs";
+import { assertBrowserHistoryPort } from "../../../contracts/browser-history.mjs";
+import { assertProjectCatalogPort } from "../../../contracts/project-catalog.mjs";
 import {
   assertProjectWebReferencePort,
   validateProjectWebUrl,
-} from "../../contracts/project-web-references.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+} from "../../../contracts/project-web-references.mjs";
+import { assertSurfaceRenderLifecycle } from "../../../contracts/surface-render-lifecycle.mjs";
 
 const INTERNET_WINDOW_SELECTOR = '[data-window-id="internet"]';
 const INTERNET_EXTENSION_SELECTOR = '[data-app-extension="internet-browser"]';

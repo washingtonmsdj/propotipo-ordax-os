@@ -60,7 +60,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         self.assertFalse(policy["pending_health_promotion_available"])
         self.assertFalse(policy["publish_allowed"])
         self.assertFalse(policy["rollback_slot_activation_available"])
-        self.assertEqual(policy["internet_release_mode"], "bundled")
+        self.assertEqual(policy["internet_release_mode"], "git-app")
 
     def test_internet_metadata_comes_from_canonical_component_manifest(self):
         builder = load_builder()
@@ -68,12 +68,12 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         component = metadata["component"]
         self.assertEqual(component["id"], "internet")
         self.assertEqual(component["version"], "0.3.0")
-        self.assertEqual(component["releaseMode"], "bundled")
+        self.assertEqual(component["releaseMode"], "git-app")
         self.assertEqual(component["restartScope"], "component")
         self.assertEqual(component["healthMode"], "runtime")
         self.assertEqual(
             metadata["entrypoint"].as_posix(),
-            "system/components/internet/runtime.mjs",
+            "system/apps/internet/runtime.mjs",
         )
 
     def test_internet_candidate_graph_is_self_contained_and_excludes_platform_code(self):
@@ -81,10 +81,10 @@ class RuntimeComponentPackageTests(unittest.TestCase):
         metadata, graph = builder.component_graph("internet")
         paths = {path.as_posix() for path in graph}
         self.assertIn(metadata["entrypoint"].as_posix(), paths)
-        self.assertIn("system/components/internet/internet.css", paths)
+        self.assertIn("system/apps/internet/internet.css", paths)
         self.assertIn("system/contracts/browser-session.mjs", paths)
-        self.assertIn("system/services/internet/history.mjs", paths)
-        self.assertIn("system/surface/ui/internet-browser-controls.mjs", paths)
+        self.assertIn("system/apps/internet/services/history.mjs", paths)
+        self.assertIn("system/apps/internet/ui/browser-controls.mjs", paths)
         self.assertFalse(any(path.startswith("system/adapters/") for path in paths))
         self.assertFalse(any(path.startswith("system/composition/") for path in paths))
         self.assertFalse(any(path.startswith("system/surface/runtime/") for path in paths))
@@ -148,7 +148,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
             self.assertEqual(first_descriptor["source_commit"], source_commit)
             self.assertEqual(first_descriptor["component"]["id"], "internet")
             self.assertEqual(first_descriptor["component"]["version"], "0.3.0")
-            self.assertEqual(first_descriptor["component"]["release_mode"], "bundled")
+            self.assertEqual(first_descriptor["component"]["release_mode"], "git-app")
             self.assertEqual(first_descriptor["package"]["name"], "internet.zip")
             self.assertEqual(
                 first_descriptor["package"]["sha256"],
@@ -179,7 +179,7 @@ class RuntimeComponentPackageTests(unittest.TestCase):
                     info.filename: source.read(info.filename)
                     for info in source.infolist()
                 }
-            runtime = "system/components/internet/runtime.mjs"
+            runtime = "system/apps/internet/runtime.mjs"
             entries[runtime] += b"\n// tampered\n"
 
             with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_STORED) as target:

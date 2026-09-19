@@ -2,15 +2,15 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "internet-browser-controls.mjs"
-CSS = ROOT / "system" / "components" / "internet" / "internet.css"
+CONTROLS = ROOT / "system" / "apps" / "internet" / "ui" / "browser-controls.mjs"
+CSS = ROOT / "system" / "apps" / "internet" / "internet.css"
 NATIVE_MAIN = ROOT / "system" / "composition" / "native" / "main.mjs"
 WEB_MAIN = ROOT / "system" / "composition" / "web" / "main.mjs"
-INTERNET_RUNTIME = ROOT / "system" / "components" / "internet" / "runtime.mjs"
+INTERNET_RUNTIME = ROOT / "system" / "apps" / "internet" / "runtime.mjs"
 CONTRACT = ROOT / "system" / "contracts" / "browser-history.mjs"
 STORE = ROOT / "system" / "contracts" / "browser-history-store.mjs"
-RUNTIME = ROOT / "system" / "services" / "internet" / "history.mjs"
-BRIDGE = ROOT / "system" / "services" / "internet" / "history-bridge.mjs"
+RUNTIME = ROOT / "system" / "apps" / "internet" / "services" / "history.mjs"
+BRIDGE = ROOT / "system" / "apps" / "internet" / "services" / "history-bridge.mjs"
 ADAPTER = ROOT / "system" / "adapters" / "native" / "browser-history.mjs"
 
 
@@ -49,7 +49,7 @@ class InternetHistoryContractTests(unittest.TestCase):
         self.assertNotIn('createNativeBrowserHistoryStore', web)
         self.assertNotIn('createBrowserHistoryRuntime', web)
         self.assertNotIn('createBrowserHistoryBridge', web)
-        self.assertIn('import("../../components/internet/runtime.mjs")', web)
+        self.assertIn('import("../../apps/internet/runtime.mjs")', web)
 
     def test_history_has_bounded_independent_contract_and_privileged_store(self):
         contract = self.text(CONTRACT)

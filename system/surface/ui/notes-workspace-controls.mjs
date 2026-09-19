@@ -49,7 +49,7 @@ import {
   toggleNotesRichInlineMark,
   undoNotesRichEditor,
 } from "./notes-rich-editor.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
 const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';

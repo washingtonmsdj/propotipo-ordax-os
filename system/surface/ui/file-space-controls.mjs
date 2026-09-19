@@ -21,7 +21,7 @@ import {
   createFileNotesActionPresentation,
   importSelectedFileToNotes,
 } from "./file-notes-action.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
 
 const FILE_WINDOW_SELECTOR = '[data-window-id="files"]';
 const FILE_EXTENSION_SELECTOR = '[data-app-extension="file-space"]';

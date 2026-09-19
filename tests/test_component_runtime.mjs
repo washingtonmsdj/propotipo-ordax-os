@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { COMPONENT_RUNTIME_SCHEMA } from "../system/contracts/component-runtime.mjs";
-import { listSystemComponents } from "../system/services/components/catalog.mjs";
+import { listSystemComponents } from "../system/apps/component-catalog.mjs";
 import { createComponentManager } from "../system/services/components/manager.mjs";
 import { loadOptionalComponentRuntime } from "../system/services/components/runtime-loader.mjs";
 

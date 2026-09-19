@@ -71,7 +71,7 @@ class NativeSystemMetricsTests(unittest.TestCase):
         self.assertIn('/__ordax/native/metrics', adapter)
         self.assertIn("await port.read()", adapter)
         self.assertIn("contracts/system-metrics.mjs", controls)
-        self.assertIn("./surface-lifecycle.mjs", controls)
+        self.assertIn("contracts/surface-render-lifecycle.mjs", controls)
         self.assertIn("assertSurfaceRenderLifecycle", controls)
         self.assertNotIn("MutationObserver", controls)
         self.assertIn("Tempo ligado", controls)

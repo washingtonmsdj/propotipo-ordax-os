@@ -267,6 +267,9 @@ contracts
 
 contracts/services
   <- adapters
+
+contracts/services/apps/surface/adapters
+  <- composition
 ```
 
 `system/contracts/` is intentionally small and only gains concrete interfaces when a real implementation requires them. It is not a speculative framework layer.
@@ -307,7 +310,9 @@ signed + verified package
  -> preserve previous
 ```
 
-Until this full path exists for a component, its manifest remains `releaseMode: "bundled"`. Rollback is component-local only after `current/previous` promotion is implemented and proven.
+Production slot activation remains blocked until this full path exists for a component. During Git-first prototype development, a first-party app may instead declare `releaseMode: "git-app"`: its source, semantic version and runtime entrypoint are owned by the app, while delivery still arrives through the ordinary Git checkout/reload path. `git-app` does not claim signed independent activation, a `current/previous` slot pair or component-local rollback.
 
-Reason: a cryptographically valid package can still contain a runtime regression. Separating authenticity, staging and health-based activation prevents a signed application update from being able to take the whole OrdaX Surface down or to claim independent rollback before that rollback path actually exists.
+When the product reaches the MVP/real-user hardening phase, an app may move from `git-app` to `component-slot` only after signed verification, pending health, promotion and rollback are implemented and proven.
+
+Reason: development speed and production activation safety are separate concerns. A cryptographically valid package can still contain a runtime regression; the signed-slot protocol remains fail-closed without forcing prototype app development through production ceremony.
 

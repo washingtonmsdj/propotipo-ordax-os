@@ -1,4 +1,4 @@
-import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
+import { assertBrowserSessionPort } from "../../../contracts/browser-session.mjs";
 
 const INTERNET_WINDOW_SELECTOR = '[data-window-id="internet"]';
 const INTERNET_EXTENSION_SELECTOR = '[data-app-extension="internet-browser"]';

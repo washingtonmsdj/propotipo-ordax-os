@@ -3,7 +3,7 @@ export const COMPONENT_MANIFEST_SCHEMA = "ordax.component-manifest/1";
 const COMPONENT_ID_RE = /^[a-z][a-z0-9-]{0,63}$/;
 const SEMVER_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const COMPONENT_KINDS = new Set(["base", "shell", "service", "app"]);
-const RELEASE_MODES = new Set(["base-ab", "component-slot", "bundled"]);
+const RELEASE_MODES = new Set(["base-ab", "component-slot", "git-app", "bundled"]);
 const CRITICALITIES = new Set(["boot-critical", "system", "optional"]);
 const FAILURE_DOMAINS = new Set(["boot", "surface", "service", "app"]);
 const RESTART_SCOPES = new Set(["reboot", "surface", "component", "none"]);
@@ -79,8 +79,11 @@ export function defineComponentManifest(spec) {
     throw new TypeError("The OrdaX base must use A/B release mode");
   }
 
-  if (releaseMode === "component-slot" && restartScope === "reboot") {
-    throw new TypeError("Independent component slots must not require a full reboot");
+  if (["component-slot", "git-app"].includes(releaseMode) && restartScope === "reboot") {
+    throw new TypeError("Independent components must not require a full reboot");
+  }
+  if (releaseMode === "git-app" && kind !== "app") {
+    throw new TypeError("Git development release mode is reserved for apps");
   }
 
   if (kind === "app" && failureDomain !== "app") {
@@ -145,4 +148,9 @@ export function validateComponentManifests(value) {
 export function componentSupportsIndependentUpdate(manifest) {
   const validated = defineComponentManifest(manifest);
   return validated.releaseMode === "component-slot";
+}
+
+export function componentUsesGitDevelopmentUpdate(manifest) {
+  const validated = defineComponentManifest(manifest);
+  return validated.releaseMode === "git-app";
 }

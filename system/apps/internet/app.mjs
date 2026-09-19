@@ -1,5 +1,5 @@
 import { defineFirstPartyApp } from "../app-contract.mjs";
-import { internetComponent } from "../../services/components/manifests/apps.mjs";
+import { internetComponent } from "./component.mjs";
 
 export const internetApp = defineFirstPartyApp({
   id: "internet",

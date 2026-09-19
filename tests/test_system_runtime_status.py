@@ -45,7 +45,7 @@ class SystemRuntimeStatusTests(unittest.TestCase):
         self.assertIn("contracts/surface-host.mjs", controls)
         self.assertIn("contracts/app-activation.mjs", controls)
         self.assertIn("services/update/presentation.mjs", controls)
-        self.assertIn("./surface-lifecycle.mjs", controls)
+        self.assertIn("contracts/surface-render-lifecycle.mjs", controls)
         self.assertIn('[data-app-extension="system-overview"]', controls)
         self.assertIn("Entrega observada", controls)
         self.assertIn("Entrega e recuperação", controls)

@@ -1,5 +1,5 @@
-import { assertBrowserHistoryPort, validateBrowserHistoryUrl } from "../../contracts/browser-history.mjs";
-import { assertBrowserSessionPort } from "../../contracts/browser-session.mjs";
+import { assertBrowserHistoryPort, validateBrowserHistoryUrl } from "../../../contracts/browser-history.mjs";
+import { assertBrowserSessionPort } from "../../../contracts/browser-session.mjs";
 
 function publicHistoryUrl(value) {
   if (!value) return null;

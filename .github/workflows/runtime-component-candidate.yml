@@ -5,15 +5,13 @@ on:
     branches: [main]
     paths:
       - 'docs/contracts/runtime-component-package.json'
-      - 'system/components/**'
+      - 'system/apps/internet/**'
+      - 'system/contracts/surface-render-lifecycle.mjs'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
       - 'system/contracts/project-*.mjs'
       - 'system/services/components/**'
-      - 'system/services/internet/**'
-      - 'system/surface/ui/internet-browser-*.mjs'
-      - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
       - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
@@ -22,15 +20,13 @@ on:
   pull_request:
     paths:
       - 'docs/contracts/runtime-component-package.json'
-      - 'system/components/**'
+      - 'system/apps/internet/**'
+      - 'system/contracts/surface-render-lifecycle.mjs'
       - 'system/contracts/browser-*.mjs'
       - 'system/contracts/component-*.mjs'
       - 'system/contracts/file-space.mjs'
       - 'system/contracts/project-*.mjs'
       - 'system/services/components/**'
-      - 'system/services/internet/**'
-      - 'system/surface/ui/internet-browser-*.mjs'
-      - 'system/surface/ui/surface-lifecycle.mjs'
       - 'tools/component-package/**'
       - 'tools/runtime-component-channel/**'
       - 'tools/source_graph.py'
@@ -105,6 +101,13 @@ jobs:
       - name: Prove signed envelope and immutable slot staging
         run: |
           set -euo pipefail
+          release_mode="$(python -c 'import json; print(json.load(open("out/runtime-components/runtime-component-release.json", encoding="utf-8"))["component"]["release_mode"])')"
+          if [ "$release_mode" = "git-app" ]; then
+            echo 'RUNTIME_COMPONENT_SIGNED_STAGING=SKIPPED_GIT_APP'
+            echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
+            exit 0
+          fi
+
           channel="$PWD/out/runtime-components/ordax-runtime-component-channel"
           (
             cd tools/runtime-component-channel
@@ -157,7 +160,7 @@ jobs:
           echo 'RUNTIME_COMPONENT_CANONICAL_TRUST=NO'
           echo 'RUNTIME_COMPONENT_ACTIVATED=NO'
 
-      - name: Upload non-activatable signed staging proof
+      - name: Upload runtime component candidate proof
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-runtime-component-internet-${{ github.sha }}

@@ -90,7 +90,7 @@ class ModuleBoundaryVerifierTests(unittest.TestCase):
             )
             self.assertEqual(MODULE.find_violations(root, CONTRACT), [])
 
-    def test_composition_may_not_import_apps_directly(self):
+    def test_composition_may_mount_app_entrypoints(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.seed_roots(root)
@@ -99,8 +99,7 @@ class ModuleBoundaryVerifierTests(unittest.TestCase):
                 "system/composition/web/main.mjs",
                 'import "../../apps/files/index.mjs";\n',
             )
-            violations = MODULE.find_violations(root, CONTRACT)
-            self.assertTrue(any("composition may not import apps" in item for item in violations))
+            self.assertEqual(MODULE.find_violations(root, CONTRACT), [])
 
     def test_ordax_alias_is_resolved_to_shared_layer(self):
         with tempfile.TemporaryDirectory() as tmp:

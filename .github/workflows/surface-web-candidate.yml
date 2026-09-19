@@ -41,14 +41,12 @@ on:
       - 'system/contracts/browser-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
-      - 'system/components/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
-      - 'system/services/internet/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -159,14 +157,12 @@ on:
       - 'system/contracts/browser-session.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
-      - 'system/components/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/components/**'
       - 'system/services/files/**'
       - 'system/services/projects/**'
-      - 'system/services/internet/**'
       - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
@@ -273,7 +269,6 @@ jobs:
             system/services/components \
             system/services/files \
             system/services/projects \
-            system/services/internet \
             system/services/notes \
             system/services/preferences \
             system/services/sync \
@@ -281,7 +276,6 @@ jobs:
             system/services/update \
             system/services/notifications \
             system/apps \
-            system/components \
             system/surface/ui \
             system/adapters/web \
             system/adapters/native \

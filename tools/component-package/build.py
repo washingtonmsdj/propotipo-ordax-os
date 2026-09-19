@@ -41,7 +41,6 @@ MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
 FORBIDDEN_PREFIXES = (
     "system/adapters/",
-    "system/apps/",
     "system/composition/",
     "system/surface/runtime/",
 )
@@ -101,14 +100,18 @@ def load_component_metadata(component_id: str, root: Path = ROOT) -> dict:
         raise ComponentPackageError("component metadata id mismatch")
     if not SEMVER_RE.fullmatch(str(component["version"])):
         raise ComponentPackageError("component metadata version is not semantic")
-    if component["releaseMode"] not in {"bundled", "component-slot"}:
+    if component["releaseMode"] not in {"bundled", "git-app", "component-slot"}:
         raise ComponentPackageError("component package source has unsupported release mode")
     if not isinstance(component["dependencies"], list):
         raise ComponentPackageError("component dependencies must be a list")
     entrypoint = PurePosixPath(str(metadata["entrypoint"]))
     if entrypoint.is_absolute() or ".." in entrypoint.parts:
         raise ComponentPackageError("component entrypoint is unsafe")
-    if not str(entrypoint).startswith(f"system/components/{component_id}/"):
+    allowed_entrypoint_roots = (
+        f"system/components/{component_id}/",
+        f"system/apps/{component_id}/",
+    )
+    if not str(entrypoint).startswith(allowed_entrypoint_roots):
         raise ComponentPackageError("component entrypoint is outside component ownership")
     return {"component": component, "entrypoint": entrypoint}
 
@@ -141,6 +144,12 @@ def component_graph(component_id: str, root: Path = ROOT) -> tuple[dict, list[Pu
         if value.startswith(FORBIDDEN_PREFIXES):
             raise ComponentPackageError(
                 f"component package crossed a forbidden platform boundary: {relative}"
+            )
+        if value.startswith("system/apps/") and not value.startswith(
+            f"system/apps/{component_id}/"
+        ):
+            raise ComponentPackageError(
+                f"component package crossed into another app owner: {relative}"
             )
     return metadata, graph
 
@@ -268,12 +277,15 @@ def validate_manifest_shape(manifest: object) -> dict:
         raise ComponentPackageError("component package id is invalid")
     if not SEMVER_RE.fullmatch(str(component.get("version", ""))):
         raise ComponentPackageError("component package version is invalid")
-    if component.get("releaseMode") not in {"bundled", "component-slot"}:
+    if component.get("releaseMode") not in {"bundled", "git-app", "component-slot"}:
         raise ComponentPackageError("component package release mode is invalid")
 
     entrypoint = safe_zip_name(str(manifest["entrypoint"]))
     if not entrypoint.as_posix().startswith(
-        f"system/components/{component['id']}/"
+        (
+            f"system/components/{component['id']}/",
+            f"system/apps/{component['id']}/",
+        )
     ):
         raise ComponentPackageError("component package entrypoint ownership is invalid")
 
@@ -291,6 +303,10 @@ def validate_manifest_shape(manifest: object) -> dict:
         paths.add(path)
         if path.startswith(FORBIDDEN_PREFIXES):
             raise ComponentPackageError("component package contains forbidden platform code")
+        if path.startswith("system/apps/") and not path.startswith(
+            f"system/apps/{component['id']}/"
+        ):
+            raise ComponentPackageError("component package contains another app owner")
         if not SHA256_RE.fullmatch(str(record["sha256"])):
             raise ComponentPackageError("component package file hash is invalid")
         size = record["size"]

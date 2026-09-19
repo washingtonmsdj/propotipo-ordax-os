@@ -34,7 +34,7 @@ import {
   updateSummaryLabel,
 } from "../../services/update/presentation.mjs";
 import { mountSystemDiagnosticsReview } from "./system-diagnostics-review.mjs";
-import { assertSurfaceRenderLifecycle } from "./surface-lifecycle.mjs";
+import { assertSurfaceRenderLifecycle } from "../../contracts/surface-render-lifecycle.mjs";
 
 const SYSTEM_WINDOW_SELECTOR = '[data-window-id="system"]';
 const SYSTEM_EXTENSION_SELECTOR = '[data-app-extension="system-overview"]';
@@ -575,6 +575,7 @@ export function mountSystemOverviewControls(
   const componentReleaseLabel = (mode) => ({
     "base-ab": "Base A/B",
     "component-slot": "Slot independente",
+    "git-app": "App via Git",
     bundled: "Distribuição conjunta",
   }[mode] ?? mode);
 
@@ -606,7 +607,7 @@ export function mountSystemOverviewControls(
         documentObject,
         "p",
         "ordax-system-section-copy",
-        "A versão do produto identifica o marco geral. Cada componente abaixo possui identidade própria e declara explicitamente se ainda é distribuído junto ou se já possui slot independente.",
+        "A versão do produto identifica o marco geral. Cada componente possui identidade própria. Durante o desenvolvimento, apps podem evoluir diretamente pelo Git; slots assinados ficam reservados para distribuição de produção.",
       ),
       node(
         documentObject,
@@ -682,8 +683,8 @@ export function mountSystemOverviewControls(
         "p",
         "ordax-system-section-copy",
         componentSnapshot.persistence === "device"
-          ? "Estado de slots e saúde persistido neste dispositivo."
-          : "Catálogo disponível; estado de slots permanece somente nesta sessão.",
+          ? "Estado de componentes e saúde persistido neste dispositivo."
+          : "Catálogo disponível; estado de componentes permanece somente nesta sessão.",
       ),
     );
 
@@ -724,7 +725,9 @@ export function mountSystemOverviewControls(
             "ordax-system-component-slots",
             manifest.releaseMode === "base-ab"
               ? "Rollback pertence aos slots A/B da Base."
-              : "Ainda acompanha a entrega conjunta; rollback individual permanece bloqueado.",
+              : manifest.releaseMode === "git-app"
+                ? "Desenvolvimento: esta versão do app chega diretamente pelo Git, sem slot de produção."
+                : "Ainda acompanha a entrega conjunta; rollback individual permanece bloqueado.",
           ),
         );
       }

@@ -23,7 +23,7 @@ class ModuleBoundariesContractTests(unittest.TestCase):
         return json.loads(CONTRACT.read_text(encoding="utf-8"))
 
     def test_contract_schema_is_current(self):
-        self.assertEqual(self.load()["$schema"], "prototype-ordax.module-boundaries/2")
+        self.assertEqual(self.load()["$schema"], "prototype-ordax.module-boundaries/3")
 
     def test_layer_roots_exist_and_ids_are_unique(self):
         contract = self.load()
@@ -86,7 +86,8 @@ class ModuleBoundariesContractTests(unittest.TestCase):
         composition = next(layer for layer in contract["layers"] if layer["id"] == "composition")
         self.assertIn("surface", composition["allowed_dependencies"])
         self.assertIn("adapters", composition["allowed_dependencies"])
-        self.assertIn("apps", composition["forbidden_dependencies"])
+        self.assertIn("apps", composition["allowed_dependencies"])
+        self.assertTrue(contract["principles"]["composition_mounts_apps_through_public_entrypoints"])
         self.assertFalse(contract["principles"]["composition_owns_product_policy"])
         self.assertFalse(contract["principles"]["composition_owns_shared_visual_assets"])
         self.assertFalse(contract["evolution"]["composition_specific_ui_fork_allowed"])

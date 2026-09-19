@@ -8,7 +8,7 @@ import { createWebWorkspaceStore } from "../../adapters/web/workspace.mjs";
 import { createWebSyncStateStore } from "../../adapters/web/sync-state.mjs";
 import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
-import { listSystemComponents } from "../../services/components/catalog.mjs";
+import { listSystemComponents } from "../../apps/component-catalog.mjs";
 import { createComponentManager } from "../../services/components/manager.mjs";
 import { loadOptionalComponentRuntime } from "../../services/components/runtime-loader.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
@@ -114,7 +114,7 @@ const systemOverviewControls = mountSystemOverviewControls(
 componentManager.setCurrentHealth("surface-shell", "healthy");
 const internetComponent = await loadOptionalComponentRuntime({
   componentId: "internet",
-  importer: () => import("../../components/internet/runtime.mjs"),
+  importer: () => import("../../apps/internet/runtime.mjs"),
   componentManager,
   context: {
     root,

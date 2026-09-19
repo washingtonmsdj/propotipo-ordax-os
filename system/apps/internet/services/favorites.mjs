@@ -7,12 +7,12 @@ import {
   validateBrowserFavorites,
   validateBrowserFavoritesSnapshot,
   validateBrowserFavoriteUrl,
-} from "../../contracts/browser-favorites.mjs";
+} from "../../../contracts/browser-favorites.mjs";
 import {
   assertBrowserFavoritesStore,
   createEmptyBrowserFavoritesStoreState,
   validateBrowserFavoritesStoreState,
-} from "../../contracts/browser-favorites-store.mjs";
+} from "../../../contracts/browser-favorites-store.mjs";
 
 function readClock(now) {
   const value = now();
