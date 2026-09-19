@@ -58,9 +58,16 @@
     "v1_reserved_for_stable_product": true
   },
   "component_version": {
-    "currently_independent": false,
+    "declared": true,
+    "scheme": "semantic-versioning",
+    "independence_is_per_component": true,
+    "independent_update_release_mode": "component-slot",
+    "bundled_release_mode": "bundled",
+    "base_release_mode": "base-ab",
+    "independent_components_currently_enabled": [],
     "invented_component_versions_allowed": false,
-    "independent_version_requires_independent_packaging": true
+    "independent_update_requires_independent_packaging": true,
+    "bundled_version_does_not_imply_independent_update": true
   },
   "compatibility": {
     "legacy_field": "versionNumber",
