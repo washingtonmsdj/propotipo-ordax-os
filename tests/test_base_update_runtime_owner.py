@@ -710,11 +710,18 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
             'release_channel=$PHYSICAL_MOUNT_HOST/bootstrap/config/release-envelope-url',
             agent,
         )
-        self.assertIn('host_state=$PHYSICAL_MOUNT_HOST$root_subpath/state/ordax', agent)
+        self.assertIn('seed_subpath=$(seed_root_subpath "$root_subpath")', agent)
+        self.assertIn('host_state=$PHYSICAL_MOUNT_HOST$seed_subpath/state/ordax', agent)
         self.assertIn(
-            'OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$root_subpath/state/ordax',
+            'OWNER_STATE_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath/state/ordax',
             agent,
         )
+        self.assertIn(
+            'OWNER_BASE_ROOT_CHROOT=$PHYSICAL_MOUNT_CHROOT$seed_subpath',
+            agent,
+        )
+        self.assertIn('suffix=${value##*/versions/}', agent)
+        self.assertIn('prefix=${value%/versions/*}', agent)
         self.assertIn('--state-root "$OWNER_STATE_CHROOT"', agent)
         self.assertIn('--physical-root "$PHYSICAL_MOUNT_CHROOT"', agent)
         self.assertNotIn("--state-root /var/lib/ordax", agent)
@@ -727,6 +734,13 @@ class BaseUpdateRuntimeOwnerTests(unittest.TestCase):
         self.assertNotIn("release-channel-missing", agent)
         self.assertNotIn("release-agent-missing", agent)
         self.assertNotIn(r'\\$schema', agent)
+        self.assertIn("prepare_dev_base_candidate()", agent)
+        self.assertIn('DEV_BASE_REQUEST_FILE=$HOST_STATE_ROOT/dev-base-request-sha', agent)
+        self.assertIn('/usr/bin/python3 "$channel"', agent)
+        self.assertIn('--destination-root "$destination"', agent)
+        self.assertIn('--version-root "$version_root"', agent)
+        self.assertIn('version_root=$OWNER_BASE_ROOT_CHROOT/versions', agent)
+        self.assertNotIn("reboot -f", agent)
 
     def test_surface_binds_repo_and_ordax_before_starting_owner(self):
         text = SURFACE.read_text(encoding="utf-8")
