@@ -640,6 +640,16 @@ function buildCompositionProofExpression(moduleSources, styles) {
     if (notesTitle && notesBody) {
       notesTitle.value = 'Nota persistida no smoke';
       notesTitle.dispatchEvent(new Event('input', { bubbles: true }));
+      notesTitle.focus();
+      const titleEnterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      result.notesTitleEnterFocusesEditor = notesTitle.dispatchEvent(titleEnterEvent) === false
+        && document.activeElement === notesBody
+        && notesTitle.value === 'Nota persistida no smoke';
+
       const richBlock = notesBody.querySelector('[data-notes-rich-block]');
       if (richBlock) richBlock.textContent = 'Conteúdo salvo localmente e disponível offline.';
       notesBody.dispatchEvent(new Event('input', { bubbles: true }));
@@ -715,6 +725,21 @@ function buildCompositionProofExpression(moduleSources, styles) {
         && mark.end === 'Conteúdo salvo localmente'.length) === true;
     result.notesPlainBodyHasNoMarkup = persistedNote?.body?.includes('**') === false;
     result.notesCreatedInsideProject = persistedNote?.projectId === smokeProject?.id;
+
+    const moreButton = notesSlot?.querySelector('[data-notes-action="toggle-menu"]');
+    moreButton?.click();
+    await Promise.resolve();
+    const transientMenu = notesSlot?.querySelector('.ordax-notes-menu');
+    const menuOpenedForEscape = transientMenu?.hidden === false;
+    notesBody?.focus();
+    const escapeEvent = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    result.notesEscapeClosesTransientMenu = menuOpenedForEscape
+      && notesBody?.dispatchEvent(escapeEvent) === false
+      && transientMenu?.hidden === true;
 
     const addTaskButton = notesSlot?.querySelector('[data-notes-action="add-task"]');
     addTaskButton?.click();
@@ -848,8 +873,9 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'workspaceTargetPersisted', 'notesEmptyEditorState', 'notesHeadingEnterHandled',
       'notesBackspaceExitsBlock', 'notesBulletEnterContinuesList', 'notesShiftEnterKeepsBlock',
       'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
-      'notesNewActionPresent', 'notesAutosavePersisted', 'notesRichTextPersisted', 'notesItalicShortcutPersisted',
-      'notesSaveShortcutPreventedBrowserDialog', 'notesPlainBodyHasNoMarkup',
+      'notesNewActionPresent', 'notesTitleEnterFocusesEditor', 'notesAutosavePersisted',
+      'notesRichTextPersisted', 'notesItalicShortcutPersisted', 'notesSaveShortcutPreventedBrowserDialog',
+      'notesEscapeClosesTransientMenu', 'notesPlainBodyHasNoMarkup',
       'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
       'notesMovedToHome', 'notesProjectActionsPresent', 'notesProjectRenamed', 'notesProjectRemovedSafely',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
