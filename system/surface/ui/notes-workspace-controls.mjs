@@ -159,8 +159,18 @@ function buildShell(documentObject) {
     node(documentObject, "strong", "ordax-notes-list-title", "Meu espaço"),
     node(documentObject, "small", "ordax-notes-list-count", "0 notas"),
   );
+  const listActions = node(documentObject, "div", "ordax-notes-list-actions");
+  const emptyTrash = button(
+    documentObject,
+    "ordax-notes-empty-trash",
+    "Esvaziar lixeira",
+    "empty-trash",
+    "Esvaziar",
+  );
+  emptyTrash.hidden = true;
   const sort = button(documentObject, "ordax-notes-sort", "Ordenar por atualização", "sort", "≡");
-  listHeader.append(listHeading, sort);
+  listActions.append(emptyTrash, sort);
+  listHeader.append(listHeading, listActions);
   list.append(listHeader, node(documentObject, "div", "ordax-notes-list"));
 
   const editor = node(documentObject, "main", "ordax-notes-editor-pane");
@@ -182,12 +192,20 @@ function buildShell(documentObject) {
     "trash-note",
     "Mover para a lixeira",
   );
+  const permanentDeleteAction = button(
+    documentObject,
+    "ordax-notes-menu-item ordax-notes-delete-forever",
+    "Excluir nota permanentemente",
+    "delete-note-forever",
+    "Excluir permanentemente",
+  );
+  permanentDeleteAction.hidden = true;
   const moveSection = node(documentObject, "section", "ordax-notes-move-section");
   moveSection.append(
     node(documentObject, "span", "ordax-notes-menu-label", "MOVER PARA"),
     node(documentObject, "div", "ordax-notes-move-projects"),
   );
-  menu.append(trashAction, moveSection);
+  menu.append(trashAction, permanentDeleteAction, moveSection);
   top.append(breadcrumb, topActions, menu);
   editor.append(top);
 
@@ -482,6 +500,9 @@ export function mountNotesWorkspaceControls(
     const items = visibleNotes(state.document, mode, query, newestFirst);
     view.querySelector(".ordax-notes-list-title").textContent = modeLabel();
     view.querySelector(".ordax-notes-list-count").textContent = `${items.length} ${items.length === 1 ? "nota" : "notas"}`;
+    const emptyTrash = view.querySelector(".ordax-notes-empty-trash");
+    emptyTrash.hidden = mode !== "trash";
+    emptyTrash.disabled = mode !== "trash" || items.length === 0;
     const list = view.querySelector(".ordax-notes-list");
     list.replaceChildren();
     for (const note of items) {
@@ -786,8 +807,10 @@ export function mountNotesWorkspaceControls(
     star.textContent = note.favorite ? "★" : "☆";
     star.setAttribute("aria-label", note.favorite ? "Remover dos favoritos" : "Adicionar aos favoritos");
     const menuAction = view.querySelector(".ordax-notes-trash-action");
+    const permanentDeleteAction = view.querySelector(".ordax-notes-delete-forever");
     menuAction.textContent = note.deletedAt === null ? "Mover para a lixeira" : "Restaurar nota";
     menuAction.dataset.notesAction = note.deletedAt === null ? "trash-note" : "restore-note";
+    permanentDeleteAction.hidden = note.deletedAt === null;
     renderMoveProjects(view, note);
     renderTasks(view, note);
     renderReferences(view, note);
@@ -945,6 +968,21 @@ export function mountNotesWorkspaceControls(
       renderList(mountedSlot.querySelector("[data-ordax-notes-view]"));
       return;
     }
+    if (action === "empty-trash") {
+      const deletedCount = state.document.notes.filter((candidate) => candidate.deletedAt !== null).length;
+      if (deletedCount === 0) return;
+      const confirmed = windowObject.confirm?.(
+        deletedCount === 1
+          ? "Excluir permanentemente a nota da lixeira? Esta ação não pode ser desfeita."
+          : `Excluir permanentemente as ${deletedCount} notas da lixeira? Esta ação não pode ser desfeita.`,
+      );
+      if (confirmed) {
+        resetReferenceFlow();
+        flushEditor();
+        runtime.emptyTrash();
+      }
+      return;
+    }
     if (!note) return;
 
     const body = mountedSlot.querySelector("[data-notes-body]");
@@ -963,7 +1001,29 @@ export function mountNotesWorkspaceControls(
       }
     }
     if (action === "trash-note") runtime.trashNote(note.id);
-    if (action === "restore-note") runtime.restoreNote(note.id);
+    if (action === "restore-note") {
+      const projectId = note.projectId;
+      runtime.restoreNote(note.id);
+      if (mode === "trash") {
+        const next = visibleNotes(state.document, "trash", query, newestFirst)[0];
+        if (next) {
+          runtime.selectNote(next.id);
+        } else {
+          mode = "project";
+          runtime.selectProject(projectId);
+        }
+      }
+    }
+    if (action === "delete-note-forever" && note.deletedAt !== null) {
+      const confirmed = windowObject.confirm?.(
+        `Excluir “${note.title || "Sem título"}” permanentemente? Esta ação não pode ser desfeita.`,
+      );
+      if (confirmed) {
+        resetReferenceFlow();
+        runtime.permanentlyDeleteNote(note.id);
+        if (mode === "trash") selectFirstVisible();
+      }
+    }
     if (action === "toggle-references") {
       referencesOpen = !referencesOpen;
       render();

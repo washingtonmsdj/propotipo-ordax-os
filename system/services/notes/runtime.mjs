@@ -271,6 +271,26 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       draft.selectedNoteId = noteId;
       return commit(draft);
     },
+    permanentlyDeleteNote(noteId) {
+      const draft = thaw(snapshot);
+      const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt === null) return runtime.getSnapshot();
+      draft.notes.splice(index, 1);
+      if (draft.selectedNoteId === noteId) draft.selectedNoteId = null;
+      return commit(draft);
+    },
+    emptyTrash() {
+      const draft = thaw(snapshot);
+      const deletedIds = new Set(
+        draft.notes.filter((note) => note.deletedAt !== null).map((note) => note.id),
+      );
+      if (deletedIds.size === 0) return runtime.getSnapshot();
+      draft.notes = draft.notes.filter((note) => note.deletedAt === null);
+      if (draft.selectedNoteId !== null && deletedIds.has(draft.selectedNoteId)) {
+        draft.selectedNoteId = null;
+      }
+      return commit(draft);
+    },
     addTask(noteId, text = "Novo item") {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
@@ -343,6 +363,10 @@ export function assertNotesRuntime(runtime) {
     "removeProject",
     "moveNote",
     "updateNote",
+    "trashNote",
+    "restoreNote",
+    "permanentlyDeleteNote",
+    "emptyTrash",
     "addTask",
     "updateTask",
     "removeTask",

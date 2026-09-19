@@ -308,6 +308,36 @@
   font-size: 0.68rem;
 }
 
+.ordax-notes-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ordax-notes-empty-trash {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.64rem;
+}
+
+.ordax-notes-empty-trash:hover,
+.ordax-notes-empty-trash:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 0;
+}
+
+.ordax-notes-empty-trash:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .ordax-notes-sort {
   width: 30px;
   height: 30px;
@@ -524,6 +554,16 @@
 .ordax-notes-menu-item:focus-visible {
   background: var(--ordax-hover-bg);
   outline: 0;
+}
+
+.ordax-notes-delete-forever {
+  color: #a62d20;
+}
+
+.ordax-notes-delete-forever:hover,
+.ordax-notes-delete-forever:focus-visible {
+  background: color-mix(in srgb, #a62d20 9%, var(--ordax-hover-bg));
+  color: #8d2117;
 }
 
 .ordax-notes-move-section {
