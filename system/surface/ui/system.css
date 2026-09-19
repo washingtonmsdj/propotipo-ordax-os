@@ -321,17 +321,17 @@
 }
 
 .ordax-system-version-item {
-  display: flex;
+  display: grid;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  align-content: start;
+  gap: 4px;
+  padding: 11px 12px;
   border: 1px solid var(--ordax-border-soft);
   border-radius: var(--ordax-radius-sm);
 }
 
 .ordax-system-version-item strong {
+  min-width: 0;
   overflow: hidden;
   font-size: 0.74rem;
   text-overflow: ellipsis;
@@ -339,9 +339,26 @@
 }
 
 .ordax-system-version-item span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ordax-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-system-component-health,
+.ordax-system-component-slots {
+  display: block;
+  min-width: 0;
+  color: var(--ordax-muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.ordax-system-component-slots {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .ordax-system-history {
