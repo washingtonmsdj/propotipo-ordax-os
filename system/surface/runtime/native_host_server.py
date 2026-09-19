@@ -2264,7 +2264,7 @@ class NativeHostServer(ThreadingHTTPServer):
         user_root: str,
         power_request_path: str,
         network_session_dir: str,
-        component_slot_root: str,
+        component_slot_root: str = DEFAULT_COMPONENT_SLOT_ROOT,
     ):
         super().__init__(server_address, handler_class)
         self.power_token = secrets.token_urlsafe(32)
