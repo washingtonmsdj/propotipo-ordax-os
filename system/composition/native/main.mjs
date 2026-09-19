@@ -7,6 +7,7 @@ import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
 import { createNativeProjectStore } from "../../adapters/native/projects.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
+import { createNativeNotificationStore } from "../../adapters/native/notifications.mjs";
 import { createNativeNotesStore } from "../../adapters/native/notes.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
@@ -25,6 +26,8 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
+import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
+import { createUpdateNotificationBridge } from "../../services/notifications/update-bridge.mjs";
 import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
@@ -34,6 +37,7 @@ import { mountAccountOverviewControls } from "../../surface/ui/account-overview-
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
+import { mountNotificationCenterControls } from "../../surface/ui/notification-center-controls.mjs";
 import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
@@ -136,6 +140,10 @@ async function start() {
   const appActivation = createAppActivationChannel();
   const notesRuntime = createNotesRuntime({ store: notesStore });
   const updateWatcher = createNativeUpdateWatcher(window);
+  const notifications = createNotificationsRuntime({
+    store: createNativeNotificationStore(window),
+  });
+  const updateNotificationBridge = createUpdateNotificationBridge(updateWatcher, notifications);
   const diagnosticJournal = await createDiagnosticJournalRuntime({
     store: diagnosticJournalStore,
   });
@@ -193,6 +201,7 @@ async function start() {
     surface,
     { fileSpace, appActivation },
   );
+  const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
   let quickPanelControls = null;
   try {
     quickPanelControls = mountSystemTrayQuickPanels(root);
@@ -308,12 +317,14 @@ async function start() {
       networkTrayControls?.destroy();
       networkQuickPanel?.destroy();
       quickPanelControls?.destroy();
+      notificationCenter.destroy();
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
       notesWorkspaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
+      updateNotificationBridge.destroy();
       updateDiagnosticRecorder.dispose();
       updateWatcher.dispose();
       surface.destroy();
