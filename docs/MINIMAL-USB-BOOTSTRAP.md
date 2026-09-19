@@ -132,7 +132,7 @@ REMOTE=origin expected repository only
 BRANCH=main expected branch only
 LOCAL_MODIFICATIONS=BLOCK_PULL
 CLONE_FILTER=blob:none
-SPARSE_CHECKOUT=/system/
+SPARSE_CHECKOUT=/system/ + /bootstrap/base-update/ + selected update/trust contracts
 PERSISTENT_CHECKOUT=YES
 ROLLBACK_PIN_SURVIVES_REBOOT=YES
 EXPLICIT_ORDAX_PULL_RELEASES_PIN=YES
@@ -191,8 +191,10 @@ system/Surface/app/native-host change
  -> no USB reflash
 
 boot/kernel/initramfs/dev-base hardware support change
- -> separately gated base build
- -> reflash/base update only when required
+ -> separately built base candidate
+ -> repository-delivered base-update control stages inactive slot
+ -> next boot activates candidate
+ -> manual USB reflash only when the bootstrap itself cannot recover/update
 ```
 
 Canonical release:
@@ -208,7 +210,7 @@ system/Surface/app change
 
 ## Source/media relationship
 
-Everything needed to reproduce the bootstrap is represented in this repository through source, manifests, configuration, provenance and build recipes.
+Everything needed to reproduce the bootstrap is represented in this repository through source, manifests, configuration, provenance and build recipes. The running development checkout intentionally materializes only the product runtime plus the small base-update control plane; large boot artifacts are built from repository source and delivered as base candidates rather than compiled on the notebook.
 
 Private/runtime data is not committed to public Git. The USB is never source authority.
 
