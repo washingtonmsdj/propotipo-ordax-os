@@ -178,6 +178,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       return commit(draft);
     },
     renameProject(projectId, name) {
+      if (projectId === NOTES_HOME_PROJECT_ID) return runtime.getSnapshot();
       const cleanName = String(name ?? "").trim();
       if (!cleanName) return runtime.getSnapshot();
       const draft = thaw(snapshot);
