@@ -1,0 +1,56 @@
+name: Temporary Notification Plan Alignment
+
+on:
+  push:
+    branches: [docs/notification-plan-alignment-lab]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  align:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: docs/notification-plan-alignment-lab
+          fetch-depth: 0
+
+      - name: Patch plans fail-closed
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one target, found {count}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_once(
+              "PLANO-FUNCIONAL-SURFACE-E-APPS.md",
+              "**Estado:** NOVO/P2. A existência de telemetria técnica atual não prova que já há controles de consentimento, retenção ou preferência de coleta na UI.",
+              "**Estado:** PARCIAL/P1-P2. A central local comum já existe via `ordax.notifications/1`, com histórico limitado, origem, horário, nível, ação, estado lido/dispensado e persistência Native com fallback explícito para sessão. `Não perturbe` já controla a apresentação que existe hoje: silencia badge/cor de atenção da bandeja sem apagar histórico nem estado não lido; no Native a política é persistida pelo owner de notificações via `ordax.notification-store/2`, enquanto o Web permanece somente na sessão. Atualizações é hoje o único produtor integrado à central. Som, ativação global, preferências/permissões por app, eventos de outros owners e política de consentimento/retenção continuam NOVO/P2. A existência de telemetria técnica atual não prova que já há controles de consentimento, retenção ou preferência de coleta na UI."
+          )
+
+          replace_once(
+              "PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md",
+              "**Notificações:** central pequena com origem, horário, nível, ação e estado lido/dispensado. Eventos reais de cópia, sync, atualização e dispositivo. Não converter todo heartbeat em aviso. “Não perturbe” controla apresentação conforme política; falha crítica continua consultável no owner.",
+              "**Notificações:** central pequena com origem, horário, nível, ação e estado lido/dispensado. Eventos reais de cópia, sync, atualização e dispositivo. Não converter todo heartbeat em aviso. “Não perturbe” controla apresentação conforme política; falha crítica continua consultável no owner. **Estado atual do recorte:** PARCIAL. A central local comum e o Não Perturbe de bandeja já foram implementados no protótipo; hoje apenas Atualizações está integrado como produtor real. Cópia, sync e dispositivo só devem publicar quando seus próprios owners expuserem transições reais e úteis, sem criar produtores paralelos. Som, ativação global e preferências/permissões por app continuam pendentes."
+          )
+
+      - name: Commit aligned plans
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code && { echo 'Expected plan changes were not produced.' >&2; exit 1; } || true
+          git config user.name 'ordax-ci'
+          git config user.email 'ordax-ci@users.noreply.github.com'
+          git add PLANO-FUNCIONAL-SURFACE-E-APPS.md PLANO-02-EVOLUCAO-E-REAPROVEITAMENTO-DO-LEGADO.md
+          git commit -m 'Align notification plan state with implemented slice'
+          git push origin HEAD:docs/notification-plan-alignment-lab
