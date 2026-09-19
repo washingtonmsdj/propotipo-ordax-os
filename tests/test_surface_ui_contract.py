@@ -49,7 +49,7 @@ POWER_CONTROLS = SURFACE / "power-controls.mjs"
 UPDATE_CONTROLS = SURFACE / "update-controls.mjs"
 UPDATE_PRESENTATION = ROOT / "system" / "services" / "update" / "presentation.mjs"
 DESKTOP_SHELL = SURFACE / "desktop-shell.mjs"
-SURFACE_LIFECYCLE = SURFACE / "surface-lifecycle.mjs"
+SURFACE_LIFECYCLE = ROOT / "system" / "contracts" / "surface-render-lifecycle.mjs"
 FILE_SPACE_CONTROLS = SURFACE / "file-space-controls.mjs"
 NOTES_WORKSPACE_CONTROLS = SURFACE / "notes-workspace-controls.mjs"
 NOTES_RICH_EDITOR = SURFACE / "notes-rich-editor.mjs"
@@ -150,7 +150,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn("../../services/preferences/appearance.mjs", surface)
         self.assertIn("../../services/preferences/accessibility.mjs", surface)
         self.assertIn("./desktop-shell.mjs", surface)
-        self.assertIn("./surface-lifecycle.mjs", surface)
+        self.assertIn("contracts/surface-render-lifecycle.mjs", surface)
         self.assertIn("SURFACE_RENDER_LIFECYCLE_SCHEMA", surface)
         self.assertIn("subscribeRender(listener)", surface)
         self.assertIn("../../contracts/power-actions.mjs", power)
@@ -176,7 +176,7 @@ class SurfaceUiContractTests(unittest.TestCase):
         self.assertIn('type: "app.target"', surface)
         for path in (FILE_SPACE_CONTROLS, NOTES_WORKSPACE_CONTROLS, SYSTEM_OVERVIEW_CONTROLS, ACCOUNT_OVERVIEW_CONTROLS, SETTINGS_OVERVIEW_CONTROLS):
             text = path.read_text(encoding="utf-8")
-            self.assertIn("./surface-lifecycle.mjs", text, path)
+            self.assertIn("contracts/surface-render-lifecycle.mjs", text, path)
             self.assertIn("assertSurfaceRenderLifecycle", text, path)
             self.assertIn("subscribeRender", text, path)
             self.assertNotIn("MutationObserver", text, path)
