@@ -535,7 +535,7 @@ func signCommand(args []string) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ordax-release-signing <generate-key|derive-trust|sign|verify-envelope> [options]")
+	fmt.Fprintln(os.Stderr, "usage: ordax-release-signing <generate-key|derive-trust|sign|sign-component|verify-envelope|verify-component-envelope> [options]")
 }
 
 func main() {
@@ -551,8 +551,12 @@ func main() {
 		err = deriveCommand(os.Args[2:])
 	case "sign":
 		err = signCommand(os.Args[2:])
+	case "sign-component":
+		err = signComponentCommand(os.Args[2:])
 	case "verify-envelope":
 		err = verifyCommand(os.Args[2:])
+	case "verify-component-envelope":
+		err = verifyComponentSigningCommand(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
