@@ -529,6 +529,18 @@ function buildCompositionProofExpression(moduleSources, styles) {
       '[data-window-id="notes"] [data-app-extension="notes-workspace"]',
     );
     result.notesOwnerMounted = Boolean(notesSlot?.dataset.ordaxNotesMounted === 'true');
+    const originalPrompt = window.prompt;
+    const originalConfirm = window.confirm;
+    window.prompt = () => 'Projeto smoke';
+    const newProjectButton = notesSlot?.querySelector('[data-notes-action="new-project"]');
+    result.notesNewProjectActionPresent = Boolean(newProjectButton);
+    newProjectButton?.click();
+    await Promise.resolve();
+    window.prompt = originalPrompt;
+    let notesBeforeEdit = parsedStorage('ordax.notes.v1');
+    const smokeProject = notesBeforeEdit?.projects?.find((project) => project.name === 'Projeto smoke');
+    result.notesProjectCreated = Boolean(smokeProject);
+
     const newNoteButton = notesSlot?.querySelector('[data-notes-action="new-note"]');
     result.notesNewActionPresent = Boolean(newNoteButton);
     newNoteButton?.click();
@@ -563,6 +575,61 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.notesRichTextPersisted = persistedNote?.richBody?.blocks?.[0]?.marks
       ?.some((mark) => mark.type === 'bold' && mark.start === 0 && mark.end === 'Conteúdo'.length) === true;
     result.notesPlainBodyHasNoMarkup = persistedNote?.body?.includes('**') === false;
+    result.notesCreatedInsideProject = persistedNote?.projectId === smokeProject?.id;
+
+    const addTaskButton = notesSlot?.querySelector('[data-notes-action="add-task"]');
+    addTaskButton?.click();
+    await Promise.resolve();
+    let notesAfterTask = parsedStorage('ordax.notes.v1');
+    let taskNote = notesAfterTask?.notes?.find((item) => item.id === notesAfterTask.selectedNoteId);
+    result.notesTaskCreated = taskNote?.tasks?.length === 1;
+    notesSlot?.querySelector('[data-notes-action="remove-task"]')?.click();
+    await Promise.resolve();
+    notesAfterTask = parsedStorage('ordax.notes.v1');
+    taskNote = notesAfterTask?.notes?.find((item) => item.id === notesAfterTask.selectedNoteId);
+    result.notesTaskRemoved = taskNote?.tasks?.length === 0;
+
+    notesSlot?.querySelector('[data-notes-action="toggle-menu"]')?.click();
+    await Promise.resolve();
+    const moveHome = notesSlot?.querySelector(
+      '[data-notes-action="move-note-project"][data-project-id="meu-espaco"]',
+    );
+    result.notesMoveActionPresent = Boolean(moveHome);
+    moveHome?.click();
+    await Promise.resolve();
+    const notesAfterMove = parsedStorage('ordax.notes.v1');
+    const movedNote = notesAfterMove?.notes?.find((item) => item.id === notesAfterMove.selectedNoteId);
+    result.notesMovedToHome = movedNote?.projectId === 'meu-espaco'
+      && notesAfterMove?.selectedProjectId === 'meu-espaco';
+
+    const projectRow = [...notesSlot?.querySelectorAll('.ordax-notes-project-row') ?? []]
+      .find((row) => row.querySelector('.ordax-notes-project-name')?.textContent === 'Projeto smoke');
+    const projectActions = projectRow?.querySelector('[data-notes-action="project-actions"]');
+    result.notesProjectActionsPresent = Boolean(projectActions);
+    projectActions?.click();
+    await Promise.resolve();
+    window.prompt = () => 'Projeto smoke renomeado';
+    notesSlot?.querySelector('[data-notes-action="rename-project"]')?.click();
+    await Promise.resolve();
+    window.prompt = originalPrompt;
+    let notesAfterProjectEdit = parsedStorage('ordax.notes.v1');
+    result.notesProjectRenamed = notesAfterProjectEdit?.projects
+      ?.some((project) => project.name === 'Projeto smoke renomeado') === true;
+
+    const renamedProjectRow = [...notesSlot?.querySelectorAll('.ordax-notes-project-row') ?? []]
+      .find((row) => row.querySelector('.ordax-notes-project-name')?.textContent === 'Projeto smoke renomeado');
+    renamedProjectRow?.querySelector('[data-notes-action="project-actions"]')?.click();
+    await Promise.resolve();
+    window.confirm = () => true;
+    notesSlot?.querySelector('[data-notes-action="remove-project"]')?.click();
+    await Promise.resolve();
+    window.confirm = originalConfirm;
+    notesAfterProjectEdit = parsedStorage('ordax.notes.v1');
+    result.notesProjectRemovedSafely = notesAfterProjectEdit?.projects
+      ?.every((project) => project.name !== 'Projeto smoke renomeado') === true
+      && notesAfterProjectEdit?.notes?.some(
+        (item) => item.id === notesAfterProjectEdit.selectedNoteId && item.projectId === 'meu-espaco',
+      ) === true;
 
     const addReferenceButton = notesSlot?.querySelector('[data-notes-action="add-reference"]');
     result.notesReferenceActionPresent = Boolean(addReferenceButton);
@@ -639,8 +706,10 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
-      'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewActionPresent', 'notesAutosavePersisted',
-      'notesRichTextPersisted', 'notesPlainBodyHasNoMarkup',
+      'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewProjectActionPresent', 'notesProjectCreated',
+      'notesNewActionPresent', 'notesAutosavePersisted', 'notesRichTextPersisted', 'notesPlainBodyHasNoMarkup',
+      'notesCreatedInsideProject', 'notesTaskCreated', 'notesTaskRemoved', 'notesMoveActionPresent',
+      'notesMovedToHome', 'notesProjectActionsPresent', 'notesProjectRenamed', 'notesProjectRemovedSafely',
       'notesReferenceActionPresent', 'notesFileReferenceChoicePresent', 'notesFileReferenceFailsClosedOnWeb',
       'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
       'systemOwnerMounted', 'systemOverviewDefault',

@@ -180,6 +180,95 @@
   color: var(--notes-accent);
 }
 
+.ordax-notes-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+}
+
+.ordax-notes-project-row[data-active="true"] {
+  background: var(--notes-soft);
+}
+
+.ordax-notes-project-row[data-active="true"] .ordax-notes-project {
+  background: transparent;
+}
+
+.ordax-notes-project-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-project-actions {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  opacity: 0;
+}
+
+.ordax-notes-project-row:hover .ordax-notes-project-actions,
+.ordax-notes-project-actions:focus-visible,
+.ordax-notes-project-actions[aria-expanded="true"] {
+  opacity: 1;
+}
+
+.ordax-notes-project-actions:hover,
+.ordax-notes-project-actions:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 0;
+}
+
+.ordax-notes-project-menu {
+  display: grid;
+  gap: 2px;
+  margin: 1px 2px 5px 24px;
+  padding: 5px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 8px;
+  background: var(--ordax-window-bg);
+}
+
+.ordax-notes-project-menu-item {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.67rem;
+  text-align: left;
+}
+
+.ordax-notes-project-menu-item:hover,
+.ordax-notes-project-menu-item:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-project-menu-danger {
+  color: var(--notes-accent);
+}
+
+.ordax-notes-project-menu-hint {
+  padding: 6px 8px;
+  color: var(--ordax-muted);
+  font-size: 0.61rem;
+  line-height: 1.35;
+}
+
 .ordax-notes-device {
   margin-top: auto;
   padding: 10px;
@@ -437,6 +526,34 @@
   outline: 0;
 }
 
+.ordax-notes-move-section {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notes-menu-label {
+  padding: 2px 9px;
+  color: var(--ordax-muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+}
+
+.ordax-notes-move-projects {
+  display: grid;
+  gap: 2px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.ordax-notes-move-project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ordax-notes-toolbar {
   display: flex;
   align-items: center;
@@ -614,7 +731,7 @@
 
 .ordax-notes-task {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 9px;
   min-height: 30px;
@@ -644,6 +761,31 @@
 
 .ordax-notes-task-text:focus {
   border-bottom-color: var(--ordax-border);
+}
+
+.ordax-notes-task-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1rem;
+  opacity: 0;
+}
+
+.ordax-notes-task:hover .ordax-notes-task-remove,
+.ordax-notes-task-remove:focus-visible {
+  opacity: 1;
+}
+
+.ordax-notes-task-remove:hover,
+.ordax-notes-task-remove:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--notes-accent);
+  outline: 0;
 }
 
 

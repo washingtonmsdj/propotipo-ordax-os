@@ -12,7 +12,10 @@ import {
 } from "../system/contracts/notes-store.mjs";
 import { createWebNotesStore } from "../system/adapters/web/notes.mjs";
 import { createNativeNotesStore } from "../system/adapters/native/notes.mjs";
-import { createNotesRuntime } from "../system/services/notes/runtime.mjs";
+import {
+  NOTES_HOME_PROJECT_ID,
+  createNotesRuntime,
+} from "../system/services/notes/runtime.mjs";
 
 function memoryStore({ initial = null, scope = "device", saveResult = true } = {}) {
   let snapshot = initial;
@@ -357,6 +360,86 @@ test("notes runtime edits, organizes and reloads durable state", () => {
   assert.equal(reloaded.tasks[0].text, "Validar fluxo");
   assert.equal(reloaded.references[0].href, "https://example.org/docs");
   assert.equal(reloaded.references[1].path, "/Documentos/brief.pdf");
+});
+
+test("project lifecycle moves notes safely and protects the home project", () => {
+  let clock = 30_000;
+  const runtime = createNotesRuntime({ now: () => clock++ });
+
+  runtime.createProject("Pesquisa");
+  let state = runtime.getSnapshot();
+  const research = state.document.projects.find((project) => project.name === "Pesquisa");
+  assert.ok(research);
+
+  runtime.createProject("Arquivo");
+  state = runtime.getSnapshot();
+  const archive = state.document.projects.find((project) => project.name === "Arquivo");
+  assert.ok(archive);
+
+  runtime.renameProject(research.id, "Pesquisa OrdaX");
+  state = runtime.getSnapshot();
+  assert.equal(
+    state.document.projects.find((project) => project.id === research.id).name,
+    "Pesquisa OrdaX",
+  );
+
+  runtime.createNote(research.id);
+  state = runtime.getSnapshot();
+  const noteId = state.document.selectedNoteId;
+  runtime.updateNote(noteId, { title: "Mover esta nota" });
+  runtime.moveNote(noteId, archive.id);
+  state = runtime.getSnapshot();
+  assert.equal(state.document.selectedProjectId, archive.id);
+  assert.equal(state.document.selectedNoteId, noteId);
+  assert.equal(
+    state.document.notes.find((note) => note.id === noteId).projectId,
+    archive.id,
+  );
+
+  runtime.removeProject(archive.id);
+  state = runtime.getSnapshot();
+  assert.equal(state.document.projects.some((project) => project.id === archive.id), false);
+  assert.equal(state.document.selectedProjectId, NOTES_HOME_PROJECT_ID);
+  assert.equal(state.document.selectedNoteId, noteId);
+  assert.equal(
+    state.document.notes.find((note) => note.id === noteId).projectId,
+    NOTES_HOME_PROJECT_ID,
+  );
+
+  const beforeHomeRemoval = state.document;
+  runtime.renameProject(NOTES_HOME_PROJECT_ID, "Outro nome");
+  assert.deepEqual(runtime.getSnapshot().document, beforeHomeRemoval);
+  runtime.removeProject(NOTES_HOME_PROJECT_ID);
+  state = runtime.getSnapshot();
+  assert.deepEqual(state.document, beforeHomeRemoval);
+  assert.equal(
+    state.document.projects.find((project) => project.id === NOTES_HOME_PROJECT_ID).name,
+    "Meu espaço",
+  );
+});
+
+test("checklist items can be removed without affecting sibling items", () => {
+  let clock = 40_000;
+  const runtime = createNotesRuntime({ now: () => clock++ });
+  runtime.createNote();
+  const noteId = runtime.getSnapshot().document.selectedNoteId;
+
+  runtime.addTask(noteId, "Primeiro");
+  runtime.addTask(noteId, "Segundo");
+  let note = runtime.getSnapshot().document.notes.find((item) => item.id === noteId);
+  assert.equal(note.tasks.length, 2);
+
+  const firstTaskId = note.tasks[0].id;
+  const secondTaskId = note.tasks[1].id;
+  runtime.removeTask(noteId, firstTaskId);
+
+  note = runtime.getSnapshot().document.notes.find((item) => item.id === noteId);
+  assert.deepEqual(note.tasks.map((task) => task.id), [secondTaskId]);
+  assert.equal(note.tasks[0].text, "Segundo");
+
+  const unchanged = runtime.getSnapshot().document;
+  runtime.removeTask(noteId, "task:missing");
+  assert.deepEqual(runtime.getSnapshot().document, unchanged);
 });
 
 test("notes runtime exposes local persistence failure without losing session state", () => {
