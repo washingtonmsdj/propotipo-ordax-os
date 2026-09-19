@@ -73,9 +73,11 @@ That path is backed by the existing OrdaX user-state mount rather than a new phy
 
 ### Loopback and DNS-rebinding status
 
-The browser host now rejects direct local/non-public network destinations both for top-level navigation and for WebKit resource requests. That closes the straightforward path where an Internet page tries to load `127.0.0.1`, RFC1918/private addresses, link-local addresses, single-label local hosts, `.local`, or `.home.arpa` targets as subresources.
+The browser host rejects direct local/non-public network destinations both for top-level navigation and for WebKit resource requests. That closes the straightforward path where an Internet page tries to load `127.0.0.1`, RFC1918/private addresses, link-local addresses, single-label local hosts, `.local`, or `.home.arpa` targets as subresources.
 
-This is defense in depth, not the final proof of the native control-plane boundary. A public-looking DNS name can still resolve differently after browser-side policy evaluation. The native loopback HTTP host therefore still needs its own request-origin/Host authentication boundary before the design can be described as DNS-rebinding-proof. Until that server-side boundary exists and is tested, the PR remains a prototype and the hardware/security checklist remains open.
+The native loopback HTTP host now also owns the server-side request boundary. Every request must carry the exact bound `127.0.0.1:<port>` Host authority; privileged `/__ordax/native/` requests additionally reject explicit foreign Origin, Referer or Sec-Fetch-Site provenance. The live handler integration tests exercise canonical same-origin access, foreign-origin rejection and a DNS-rebinding-style public Host alias resolving to loopback. The server also refuses startup on a non-loopback bind.
+
+This closes the previously documented source-level Host/origin gap. Hardware validation is still required before the browser slice is considered proven on the notebook, and the external WebKit plane remains independently constrained by its public-network policy.
 
 ## Shared application shell
 
@@ -206,7 +208,7 @@ On the notebook, validate in this order:
 8. Corrupt or invalid `session.json` state fails closed to a clean browser session.
 9. `http://127.0.0.1`, `localhost`, private/link-local literal IPs and local-name navigation are rejected in the external content plane.
 10. A remote page attempting local/non-public subresource loads or redirects does not dispatch those literal targets from the external WebView.
-11. Native loopback server request authentication/Host pinning is proven against DNS rebinding before the browser boundary is marked security-complete.
+11. Native loopback Host/provenance pinning rejects a DNS-rebinding-style alias and foreign browser provenance on the real notebook runtime.
 12. Website permission prompts fail closed in this slice.
 13. Download attempts do not write files until the download contract exists.
 14. Existing Files, Ajustes, Conta, Sistema, network, power and update paths remain healthy.

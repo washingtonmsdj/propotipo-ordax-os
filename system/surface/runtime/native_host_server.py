@@ -23,6 +23,12 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, quote, urlsplit
 from urllib.request import Request, urlopen
 
+_RUNTIME_DIR = os.path.dirname(os.path.abspath(__file__))
+if _RUNTIME_DIR not in sys.path:
+    sys.path.insert(0, _RUNTIME_DIR)
+
+from native_request_boundary import expected_surface_authority, request_is_trusted
+
 SESSION_PATH = "/__ordax/native/session"
 POWER_PATH = "/__ordax/native/power"
 UPDATE_PATH = "/__ordax/native/update"
@@ -2028,6 +2034,12 @@ class NativeHostServer(ThreadingHTTPServer):
 class NativeHostHandler(SimpleHTTPRequestHandler):
     server_version = "OrdaXNativeHost/1"
 
+    def _request_is_trusted(self) -> bool:
+        if request_is_trusted(self.headers, self.server.server_address, self.path):
+            return True
+        self._empty(403)
+        return False
+
     def end_headers(self) -> None:
         if not urlsplit(self.path).path.startswith("/__ordax/native/"):
             self.send_header("Cache-Control", "no-store, max-age=0")
@@ -2087,6 +2099,8 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         return payload if isinstance(payload, dict) else None
 
     def do_OPTIONS(self) -> None:  # noqa: N802
+        if not self._request_is_trusted():
+            return
         if self.path.startswith("/__ordax/native/"):
             # Deliberately no CORS headers. Cross-origin callers cannot use the
             # native control/state APIs through browser preflight.
@@ -2095,6 +2109,8 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         self._empty(405)
 
     def do_GET(self) -> None:  # noqa: N802
+        if not self._request_is_trusted():
+            return
         parsed_path = urlsplit(self.path).path
         if parsed_path in {SESSION_PATH, FILES_PATH, FILE_CONTENT_PATH, FILE_EXPORT_PATH, IMAGE_PREVIEW_PATH, METRICS_PATH, POWER_STATUS_PATH, NETWORK_STATUS_PATH, NETWORK_MANAGEMENT_PATH, UPDATE_HISTORY_PATH, DIAGNOSTIC_JOURNAL_PATH} and self.client_address[0] != "127.0.0.1":
             self._empty(403)
@@ -2318,6 +2334,8 @@ class NativeHostHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self) -> None:  # noqa: N802
+        if not self._request_is_trusted():
+            return
         if self.client_address[0] != "127.0.0.1":
             self._empty(403)
             return
@@ -2658,6 +2676,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    try:
+        expected_surface_authority((args.bind, args.port))
+    except ValueError as exc:
+        print(f"ordax-native-host: refusing unsafe bind: {exc}", file=sys.stderr, flush=True)
+        return 2
     try:
         standard_directories = ensure_standard_user_directories(args.user_root)
     except OSError as exc:

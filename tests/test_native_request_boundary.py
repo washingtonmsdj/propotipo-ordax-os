@@ -1,6 +1,10 @@
 from email.message import Message
+from functools import partial
+import http.client
 import importlib.util
 from pathlib import Path
+import tempfile
+import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +14,12 @@ spec = importlib.util.spec_from_file_location("ordax_native_request_boundary_tes
 boundary = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(boundary)
+
+HOST = ROOT / "system" / "surface" / "runtime" / "native_host_server.py"
+host_spec = importlib.util.spec_from_file_location("ordax_native_boundary_integration", HOST)
+native_host = importlib.util.module_from_spec(host_spec)
+assert host_spec.loader is not None
+host_spec.loader.exec_module(native_host)
 
 
 class NativeRequestBoundaryPolicyTests(unittest.TestCase):
@@ -148,6 +158,82 @@ class NativeRequestBoundaryPolicyTests(unittest.TestCase):
                 boundary.NATIVE_API_PREFIX + "session",
             )
         )
+
+
+class NativeRequestBoundaryIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        (root / "index.html").write_text("<!doctype html><title>OrdaX</title>", encoding="utf-8")
+        handler = partial(native_host.NativeHostHandler, directory=str(root))
+        self.server = native_host.NativeHostServer(
+            ("127.0.0.1", 0),
+            handler,
+            user_root=str(root),
+            power_request_path=str(root / "power-request"),
+            network_session_dir=str(root),
+        )
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.temporary.cleanup()
+
+    def request(self, path, *, headers=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)
+        try:
+            connection.request("GET", path, headers=headers or {})
+            response = connection.getresponse()
+            body = response.read()
+            return response.status, body
+        finally:
+            connection.close()
+
+    def test_static_surface_requires_exact_bound_authority(self):
+        status, _body = self.request("/index.html")
+        self.assertEqual(status, 200)
+
+        status, _body = self.request(
+            "/index.html",
+            headers={"Host": f"attacker.example:{self.port}"},
+        )
+        self.assertEqual(status, 403)
+
+    def test_native_api_rejects_foreign_browser_provenance(self):
+        origin = f"http://127.0.0.1:{self.port}"
+        status, body = self.request(
+            native_host.SESSION_PATH,
+            headers={
+                "Origin": origin,
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b'"token"', body)
+
+        status, _body = self.request(
+            native_host.SESSION_PATH,
+            headers={
+                "Origin": "https://attacker.example",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+        self.assertEqual(status, 403)
+
+    def test_dns_rebinding_style_host_alias_cannot_reach_native_api(self):
+        status, _body = self.request(
+            native_host.SESSION_PATH,
+            headers={
+                "Host": f"public-name.example:{self.port}",
+                "Origin": f"http://public-name.example:{self.port}",
+                "Sec-Fetch-Site": "same-origin",
+            },
+        )
+        self.assertEqual(status, 403)
 
 
 if __name__ == "__main__":
