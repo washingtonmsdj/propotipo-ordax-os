@@ -324,6 +324,16 @@ export function mountFileSpaceControls(
     return parts.length === 0 ? "/" : `/${parts.join("/")}`;
   };
 
+  const projectForFilePath = (path) => {
+    if (!projectPort || typeof path !== "string") return null;
+    let match = null;
+    for (const project of projectSnapshot?.projects ?? []) {
+      if (!path.startsWith(`${project.path}/`)) continue;
+      if (!match || project.path.length > match.path.length) match = project;
+    }
+    return match;
+  };
+
   const canGoBack = () => navigationIndex > 0;
   const canGoForward = () =>
     navigationIndex >= 0 && navigationIndex < navigationHistory.length - 1;
@@ -1308,6 +1318,19 @@ export function mountFileSpaceControls(
     actions.append(refresh, importFile, addProject);
     const currentProject = projectSnapshot?.projects.find((project) => project.path === listing?.path);
     if (currentProject) {
+      if (currentProject.lastFilePath) {
+        const resumeProjectButton = node(
+          documentObject,
+          "button",
+          "ordax-files-action ordax-files-action-primary",
+          "Continuar último arquivo",
+        );
+        resumeProjectButton.type = "button";
+        resumeProjectButton.dataset.fileProjectResume = currentProject.id;
+        resumeProjectButton.disabled = pending || previewPending;
+        resumeProjectButton.title = currentProject.lastFilePath;
+        actions.append(resumeProjectButton);
+      }
       const renameProjectButton = node(documentObject, "button", "ordax-files-action", "Renomear projeto");
       renameProjectButton.type = "button";
       renameProjectButton.dataset.fileProjectRenameStart = currentProject.id;
@@ -1447,7 +1470,7 @@ export function mountFileSpaceControls(
     replaceView();
   };
 
-  const openTextFile = async (path) => {
+  const openTextFile = async (path, { source = "direct" } = {}) => {
     const ordinal = ++previewRequestOrdinal;
     previewPending = true;
     textPreview = null;
@@ -1458,10 +1481,28 @@ export function mountFileSpaceControls(
       if (destroyed || ordinal !== previewRequestOrdinal) return;
       textPreview = next;
       if (recentPort) recentPort.recordOpened(next.path);
+      const project = projectForFilePath(next.path);
+      if (projectPort && project) {
+        try {
+          projectSnapshot = projectPort.recordFileOpened(project.id, next.path);
+        } catch {
+          message = "Arquivo aberto, mas a continuidade do projeto não pôde ser atualizada.";
+        }
+      }
     } catch (error) {
       if (destroyed || ordinal !== previewRequestOrdinal) return;
       const status = operationStatus(error);
-      if (status === 413) {
+      if (source === "project-resume") {
+        if (status === 404) {
+          message = "O último arquivo deste projeto não está mais disponível. O projeto foi preservado.";
+        } else if (status === 413) {
+          message = "O último arquivo deste projeto ficou grande demais para a visualização rápida. O projeto foi preservado.";
+        } else if (status === 415) {
+          message = "O último arquivo deste projeto não é mais texto UTF-8 válido. O projeto foi preservado.";
+        } else {
+          message = "Não foi possível retomar o último arquivo deste projeto. O projeto foi preservado.";
+        }
+      } else if (status === 413) {
         message = "Este arquivo é grande demais para a visualização rápida (máximo 256 KB).";
       } else if (status === 415) {
         message = "A visualização rápida aceita apenas texto UTF-8 válido.";
@@ -1913,6 +1954,15 @@ export function mountFileSpaceControls(
       projectDraft = "";
       message = null;
       replaceView();
+      return;
+    }
+    const projectResume = event.target.closest("[data-file-project-resume]");
+    if (projectResume && root.contains(projectResume) && projectPort && listing && !previewPending) {
+      const projectId = projectResume.dataset.fileProjectResume;
+      const project = projectSnapshot?.projects.find((candidate) => candidate.id === projectId);
+      if (project?.lastFilePath && project.path === listing.path) {
+        void openTextFile(project.lastFilePath, { source: "project-resume" });
+      }
       return;
     }
     const projectRenameStart = event.target.closest("[data-file-project-rename-start]");
