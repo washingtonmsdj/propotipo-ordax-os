@@ -541,9 +541,10 @@ export function mountInternetBrowserControls(
   const syncReferenceControls = (slot) => {
     syncNoteDraft();
     const tab = activeTab();
+    const url = activeReferenceUrl();
     const project = selectedProject();
     const saved = activeSavedReference();
-    const available = Boolean(referencePort && project && tab?.url);
+    const available = Boolean(referencePort && project && url);
 
     const save = slot.querySelector("[data-browser-save-project]");
     if (save) {
@@ -553,8 +554,8 @@ export function mountInternetBrowserControls(
         ? "Referências de projeto não estão disponíveis neste host."
         : !project
           ? "Selecione um projeto para salvar esta página."
-          : !tab?.url
-            ? "Abra uma página antes de salvá-la."
+          : !url
+            ? "Abra uma página HTTP ou HTTPS válida antes de salvá-la."
             : saved
               ? "Atualizar título e nota desta referência."
               : "Salvar a página atual como referência explícita deste projeto.";
@@ -574,8 +575,8 @@ export function mountInternetBrowserControls(
         ? "Persistência de referências indisponível neste host."
         : !project
           ? "Selecione um projeto para relacionar uma nota à página."
-          : !tab?.url
-            ? "Abra uma página para adicionar contexto."
+          : !url
+            ? "Abra uma página HTTP ou HTTPS válida para adicionar contexto."
             : saved
               ? "A nota é salva junto desta referência."
               : "A nota será salva junto com a página.";
@@ -667,13 +668,14 @@ export function mountInternetBrowserControls(
 
     if (target.dataset.browserSaveProject !== undefined) {
       const tab = activeTab();
+      const url = activeReferenceUrl();
       const project = selectedProject();
-      if (!referencePort || !project || !tab?.url) return;
+      if (!referencePort || !project || !tab || !url) return;
       try {
         referencePort.save({
           projectId: project.id,
-          url: tab.url,
-          title: tab.title || displayHost(tab.url),
+          url,
+          title: tab.title || displayHost(url),
           note: noteDraftValue,
         });
         projectPort?.recordOpened(project.id);
