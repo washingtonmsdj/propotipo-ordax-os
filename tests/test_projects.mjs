@@ -261,6 +261,113 @@ test("clearing last file degrades to session when persistence fails but keeps re
   assert.equal(cleared.projects[0].lastOpenedAt, before.lastOpenedAt);
 });
 
+test("relocating a referenced file or ancestor folder preserves continuity without fabricating activity", () => {
+  let saves = 0;
+  let emissions = 0;
+  let clockReads = 0;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ onSave: () => { saves += 1; } }),
+    now: () => {
+      clockReads += 1;
+      return 600 + clockReads;
+    },
+  });
+  runtime.create({ name: "Projeto A", path: "/Documentos/A" });
+  runtime.create({ name: "Projeto B", path: "/Documentos/B" });
+  runtime.recordFileOpened("project-1", "/Documentos/A/cenas/roteiro.txt");
+  const before = runtime.getSnapshot();
+  const beforeTarget = before.projects.find((project) => project.id === "project-1");
+  const order = before.projects.map((project) => project.id);
+  const savesBeforeRelocate = saves;
+  const clockReadsBeforeRelocate = clockReads;
+  const unsubscribe = runtime.subscribe(() => { emissions += 1; });
+
+  const relocated = runtime.relocateLastFilePath(
+    "/Documentos/A/cenas",
+    "/Documentos/A/roteiros",
+  );
+  const target = relocated.projects.find((project) => project.id === "project-1");
+  assert.equal(target.lastFilePath, "/Documentos/A/roteiros/roteiro.txt");
+  assert.equal(target.lastOpenedAt, beforeTarget.lastOpenedAt);
+  assert.equal(target.createdAt, beforeTarget.createdAt);
+  assert.deepEqual(relocated.projects.map((project) => project.id), order);
+  assert.equal(clockReads, clockReadsBeforeRelocate);
+  assert.equal(saves, savesBeforeRelocate + 1);
+  assert.equal(emissions, 1);
+
+  const unchanged = runtime.relocateLastFilePath(
+    "/Documentos/A/cenas",
+    "/Documentos/A/roteiros",
+  );
+  assert.deepEqual(unchanged, relocated);
+  assert.equal(saves, savesBeforeRelocate + 1);
+  assert.equal(emissions, 1);
+  unsubscribe();
+});
+
+test("moving referenced content outside its project clears only the source continuity", () => {
+  let clock = 700;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore(),
+    now: () => clock++,
+  });
+  runtime.create({ name: "Projeto A", path: "/Documentos/A" });
+  runtime.create({ name: "Projeto B", path: "/Documentos/B" });
+  runtime.recordFileOpened("project-1", "/Documentos/A/roteiro.txt");
+  const before = runtime.getSnapshot();
+  const projectA = before.projects.find((project) => project.id === "project-1");
+  const projectB = before.projects.find((project) => project.id === "project-2");
+  const order = before.projects.map((project) => project.id);
+
+  const moved = runtime.relocateLastFilePath(
+    "/Documentos/A/roteiro.txt",
+    "/Documentos/B/roteiro.txt",
+  );
+  const afterA = moved.projects.find((project) => project.id === "project-1");
+  const afterB = moved.projects.find((project) => project.id === "project-2");
+  assert.equal(afterA.lastFilePath, null);
+  assert.equal(afterA.lastOpenedAt, projectA.lastOpenedAt);
+  assert.equal(afterB.lastFilePath, null);
+  assert.equal(afterB.lastOpenedAt, projectB.lastOpenedAt);
+  assert.deepEqual(moved.projects.map((project) => project.id), order);
+});
+
+test("project continuity relocation validates before mutation and degrades storage failure to session", () => {
+  let saves = 0;
+  const runtime = createProjectCatalogRuntime({
+    store: memoryStore({ onSave: () => { saves += 1; } }),
+    now: () => 800,
+  });
+  runtime.create({ name: "Projeto", path: "/Documentos/Projeto" });
+  runtime.recordFileOpened("project-1", "/Documentos/Projeto/original.txt");
+  const before = runtime.getSnapshot();
+  const savesBeforeInvalid = saves;
+
+  assert.throws(
+    () => runtime.relocateLastFilePath("/", "/Documentos/Projeto/novo.txt"),
+    /below the logical root/,
+  );
+  assert.throws(
+    () => runtime.relocateLastFilePath("/Documentos/Projeto/original.txt", "/"),
+    /below the logical root/,
+  );
+  assert.deepEqual(runtime.getSnapshot(), before);
+  assert.equal(saves, savesBeforeInvalid);
+
+  const failingRuntime = createProjectCatalogRuntime({
+    store: memoryStore({ failSave: true }),
+    now: () => 900,
+  });
+  failingRuntime.create({ name: "Projeto", path: "/Documentos/Projeto" });
+  failingRuntime.recordFileOpened("project-1", "/Documentos/Projeto/original.txt");
+  const relocated = failingRuntime.relocateLastFilePath(
+    "/Documentos/Projeto/original.txt",
+    "/Documentos/Projeto/novo.txt",
+  );
+  assert.equal(relocated.persistence, "session");
+  assert.equal(relocated.projects[0].lastFilePath, "/Documentos/Projeto/novo.txt");
+});
+
 test("renaming a project changes only its validated display name and preserves identity, path, activity and order", () => {
   let clock = 100;
   const runtime = createProjectCatalogRuntime({
