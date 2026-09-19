@@ -7,6 +7,7 @@ import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
 import { createNativeProjectStore } from "../../adapters/native/projects.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
+import { createNativeNotesStore } from "../../adapters/native/notes.mjs";
 import { createNativeNetworkStatus } from "../../adapters/native/network-status.mjs";
 import { createNativePowerActions } from "../../adapters/native/power-actions.mjs";
 import { createNativePowerStatus } from "../../adapters/native/power-status.mjs";
@@ -24,6 +25,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
+import { createNotesRuntime } from "../../services/notes/runtime.mjs";
 import { createDiagnosticJournalRuntime } from "../../services/diagnostics/runtime.mjs";
 import { createUpdateDiagnosticRecorder } from "../../services/diagnostics/update-recorder.mjs";
 import { createPreferenceSyncRuntime } from "../../services/sync/preference-runtime.mjs";
@@ -32,6 +34,7 @@ import { mountAccountOverviewControls } from "../../surface/ui/account-overview-
 import { mountFileSpaceControls } from "../../surface/ui/file-space-controls.mjs";
 import { mountNetworkQuickPanel } from "../../surface/ui/network-quick-panel.mjs";
 import { mountNetworkTrayControls } from "../../surface/ui/network-tray-controls.mjs";
+import { mountNotesWorkspaceControls } from "../../surface/ui/notes-workspace-controls.mjs";
 import { mountBatteryQuickPanel } from "../../surface/ui/battery-quick-panel.mjs";
 import { mountBatteryTrayControls } from "../../surface/ui/battery-tray-controls.mjs";
 import { mountPowerControls } from "../../surface/ui/power-controls.mjs";
@@ -75,6 +78,10 @@ async function start() {
       () => createNativeSyncStateStore(window),
     ),
     optionalNativeProbe(
+      "OrdaX native notes persistence unavailable",
+      () => createNativeNotesStore(window),
+    ),
+    optionalNativeProbe(
       "OrdaX native power actions unavailable",
       () => createNativePowerActions(window),
     ),
@@ -106,6 +113,7 @@ async function start() {
     diagnosticJournalStore,
     updateHistory,
     syncStateStore,
+    notesStore,
     powerActions,
     fileSpace,
     networkStatus,
@@ -126,6 +134,7 @@ async function start() {
   const identitySession = createWebIdentitySession();
   const identityActions = createWebIdentityActions();
   const appActivation = createAppActivationChannel();
+  const notesRuntime = createNotesRuntime({ store: notesStore });
   const updateWatcher = createNativeUpdateWatcher(window);
   const diagnosticJournal = await createDiagnosticJournalRuntime({
     store: diagnosticJournalStore,
@@ -178,6 +187,7 @@ async function start() {
     workspaceStore,
     appActivation,
   );
+  const notesWorkspaceControls = mountNotesWorkspaceControls(root, notesRuntime, surface);
   let quickPanelControls = null;
   try {
     quickPanelControls = mountSystemTrayQuickPanels(root);
@@ -296,11 +306,13 @@ async function start() {
       batteryTrayControls?.destroy();
       batteryQuickPanel?.destroy();
       fileSpaceControls.destroy();
+      notesWorkspaceControls.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
       updateDiagnosticRecorder.dispose();
       updateWatcher.dispose();
       surface.destroy();
+      notesRuntime.destroy();
       identityActions.dispose();
       identitySession.dispose();
       host.dispose();

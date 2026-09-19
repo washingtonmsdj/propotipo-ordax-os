@@ -22,20 +22,26 @@ class SurfaceWebBuilderTests(unittest.TestCase):
             "system/apps/catalog.mjs",
             "system/apps/app-contract.mjs",
             "system/apps/files/app.mjs",
+            "system/apps/notes/app.mjs",
             "system/apps/settings/app.mjs",
             "system/apps/account/app.mjs",
             "system/apps/system/app.mjs",
             "system/services/preferences/appearance.mjs",
             "system/services/preferences/catalog.mjs",
             "system/services/apps/activation.mjs",
+            "system/services/notes/runtime.mjs",
             "system/adapters/web/runtime.mjs",
+            "system/adapters/web/notes.mjs",
             "system/adapters/web/preferences.mjs",
             "system/contracts/surface-host.mjs",
+            "system/contracts/notes-store.mjs",
             "system/contracts/preference-store.mjs",
             "system/contracts/app-activation.mjs",
             "system/surface/ui/tokens.css",
             "system/surface/ui/surface.css",
             "system/surface/ui/files.css",
+            "system/surface/ui/notes.css",
+            "system/surface/ui/notes-workspace-controls.mjs",
             "system/surface/ui/system.css",
             "system/surface/ui/system-overview-controls.mjs",
             "system/surface/ui/account-overview-controls.mjs",
@@ -126,6 +132,7 @@ class SurfaceWebBuilderTests(unittest.TestCase):
         self.assertNotIn("../", rendered)
         self.assertIn("./system/surface/ui/tokens.css", rendered)
         self.assertIn("./system/surface/ui/files.css", rendered)
+        self.assertIn("./system/surface/ui/notes.css", rendered)
         self.assertIn("./system/surface/ui/system.css", rendered)
         self.assertIn("./system/surface/ui/account.css", rendered)
         self.assertIn("./system/surface/ui/settings.css", rendered)

@@ -16,6 +16,7 @@ const CSS_FILES = [
   'system/surface/ui/surface.css',
   'system/surface/ui/workspace-areas.css',
   'system/surface/ui/files.css',
+  'system/surface/ui/notes.css',
   'system/surface/ui/system.css',
   'system/surface/ui/account.css',
   'system/surface/ui/settings.css',
@@ -523,6 +524,29 @@ function buildCompositionProofExpression(moduleSources, styles) {
     const storedSettings = firstArea?.windows?.find((item) => item.appId === 'settings');
     result.workspaceTargetPersisted = storedSettings?.target === 'accessibility';
 
+    await launch('notes');
+    const notesSlot = root.querySelector(
+      '[data-window-id="notes"] [data-app-extension="notes-workspace"]',
+    );
+    result.notesOwnerMounted = Boolean(notesSlot?.dataset.ordaxNotesMounted === 'true');
+    const newNoteButton = notesSlot?.querySelector('[data-notes-action="new-note"]');
+    result.notesNewActionPresent = Boolean(newNoteButton);
+    newNoteButton?.click();
+    await Promise.resolve();
+    const notesTitle = notesSlot?.querySelector('[data-notes-title]');
+    const notesBody = notesSlot?.querySelector('[data-notes-body]');
+    if (notesTitle && notesBody) {
+      notesTitle.value = 'Nota persistida no smoke';
+      notesTitle.dispatchEvent(new Event('input', { bubbles: true }));
+      notesBody.value = 'Conteúdo salvo localmente e disponível offline.';
+      notesBody.dispatchEvent(new Event('input', { bubbles: true }));
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 380));
+    }
+    const notesStorage = parsedStorage('ordax.notes.v1');
+    const persistedNote = notesStorage?.notes?.find((item) => item.id === notesStorage.selectedNoteId);
+    result.notesAutosavePersisted = persistedNote?.title === 'Nota persistida no smoke'
+      && persistedNote?.body === 'Conteúdo salvo localmente e disponível offline.';
+
     await launch('account');
     const accountSlot = root.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
@@ -561,6 +585,13 @@ function buildCompositionProofExpression(moduleSources, styles) {
     result.settingsWindowRestored = Boolean(restoredSettingsSlot);
     result.settingsTargetRestored = restoredSettingsSlot?.dataset.settingsActiveSection === 'accessibility';
 
+    const restoredNotesSlot = root?.querySelector(
+      '[data-window-id="notes"] [data-app-extension="notes-workspace"]',
+    );
+    result.notesWindowRestored = Boolean(restoredNotesSlot);
+    result.notesOwnerRestored = Boolean(restoredNotesSlot?.dataset.ordaxNotesMounted === 'true');
+    result.notesContentRestored = restoredNotesSlot?.querySelector('[data-notes-title]')?.value === 'Nota persistida no smoke';
+
     const restoredAccountSlot = root?.querySelector(
       '[data-window-id="account"] [data-app-extension="account-overview"]',
     );
@@ -580,12 +611,13 @@ function buildCompositionProofExpression(moduleSources, styles) {
       'compositionMounted', 'settingsWindowMounted', 'settingsOwnerMounted', 'settingsStartsAppearance',
       'darkActionPresent', 'darkThemeApplied', 'darkThemePersisted', 'accessibilityNavigationPresent',
       'accessibilityTargetApplied', 'extraLargeActionPresent', 'textScaleApplied', 'textScalePersisted',
-      'workspaceTargetPersisted', 'accountOwnerMounted', 'accountUnavailable',
-      'accountNoFakeIdentityAction', 'systemOwnerMounted', 'systemOverviewDefault',
+      'workspaceTargetPersisted', 'notesOwnerMounted', 'notesNewActionPresent', 'notesAutosavePersisted',
+      'accountOwnerMounted', 'accountUnavailable', 'accountNoFakeIdentityAction',
+      'systemOwnerMounted', 'systemOverviewDefault',
       'systemNavigationComplete', 'firstMountDestroyed', 'textScaleClearedOnDestroy',
       'remountCompositionMounted', 'themeRestored', 'textScaleRestored', 'settingsWindowRestored',
-      'settingsTargetRestored', 'accountWindowRestored', 'accountOwnerRestored',
-      'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
+      'settingsTargetRestored', 'notesWindowRestored', 'notesOwnerRestored', 'notesContentRestored',
+      'accountWindowRestored', 'accountOwnerRestored', 'accountStillUnavailable', 'accountStillHasNoFakeIdentityAction', 'systemWindowRestored',
       'systemOwnerRestored', 'systemOverviewRestored',
     ];
     result.requiredAssertions = Object.fromEntries(required.map((name) => [name, Boolean(result[name])]));

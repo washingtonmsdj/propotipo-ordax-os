@@ -27,12 +27,14 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/notes-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/files/**'
+      - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -49,6 +51,8 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_notes_runtime.mjs'
+      - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
@@ -93,12 +97,14 @@ on:
       - 'system/contracts/recent-files-store.mjs'
       - 'system/contracts/project-catalog.mjs'
       - 'system/contracts/project-store.mjs'
+      - 'system/contracts/notes-store.mjs'
       - 'system/surface/**'
       - 'system/apps/**'
       - 'system/services/account/**'
       - 'system/services/network/**'
       - 'system/services/apps/**'
       - 'system/services/files/**'
+      - 'system/services/notes/**'
       - 'system/services/preferences/**'
       - 'system/services/sync/**'
       - 'system/services/diagnostics/**'
@@ -115,6 +121,8 @@ on:
       - 'tests/test_recent_files.mjs'
       - 'tests/test_recent_files_ui_contract.py'
       - 'tests/test_projects.mjs'
+      - 'tests/test_notes_runtime.mjs'
+      - 'tests/test_notes_native.py'
       - 'tests/test_project_files_ui_contract.py'
       - 'tests/test_app_activation.mjs'
       - 'tests/test_app_contract.mjs'
@@ -167,6 +175,7 @@ jobs:
             system/services/account \
             system/services/apps \
             system/services/files \
+            system/services/notes \
             system/services/preferences \
             system/services/sync \
             system/services/diagnostics \
@@ -184,6 +193,7 @@ jobs:
           node --test tests/test_surface_workspace.mjs
           node --test tests/test_recent_files.mjs
           node --test tests/test_projects.mjs
+          node --test tests/test_notes_runtime.mjs
           node --test tests/test_app_activation.mjs
           node --test tests/test_app_contract.mjs
           node --test tests/test_identity_session.mjs
@@ -205,6 +215,7 @@ jobs:
           python -m unittest tests.test_surface_web_builder -v
           python -m unittest tests.test_recent_files_ui_contract -v
           python -m unittest tests.test_project_files_ui_contract -v
+          python -m unittest tests.test_notes_native -v
 
       - name: Build and verify deterministic Web client
         run: |
