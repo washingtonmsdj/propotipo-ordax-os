@@ -8,6 +8,7 @@
     <title>OrdaX</title>
     <link rel="stylesheet" href="../../surface/ui/tokens.css" />
     <link rel="stylesheet" href="../../surface/ui/surface.css" />
+    <link rel="stylesheet" href="../../surface/ui/boot-screen.css" />
     <link rel="stylesheet" href="../../surface/ui/workspace-areas.css" />
     <link rel="stylesheet" href="../../surface/ui/files.css" />
     <link rel="stylesheet" href="../../surface/ui/system.css" />
@@ -15,6 +16,19 @@
     <link rel="stylesheet" href="../../surface/ui/settings.css" />
   </head>
   <body>
+    <div
+      id="ordax-boot-screen"
+      class="ordax-boot-screen"
+      data-state="loading"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="ordax-boot-screen-card">
+        <strong class="ordax-boot-wordmark">OrdaX</strong>
+        <span class="ordax-boot-spinner" aria-hidden="true"></span>
+        <span class="ordax-boot-status" data-ordax-boot-status>Preparando OrdaX…</span>
+      </div>
+    </div>
     <div id="ordax-root"></div>
     <noscript>OrdaX Surface requires JavaScript in this host.</noscript>
     <script type="module" src="./main.mjs"></script>
