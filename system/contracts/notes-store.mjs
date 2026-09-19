@@ -1,0 +1,147 @@
+export const NOTES_STORE_SCHEMA = "ordax.notes-store/1";
+export const NOTES_SNAPSHOT_SCHEMA = "ordax.notes-snapshot/1";
+export const MAX_NOTES = 512;
+export const MAX_NOTE_PROJECTS = 64;
+export const MAX_NOTE_REFERENCES = 32;
+export const MAX_NOTE_TASKS = 64;
+export const MAX_NOTE_TEXT_CHARS = 65536;
+
+const ID_RE = /^[a-z0-9][a-z0-9._:-]{0,95}$/;
+const REFERENCE_KINDS = new Set(["link", "file"]);
+
+function finiteTimestamp(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new TypeError(`${label} must be a non-negative epoch millisecond`);
+  }
+  return value;
+}
+
+function boundedText(value, label, max = MAX_NOTE_TEXT_CHARS) {
+  if (typeof value !== "string" || value.length > max || value.includes("\0")) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return value;
+}
+
+function validId(value, label) {
+  if (typeof value !== "string" || !ID_RE.test(value)) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return value;
+}
+
+function freezeProject(value) {
+  if (!value || typeof value !== "object") throw new TypeError("Note project is invalid");
+  return Object.freeze({
+    id: validId(value.id, "Project id"),
+    name: boundedText(value.name, "Project name", 160),
+    createdAt: finiteTimestamp(value.createdAt, "Project createdAt"),
+    updatedAt: finiteTimestamp(value.updatedAt, "Project updatedAt"),
+  });
+}
+
+function freezeTask(value) {
+  if (!value || typeof value !== "object") throw new TypeError("Note task is invalid");
+  return Object.freeze({
+    id: validId(value.id, "Task id"),
+    text: boundedText(value.text, "Task text", 2048),
+    done: value.done === true,
+  });
+}
+
+function freezeReference(value) {
+  if (!value || typeof value !== "object") throw new TypeError("Note reference is invalid");
+  if (!REFERENCE_KINDS.has(value.kind)) throw new TypeError("Note reference kind is invalid");
+  const href = value.kind === "link"
+    ? boundedText(value.href ?? "", "Reference href", 4096)
+    : "";
+  if (value.kind === "link" && href && !/^https?:\/\//i.test(href)) {
+    throw new TypeError("Note reference link must use http or https");
+  }
+  return Object.freeze({
+    id: validId(value.id, "Reference id"),
+    kind: value.kind,
+    title: boundedText(value.title, "Reference title", 512),
+    detail: boundedText(value.detail ?? "", "Reference detail", 1024),
+    href,
+  });
+}
+
+function freezeNote(value, projectIds) {
+  if (!value || typeof value !== "object") throw new TypeError("Note is invalid");
+  const projectId = validId(value.projectId, "Note project id");
+  if (!projectIds.has(projectId)) throw new TypeError("Note references an unknown project");
+  const tasks = Array.isArray(value.tasks) ? value.tasks.map(freezeTask) : [];
+  const references = Array.isArray(value.references) ? value.references.map(freezeReference) : [];
+  if (tasks.length > MAX_NOTE_TASKS) throw new TypeError("Note has too many tasks");
+  if (references.length > MAX_NOTE_REFERENCES) throw new TypeError("Note has too many references");
+  return Object.freeze({
+    id: validId(value.id, "Note id"),
+    projectId,
+    title: boundedText(value.title, "Note title", 1024),
+    body: boundedText(value.body, "Note body"),
+    favorite: value.favorite === true,
+    deletedAt: value.deletedAt === null || value.deletedAt === undefined
+      ? null
+      : finiteTimestamp(value.deletedAt, "Note deletedAt"),
+    createdAt: finiteTimestamp(value.createdAt, "Note createdAt"),
+    updatedAt: finiteTimestamp(value.updatedAt, "Note updatedAt"),
+    tasks: Object.freeze(tasks),
+    references: Object.freeze(references),
+  });
+}
+
+export function validateNotesSnapshot(value) {
+  if (!value || typeof value !== "object") throw new TypeError("Notes snapshot must be an object");
+  if (value.$schema !== NOTES_SNAPSHOT_SCHEMA) {
+    throw new TypeError(`Unsupported notes snapshot schema: ${String(value.$schema)}`);
+  }
+  if (!Array.isArray(value.projects) || !Array.isArray(value.notes)) {
+    throw new TypeError("Notes snapshot requires projects and notes arrays");
+  }
+  if (value.projects.length === 0 || value.projects.length > MAX_NOTE_PROJECTS) {
+    throw new TypeError("Notes snapshot project count is invalid");
+  }
+  if (value.notes.length > MAX_NOTES) throw new TypeError("Notes snapshot has too many notes");
+
+  const projects = value.projects.map(freezeProject);
+  const projectIds = new Set(projects.map((project) => project.id));
+  if (projectIds.size !== projects.length) throw new TypeError("Note project ids must be unique");
+
+  const notes = value.notes.map((note) => freezeNote(note, projectIds));
+  const noteIds = new Set(notes.map((note) => note.id));
+  if (noteIds.size !== notes.length) throw new TypeError("Note ids must be unique");
+
+  const selectedProjectId = value.selectedProjectId === null || value.selectedProjectId === undefined
+    ? projects[0].id
+    : validId(value.selectedProjectId, "Selected project id");
+  if (!projectIds.has(selectedProjectId)) throw new TypeError("Selected project does not exist");
+
+  const selectedNoteId = value.selectedNoteId === null || value.selectedNoteId === undefined
+    ? null
+    : validId(value.selectedNoteId, "Selected note id");
+  if (selectedNoteId !== null && !noteIds.has(selectedNoteId)) {
+    throw new TypeError("Selected note does not exist");
+  }
+
+  return Object.freeze({
+    $schema: NOTES_SNAPSHOT_SCHEMA,
+    selectedProjectId,
+    selectedNoteId,
+    projects: Object.freeze(projects),
+    notes: Object.freeze(notes),
+  });
+}
+
+export function assertNotesStore(store) {
+  if (!store || typeof store !== "object" || store.schema !== NOTES_STORE_SCHEMA) {
+    throw new TypeError("A compatible notes store is required");
+  }
+  if (!["device", "session"].includes(store.scope)) {
+    throw new TypeError("Notes store scope must be device or session");
+  }
+  if (typeof store.load !== "function" || typeof store.save !== "function") {
+    throw new TypeError("Notes store must implement load() and save(snapshot)");
+  }
+  return store;
+}
