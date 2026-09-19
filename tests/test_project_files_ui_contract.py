@@ -2,7 +2,7 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLS = ROOT / "system" / "surface" / "ui" / "file-space-controls.mjs"
+CONTROLS = ROOT / "system" / "apps" / "files" / "ui" / "file-space-controls.mjs"
 COMPOSITION = ROOT / "system" / "composition" / "native" / "main.mjs"
 WORKFLOW = ROOT / ".github" / "workflows" / "surface-web-candidate.yml"
 
