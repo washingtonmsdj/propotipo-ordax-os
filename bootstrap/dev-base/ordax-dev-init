@@ -137,10 +137,6 @@ printf '\033[2J\033[H'
 printf 'OrdaX Development Base\n'
 printf 'Kernel + drivers + network + Git\n\n'
 
-for module in iwlwifi rtl8xxxu mt76x2u ath9k_htc; do
-    modprobe "$module" >/dev/null 2>&1 || true
-done
-
 # Rollback pins start immediately. The running supervisor owns the remote retry:
 # if this was an automatic boot rejection, it releases the pin only after main
 # advances to a different commit. Manual pins remain sticky.
