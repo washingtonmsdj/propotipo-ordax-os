@@ -256,6 +256,7 @@ export function mountInternetBrowserControls(
   let panelCollapsed = false;
   let tabQuery = "";
   let pendingTabFocusId = null;
+  let handledSurfaceTarget = null;
   let resizeObserver = null;
 
   const findSlot = () => root.querySelector(`${INTERNET_WINDOW_SELECTOR} ${INTERNET_EXTENSION_SELECTOR}`);
@@ -308,6 +309,32 @@ export function mountInternetBrowserControls(
       width: Math.max(0, Math.round(rect.width)),
       height: Math.max(0, Math.round(rect.height)),
     });
+  };
+
+  const syncSurfaceTarget = () => {
+    const target = lifecycle.getAppTarget("internet");
+    if (target === null) {
+      handledSurfaceTarget = null;
+      return;
+    }
+    if (target === handledSurfaceTarget || !snapshot.supported) return;
+
+    handledSurfaceTarget = target;
+    try {
+      const url = normalizedAddress(target);
+      if (!url) return;
+      const tab = activeTab();
+      message = "";
+      if (tab) {
+        if (tab.url !== url) port.navigate(tab.id, url);
+      } else {
+        port.openTab(allocateTabId(), url);
+      }
+    } catch (error) {
+      message = error instanceof Error
+        ? error.message
+        : "Não foi possível abrir o endereço recebido.";
+    }
   };
 
   const ensureTab = () => {
@@ -489,6 +516,7 @@ export function mountInternetBrowserControls(
         resizeObserver.observe(slot.querySelector("[data-browser-viewport]"));
       }
     }
+    syncSurfaceTarget();
     syncTabs(slot);
     syncProjectContext(slot);
     syncCurrentPage(slot);
