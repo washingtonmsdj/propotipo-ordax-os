@@ -7,6 +7,7 @@ import { createNativeDiagnosticJournalStore } from "../../adapters/native/diagno
 import { createNativeFileSpace } from "../../adapters/native/file-space.mjs";
 import { createNativeRecentFilesStore } from "../../adapters/native/recent-files.mjs";
 import { createNativeProjectStore } from "../../adapters/native/projects.mjs";
+import { createNativeProjectWebReferenceStore } from "../../adapters/native/project-web-references.mjs";
 import { createNativeNetworkManagement } from "../../adapters/native/network-management.mjs";
 import { createNativeNotificationStore } from "../../adapters/native/notifications.mjs";
 import { createNativeNotesStore } from "../../adapters/native/notes.mjs";
@@ -27,6 +28,7 @@ import { validateAccountRuntime } from "../../services/account/runtime.mjs";
 import { createAppActivationChannel } from "../../services/apps/activation.mjs";
 import { createRecentFilesRuntime } from "../../services/files/recent-files.mjs";
 import { createProjectCatalogRuntime } from "../../services/files/projects.mjs";
+import { createProjectWebReferenceRuntime } from "../../services/projects/web-references.mjs";
 import { createProjectContinuityFileSpace } from "../../services/files/project-continuity-file-space.mjs";
 import { createNotificationsRuntime } from "../../services/notifications/runtime.mjs";
 import { createUpdateNotificationBridge } from "../../services/notifications/update-bridge.mjs";
@@ -140,6 +142,10 @@ async function start() {
   const projects = fileSpace === null ? null : createProjectCatalogRuntime({
     store: createNativeProjectStore(window),
   });
+  const projectReferences = projects === null ? null : createProjectWebReferenceRuntime({
+    store: createNativeProjectWebReferenceStore(window),
+    projects,
+  });
   const workspaceMetadata = createWorkspaceMetadataBridge(localWorkspaceStore);
   const workspaceStore = workspaceMetadata.store;
   const identitySession = createWebIdentitySession();
@@ -214,7 +220,7 @@ async function start() {
     root,
     browserSession,
     surface,
-    { projects },
+    { projects, projectReferences },
   );
   const internetBrowserShortcuts = mountInternetBrowserShortcuts(root, browserSession);
   const notificationCenter = mountNotificationCenterControls(root, notifications, appActivation);
@@ -353,6 +359,7 @@ async function start() {
       notesWorkspaceControls.destroy();
       internetBrowserShortcuts.destroy();
       internetBrowserControls.destroy();
+      projectReferences?.destroy();
       accountOverviewControls.destroy();
       preferenceSync.destroy();
       browserSession.dispose();
