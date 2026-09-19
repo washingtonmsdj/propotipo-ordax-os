@@ -1063,6 +1063,24 @@ export function mountNotesWorkspaceControls(
     return typeof windowObject.open === "function";
   };
 
+  const createNewNote = () => {
+    if (state.document.notes.length >= MAX_NOTES) return false;
+    resetReferenceFlow();
+    flushEditor();
+    mode = "project";
+    runtime.createNote(state.document.selectedProjectId);
+    queueMicrotask(() => mountedSlot?.querySelector("[data-notes-title]")?.select());
+    return true;
+  };
+
+  const focusNotesSearch = () => {
+    const search = mountedSlot?.querySelector("[data-notes-search]");
+    if (!(search instanceof HTMLInputElement)) return false;
+    search.focus();
+    search.select();
+    return true;
+  };
+
   const promptEditorLink = (body) => {
     const input = windowObject.prompt?.("Cole o endereço do link:");
     if (!input) return false;
@@ -1093,12 +1111,7 @@ export function mountNotesWorkspaceControls(
     const note = currentNote();
 
     if (action === "new-note") {
-      if (state.document.notes.length >= MAX_NOTES) return;
-      resetReferenceFlow();
-      flushEditor();
-      mode = "project";
-      runtime.createNote(state.document.selectedProjectId);
-      queueMicrotask(() => mountedSlot?.querySelector("[data-notes-title]")?.select());
+      createNewNote();
       return;
     }
     if (action === "new-project") {
@@ -1449,6 +1462,19 @@ export function mountNotesWorkspaceControls(
 
   const onWorkspaceKeyDown = (event) => {
     if (!mountedSlot?.contains(event.target) || event.isComposing) return;
+
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && !event.altKey && !event.shiftKey) {
+      const key = String(event.key ?? "").toLocaleLowerCase("en-US");
+      if (key === "n") {
+        if (createNewNote()) event.preventDefault();
+        return;
+      }
+      if (key === "f") {
+        if (focusNotesSearch()) event.preventDefault();
+        return;
+      }
+    }
 
     if (event.key === "Enter" && event.target.matches?.("[data-notes-title]")) {
       const note = currentNote();
