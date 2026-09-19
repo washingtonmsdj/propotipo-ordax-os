@@ -200,6 +200,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const draft = thaw(snapshot);
       const noteIndex = requireNoteIndex(draft, noteId);
       requireProjectIndex(draft, projectId);
+      if (draft.notes[noteIndex].deletedAt !== null) return runtime.getSnapshot();
       if (draft.notes[noteIndex].projectId === projectId) return runtime.getSnapshot();
       draft.notes[noteIndex] = {
         ...draft.notes[noteIndex],
@@ -240,6 +241,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
       const current = draft.notes[index];
+      if (current.deletedAt !== null) return runtime.getSnapshot();
       const next = { ...current, updatedAt: now() };
       if (Object.prototype.hasOwnProperty.call(patch, "title")) {
         next.title = String(patch.title ?? "").slice(0, 1024);
@@ -257,13 +259,16 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     toggleFavorite(noteId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       draft.notes[index] = { ...draft.notes[index], favorite: !draft.notes[index].favorite, updatedAt: now() };
       return commit(draft);
     },
     trashNote(noteId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
-      draft.notes[index] = { ...draft.notes[index], deletedAt: now(), updatedAt: now() };
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
+      const stamp = now();
+      draft.notes[index] = { ...draft.notes[index], deletedAt: stamp, updatedAt: stamp };
       if (draft.selectedNoteId === noteId) {
         draft.selectedNoteId = draft.notes.find((note) => note.projectId === draft.selectedProjectId && note.deletedAt === null)?.id ?? null;
       }
@@ -272,6 +277,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     restoreNote(noteId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt === null) return runtime.getSnapshot();
       draft.notes[index] = { ...draft.notes[index], deletedAt: null, updatedAt: now() };
       draft.selectedProjectId = draft.notes[index].projectId;
       draft.selectedNoteId = noteId;
@@ -300,6 +306,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     addTask(noteId, text = "Novo item") {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       if (draft.notes[index].tasks.length >= MAX_NOTE_TASKS) return runtime.getSnapshot();
       draft.notes[index].tasks.push({ id: id("task"), text: String(text).slice(0, 2048), done: false });
       draft.notes[index].updatedAt = now();
@@ -308,6 +315,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     updateTask(noteId, taskId, patch) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       const taskIndex = draft.notes[index].tasks.findIndex((task) => task.id === taskId);
       if (taskIndex < 0) return runtime.getSnapshot();
       const task = { ...draft.notes[index].tasks[taskIndex] };
@@ -320,6 +328,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     removeTask(noteId, taskId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       const before = draft.notes[index].tasks.length;
       draft.notes[index].tasks = draft.notes[index].tasks.filter((task) => task.id !== taskId);
       if (draft.notes[index].tasks.length === before) return runtime.getSnapshot();
@@ -329,6 +338,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     addReference(noteId, reference) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       if (draft.notes[index].references.length >= MAX_NOTE_REFERENCES) return runtime.getSnapshot();
       draft.notes[index].references.push({
         id: id("ref"),
@@ -344,6 +354,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
     removeReference(noteId, referenceId) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
+      if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
       const before = draft.notes[index].references.length;
       draft.notes[index].references = draft.notes[index].references.filter((reference) => reference.id !== referenceId);
       if (draft.notes[index].references.length === before) return runtime.getSnapshot();
@@ -373,6 +384,7 @@ export function assertNotesRuntime(runtime) {
     "removeProject",
     "moveNote",
     "updateNote",
+    "toggleFavorite",
     "trashNote",
     "restoreNote",
     "permanentlyDeleteNote",
@@ -382,6 +394,7 @@ export function assertNotesRuntime(runtime) {
     "removeTask",
     "addReference",
     "removeReference",
+    "destroy",
   ]) {
     if (typeof runtime[method] !== "function") throw new TypeError(`Notes runtime must implement ${method}()`);
   }
