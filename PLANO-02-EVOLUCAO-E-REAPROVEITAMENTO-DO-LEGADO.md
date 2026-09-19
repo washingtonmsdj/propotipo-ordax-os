@@ -465,7 +465,7 @@ Essas capacidades são necessidades de produto inferidas das jornadas e da difer
 
 **Primeiro uso:** explicar modo e armazenamento disponível, oferecer rede quando necessário, preferências básicas e conta opcional para continuidade. Não bloquear uso local por ausência de login. Em USB temporário, esclarecer o que persiste sem afirmar persistência que o perfil não oferece.
 
-**Notificações:** central pequena com origem, horário, nível, ação e estado lido/dispensado. Eventos reais de cópia, sync, atualização e dispositivo. Não converter todo heartbeat em aviso. “Não perturbe” controla apresentação conforme política; falha crítica continua consultável no owner.
+**Notificações:** central pequena com origem, horário, nível, ação e estado lido/dispensado. Eventos reais de cópia, sync, atualização e dispositivo. Não converter todo heartbeat em aviso. “Não perturbe” controla apresentação conforme política; falha crítica continua consultável no owner. **Estado atual do recorte:** PARCIAL. A central local comum e o Não Perturbe de bandeja já foram implementados no protótipo; hoje apenas Atualizações está integrado como produtor real. Cópia, sync e dispositivo só devem publicar quando seus próprios owners expuserem transições reais e úteis, sem criar produtores paralelos. Som, ativação global e preferências/permissões por app continuam pendentes.
 
 **Acessibilidade:** teclado completo, foco visível, rótulos, contraste, escala, redução de movimento e leitores de tela nos hosts suportados. A navegação para toque/mobile deve manter o mesmo domínio de comportamento, com composição responsiva.
 
