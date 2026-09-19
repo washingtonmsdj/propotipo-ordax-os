@@ -140,7 +140,7 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("createNotesRuntime", component_runtime)
         self.assertIn("mountNotesWorkspaceControls", component_runtime)
         self.assertIn('new URL("./notes.css", import.meta.url).href', component_runtime)
-        self.assertIn('NOTES_VERSION = "0.3.0"', version)
+        self.assertIn('NOTES_VERSION = "0.4.0"', version)
 
     def test_notes_surface_matches_concept_without_platform_storage_shortcuts(self):
         controls = NOTES_CONTROLS.read_text(encoding="utf-8")
@@ -189,6 +189,11 @@ class NotesNativeTests(unittest.TestCase):
         self.assertIn("handleNotesRichBlockKeyDown", controls)
         self.assertIn('title.placeholder = "Título da nota"', controls)
         self.assertIn("onWorkspaceKeyDown", controls)
+        self.assertIn("createNewNote", controls)
+        self.assertIn("focusNotesSearch", controls)
+        self.assertIn('key === "n"', controls)
+        self.assertIn('key === "f"', controls)
+        self.assertIn("event.preventDefault()", controls)
         self.assertIn("focusEditorBody", controls)
         self.assertIn('event.key === "Enter"', controls)
         self.assertIn('event.key !== "Escape"', controls)
