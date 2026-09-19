@@ -27,7 +27,7 @@ Um número de PR nunca é o número de uma atualização do notebook.
 | Entrega | `Entrega 74` | sequência humana das mudanças aplicáveis ao dispositivo |
 | Aplicação | `Entrega 74 · Aplicada` | registro local de quando aquele notebook aplicou a entrega |
 | Versão de produto | futura, por exemplo `OrdaX 1.0` | release comercial/produto; não deve ser inferida de PR nem de entrega |
-| Versão de componente | futura quando existir | somente para componente realmente empacotado/versionado de forma independente |
+| Versão de componente | SemVer próprio | identidade do componente; não implica atualização independente |
 
 ## Sequência de Entrega
 
@@ -67,12 +67,12 @@ Enquanto Surface, Arquivos, Ajustes, Conta, Sistema, Rede e Atualizador forem di
 A UI pode dizer:
 
 ```text
-Surface      distribuição conjunta · sem versão própria
-Arquivos     distribuição conjunta · sem versão própria
-Conta        distribuição conjunta · sem versão própria
+Surface      v0.1.0 · distribuição conjunta
+Arquivos     v0.1.0 · distribuição conjunta
+Conta        v0.1.0 · distribuição conjunta
 ```
 
-Quando um componente ganhar empacotamento e ciclo de release próprios, ele poderá receber uma versão própria persistente. Até lá, não fabricar números.
+Cada componente possui uma versão declarada no manifesto canônico. A independência de atualização é outro eixo: `bundled` acompanha a entrega conjunta, `component-slot` possui `current/previous/pending` e rollback individual, e `base-ab` pertence exclusivamente à Base crítica. Não inferir independência apenas porque existe um número de versão.
 
 ## Compatibilidade do contrato atual
 
