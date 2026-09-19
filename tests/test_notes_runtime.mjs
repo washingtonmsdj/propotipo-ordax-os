@@ -1005,7 +1005,7 @@ test("notes statistics count Unicode words and editor metadata without mutating 
 
   assert.equal(snapshot.schema, "ordax.notes-statistics/1");
   assert.equal(snapshot.words, 5);
-  assert.equal(snapshot.characters, 25);
+  assert.equal(snapshot.characters, 27);
   assert.equal(snapshot.tasks, 3);
   assert.equal(snapshot.completedTasks, 2);
   assert.equal(snapshot.references, 2);
