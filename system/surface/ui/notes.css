@@ -1,0 +1,810 @@
+.ordax-window[data-app-id="notes"] {
+  width: min(1360px, calc(100% - 34px));
+  height: min(850px, calc(100% - 34px));
+}
+
+.ordax-window[data-app-id="notes"] .ordax-window-body {
+  display: block;
+  height: calc(100% - 58px);
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ordax-app-extension[data-app-extension="notes-workspace"] {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--ordax-window-bg);
+  overflow: hidden;
+}
+
+.ordax-app-extension[data-app-extension="notes-workspace"] > h3,
+.ordax-app-extension[data-app-extension="notes-workspace"] > p {
+  display: none;
+}
+
+.ordax-notes-view {
+  --notes-paper: #f9f7f1;
+  --notes-ivory: #efede6;
+  --notes-ink: #171613;
+  --notes-muted: #6c6860;
+  --notes-accent: #ed4b25;
+  --notes-soft: color-mix(in srgb, var(--notes-accent) 9%, transparent);
+  display: grid;
+  grid-template-columns: 220px 285px minmax(440px, 1fr) 270px;
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  color: var(--ordax-text);
+  background: var(--ordax-window-bg);
+  font-family: var(--ordax-font-sans);
+}
+
+.ordax-notes-nav,
+.ordax-notes-list-pane,
+.ordax-notes-editor-pane,
+.ordax-notes-references {
+  min-width: 0;
+  min-height: 0;
+}
+
+.ordax-notes-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 12px 14px;
+  border-right: 1px solid var(--ordax-border-soft);
+  background: color-mix(in srgb, var(--ordax-window-bg) 92%, var(--notes-ivory));
+}
+
+.ordax-notes-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 10px;
+  background: var(--ordax-subtle-bg);
+  color: var(--ordax-muted);
+}
+
+.ordax-notes-search:focus-within {
+  border-color: color-mix(in srgb, var(--notes-accent) 60%, var(--ordax-border));
+  outline: 2px solid color-mix(in srgb, var(--notes-accent) 16%, transparent);
+}
+
+.ordax-notes-search-input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ordax-text);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.ordax-notes-new {
+  min-height: 42px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--notes-accent);
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  padding: 0 16px;
+}
+
+.ordax-notes-new:hover,
+.ordax-notes-new:focus-visible {
+  filter: brightness(0.96);
+  outline: 2px solid var(--ordax-focus);
+  outline-offset: 2px;
+}
+
+.ordax-notes-nav-list,
+.ordax-notes-projects {
+  display: grid;
+  gap: 2px;
+}
+
+.ordax-notes-nav-item,
+.ordax-notes-project {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  width: 100%;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.79rem;
+  text-align: left;
+}
+
+.ordax-notes-nav-item:hover,
+.ordax-notes-nav-item:focus-visible,
+.ordax-notes-project:hover,
+.ordax-notes-project:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-nav-item[data-active="true"],
+.ordax-notes-project[data-active="true"] {
+  background: var(--notes-soft);
+  color: var(--ordax-text);
+}
+
+.ordax-notes-projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 5px 1px;
+  color: var(--ordax-muted);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+}
+
+.ordax-notes-project-add {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ordax-notes-project-add:hover,
+.ordax-notes-project-add:focus-visible {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+  outline: 0;
+}
+
+.ordax-notes-project-icon {
+  color: var(--notes-accent);
+}
+
+.ordax-notes-device {
+  margin-top: auto;
+  padding: 10px;
+  border-top: 1px solid var(--ordax-border-soft);
+  color: var(--ordax-muted);
+  font-size: 0.72rem;
+}
+
+.ordax-notes-list-pane {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ordax-border-soft);
+  background: var(--ordax-window-bg);
+  overflow: hidden;
+}
+
+.ordax-notes-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 76px;
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notes-list-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.ordax-notes-list-title {
+  font-size: 1rem;
+}
+
+.ordax-notes-list-count {
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+}
+
+.ordax-notes-sort {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ordax-notes-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.ordax-notes-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  gap: 9px;
+  width: 100%;
+  min-height: 88px;
+  padding: 13px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--ordax-border-soft);
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.ordax-notes-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: transparent;
+}
+
+.ordax-notes-row[data-active="true"] {
+  background: var(--notes-soft);
+}
+
+.ordax-notes-row[data-active="true"]::before {
+  background: var(--notes-accent);
+}
+
+.ordax-notes-row:hover,
+.ordax-notes-row:focus-visible {
+  background: color-mix(in srgb, var(--notes-accent) 6%, var(--ordax-hover-bg));
+  outline: 0;
+}
+
+.ordax-notes-row-icon {
+  padding-top: 2px;
+  color: var(--notes-accent);
+  font-size: 0.9rem;
+}
+
+.ordax-notes-row-copy {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 5px;
+}
+
+.ordax-notes-row-copy strong,
+.ordax-notes-row-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-row-copy strong {
+  font-size: 0.78rem;
+}
+
+.ordax-notes-row-copy small,
+.ordax-notes-row-time {
+  color: var(--ordax-muted);
+  font-size: 0.68rem;
+}
+
+.ordax-notes-row-time {
+  align-self: end;
+  white-space: nowrap;
+}
+
+.ordax-notes-list-empty {
+  margin: 22px 16px;
+  color: var(--ordax-muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.ordax-notes-editor-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ordax-window-bg) 96%, var(--notes-paper));
+}
+
+.ordax-notes-editor-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  gap: 14px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notes-breadcrumb {
+  overflow: hidden;
+  color: var(--ordax-muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ordax-notes-save-status {
+  margin-right: 8px;
+  color: var(--ordax-muted);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.ordax-notes-star,
+.ordax-notes-more,
+.ordax-notes-refs-toggle,
+.ordax-notes-tool {
+  min-width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ordax-notes-refs-toggle {
+  display: none;
+  padding: 0 9px;
+  font-size: 0.68rem;
+}
+
+.ordax-notes-star {
+  color: var(--notes-accent);
+  font-size: 1.25rem;
+}
+
+.ordax-notes-star:hover,
+.ordax-notes-more:hover,
+.ordax-notes-refs-toggle:hover,
+.ordax-notes-tool:hover,
+.ordax-notes-star:focus-visible,
+.ordax-notes-more:focus-visible,
+.ordax-notes-refs-toggle:focus-visible,
+.ordax-notes-tool:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-menu {
+  position: absolute;
+  z-index: 8;
+  right: 20px;
+  top: 47px;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--ordax-border);
+  border-radius: 9px;
+  background: var(--ordax-window-bg);
+  box-shadow: 0 12px 32px color-mix(in srgb, #000 16%, transparent);
+}
+
+.ordax-notes-menu-item {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+  padding: 0 9px;
+}
+
+.ordax-notes-menu-item:hover,
+.ordax-notes-menu-item:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 48px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+}
+
+.ordax-notes-format {
+  min-width: 90px;
+  height: 31px;
+  padding: 0 9px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 7px;
+  background: var(--ordax-subtle-bg);
+  color: var(--ordax-text);
+  font: inherit;
+  font-size: 0.7rem;
+}
+
+.ordax-notes-tool {
+  font-weight: 650;
+}
+
+.ordax-notes-tool-italic {
+  font-family: serif;
+  font-style: italic;
+}
+
+.ordax-notes-tool-separator {
+  width: 1px;
+  height: 24px;
+  margin: 0 4px;
+  background: var(--ordax-border-soft);
+}
+
+.ordax-notes-paper {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 28px clamp(24px, 4vw, 54px) 44px;
+}
+
+.ordax-notes-document {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.ordax-notes-kicker {
+  display: block;
+  margin-bottom: 14px;
+  color: var(--ordax-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.09em;
+}
+
+.ordax-notes-title {
+  display: block;
+  width: 100%;
+  min-height: 58px;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ordax-text);
+  font-family: var(--ordax-font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 520;
+  line-height: 1.1;
+}
+
+.ordax-notes-meta {
+  margin: 4px 0 24px;
+  color: var(--ordax-muted);
+  font-size: 0.72rem;
+}
+
+.ordax-notes-body {
+  width: 100%;
+  min-height: 270px;
+  resize: vertical;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ordax-text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.ordax-notes-tasks {
+  margin-top: 22px;
+}
+
+.ordax-notes-tasks h3 {
+  margin: 0 0 12px;
+  font-family: var(--ordax-font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.ordax-notes-task-list {
+  display: grid;
+  gap: 7px;
+}
+
+.ordax-notes-task {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+}
+
+.ordax-notes-task input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--notes-accent);
+}
+
+.ordax-notes-task-text {
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  outline: 0;
+  background: transparent;
+  color: var(--ordax-text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.96rem;
+}
+
+.ordax-notes-task[data-done="true"] .ordax-notes-task-text {
+  color: var(--ordax-muted);
+  text-decoration: line-through;
+}
+
+.ordax-notes-task-text:focus {
+  border-bottom-color: var(--ordax-border);
+}
+
+.ordax-notes-quote {
+  margin: 28px 0 0;
+  padding: 13px 18px;
+  border-left: 3px solid var(--notes-accent);
+  border-radius: 4px;
+  background: var(--notes-soft);
+  color: var(--ordax-text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.92rem;
+  font-style: italic;
+}
+
+.ordax-notes-empty {
+  display: grid;
+  place-content: center;
+  min-height: 100%;
+  text-align: center;
+  color: var(--ordax-muted);
+}
+
+.ordax-notes-empty strong {
+  color: var(--ordax-text);
+  font-size: 1rem;
+}
+
+.ordax-notes-empty p {
+  max-width: 320px;
+  margin: 8px auto 0;
+  font-size: 0.76rem;
+}
+
+.ordax-notes-editor-footer {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 0 28px;
+  border-top: 1px solid var(--ordax-border-soft);
+  color: var(--ordax-muted);
+  font-size: 0.66rem;
+}
+
+.ordax-notes-references {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 15px 14px;
+  border-left: 1px solid var(--ordax-border-soft);
+  background: color-mix(in srgb, var(--ordax-window-bg) 97%, var(--notes-paper));
+}
+
+.ordax-notes-refs-header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.ordax-notes-refs-header strong {
+  font-size: 0.96rem;
+}
+
+.ordax-notes-refs-close,
+.ordax-notes-ref-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ordax-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.ordax-notes-refs-close:hover,
+.ordax-notes-ref-remove:hover {
+  background: var(--ordax-hover-bg);
+  color: var(--ordax-text);
+}
+
+.ordax-notes-refs-content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.ordax-notes-refs-kicker {
+  display: block;
+  margin: 0 0 10px;
+  color: var(--ordax-muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+}
+
+.ordax-notes-ref-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  gap: 7px;
+  margin-bottom: 9px;
+  padding: 12px 9px;
+  border: 1px solid var(--ordax-border-soft);
+  border-radius: 9px;
+  background: var(--ordax-window-bg);
+}
+
+.ordax-notes-ref-card[data-href] {
+  cursor: pointer;
+}
+
+.ordax-notes-ref-card[data-href]:hover,
+.ordax-notes-ref-card[data-href]:focus-visible {
+  border-color: color-mix(in srgb, var(--notes-accent) 44%, var(--ordax-border));
+  outline: 0;
+}
+
+.ordax-notes-ref-icon {
+  color: var(--ordax-text);
+  font-size: 1.05rem;
+}
+
+.ordax-notes-ref-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.ordax-notes-ref-copy strong,
+.ordax-notes-ref-copy small,
+.ordax-notes-ref-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ordax-notes-ref-copy strong {
+  font-size: 0.73rem;
+}
+
+.ordax-notes-ref-copy small,
+.ordax-notes-ref-copy span,
+.ordax-notes-refs-empty {
+  color: var(--ordax-muted);
+  font-size: 0.64rem;
+}
+
+.ordax-notes-refs-subtitle {
+  margin: 22px 0 10px;
+  font-size: 0.85rem;
+}
+
+.ordax-notes-add-reference {
+  min-height: 38px;
+  width: 100%;
+  margin-top: 10px;
+  border: 1px solid var(--ordax-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ordax-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.ordax-notes-add-reference:hover,
+.ordax-notes-add-reference:focus-visible {
+  background: var(--ordax-hover-bg);
+  outline: 0;
+}
+
+.ordax-notes-refs-caption {
+  margin: auto 3px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--ordax-border-soft);
+  color: var(--ordax-muted);
+  font-size: 0.63rem;
+}
+
+@media (max-width: 1180px) {
+  .ordax-notes-view {
+    grid-template-columns: 190px 250px minmax(390px, 1fr);
+  }
+
+  .ordax-notes-references {
+    position: absolute;
+    z-index: 6;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 290px;
+    box-shadow: -14px 0 36px color-mix(in srgb, #000 12%, transparent);
+  }
+
+  .ordax-notes-refs-toggle {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 860px) {
+  .ordax-window[data-app-id="notes"] {
+    width: calc(100% - 16px);
+    height: calc(100% - 16px);
+  }
+
+  .ordax-notes-view {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+
+  .ordax-notes-list-pane {
+    display: none;
+  }
+
+  .ordax-notes-editor-top,
+  .ordax-notes-toolbar {
+    padding-inline: 14px;
+  }
+
+  .ordax-notes-save-status {
+    display: none;
+  }
+
+  .ordax-notes-paper {
+    padding-inline: 22px;
+  }
+}
+
+@media (max-width: 620px) {
+  .ordax-notes-view {
+    grid-template-columns: 1fr;
+  }
+
+  .ordax-notes-nav {
+    display: none;
+  }
+
+  .ordax-notes-toolbar {
+    overflow-x: auto;
+  }
+}
