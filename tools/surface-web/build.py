@@ -22,6 +22,7 @@ SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 HTML_REF_RE = re.compile(r"\b(src|href)=(['\"])([^'\"]+)\2", re.IGNORECASE)
 JS_FROM_RE = re.compile(r"\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?[\"']([^\"']+)[\"']")
 JS_CALL_RE = re.compile(r"\bimport\(\s*[\"']([^\"']+)[\"']\s*\)")
+JS_URL_RE = re.compile(r"\bnew\s+URL\(\s*[\"']([^\"']+)[\"']\s*,\s*import\.meta\.url\s*\)")
 CSS_IMPORT_RE = re.compile(r"@import\s+(?:url\()?\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 CSS_URL_RE = re.compile(r"url\(\s*[\"']?([^\"')]+)", re.IGNORECASE)
 REMOTE_PREFIXES = ("http://", "https://", "//", "data:", "javascript:")
@@ -59,7 +60,12 @@ def dependency_specifiers(path: PurePosixPath, text: str) -> list[str]:
     if suffix in {".html", ".htm"}:
         return [match.group(3) for match in HTML_REF_RE.finditer(text)]
     if suffix in {".mjs", ".js", ".cjs"}:
-        return sorted(set(JS_FROM_RE.findall(text)) | set(JS_CALL_RE.findall(text)) | set(JS_URL_RE.findall(text)))
+        specs = (
+            set(JS_FROM_RE.findall(text))
+            | set(JS_CALL_RE.findall(text))
+            | set(JS_URL_RE.findall(text))
+        )
+        return sorted(specs)
     if suffix == ".css":
         specs = set(CSS_IMPORT_RE.findall(text))
         for value in CSS_URL_RE.findall(text):
