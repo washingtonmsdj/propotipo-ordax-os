@@ -1,97 +1,10 @@
-import { listFirstPartyApps } from "../../apps/catalog.mjs";
-import {
-  defineComponentManifest,
-  validateComponentManifests,
-} from "../../contracts/component-manifest.mjs";
-
-const CORE_COMPONENTS = Object.freeze([
-  defineComponentManifest({
-    id: "ordax-base",
-    title: "OrdaX Base",
-    kind: "base",
-    version: "0.1.0",
-    releaseMode: "base-ab",
-    criticality: "boot-critical",
-    failureDomain: "boot",
-    restartScope: "reboot",
-    healthMode: "boot",
-    owner: "bootstrap + kernel + minimal supervisor",
-    dependencies: [],
-  }),
-  defineComponentManifest({
-    id: "surface-shell",
-    title: "Surface / Shell",
-    kind: "shell",
-    version: "0.1.0",
-    releaseMode: "bundled",
-    criticality: "system",
-    failureDomain: "surface",
-    restartScope: "surface",
-    healthMode: "surface",
-    owner: "system/surface",
-    dependencies: ["ordax-base"],
-  }),
-  defineComponentManifest({
-    id: "update-service",
-    title: "Serviço de Atualização",
-    kind: "service",
-    version: "0.1.0",
-    releaseMode: "bundled",
-    criticality: "system",
-    failureDomain: "service",
-    restartScope: "component",
-    healthMode: "process",
-    owner: "system/supervisor + system/services/update",
-    dependencies: ["ordax-base"],
-  }),
-  defineComponentManifest({
-    id: "network-service",
-    title: "Serviço de Rede / Wi-Fi",
-    kind: "service",
-    version: "0.1.0",
-    releaseMode: "bundled",
-    criticality: "system",
-    failureDomain: "service",
-    restartScope: "component",
-    healthMode: "process",
-    owner: "system/services/network",
-    dependencies: ["surface-shell"],
-  }),
-  defineComponentManifest({
-    id: "power-service",
-    title: "Serviço de Energia / Bateria",
-    kind: "service",
-    version: "0.1.0",
-    releaseMode: "bundled",
-    criticality: "system",
-    failureDomain: "service",
-    restartScope: "component",
-    healthMode: "process",
-    owner: "system surface power broker",
-    dependencies: ["surface-shell"],
-  }),
-  defineComponentManifest({
-    id: "clock-service",
-    title: "Serviço de Data e Hora",
-    kind: "service",
-    version: "0.1.0",
-    releaseMode: "bundled",
-    criticality: "system",
-    failureDomain: "service",
-    restartScope: "component",
-    healthMode: "process",
-    owner: "system surface time-sync agent",
-    dependencies: ["surface-shell"],
-  }),
-]);
-
-const APP_COMPONENTS = Object.freeze(
-  listFirstPartyApps().map((app) => app.component),
-);
+import { validateComponentManifests } from "../../contracts/component-manifest.mjs";
+import { appComponentManifests } from "./manifests/apps.mjs";
+import { coreComponentManifests } from "./manifests/core.mjs";
 
 const COMPONENTS = validateComponentManifests([
-  ...CORE_COMPONENTS,
-  ...APP_COMPONENTS,
+  ...coreComponentManifests,
+  ...appComponentManifests,
 ]);
 
 const COMPONENT_BY_ID = new Map(
