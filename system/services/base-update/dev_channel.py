@@ -20,14 +20,16 @@ import tempfile
 import urllib.error
 import urllib.request
 
-SCHEMA = "prototype-ordax.dev-base-candidate/1"
+SCHEMA = "prototype-ordax.dev-base-candidate/2"
 REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_KERNEL_BYTES = 64 * 1024 * 1024
 MAX_INITRAMFS_BYTES = 128 * 1024 * 1024
+MAX_ROOTFS_BYTES = 384 * 1024 * 1024
 DOWNLOAD_TIMEOUT_SECONDS = 45
+ROOTFS_DOWNLOAD_TIMEOUT_SECONDS = 180
 
 
 class DevBaseChannelError(RuntimeError):
@@ -84,6 +86,7 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         "manual_usb_rewrite_required",
         "kernel",
         "initramfs",
+        "rootfs",
     }
     if not isinstance(value, dict) or set(value) != expected:
         raise DevBaseChannelError("development Base manifest fields are not canonical")
@@ -101,10 +104,13 @@ def validate_manifest(value: object, expected_commit: str) -> dict:
         raise DevBaseChannelError("development Base unexpectedly requires USB rewrite")
     _validate_binding(value["kernel"], "vmlinuz", expected_commit)
     _validate_binding(value["initramfs"], "initrd.gz", expected_commit)
+    _validate_binding(value["rootfs"], "rootfs.tar", expected_commit)
     if value["kernel"]["size"] > MAX_KERNEL_BYTES:
         raise DevBaseChannelError("development Base kernel exceeds size limit")
     if value["initramfs"]["size"] > MAX_INITRAMFS_BYTES:
         raise DevBaseChannelError("development Base initramfs exceeds size limit")
+    if value["rootfs"]["size"] > MAX_ROOTFS_BYTES:
+        raise DevBaseChannelError("development Base rootfs exceeds size limit")
     return value
 
 
@@ -149,6 +155,81 @@ def _verify_payload(payload: bytes, binding: dict, label: str) -> None:
     if hashlib.sha256(payload).hexdigest() != binding["sha256"]:
         raise DevBaseChannelError(f"development Base {label} SHA-256 mismatch")
 
+
+def _download_binding_to_path(
+    binding: dict,
+    destination: Path,
+    max_bytes: int,
+    *,
+    opener=urllib.request.urlopen,
+    timeout_seconds: int,
+) -> None:
+    url = binding["url"]
+    try:
+        response = opener(url, timeout=timeout_seconds)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise DevBaseCandidateUnavailable("development Base candidate is not published yet") from exc
+        raise DevBaseChannelError(f"development Base download returned HTTP {exc.code}") from exc
+    except (urllib.error.URLError, OSError) as exc:
+        raise DevBaseCandidateUnavailable("development Base channel is temporarily unavailable") from exc
+
+    descriptor = -1
+    try:
+        status = getattr(response, "status", 200)
+        final_url = response.geturl()
+        if status != 200:
+            if status == 404:
+                raise DevBaseCandidateUnavailable("development Base candidate is not published yet")
+            raise DevBaseChannelError(f"development Base download returned HTTP {status}")
+        if not isinstance(final_url, str) or not final_url.startswith("https://"):
+            raise DevBaseChannelError("development Base download left HTTPS")
+
+        descriptor = os.open(
+            destination,
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = response.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise DevBaseChannelError("development Base download exceeds size limit")
+            offset = 0
+            while offset < len(chunk):
+                written = os.write(descriptor, chunk[offset:])
+                if written <= 0:
+                    raise DevBaseChannelError("development Base streamed write made no progress")
+                offset += written
+            digest.update(chunk)
+        if total != binding["size"]:
+            raise DevBaseChannelError("development Base rootfs size mismatch")
+        if digest.hexdigest() != binding["sha256"]:
+            raise DevBaseChannelError("development Base rootfs SHA-256 mismatch")
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+    except Exception:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            destination.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    finally:
+        try:
+            response.close()
+        except Exception:
+            pass
 
 def _write_synced(path: Path, payload: bytes, mode: int = 0o600) -> None:
     descriptor = os.open(
@@ -200,12 +281,16 @@ def verify_materialized(path: Path, expected_commit: str) -> dict:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DevBaseChannelError("materialized development Base manifest is invalid") from exc
 
-    expected_names = {"dev-base.json", "vmlinuz", "initrd.gz"}
+    expected_names = {"dev-base.json", "vmlinuz", "initrd.gz", "rootfs.tar"}
     actual_names = {child.name for child in path.iterdir()}
     if actual_names != expected_names:
         raise DevBaseChannelError("materialized development Base contains unexpected files")
 
-    for key, max_bytes in (("kernel", MAX_KERNEL_BYTES), ("initramfs", MAX_INITRAMFS_BYTES)):
+    for key, max_bytes in (
+        ("kernel", MAX_KERNEL_BYTES),
+        ("initramfs", MAX_INITRAMFS_BYTES),
+        ("rootfs", MAX_ROOTFS_BYTES),
+    ):
         binding = manifest[key]
         asset = path / binding["name"]
         metadata = asset.lstat()
@@ -274,6 +359,13 @@ def acquire(
     try:
         _write_synced(temporary / "vmlinuz", kernel)
         _write_synced(temporary / "initrd.gz", initramfs)
+        _download_binding_to_path(
+            manifest["rootfs"],
+            temporary / "rootfs.tar",
+            MAX_ROOTFS_BYTES,
+            opener=opener,
+            timeout_seconds=ROOTFS_DOWNLOAD_TIMEOUT_SECONDS,
+        )
         _write_synced(temporary / "dev-base.json", manifest_bytes)
         _fsync_dir(temporary)
         os.rename(temporary, target)
